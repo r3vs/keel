@@ -1,0 +1,12 @@
+# Runtime artifacts (generati dalla skill, non da versionare)
+ledger.json
+graph.json
+*.skill
+.audit/
+docs/audits/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
