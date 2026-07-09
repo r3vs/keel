@@ -1,23 +1,27 @@
 # codebase-rescue — Build checklist
 
 Status: **design complete & internally coherent** (SKILL.md + 16 module playbooks + ledger
-spec v0.3 + drift-linter green). What remains is mostly real code, plus one experiment that
-must come first because it decides the shape of the core engine.
+spec v0.3 + drift-linter green). The gating experiment (step 0) has now been run once on a real
+monorepo — verdict recorded below and in `references/contract-reconciliation.md`. What remains is
+mostly real code.
 
 Work top-down: each block depends on the ones above it. Detail for every item lives in the
 referenced playbook.
 
 ---
 
-## 0. Gating experiment — do this before writing any code
-- [ ] Pick a real slop codebase (ideally your own, where backend/frontend/DB diverged).
-- [ ] Run `scripts/bootstrap.sh`; run Graphify on it.
-- [ ] Answer the one question that decides everything: **are Graphify's cross-layer
+## 0. Gating experiment — DONE (2026-07-09, VibraFlow run) → verdict: WEAK, standalone is Plan A
+- [x] Pick a real slop codebase (ideally your own, where backend/frontend/DB diverged).
+      → VibraFlow (~177K LOC monorepo: TS + Python, Postgres + Drizzle + React).
+- [x] Run `scripts/bootstrap.sh`; run Graphify on it.
+- [x] Answer the one question that decides everything: **are Graphify's cross-layer
       correspondences usable for computing contract diffs, or too INFERRED/noisy?**
-      - Good → extractors lean on the graph.
-      - Weak → extractors work more standalone; graph is used only for anchoring + reachability
-        (fallback becomes plan A).
-- [ ] Record the verdict in `references/contract-reconciliation.md`.
+      → **WEAK** — 222 INFERRED of 18 742 edges (only 2 semantic), and **0 DB-schema nodes**.
+        Extractors work standalone; the graph is used only for anchoring + reachability.
+        **The fallback is now Plan A.**
+- [x] Record the verdict in `references/contract-reconciliation.md`.
+      → done — see the "Phase-0 gating verdict" section there (standalone-first posture,
+        `file:line` anchoring, and the shared-types-package-as-contract finding).
 
 ## 1. Core engine — the contract-reconciliation code (currently prose TODOs)
 - [ ] **Per-stack extractors** (DDL/migration, ORM model, API DTO/route, frontend call/type) →

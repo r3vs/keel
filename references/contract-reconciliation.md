@@ -3,7 +3,42 @@
 This is the module the skill lives or dies on. It turns a vague "the layers aren't aligned"
 into precise, verifiable pins. It is deterministic-ish: it compares representations of the
 same data entity across boundaries and reports where they disagree. Everything here anchors
-to knowledge-graph node IDs so pins can render as cross-layer diffs on the map.
+to knowledge-graph node IDs where the graph provides them, else to source locations
+(`file:line`) — so pins can render as cross-layer diffs on the map. (Phase-0 verdict below:
+on real stacks the graph often lacks DB-schema nodes, so `file:line` anchoring is the norm and
+`node_id` may be null.)
+
+## Phase-0 gating verdict — RESOLVED (2026-07-09, VibraFlow run)
+
+The gating experiment in `TODO.md` step 0 has been run once, on a real monorepo (VibraFlow:
+~177K LOC, TS + Python, Postgres + Drizzle + React). **Verdict: WEAK cross-layer correspondence
+from the graph — standalone shape extraction is Plan A, not the fallback.**
+
+Evidence from that run's graph (`graphify-out/graph.json`, 11 079 nodes / 18 742 edges):
+- Edge confidence: 18 518 EXTRACTED, **222 INFERRED, 2 AMBIGUOUS**. The Ollama semantic pass
+  barely fired — only 1 `shares_data_with` and 1 `semantically_similar_to` edge in the whole
+  graph.
+- **0 DB-schema nodes** — Graphify did not model the Postgres schema as nodes on this stack, so
+  there were no DB anchors for cross-layer edges to attach to in the first place.
+
+Consequences, now baked into this module's posture:
+1. **Compute contracts STANDALONE from source** (DDL/migration, ORM model, DTO/route, shared
+   types). Do not wait on the graph's cross-layer edges — treat any that exist as weak
+   corroboration only.
+2. **Use the graph ONLY for** anchoring, imports/calls reachability (blast radius), and
+   community structure — never for field-level correspondence.
+3. **Anchor pins to `source_location` (`file:line`), accepting `node_id: null`.** Do not anchor
+   to nodes the graph lacks, and never to files a stale graph still references but that no
+   longer exist.
+4. **A monorepo shared-types package is the strongest standalone contract when present.** On
+   VibraFlow, `@vibraflow/shared` *was* the explicit contract the inferred edges failed to
+   supply; DB↔shared diffing off it produced all 11 contract pins deterministically.
+5. **Check route returns against the shared types, not just the FE hooks.** Where the frontend
+   asserts `api.get<T>()` with no runtime validation, TS already ties the hooks to shared types
+   — the real drift is raw `pg` / untyped route returns vs those types.
+
+One data point, not a law: re-run the experiment on a stack where Graphify *does* emit
+DB-schema nodes and richer semantic edges before generalizing this verdict.
 
 ## The boundaries
 
@@ -93,4 +128,6 @@ roadmap (contracts align before logic is touched, which falls out of `depends_on
 - [ ] Per-stack extractors for the four boundaries (start with the user's live stacks, then
       generalize via tree-sitter queries so new stacks are additive, not rewrites).
 - [ ] Type-equivalence table across DB/ORM/API/TS type systems.
-- [ ] Correspondence resolver that consumes graph edges first, heuristics second.
+- [ ] Correspondence resolver: **standalone shapes first** (Phase-0 verdict), with graph edges
+      as weak corroboration only and for anchoring/reachability. (Was "graph edges first" —
+      flipped by the VibraFlow run.)
