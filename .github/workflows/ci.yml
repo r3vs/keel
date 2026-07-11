@@ -1,0 +1,27 @@
+name: consistency
+
+# The repo's own CI gate — the skills preach "CI from commit one", so this repo runs one too.
+# Both checks are pure-stdlib Python; no toolchain install needed for the docs consistency gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Drift linter (modules ↔ references ↔ SKILL, both skills + core)
+        run: python scripts/check_consistency.py
+      - name: Pointer verifier (intra-playbook cross-references)
+        run: python scripts/verify_pointers.py
+      - name: Bootstrap shell syntax
+        run: bash -n scripts/bootstrap.sh

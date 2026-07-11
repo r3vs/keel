@@ -29,11 +29,13 @@ assertions).
 The only executable checks:
 
 ```bash
-python scripts/check_consistency.py   # drift-linter — run before calling any doc change done; exits 1 on drift
+python scripts/check_consistency.py   # drift-linter — modules ↔ references ↔ SKILL (both skills + core); exits 1 on drift
+python scripts/verify_pointers.py     # intra-playbook cross-reference check (complements the linter); exits 1 on dangling
 bash scripts/bootstrap.sh             # install the deterministic toolchain (idempotent, best-effort, never hard-fails)
 ```
 
-On Windows use `python` (present) and run the `.sh` script from the Bash shell / Git Bash.
+Both Python checks run in CI on every PR (`.github/workflows/ci.yml`). On Windows use `python`
+(present) and run the `.sh` script from the Bash shell / Git Bash.
 
 ## The one idea to hold in your head
 
