@@ -64,6 +64,16 @@
       "reference": "references/phase-3-contract-roadmap.md"
     },
     {
+      "id": "architecture-fitness",
+      "phase": 3,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": ["import-linter", "dependency-cruiser", "ts-arch"],
+      "produces": ["configure"],
+      "notes": "Generates dependency-constraint / layer-rule checks from the elected topology decision and wires them into CI, so the boundaries (modular monolith, allowed deps) can't silently erode. The preventive mirror of rescue's architecture-fitness finding. Plus the type-checker as a standing CI gate. See core/static-analysis.md.",
+      "reference": "references/phase-3-contract-roadmap.md"
+    },
+    {
       "id": "build-loop",
       "phase": 4,
       "kind": "core",

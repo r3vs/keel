@@ -144,13 +144,33 @@
       "reference": "references/module-logic.md"
     },
     {
+      "id": "type-check",
+      "phase": 1,
+      "kind": "correctness",
+      "type": "deterministic",
+      "tools": ["tsc", "mypy", "pyright", "cargo-check", "go-vet"],
+      "produces": ["defect", "design_concern"],
+      "notes": "The highest-value static signal, run per language tokei detects. Type errors are facts (extracted confidence), tied directly to contract/logic pins; they skip the heavy fp-check. Also the in-loop signal during Phase-4 remediation. See core/static-analysis.md.",
+      "reference": "references/toolchain.md"
+    },
+    {
+      "id": "architecture-fitness",
+      "phase": 1,
+      "kind": "maintainability",
+      "type": "deterministic",
+      "tools": ["import-linter", "dependency-cruiser", "ts-arch", "archunit"],
+      "produces": ["design_concern"],
+      "notes": "Encodes the elected boundaries (layer rules, allowed deps) as executable constraints; a violation is a design_concern against the to-be. Language-gated. Pairs with LSP/SCIP for precise navigation. See core/static-analysis.md.",
+      "reference": "references/toolchain.md"
+    },
+    {
       "id": "fp-check",
       "phase": 1,
       "kind": "gate",
       "type": "judgment",
       "tools": [],
       "produces": [],
-      "notes": "MANDATORY gate. Systematic false-positive verification before a finding becomes a surfaced pin. AI over-reports; this is non-negotiable.",
+      "notes": "MANDATORY gate for JUDGMENT findings. Systematic false-positive verification before a finding becomes a surfaced pin. AI over-reports; this is non-negotiable. Deterministic static findings (type errors, failed constraints) bypass it — they are facts, not over-reports.",
       "reference": "references/module-fp-check.md"
     },
     {

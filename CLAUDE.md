@@ -76,6 +76,11 @@ are all unified under this one principle — which is why there is deliberately 
   (`core/interview-funnel.md`, `core/brainstorm.md`, `core/contract-testing.md`,
   `core/feedback-loop.md`): same machinery, different direction (rescue reconciles/finds; greenfield
   generates/prevents). The feedback loop (`flip_criteria` → reopen) is what closes the lifecycle.
+- **Two cross-cutting doctrines are shared too** (`core/static-analysis.md`,
+  `core/knowledge-sources.md`): how to use static tools well (type-checkers / LSP / architecture-
+  fitness, in-loop, deterministic findings skipping fp-check) and which external knowledge source
+  per phase (Context7 / DeepWiki / registry / web), with grounding, confidence, and untrusted-input
+  discipline.
 
 ## Editing conventions & invariants
 

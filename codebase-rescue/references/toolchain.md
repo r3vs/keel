@@ -14,6 +14,18 @@ SARIF/JSON so fp-check and the interview see one format.
 - **lizard** — cyclomatic complexity / function length, ~15 languages.
 - **jscpd** — copy-paste / clone detection, 150+ formats.
 
+## Static navigation & type signal (SOTA — often under-used; read `core/static-analysis.md`)
+- **Type-checkers / compilers** — `tsc --noEmit`, mypy/pyright (py), `cargo check` / rust-analyzer,
+  `go vet`. The highest-value static signal, tied directly to contracts and logic; a type error is
+  a fact (`extracted` confidence), not a guess, and skips the heavy fp-check. Run per language tokei
+  detects; also the in-loop signal during Phase-4 remediation.
+- **LSP / SCIP index** — precise defs/refs/call-hierarchy and safe rename. The SOTA navigation
+  primitive, more reliable than the graph's cross-layer edges (Phase-0 verdict); prefer it where a
+  language server exists, the graph complements it.
+- **Architecture-fitness / dependency-constraint** — import-linter (py), dependency-cruiser / ts-arch
+  (js/ts), ArchUnit (jvm). Encodes the elected boundaries as executable constraints → `design_concern`
+  on violation (rescue) or a CI gate (greenfield).
+
 ## Backbones
 - **graphify** (graph, pip `graphifyy`) — PRIMARY backbone. MIT license. 31+ languages via
   tree-sitter; models DB schema (`sql` extra) as nodes; spans DB<->API<->frontend; "why"

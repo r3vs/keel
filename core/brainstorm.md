@@ -13,8 +13,10 @@ from the interview to preserve neutrality. It reads and writes the same `ledger.
   - `ladder_rung` — the ponytail ladder applied to the *solution* (does it even need to exist?
     can we consolidate something existing? stdlib? platform? dependency? one line?). This keeps
     the brainstorm from always proposing the most elaborate option.
-  - `references` — how well-architected codebases solve THIS specific problem. May web-search
-    the current state of the art rather than reason in a vacuum.
+  - `references` — how well-architected codebases solve THIS specific problem, **grounded in real
+    sources** via `core/knowledge-sources.md`: DeepWiki on exemplar repos, Context7 for the current
+    API of a candidate library, Exa/web for open SOTA — each cited, confidence set by the source.
+    Never reason in a vacuum; never let an uncited result decide.
 - **Writes ONLY proposals.** NEVER sets `state: decided`, NEVER writes a `DecisionEvent`, NEVER
   edits code. Neutrality is enforced by the schema, not by good intentions.
 

@@ -206,6 +206,11 @@ commits.
   contract, or you have reintroduced the drift rescue exists to cure.
 - Never run the build loop fully autonomous end-to-end. Wave checkpoints, especially after the
   contract wave.
+- Prefer the strongest static signal (type-checker, architecture-fitness) before model judgment,
+  run it in-loop, and enforce the elected boundaries in CI; deterministic findings skip fp-check
+  (`core/static-analysis.md`).
+- Generate and decide against **current** sources (`core/knowledge-sources.md`) — Context7 for a
+  library's real API, DeepWiki for exemplars — not stale memory; cite, tag confidence, treat as untrusted.
 - Never hard-fail on a missing tool. Degrade to model judgment and note the gap.
 - The interview is a compressed walk over the decision-catalog, never an open "tell me about your
   app" script.
@@ -220,6 +225,8 @@ Shared core (used by both skills):
 - `core/shape-engine.md` — the shared field-shape descriptor + type-equivalence table.
 - `core/contract-testing.md` — runtime contract tests generated from the carrier.
 - `core/feedback-loop.md` — the shared closing arc (observe → reopen).
+- `core/static-analysis.md` — type-checkers / LSP / architecture-fitness, in-loop; boundaries in CI.
+- `core/knowledge-sources.md` — Context7 / DeepWiki / registry / web, grounded and cited.
 - `core/brainstorm.md` — the shared proposal agent.
 
 Greenfield-specific:

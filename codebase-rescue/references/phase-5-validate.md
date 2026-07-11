@@ -24,6 +24,9 @@ never a change or a guess.
 ## Rules
 - **Green build ≠ done.** Require the specific evidence above per kind. For decision-bearing
   items, the Track-A test is the oracle — the same test that drove the fix is the evidence.
+- **Static signal is evidence too.** The type-checker passes on the touched files and any
+  architecture-fitness constraint stays green — deterministic, high-confidence, and cheaper than
+  re-running judgment checks (`core/static-analysis.md`).
 - **Only on evidence** set `pin.state = resolved` and record the validation evidence in the pin
   (auditable). Otherwise return the item to Phase 4 with the failing evidence attached — a
   local retry of that item, NOT a global restart.

@@ -121,6 +121,14 @@ Security is not a cluster but a **pass** over the decided elements: STRIDE per e
 store / trust boundary materializes security `open_decision`s (`references/threat-model.md`), run
 in Phase 1 alongside the catalog expansion. Designed in, not scanned for later.
 
+## Grounding the options (don't reason in a vacuum)
+
+The catalog's options are candidates, not gospel. Ground the hard forks in real sources
+(`core/knowledge-sources.md`): DeepWiki on exemplar repos ("how does a well-run system in this
+space decide this?"), Context7 for whether a candidate library's *current* API actually supports
+the option, the registries for its maintenance/health. Cite what you find and carry its confidence
+onto the pin — the interview still decides; grounding only sharpens the options.
+
 ## Project-type presets (pruning)
 
 Apply before materializing pins — a whole cluster absent from the type is not a question:

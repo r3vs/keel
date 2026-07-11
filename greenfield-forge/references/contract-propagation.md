@@ -54,7 +54,9 @@ Do not reach for a heavyweight schema-registry when a shared-types file suffices
 Run the type-equivalence table (`core/shape-engine.md`) in **reverse** — one canonical descriptor
 → each layer's syntax: DDL/migration, ORM model, DTO/route stub, client type + fetch stub. The
 handlers' bodies are `implement` BuildItems for Phase 4 (Track A); this step only emits the
-**aligned typed surfaces**.
+**aligned typed surfaces**. Generate against the framework's **current** API — pull it from
+Context7 (`core/knowledge-sources.md`), not training-cutoff memory, so the scaffolds use today's
+idioms.
 
 ### 4. Install the drift-check + contract tests (the preventive payload)
 Wire the same shape-diff rescue uses into CI: re-extract every layer's shapes and diff them

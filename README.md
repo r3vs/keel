@@ -32,7 +32,7 @@ to close the loop.
 - `greenfield-forge/` — the preventive skill (same layout, its own dir).
 - `core/` — the shared spine: `decisions-ledger-spec.md` (schema, v0.5, Italian), `ledger.md`
   (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`,
-  `contract-testing.md`, `feedback-loop.md`.
+  `contract-testing.md`, `feedback-loop.md`, `static-analysis.md`, `knowledge-sources.md`.
 - each skill's `TODO.md` — its build checklist. **Do step 0 (the gating experiment) first.**
 - `scripts/bootstrap.sh` — install the deterministic toolchain (shared).
 - `scripts/check_consistency.py` — drift-linter for both skills + core (run in CI).
