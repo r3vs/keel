@@ -126,6 +126,10 @@ ledger, each anchored cross-layer and clustered. These become the primary agenda
 Phase 2 interview, and — once the user elects truths — the primary driver of the Phase 3
 roadmap (contracts align before logic is touched, which falls out of `depends_on`).
 
+Once a truth is elected and the boundary is aligned in Phase 4, a generated **contract test**
+(`core/contract-testing.md`) pins the reconciled boundary so it cannot silently regress — the
+runtime complement to re-diffing shapes in Phase 5.
+
 ## TODO (implementation)
 - [ ] Per-stack extractors for the four boundaries (start with the user's live stacks, then
       generalize via tree-sitter queries so new stacks are additive, not rewrites).

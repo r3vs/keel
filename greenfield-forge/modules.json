@@ -80,8 +80,58 @@
       "type": "judgment",
       "tools": ["mutmut", "stryker"],
       "produces": [],
-      "notes": "Read-only evidence gate. Zero contract drift across generated layers, Track-A test kills mutants, built behavior reachable, paved road runs. Sets pin.state = resolved only on evidence; on failure the item returns to Phase 4. Convergence check drives the traffic-light toward gap = 0.",
+      "notes": "Read-only evidence gate. Zero contract drift across generated layers, generated contract tests pass at runtime (core/contract-testing.md), Track-A test kills mutants, built behavior reachable, paved road runs. Sets pin.state = resolved only on evidence; on failure the item returns to Phase 4. Convergence check drives the traffic-light toward gap = 0.",
       "reference": "references/phase-5-validate.md"
+    },
+    {
+      "id": "acceptance-framing",
+      "phase": 1,
+      "kind": "core",
+      "type": "judgment",
+      "tools": [],
+      "produces": ["acceptance_criterion"],
+      "notes": "Frames the testable outcomes (acceptance criteria) that root the depends_on DAG, before the architecture forks. The engineering half of requirements (problem statement + Given/When/Then with a verify hook); the product half (user research, personas) stays out. Track-A tests trace to these, completing outcome -> decision -> contract -> test.",
+      "reference": "references/phase-1-frame.md"
+    },
+    {
+      "id": "threat-model",
+      "phase": 1,
+      "kind": "security",
+      "type": "judgment",
+      "tools": [],
+      "produces": ["open_decision"],
+      "notes": "Design-time security: STRIDE over the decided elements materializes security open_decisions (accept | mitigate | transfer), not defects. The preventive mirror of rescue's reactive SAST. Policies (default-deny, validate-at-boundary, encrypt PII) carry the bulk; sensitive-asset forks are asked. Mitigations become BuildItems in Phase 3.",
+      "reference": "references/threat-model.md"
+    },
+    {
+      "id": "release",
+      "phase": 6,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [],
+      "produces": ["build_item"],
+      "notes": "Codebase-facing slice of release: expand/contract migrations (zero-downtime), versioning + changelog projected from the ledger, feature-flag code, deploy-strategy config, tested rollback. NOT the CD platform (provisioning/runners are out). Never release on an unmade decision.",
+      "reference": "references/phase-6-release.md"
+    },
+    {
+      "id": "operate",
+      "phase": 7,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": [],
+      "produces": ["instrument", "configure"],
+      "notes": "Codebase-facing slice of operations: instrumentation the code emits (logs/metrics/traces/health), SLO definitions, and the signal manifest mapping each flip_signal to real telemetry. NOT the SRE practice (on-call/incident/capacity are out). The signal manifest is the physical anchor of the feedback loop.",
+      "reference": "references/phase-7-operate-evolve.md"
+    },
+    {
+      "id": "evolve",
+      "phase": 7,
+      "kind": "core",
+      "type": "judgment",
+      "tools": [],
+      "produces": ["reopen_event"],
+      "notes": "Runs the shared feedback loop (core/feedback-loop.md): evaluates flip_signals against the signal manifest's telemetry and, on a fired signal, emits a ReopenEvent and moves the affected pin (+ genuine dependents) back to needs_input, handing it to the interview via slice. Reopens, never decides. The evolve mode; scheduled or incident-triggered.",
+      "reference": "references/phase-7-operate-evolve.md"
     }
   ]
 }

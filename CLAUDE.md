@@ -53,24 +53,28 @@ are all unified under this one principle — which is why there is deliberately 
 - **The decisions ledger is the single source of truth.** Three surfaces — the visual map/wiki,
   the interview, and the brainstorm — hold *no state of their own*; they all read/write one
   `ledger.json`. This is deliberate: it is the exact anti-divergence property the skills enforce on
-  the codebases they touch. Schema authority: `core/decisions-ledger-spec.md` (shared, v0.4);
+  the codebases they touch. Schema authority: `core/decisions-ledger-spec.md` (shared, v0.5);
   English pointer summary: `core/ledger.md`.
 - **A `Pin` is a discriminated union on `kind`** (`contract_mismatch | internal_contradiction |
-  ambiguity | incompleteness | design_concern | defect | open_decision | other`). The `kind`
-  constrains the shape of the pin's `as_is` / `to_be` / `question` payload. `open_decision` (v0.4)
-  is the greenfield fork: nothing built yet, `as_is` null, `to_be` elected before any code exists.
-- **Five phases per skill, each a separate invocation with fresh context**, communicating ONLY
-  through on-disk artifacts (the ledger, the map, the graph/contract). Persisting between phases is
-  what makes the context reset possible — never design a phase that relies on another phase's
-  in-memory session.
+  ambiguity | incompleteness | design_concern | defect | open_decision | acceptance_criterion |
+  other`). The `kind` constrains the shape of the pin's `as_is` / `to_be` / `question` payload.
+  `open_decision` (v0.4) is the greenfield fork (nothing built yet); `acceptance_criterion` (v0.5)
+  is the testable outcome that roots the dependency DAG.
+- **Each phase is a separate invocation with fresh context**, communicating ONLY through on-disk
+  artifacts (the ledger, the map, the graph/contract). Rescue has five phases; greenfield has seven
+  (Frame → Interview → Contract → Build → Validate → Release → Operate & Evolve), the last two
+  closing the loop back to the interview via `flip_criteria`. Persisting between phases is what
+  makes the context reset possible — never design a phase that relies on another's in-memory session.
 - **Modes select scope up front.** Rescue: `rescue` (default) · `align` · `audit` · `resume`.
-  Greenfield: `forge` (default) · `spec` · `slice` · `decide`.
+  Greenfield: `forge` (default) · `spec` · `slice` · `decide` · `evolve`.
 - **Each skill has a core cross-layer module** built on the shared field-shape engine
   (`core/shape-engine.md`): rescue's `contract-reconciliation` **diffs** field shapes across
   DB↔ORM↔API↔frontend to find drift; greenfield's `contract-propagation` **generates** those layers
   from one contract so they cannot drift. Read the relevant playbook in full before touching it.
-- **The interview funnel and the brainstorm are shared** (`core/interview-funnel.md`,
-  `core/brainstorm.md`): same machinery, different pin source (findings vs open decisions).
+- **The interview funnel, the brainstorm, contract-testing, and the feedback loop are shared**
+  (`core/interview-funnel.md`, `core/brainstorm.md`, `core/contract-testing.md`,
+  `core/feedback-loop.md`): same machinery, different direction (rescue reconciles/finds; greenfield
+  generates/prevents). The feedback loop (`flip_criteria` → reopen) is what closes the lifecycle.
 
 ## Editing conventions & invariants
 
@@ -84,7 +88,7 @@ are all unified under this one principle — which is why there is deliberately 
 - **Path convention:** `references/x.md` is skill-root-relative (rescue's root is the repo root;
   greenfield's is `greenfield-forge/`); `core/x.md` is always repo-root-relative and shared.
 - **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
-  `core/decisions-ledger-spec.md` (v0.4) is authoritative for the ledger schema (shared). Do not
+  `core/decisions-ledger-spec.md` (v0.5) is authoritative for the ledger schema (shared). Do not
   let a `SKILL.md` or a reference summary drift from them.
 - **`core/decisions-ledger-spec.md` is written in Italian** — the rest of the repo is English, and
   `core/ledger.md` is the short English pointer to it. Preserve that split unless asked to

@@ -69,7 +69,8 @@ Select scope up front; when unsure, ask once with 2–3 options rather than assu
 - **`audit`** — findings only (defects/security/health), no interview, no remediation. For
   a finished app where the user just wants a report.
 - **`resume`** — like `rescue` but weighted toward `incompleteness`: what is stubbed vs
-  missing vs done, and what to build next.
+  missing vs done, and what to build next. Also the entry point for pins reopened by the shared
+  feedback loop (`core/feedback-loop.md`) when a live system's `flip_criteria` fire.
 
 ## The five phases
 
@@ -206,6 +207,8 @@ Shared core (used by both skills; see the `greenfield-forge` sibling):
 - `core/ledger.md` — the decisions-ledger schema (authoritative). Read first.
 - `core/interview-funnel.md` — the compression funnel (shared mechanism).
 - `core/shape-engine.md` — the field-shape descriptor + type-equivalence table.
+- `core/contract-testing.md` — runtime contract tests that pin a reconciled boundary.
+- `core/feedback-loop.md` — the shared closing arc; can reopen rescue pins when live `flip_criteria` fire.
 - `core/brainstorm.md` — the parallel proposal agent.
 
 Rescue-specific:

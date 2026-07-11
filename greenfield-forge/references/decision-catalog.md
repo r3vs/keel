@@ -26,6 +26,16 @@ Each fork below lists **options** (candidate to-be's, never one asserted as corr
 **downstream** forks it feeds (`depends_on` runs the other way), and a **default policy**
 candidate the interview can offer to auto-resolve the long tail.
 
+### 0. Outcomes / acceptance criteria  ·  roots of the DAG
+The testable results v1 must deliver — the **engineering half** of requirements. Not forks with
+options but **assertions of desired outcome**, elicited as a bounded set and pinned as
+`acceptance_criterion`s (`references/phase-1-frame.md`, Step 3). Everything else `depends_on` them:
+an architecture decision exists to satisfy an outcome, and a Track-A test traces to one.
+- **Elicit:** the core use case as Given/When/Then statements with a `verify` hook; each `in scope
+  v1` or `deferred`.
+- **Downstream:** every decision and every slice.
+- **Default policy:** "smallest set of outcomes that delivers the core use case; the rest deferred."
+
 ### 1. Product scope & domain model  ·  fan-out: everything
 The entities, their relationships, and — critically — **what is in v1 vs later**. This is the
 YAGNI forcing function: every entity and feature not scoped in is a `deferred` pin, not silent
@@ -87,12 +97,29 @@ security posture (secrets handling, authz default-deny).
 - **Default policy:** "validate at the contract boundary; structured errors from one taxonomy;
   Track-A tests on every decision-bearing slice; default-deny authz."
 
-### 9. Delivery  ·  depends_on: topology, sync
+### 9. Delivery & release  ·  depends_on: topology, sync
 - **Options:** deploy target (serverless · container · VM · static host) · CI provider · env/
-  secrets management · migration strategy.
-- **Downstream:** the paved-road scaffolding (`references/phase-3-contract-roadmap.md`).
-- **Default policy:** "the platform's boring default for the chosen topology; migrations
-  versioned from commit one."
+  secrets management · **deploy strategy** (canary · blue-green · rolling) · **migration strategy**
+  (expand/contract, zero-downtime) · **versioning/changelog** (semver, projected from the ledger) ·
+  **rollback** procedure · feature-flag rollout.
+- **Downstream:** the paved-road scaffolding and Phase 6 Release (`references/phase-6-release.md`).
+- **Default policy:** "the platform's boring default for the chosen topology; migrations versioned
+  and expand/contract from commit one; every release rollback-ready."
+
+### 10. Operability  ·  depends_on: delivery, most
+What the running system must expose to be observed and evolved — the **codebase-facing slice** of
+operations (not the SRE practice).
+- **Options:** observability (structured logs · metrics · traces · health/readiness) · SLO targets
+  · the **signal manifest** (which telemetry each `flip_signal` watches).
+- **Downstream:** Phase 7 Operate & Evolve (`references/phase-7-operate-evolve.md`) — the signal
+  manifest is the physical anchor of the feedback loop.
+- **Default policy:** "structured logs + the few metrics the SLOs need; a signal manifest for every
+  decision that carries a `flip_signal`."
+
+## Cross-cutting: threat model
+Security is not a cluster but a **pass** over the decided elements: STRIDE per entry point / data
+store / trust boundary materializes security `open_decision`s (`references/threat-model.md`), run
+in Phase 1 alongside the catalog expansion. Designed in, not scanned for later.
 
 ## Project-type presets (pruning)
 
@@ -111,5 +138,6 @@ Apply before materializing pins — a whole cluster absent from the type is not 
 For each surviving fork not decided by the brief: emit an `open_decision` pin (schema:
 `core/ledger.md`) with the fork as its `question`, the options above, the downstream links as
 `depends_on`, a `cluster_id` grouping related forks, and `severity` set by fan-out (clusters 1–4
-tend to `high`/`blocker`; 8–9 tend to `medium`). The default policies become the interview's
-opening policy questions. See `references/phase-1-frame.md`.
+tend to `high`/`blocker`; 9–10 tend to `medium`). Cluster 0's outcomes become `acceptance_criterion`
+pins that root the DAG; the threat-model pass adds security `open_decision`s. The default policies
+become the interview's opening policy questions. See `references/phase-1-frame.md`.

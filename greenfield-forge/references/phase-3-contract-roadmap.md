@@ -19,9 +19,11 @@ a hardcoded rule.
 
 From the decided NFR/delivery pins, run the **paved-road** module: scaffold the baseline the
 project rides on — test harness, linters/formatters, CI pipeline, env/secrets config, error
-taxonomy, and a **SessionStart hook** (see the `session-start-hook` skill) so future sessions can
-run tests and linters immediately. These are `BuildItem`s (`action: scaffold`/`configure`) in Wave
-1 alongside the contract: they carry no product decision but everything is built on top of them.
+taxonomy, the generated **contract tests** (`core/contract-testing.md` — the runtime complement to
+the drift-check), and a **SessionStart hook** (see the `session-start-hook` skill) so future
+sessions can run tests and linters immediately. These are `BuildItem`s (`action: scaffold`/
+`configure`) in Wave 1 alongside the contract: they carry no product decision but everything is
+built on top of them.
 
 ## Job 3 — Sequence the backlog
 
@@ -52,6 +54,12 @@ The topology almost always produces:
   end-to-end and test-first.
 - **Wave 3 — Secondary features.** The rest of the in-scope `to_be`.
 - **Wave 4 — Polish.** Hardening, observability wiring, edge cases.
+
+**Release & operability items** — migration scripts (expand/contract), deploy config, versioning/
+rollback, instrumentation, and the signal manifest — are `BuildItem`s too (`action: implement`/
+`configure`/`instrument`). They `depends_on` the slices they ship and observe, so they fall into
+the later waves and are executed in Phases 6–7 (`references/phase-6-release.md`,
+`references/phase-7-operate-evolve.md`).
 
 ## Guardrail
 

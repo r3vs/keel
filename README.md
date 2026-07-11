@@ -22,14 +22,17 @@ greenfield runs it forward (elect to-be → build until as-is meets it → gap �
 append-only decisions ledger is the source of truth for the three surfaces (map/wiki, interview,
 brainstorm) — and a forged project's ledger is the audit baseline rescue can later diff against.
 
-Five phases each. Rescue: comprehension → interview → diff/roadmap → TDD remediation loop →
-validate. Greenfield: frame → interview → contract & roadmap → TDD build loop → validate.
+Rescue — five phases: comprehension → interview → diff/roadmap → TDD remediation loop → validate.
+Greenfield — seven: frame → interview → contract & roadmap → build loop → validate → release →
+operate & evolve, the last two feeding production back into the ledger (`flip_criteria` → reopen)
+to close the loop.
 
 ## Layout
 - `SKILL.md` + `references/` + `modules.json` — the `codebase-rescue` skill (repo root).
 - `greenfield-forge/` — the `greenfield-forge` skill (same layout, its own dir).
-- `core/` — the shared spine: `decisions-ledger-spec.md` (schema, v0.4, Italian), `ledger.md`
-  (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`.
+- `core/` — the shared spine: `decisions-ledger-spec.md` (schema, v0.5, Italian), `ledger.md`
+  (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`,
+  `contract-testing.md`, `feedback-loop.md`.
 - each skill's `TODO.md` — its build checklist. **Do step 0 (the gating experiment) first.**
 - `scripts/bootstrap.sh` — install the deterministic toolchain (shared).
 - `scripts/check_consistency.py` — drift-linter for both skills + core (run in CI).

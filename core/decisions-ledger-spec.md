@@ -308,3 +308,73 @@ Dove `RemediationItem` chiude un gap su codice esistente, `BuildItem` **costruis
 - **`configure`** — impostazioni deterministiche discese da una decisione (env, secrets, feature flag).
 
 Le waves cadono dal `depends_on` (contratto & modello dati → paved road → slice core → feature secondarie → rifinitura), non sono hardcoded — esattamente come le waves di rientro in rescue. Il diff `gap = diff(to_be, as_is)` resta l'invariante: qui `as_is` parte vuoto e la roadmap è il backlog di costruzione, che a v1 completata tende a zero.
+
+---
+
+## v0.5 — Anello completo: outcome, feedback osservabile, release & operate
+
+v0.5 chiude l'anello del ciclo di vita. Aggiunge la **radice** a monte delle decisioni (i criteri di accettazione) e l'**arco di ritorno** dalla produzione (i `flip_criteria` osservabili che riaprono i pin). Tutto additivo: nessuna variante esistente cambia.
+
+### Nuovo `kind`: `acceptance_criterion` — l'outcome testabile che radica il DAG
+
+Finora la catena era `decisione → contratto → test`. Mancava il gradino zero: `outcome → decisione`. Un `acceptance_criterion` è un risultato **osservabile dall'utente** e **testabile**, da cui le decisioni discendono. Radica il DAG: le `open_decision` di architettura `depends_on` i criteri che servono a soddisfare, e i Track-A test li referenziano.
+
+```jsonc
+"kind": "acceptance_criterion",
+"severity": "high",
+"as_is": { "built": null },
+"to_be": {                        // l'outcome, in forma testabile (Given/When/Then o equivalente)
+  "statement": "un utente può prenotare uno slot libero e riceve conferma",
+  "verify": "e2e: POST /bookings su slot libero → 201 + evento di conferma"
+},
+"question": {                     // bounded, NON 'raccontami l'app': è in scope per la v1?
+  "prompt": "La prenotazione self-service è un outcome della v1?",
+  "options": [
+    { "id": "in",  "label": "Sì, in scope v1" },
+    { "id": "def", "label": "Rimanda (deferred)" }
+  ],
+  "allow_freeform": true
+},
+"depends_on": []                  // gli outcome sono radici: nulla dipende a monte di loro
+```
+
+I criteri di accettazione sono la **metà ingegneristica** dei requisiti (problem statement + outcome testabili), non il product management (user research, personas) — che resta fuori scope. Regola anti-slop invariata: un outcome non dichiarato non si assume in silenzio; si elicita come forcella bounded o resta fuori. Le decisioni di sicurezza da threat model (STRIDE) sono `open_decision` con `provenance: "threat-model"` — nessun nuovo kind serve.
+
+### `flip_criteria` osservabile + `ReopenEvent` — l'arco di ritorno
+
+Finora `flip_criteria` era prosa ("riapri se un modulo ha bisogno di scaling indipendente"). Per chiudere l'anello lo rendiamo **valutabile** contro la telemetria, in forma opzionale strutturata accanto alla prosa:
+
+```jsonc
+// dentro un DecisionEvent, accanto alla prosa di flip_criteria:
+"flip_signal": {
+  "signal": "module:orders p95_latency",
+  "comparator": ">",
+  "threshold": "200ms",
+  "window": "sostenuto 7g",
+  "source": "metrics"            // metrics | logs | traces | manual_checkpoint | incident
+}
+```
+
+Quando il segnale scatta, la fase Operate&Evolve emette un `ReopenEvent` immutabile e riporta i pin dipendenti a `needs_input` (stato `reopened`). L'arco **non decide** — riapre soltanto, poi rimanda all'intervista (`slice`) o a rescue. La neutralità regge come per il brainstorm.
+
+```jsonc
+// ReopenEvent (dentro decision_log[]) — immutabile
+{ "id": "rev_0003", "pin_id": "pin_0001", "timestamp": "ISO-8601",
+  "reason": "flip_signal scattato: orders p95 340ms > 200ms per 9g",
+  "fired": "flip_signal",
+  "source": "feedback:metrics" }   // originato dalla produzione, non dall'utente
+```
+
+Un `flip_signal` senza telemetria degrada a `manual_checkpoint`: una domanda "è successo X?" al confine di wave o a intervallo, mai un hard-fail.
+
+### `BuildItem` per Release e Operate
+
+Le fasi 6 (Release) e 7 (Operate) non introducono entità nuove: sono `BuildItem` con `action` estesa, e i loro pin sono `open_decision` / `configure`.
+
+```jsonc
+"action": "instrument"           // + gli esistenti scaffold | implement | wire | configure
+// release:  migrazioni = implement (expand/contract) · deploy/flag/versioning = configure · rollback = procedura
+// operate:  instrumentation (log/metrics/traces/health) = instrument · SLO + signal manifest = configure
+```
+
+Il **signal manifest** prodotto in Operate è ciò che i `flip_signal` guardano: è l'aggancio fisico dell'arco di feedback. Senza instrumentazione l'arco non ha input — per questo la fetta-codebase di Operate è **precondizione** di Evolve, non un extra.

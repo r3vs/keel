@@ -24,7 +24,22 @@ frontend"). Each is a **given**, recorded as a pre-committed `DecisionEvent` (`s
 with a `flip_criteria` — NOT re-asked. Re-asking what the user already told you is the fastest way
 to make the interview feel like a form. Everything the brief leaves open becomes a fork.
 
-## Step 3 — Expand the catalog into `open_decision` pins
+## Step 3 — Frame the testable outcomes (acceptance criteria)
+
+Before the architecture forks, pin the **outcomes**: what a user must be able to do, in testable
+form. Each becomes an `acceptance_criterion` pin (`core/ledger.md`) — a Given/When/Then (or
+equivalent) statement with a `verify` hook, scoped bounded to v1 (`in scope` / `deferred`). These
+are the **roots of the `depends_on` DAG**: architecture `open_decision`s depend on the criteria
+they must satisfy, and the Phase-4 Track-A tests trace back to them, completing the chain
+`outcome → decision → contract → test`.
+
+This is the **engineering half** of requirements (problem statement + acceptance criteria); the
+product half (user research, personas, market) stays out — pulling it in reopens the "tell me
+about your app" chat. Discipline: elicit outcomes as a **bounded** set (the core use case, not
+"everything"); an outcome the brief doesn't state is asked or deferred, never silently assumed.
+YAGNI applies to outcomes first — a deferred outcome is future backlog, not scaffolding.
+
+## Step 4 — Expand the catalog into `open_decision` pins
 
 For each live, undecided fork, materialize one `open_decision` pin (schema: `core/ledger.md`):
 - `question` = the fork, with the catalog's **options** (candidate to-be's — never one asserted
@@ -37,7 +52,11 @@ For each live, undecided fork, materialize one `open_decision` pin (schema: `cor
   `medium`. This drives the severity threshold in Phase 2.
 - `as_is` = the givens that constrain this fork; `built: null`. `to_be` stays null until elected.
 
-## Step 4 — Seed the skeletal to-be map
+Also run the **threat-model** pass here (`references/threat-model.md`): STRIDE over the decided
+elements materializes security `open_decision`s, so security is designed in from Phase 1, not
+scanned for later.
+
+## Step 5 — Seed the skeletal to-be map
 
 Build the design canvas (the `to-be-map` module): domain entities and layer lanes (DB / API /
 client) as **ghost/planned** nodes, every decision pin attached to the nodes it governs. The
@@ -47,9 +66,10 @@ build loop resolves items, these nodes flip ghost→solid and the map converges 
 
 ## Output
 
-`ledger.json` populated with `open_decision` pins (state `detected` → `needs_input` once the
-questions are surfaced) plus any brief-given `DecisionEvent`s, and the skeletal to-be map. These
-are what Phase 2 reads — Phase 1 carries no conversational state forward.
+`ledger.json` populated with `acceptance_criterion` pins (the DAG roots), `open_decision` pins
+(architecture + security, state `detected` → `needs_input` once the questions are surfaced) plus
+any brief-given `DecisionEvent`s, and the skeletal to-be map. These are what Phase 2 reads —
+Phase 1 carries no conversational state forward.
 
 ## Guardrail
 

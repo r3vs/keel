@@ -41,7 +41,9 @@ Because the to-be is recorded as you decide it, the project carries its own `led
 living record of *why it is the way it is*, each decision tagged with the condition that would
 reopen it (`flip_criteria`). That is precisely the artifact rescue wishes it had: a forged
 project can later be audited against its **own recorded decisions**, not against stale or
-aspirational docs. The two skills are two ends of one lifecycle, joined by the ledger.
+aspirational docs. The two skills are two ends of one lifecycle, joined by the ledger. And the
+loop closes on itself: Phase 7 reopens a decision when production diverges from it (`flip_criteria`
+firing), so the gap re-opens on purpose and the machine closes it again.
 
 ### The single source of truth: the decisions ledger
 
@@ -71,19 +73,25 @@ Select scope up front; when unsure, ask once with 2–3 options rather than assu
   3–5 on a subset). This is how a forged project continues after v1 — and the bridge to rescue.
 - **`decide`** — run just the interview to resolve a specific set of open decisions and record
   them with `flip_criteria`, no scaffolding. "Help me make these architecture decisions properly."
+- **`evolve`** — run the feedback loop on a live project: evaluate `flip_signal`s against
+  production telemetry, reopen the pins whose criteria fired, and hand them back to the interview.
+  Scheduled or incident-triggered. See `references/phase-7-operate-evolve.md`.
 
-## The five phases
+## The seven phases
 
 Each phase is a **separate invocation** with fresh context. Phases communicate ONLY through
 artifacts on disk (the ledger, the design map, the contract). Same rule as rescue: persisting
 between phases is what makes the context reset possible — never design a phase that relies on
-another phase's in-memory session.
+another phase's in-memory session. Phases 1–5 build v1; Phases 6–7 ship it and feed production
+back into the ledger, closing the loop.
 
 ### Phase 1 — Frame (materialize the open decisions)
 
 Turn a vague brief into concrete, answerable forks — **NOT** an open-ended "tell me about your
 app" chat. That chat is the slop seed: it lets the model fill unmade decisions with silent
-assumptions.
+assumptions. Phase 1 also pins the **outcomes** (acceptance criteria) that root the whole
+dependency DAG, and runs the **threat-model** pass (`references/threat-model.md`) so security is
+designed in, not scanned for later.
 
 1. Intake the brief; classify the project type to **prune** the decision-catalog (a CLI skips
    rendering/client; a static site skips persistence).
@@ -156,6 +164,25 @@ point; the paved road actually runs. Read-only verdict — never guesses, never 
 The convergence check is the completeness traffic-light: resolved slices flip ghost→solid and the
 gap shrinks toward zero. See `references/phase-5-validate.md`.
 
+### Phase 6 — Release (ship the slice safely)
+
+Take a validated slice to production safely — the **codebase-facing slice** of release (migration
+scripts, version, changelog, feature-flag code, rollback), not the CD platform. Migrations follow
+**expand/contract** (zero-downtime by construction); the changelog is projected from the ledger;
+the deploy strategy (canary/blue-green) runs as config + a runbook; a tested **rollback** is
+mandatory. Never release on an unmade decision. See `references/phase-6-release.md`.
+
+### Phase 7 — Operate & Evolve (run, observe, feed back)
+
+Run the released system so it is observable, then feed production back into the ledger. **Operate**
+emits the instrumentation (logs/metrics/traces/health), the SLO definitions, and the **signal
+manifest** that maps each `flip_signal` to real telemetry — the physical anchor of the feedback
+loop. **Evolve** runs that loop (`core/feedback-loop.md`): when a `flip_signal` fires, it emits a
+`ReopenEvent` and moves the affected pins back to `needs_input`, handing them to the interview via
+`slice`. The arc **reopens, never decides**. This is what makes a forged project never "done" —
+and its `ledger.json` the audit baseline rescue can later diff against. See
+`references/phase-7-operate-evolve.md`.
+
 ## Brainstorm (parallel, on-demand)
 
 Shared with rescue (`core/brainstorm.md`). On any hard fork the user can open a brainstorm that
@@ -172,6 +199,9 @@ commits.
 - Never phrase a design fork as if one answer is objectively correct. Options with tradeoffs; the
   user elects. Asserting a design opinion as fact is the exact vibecoding failure mode.
 - Never skip `flip_criteria` on a decision made with incomplete information.
+- Never release without the migration **expand/contract** plan and a tested **rollback** decided.
+- Operate emits signals and SLOs; it never runs the on-call practice. Evolve **reopens** pins, it
+  never decides them — and reopens the minimum (the fired pin + genuine dependents).
 - Never hand-author the same field shape in two layers. Generate every layer from the one
   contract, or you have reintroduced the drift rescue exists to cure.
 - Never run the build loop fully autonomous end-to-end. Wave checkpoints, especially after the
@@ -184,16 +214,24 @@ commits.
 
 Read the relevant file before executing a phase or module — do not work from memory.
 
+Shared core (used by both skills):
 - `core/ledger.md` — the shared decisions-ledger schema (authoritative). Read first.
 - `core/interview-funnel.md` — the shared compression funnel.
 - `core/shape-engine.md` — the shared field-shape descriptor + type-equivalence table.
+- `core/contract-testing.md` — runtime contract tests generated from the carrier.
+- `core/feedback-loop.md` — the shared closing arc (observe → reopen).
 - `core/brainstorm.md` — the shared proposal agent.
+
+Greenfield-specific:
 - `references/decision-catalog.md` — the canonical decision space (the core new asset).
-- `references/phase-1-frame.md` — brief → `open_decision` pins + skeletal to-be map.
+- `references/phase-1-frame.md` — brief → acceptance criteria + `open_decision` pins + to-be map.
+- `references/threat-model.md` — STRIDE → security `open_decision`s (design-time security).
 - `references/phase-2-interview.md` — the funnel applied to design forks.
 - `references/contract-propagation.md` — define the contract once, generate aligned layers (core).
 - `references/phase-3-contract-roadmap.md` — contract propagation + backlog sequencing.
 - `references/phase-4-build.md` — two-track TDD build loop, ladder, wave checkpoints.
 - `references/phase-5-validate.md` — evidence-based resolution + convergence check.
+- `references/phase-6-release.md` — ship a slice safely (migrations, versioning, rollback).
+- `references/phase-7-operate-evolve.md` — instrument, SLOs, signal manifest, and the feedback loop.
 - `modules.json` — the module catalog (source of truth): each module's phase, produces, and
   whether it is deterministic or judgment-based.

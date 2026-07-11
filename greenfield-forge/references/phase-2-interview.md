@@ -40,6 +40,12 @@ on thin information from fossilizing — the ledger becomes a living ADR that kn
 
 ## Kind-specific handling
 
+- `acceptance_criterion` (from Phase 1) → resolve **first**: they root the DAG, so electing which
+  outcomes are in v1 collapses the most downstream forks. Electing an outcome as `deferred` prunes
+  a whole subtree of architecture decisions with it.
+- security `open_decision` (from the threat-model pass) → the policies carry the bulk (default-deny
+  authz, validate-at-boundary, encrypt PII); only genuine forks on sensitive assets are `asked`.
+  "Accept this risk" is a legitimate recorded answer for a low-value asset — never phrased as a defect.
 - `open_decision` (high fan-out) → always `asked`, high in the order; its answer unblocks a whole
   subtree of dependent forks.
 - `open_decision` (leaf / stylistic) → may be `proposed_default` (the architectural policies

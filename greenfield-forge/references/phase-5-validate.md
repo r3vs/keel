@@ -10,7 +10,8 @@ built* work instead of *closed gaps*.
 - **contract scaffold** — re-extract the field shapes across every generated layer and diff them
   against the carrier. Must be **zero drift** (aligned by construction). Any disagreement means
   the propagation is broken — not resolved. The installed CI drift-check is the standing form of
-  this same check.
+  this same check. Plus the generated **contract tests** pass at runtime (`core/contract-testing.md`):
+  typecheck-green is not enough — the boundary must honor the shape with real data.
 - **implemented feature (`open_decision` → `to_be`)** — the decided behavior now exists, is
   **reachable** from an entry point (traceable through the built slice), and its **Track-A test
   kills the relevant mutants** (green-but-mutation-surviving does not validate).

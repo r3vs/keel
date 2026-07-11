@@ -1,8 +1,9 @@
 # greenfield-forge — Build checklist
 
 Status: **design complete, pre-implementation** — twin of `codebase-rescue`, sharing the `core/`
-spine (ledger, funnel, brainstorm, shape-engine). SKILL.md + 7 playbooks + the shared core; the
-drift-linter (`scripts/check_consistency.py`) covers both skills and is green. As with rescue,
+spine (ledger, funnel, brainstorm, shape-engine, contract-testing, feedback-loop). SKILL.md + 10
+playbooks + the shared core; the drift-linter (`scripts/check_consistency.py`) covers both skills
+and is green. As with rescue,
 what remains is mostly real code. **Start with step 0** — the gating experiment that decides the
 shape of the core engine.
 
@@ -90,7 +91,10 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
       backlog converging to zero.
 - [x] Chose maximal reuse of the rescue machine; extracted the shared `core/` (ledger, funnel,
       brainstorm, shape-engine) so neither skill duplicates the spine.
-- [x] Ledger v0.4: additive `open_decision` kind + `BuildItem` entity.
-- [x] SKILL.md orchestrator: 5 phases, 4 modes, preventive guardrails.
-- [x] 7 playbooks written (decision-catalog, contract-propagation, phases 1–5); drift-linter green.
-- [x] Contract-propagation posture: author once, generate aligned, install the drift-check.
+- [x] Ledger v0.4–v0.5: `open_decision` + `acceptance_criterion` kinds, `BuildItem` + `ReopenEvent`,
+      observable `flip_criteria`.
+- [x] SKILL.md orchestrator: 7 phases, 5 modes (forge/spec/slice/decide/evolve), preventive guardrails.
+- [x] 10 playbooks (decision-catalog, contract-propagation, threat-model, phases 1–7); drift-linter green.
+- [x] Contract-propagation posture: author once, generate aligned, install the drift-check + contract tests.
+- [x] Closed the lifecycle loop: acceptance criteria (roots) → … → release + operate (codebase slice)
+      → the Evolve feedback arc (`flip_criteria` → reopen), reusing the existing machine.

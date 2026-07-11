@@ -56,11 +56,14 @@ Run the type-equivalence table (`core/shape-engine.md`) in **reverse** — one c
 handlers' bodies are `implement` BuildItems for Phase 4 (Track A); this step only emits the
 **aligned typed surfaces**.
 
-### 4. Install the drift-check (the preventive payload)
+### 4. Install the drift-check + contract tests (the preventive payload)
 Wire the same shape-diff rescue uses into CI: re-extract every layer's shapes and diff them
-against the carrier; **fail the build on any disagreement**. From now on a hand-edit that lets a
-layer drift is caught the moment it lands — the project stays aligned for life, not just at
-generation time. This is what makes forging *durable* rather than a one-time scaffold.
+against the carrier; **fail the build on any disagreement**. Generate the **contract tests** from
+the carrier too (`core/contract-testing.md`) and wire them beside the drift-check — the static
+diff catches shape edits, the runtime tests catch a boundary that typechecks but violates the
+contract with real data. Static + dynamic together. From now on a hand-edit that lets a layer
+drift is caught the moment it lands — the project stays aligned for life, not just at generation
+time. This is what makes forging *durable* rather than a one-time scaffold.
 
 ## Phase-0 gating verdict — TODO (fill from `TODO.md` step 0)
 

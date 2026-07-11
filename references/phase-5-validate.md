@@ -8,7 +8,8 @@ never a change or a guess.
 
 - **contract_mismatch / internal_contradiction** — re-extract the shapes at every anchor,
   re-diff. Must now agree with the elected canonical `to_be`. Any residual disagreement → not
-  resolved.
+  resolved. Plus the generated **contract test** (`core/contract-testing.md`) passes at the
+  boundary — the runtime complement to the static re-diff.
 - **incompleteness (implemented)** — the previously-missing behavior now exists, is
   **reachable** (graph edge from an entry point), and its **Track-A test kills the relevant
   mutants** (green-but-mutation-surviving does not validate).
