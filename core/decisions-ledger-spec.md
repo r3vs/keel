@@ -248,3 +248,63 @@ Il volume crolla ma nulla di importante scivola via passivamente.
         → il resto in proposed_default, skimmabile in blocco
 ```
 Ordina le domande `asked` per **information gain**: prima quelle che, una volta risposte, collassano più pin a valle. Le prime ~10 fanno il 90% del lavoro.
+
+---
+
+## v0.4 — Estensione greenfield (skill gemella `greenfield-forge`)
+
+Il ledger è **condiviso** dalle due skill sorelle del repo. `codebase-rescue` è curativo (parte dall'as-is, deriva il to-be a ritroso); `greenfield-forge` è preventivo (elegge il to-be *prima*, l'as-is cresce fino a coincidere). Stesso schema, stessa proprietà anti-divergenza. Un progetto forgiato si porta dietro il suo `ledger.json`: è la **baseline di audit** che rescue potrà poi diffare contro il codice reale — chiudendo il cerchio che rescue non può chiudere sullo slop (i cui doc sono stale/aspirazionali; un ledger forgiato no).
+
+v0.4 aggiunge, in modo **additivo** (nessuna modifica alle varianti esistenti):
+- un nuovo `kind` di `Pin`: **`open_decision`** — la forcella di design non ancora costruita;
+- una nuova entità **`BuildItem`** — il gemello di `RemediationItem` per la costruzione.
+
+### Nuovo `kind`: `open_decision` — forcella di design (greenfield)
+
+A differenza di `design_concern` (codice **esistente** subottimale) e di `incompleteness` (uno stub dentro codice che c'è), `open_decision` riguarda una scelta che **precede** il codice: nulla è ancora costruito. `as_is` è nullo (o porta solo i *vincoli dati* dal brief); `to_be` è derivato dall'elezione in intervista; la `question` è la forcella con opzioni e implicazioni a valle.
+
+```jsonc
+"kind": "open_decision",
+"severity": "high",              // per fan-out a valle: alto se molte decisioni ne dipendono
+"as_is": {
+  "givens": ["deve girare on-prem", "il team conosce Postgres"],  // vincoli dal brief, non implementazione
+  "built": null                  // niente ancora — non è un difetto, è il punto di partenza
+},
+"to_be": null,                   // derivato dall'elezione (Decisione 7) — mai scritto a mano
+"question": {
+  "prompt": "Modello di persistenza per la v1?",
+  "options": [
+    { "id": "opt_pg",  "label": "Postgres relazionale (unico datastore)", "implication": "schema-first; contratto = shared-types" },
+    { "id": "opt_doc", "label": "Document store",                          "implication": "schema flessibile; validazione a runtime" }
+  ],
+  "allow_freeform": true
+},
+"depends_on": [],                // cablato dal decision-catalog: es. 'stile API' depends_on 'modello dati'
+"cluster_id": "cl_persistence"   // forcelle correlate risolte da una sola policy
+```
+
+Ciclo di vita identico agli altri pin: `detected → needs_input → (brainstorming) → decided → resolved`. Una volta `decided`, la Fase 3 non calcola un diff di rientro ma **genera** i `BuildItem` che realizzano il `to_be` eletto (l'as-is cresce fino a coincidere). `deferred` = fuori scope v1 (resta backlog futuro, l'aggancio naturale alla modalità `slice`); `accepted` non si applica (non c'è un design esistente da lasciare com'è).
+
+Regola di soglia invariata: un `open_decision` ad alto fan-out (molti `depends_on` in ingresso) è tipicamente `high`/`blocker` → **sempre `asked`**, mai default silenzioso — è il seme dello slop lasciare che il modello riempisca in silenzio una forcella non decisa. Le forcelle di coda (naming, dettagli di stile) possono andare in `proposed_default`.
+
+### Nuova entità: `BuildItem` — il gemello greenfield di `RemediationItem`
+
+Dove `RemediationItem` chiude un gap su codice esistente, `BuildItem` **costruisce** ciò che una decisione ha committato. Stessa disciplina (gradino ponytail registrato, minimo indispensabile), verbi diversi. Vive nello stesso contenitore `pin.remediation[]`.
+
+```jsonc
+{ "id": "bld_0001",
+  "action": "scaffold",          // scaffold | implement | wire | configure
+  "build_track": "A",            // A = red→green dal to_be eletto (principale) · B = caratterizzazione (solo estendendo)
+  "ladder_rung": 7,              // YAGNI per costruzione: mai costruire oltre ciò che la decisione richiede
+  "contract_carrier": "shared-types",  // per 'scaffold' del contratto: la fonte unica da cui si generano i layer
+  "depends_on": ["bld_0000"],    // il DAG: client depends_on API depends_on contratto
+  "status": "todo" }             // todo | in_progress | done
+```
+
+`action`:
+- **`scaffold`** — generare da una fonte unica: il contratto → DDL/ORM/DTO/tipi client allineati *per costruzione*; oppure la paved road (harness di test, linter, CI, session-start hook).
+- **`implement`** — realizzare il comportamento di uno slice verticale (Track A: red test dal `to_be`, poi il minimo che lo fa passare).
+- **`wire`** — collegare pezzi già scaffoldati (una rotta al suo handler, un form al suo endpoint).
+- **`configure`** — impostazioni deterministiche discese da una decisione (env, secrets, feature flag).
+
+Le waves cadono dal `depends_on` (contratto & modello dati → paved road → slice core → feature secondarie → rifinitura), non sono hardcoded — esattamente come le waves di rientro in rescue. Il diff `gap = diff(to_be, as_is)` resta l'invariante: qui `as_is` parte vuoto e la roadmap è il backlog di costruzione, che a v1 completata tende a zero.

@@ -63,7 +63,7 @@ over-reports; this gate is non-negotiable.
 
 ## Step 4 — Materialize pins
 
-For each surviving finding, write a `Pin` (schema: `references/ledger.md`):
+For each surviving finding, write a `Pin` (schema: `core/ledger.md`):
 - Discriminated by `kind`; `as_is` in the kind-specific shape.
 - `anchors[]` = one entry per involved layer (cross-layer), with `role` and `loc`.
 - `confidence` from the graph/tool provenance.

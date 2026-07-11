@@ -1,13 +1,13 @@
-# Brainstorm Agent (parallel, on-demand)
+# Brainstorm Agent (parallel, on-demand) — shared core
 
-A separate agent the user opens on ONE pinned problem to think through the best solution — i.e.
-the best answer to give in the interview. Kept structurally separate from the interview to
-preserve neutrality.
+**Shared by both skills.** The user opens it on ONE pin to think through the best answer to give
+in the interview — a fix (rescue) or a design choice (greenfield). Kept structurally separate
+from the interview to preserve neutrality. It reads and writes the same `ledger.json`.
 
 ## Contract
 
-- **Loads context for that one pin only** — its anchors, `as_is`, the graph neighborhood, the
-  partial `to_be` if any. NOT the whole audit.
+- **Loads context for that one pin only** — its anchors, `as_is` (null for a greenfield
+  `open_decision`), the graph/map neighborhood, the partial `to_be` if any. NOT the whole ledger.
 - **Proposes 2–3 options** written to `pin.brainstorm.proposals[]`, each with:
   - `summary`, `tradeoffs` (pros/cons), `effort` (S/M/L)
   - `ladder_rung` — the ponytail ladder applied to the *solution* (does it even need to exist?

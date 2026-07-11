@@ -14,51 +14,23 @@ to ask, it is to **collapse pins into decisions**.
 
 ## The compression funnel (mandatory)
 
-```
-pins  →  clusters  →  policies  →  real questions (asked)  →  proposed defaults (bulk skim)
-```
+The funnel mechanism — cluster → policy → exception → proposed-default, the severity threshold,
+and information-gain ordering — is **shared with the `greenfield-forge` sibling and authoritative
+in `core/interview-funnel.md`. Read it first.** How *rescue* sources it:
 
-### 1. Cluster
-Group pins sharing a decision under one `cluster_id` (the contract-reconciliation and
-duplication modules already cluster; extend by decision-similarity). Ask ONCE per cluster;
-apply the answer to the whole group. This alone typically takes 200 → ~20.
+- **Cluster:** the contract-reconciliation and duplication modules already assign `cluster_id`;
+  extend by decision-similarity. 200 findings typically collapse to ~20 clusters.
+- **Policy questions first** (4–5, highest leverage): category rules that auto-resolve whole
+  clusters — "DB is source of truth for schema mismatches unless noted", "dead code with no
+  inbound reference → remove", "duplication → consolidate onto the most-tested copy". Each becomes
+  a `Policy`; cascading it emits `DecisionEvent`s with `source: "policy:<id>"`. ~20 → ~5 policies.
+- **Exception questions:** pins a policy doesn't cover, plus genuine `ambiguity` and
+  `design_concern` pins — the true forks where intent changes what would be built.
+- **Proposed defaults + severity threshold + information-gain order:** exactly as in the shared
+  funnel. `blocker`/`high` never go to silent default; order `asked` questions by how many
+  downstream pins they collapse.
 
-### 2. Policy questions first (highest leverage, 4–5 total)
-Category-level rules that auto-resolve whole clusters by default. Ask these before any
-case-level question. Examples:
-- "For schema mismatches, is the DB the source of truth unless noted?"
-- "Dead code with no inbound reference → remove by default?"
-- "Duplication → consolidate onto the most-tested copy?"
-
-Each answer becomes a `Policy` entity. Cascading a policy over matching pins emits
-`DecisionEvent`s with `source: "policy:<id>"` — still user-originated, just amplified. ~20
-clusters often reduce to ~5 policies covering the bulk.
-
-### 3. Exception questions (only what policy doesn't cover)
-What remains to ask for real: pins that contradict a policy, plus genuine `ambiguity` and
-`design_concern` pins. These are few and they are the valuable ones — the true forks where
-the user's intent changes what would be built.
-
-### 4. Proposed defaults (the long tail)
-Everything else is not asked. Attach a low-confidence proposed resolution (marked as a
-guess), presented in bulk grouped by type. The user skims, overrides the few they disagree
-with, accepts the rest. Review by exception, not by enumeration — the same principle as the
-map (review the pins, not the whole wiki).
-
-### 5. Severity threshold (hard rule)
-- `blocker` / `high` → **never** silent default. Always `asked`, or at minimum top of the
-  review batch.
-- `medium` / `low` → may be `proposed_default`.
-
-Volume drops sharply, but nothing important slips through passively.
-
-### 6. Order by information gain
-Among `asked` questions, ask first those that collapse the most downstream pins once
-answered. Stop when the marginal question resolves little; deepen on demand. The first ~10
-do ~90% of the work.
-
-Result of the funnel: **200 pins → ~20 clusters → ~5 policies → ~10 real questions → the
-rest as skimmable proposed defaults.**
+Result: **200 findings → ~20 clusters → ~5 policies → ~10 real questions → the rest skimmable.**
 
 ## Question shape
 

@@ -4,17 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-`codebase-rescue` is a **Claude Code skill**, not a runnable application. The deliverable is
-prose that a future Claude instance reads and executes: `SKILL.md` is the orchestrator / entry
-point, and `references/*.md` are the per-phase and per-module playbooks it loads on demand. There
-is almost no executable code — only two helper scripts (a toolchain installer and a CI
-drift-linter). The skill itself is **design-complete but pre-implementation**; `TODO.md` is the
-build checklist (start with step 0, the Graphify gating experiment, which decides the shape of the
-core engine).
+This repository holds **two sibling Claude Code skills**, not runnable applications. The
+deliverable is prose that a future Claude instance reads and executes:
 
-The skill's *runtime* behavior — what it does when invoked on a target codebase — is fully
-described in `SKILL.md`. Read it before changing how the skill works. Working on this repo means
-editing that design, not running an app.
+- **`codebase-rescue`** (at the repo root) — the **curative** skill: rescue an existing,
+  misaligned, often AI-generated codebase. `SKILL.md` + `references/*.md` + `modules.json`.
+- **`greenfield-forge`** (in `greenfield-forge/`) — the **preventive** twin: build a NEW project
+  aligned from the first commit, so it never needs rescuing. Same file layout under its own dir.
+- **`core/`** — the **shared spine** both skills read/write: the decisions-ledger spec, the
+  interview funnel, the brainstorm agent, and the field-shape engine. Neither skill duplicates it.
+
+Each skill is **design-complete but pre-implementation**; its `TODO.md` is the build checklist
+(each starts with a step-0 gating experiment that decides the shape of its core engine). There is
+almost no executable code — only two helper scripts (a toolchain installer and a CI drift-linter).
+
+A skill's *runtime* behavior — what it does when invoked — is fully described in its `SKILL.md`.
+Read it before changing how that skill works. Working on this repo means editing that design, not
+running an app.
 
 ## Commands
 
@@ -30,45 +36,58 @@ On Windows use `python` (present) and run the `.sh` script from the Bash shell /
 
 ## The one idea to hold in your head
 
-Everything the skill produces is a delta: **`gap = diff(to-be, as-is)`**.
-- **as-is** = what the code currently is (descriptive; may faithfully describe a mess).
+Both skills produce the same delta: **`gap = diff(to-be, as-is)`**.
+- **as-is** = what the code currently is (descriptive). In `codebase-rescue` it is extracted from
+  existing code (which may faithfully describe a mess); in `greenfield-forge` it starts **empty**
+  and grows as slices are built.
 - **to-be** = what it *should* be, **derived from decisions the user elects in an interview** —
   never extracted from the code.
 
-Contract mismatches, dead code, wrong logic, missing work, and design concerns are all unified
-under this one principle — which is why there is deliberately no closed taxonomy of problem types.
+Rescue runs the diff **backward** (as-is exists → derive the to-be → close the gap); greenfield
+runs it **forward** (elect the to-be first → build until as-is meets it → gap → 0). Contract
+mismatches, dead code, wrong logic, missing work, design concerns, and greenfield's open decisions
+are all unified under this one principle — which is why there is deliberately no closed taxonomy.
 
-## Architecture of the skill (this spans several files)
+## Architecture (shared across both skills; spans several files)
 
 - **The decisions ledger is the single source of truth.** Three surfaces — the visual map/wiki,
   the interview, and the brainstorm — hold *no state of their own*; they all read/write one
-  `ledger.json`. This is deliberate: it is the exact anti-divergence property the skill enforces on
-  the codebases it rescues. Schema authority: `decisions-ledger-spec.md`; English pointer summary:
-  `references/ledger.md`.
+  `ledger.json`. This is deliberate: it is the exact anti-divergence property the skills enforce on
+  the codebases they touch. Schema authority: `core/decisions-ledger-spec.md` (shared, v0.4);
+  English pointer summary: `core/ledger.md`.
 - **A `Pin` is a discriminated union on `kind`** (`contract_mismatch | internal_contradiction |
-  ambiguity | incompleteness | design_concern | defect | other`). The `kind` constrains the shape
-  of the pin's `as_is` / `to_be` / `question` payload.
-- **Five phases, each a separate invocation with fresh context**, communicating ONLY through
-  on-disk artifacts (the ledger, the wiki, the graph). Persisting between phases is what makes the
-  context reset possible — never design a phase that relies on another phase's in-memory session.
-- **Modes select scope up front:** `rescue` (default, all five phases), `align` (contracts only),
-  `audit` (findings only, no interview), `resume` (weighted toward incompleteness).
-- **`contract-reconciliation` is the core module** — the cross-layer engine that diffs field-level
-  shapes across DB↔ORM↔API↔frontend. Read `references/contract-reconciliation.md` in full before
-  touching it.
+  ambiguity | incompleteness | design_concern | defect | open_decision | other`). The `kind`
+  constrains the shape of the pin's `as_is` / `to_be` / `question` payload. `open_decision` (v0.4)
+  is the greenfield fork: nothing built yet, `as_is` null, `to_be` elected before any code exists.
+- **Five phases per skill, each a separate invocation with fresh context**, communicating ONLY
+  through on-disk artifacts (the ledger, the map, the graph/contract). Persisting between phases is
+  what makes the context reset possible — never design a phase that relies on another phase's
+  in-memory session.
+- **Modes select scope up front.** Rescue: `rescue` (default) · `align` · `audit` · `resume`.
+  Greenfield: `forge` (default) · `spec` · `slice` · `decide`.
+- **Each skill has a core cross-layer module** built on the shared field-shape engine
+  (`core/shape-engine.md`): rescue's `contract-reconciliation` **diffs** field shapes across
+  DB↔ORM↔API↔frontend to find drift; greenfield's `contract-propagation` **generates** those layers
+  from one contract so they cannot drift. Read the relevant playbook in full before touching it.
+- **The interview funnel and the brainstorm are shared** (`core/interview-funnel.md`,
+  `core/brainstorm.md`): same machinery, different pin source (findings vs open decisions).
 
 ## Editing conventions & invariants
 
 - **The three-way sync is enforced by the drift-linter — keep it green.**
-  `check_consistency.py` requires: every module in `modules.json` has a `reference` file that
-  exists; every `` `references/…md` `` pointer in `SKILL.md` resolves; no `references/*.md` is
-  orphaned (warning); no file still contains `STUB — scaffold only`. So when you add or rename a
-  module, update `modules.json` **and** its playbook **and** any `SKILL.md` pointer together.
-- **Sources of truth:** `modules.json` is authoritative for the module catalog;
-  `decisions-ledger-spec.md` (v0.3) is authoritative for the ledger schema. Do not let `SKILL.md`
-  or the reference summaries drift from them.
-- **`decisions-ledger-spec.md` is written in Italian** — the rest of the repo is English, and
-  `references/ledger.md` is the short English pointer to it. Preserve that split unless asked to
+  `check_consistency.py` validates **both skills and the shared core**: every module in each
+  `modules.json` has a `reference` that exists; every `` `references/…md` `` pointer in a `SKILL.md`
+  resolves (relative to that skill's root) and every `` `core/…md` `` pointer resolves (relative to
+  the repo root); no reference or core file is orphaned (warning); no skill content file still
+  contains `STUB — scaffold only`. When you add or rename a module, update its `modules.json`
+  **and** its playbook **and** any `SKILL.md` pointer together.
+- **Path convention:** `references/x.md` is skill-root-relative (rescue's root is the repo root;
+  greenfield's is `greenfield-forge/`); `core/x.md` is always repo-root-relative and shared.
+- **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
+  `core/decisions-ledger-spec.md` (v0.4) is authoritative for the ledger schema (shared). Do not
+  let a `SKILL.md` or a reference summary drift from them.
+- **`core/decisions-ledger-spec.md` is written in Italian** — the rest of the repo is English, and
+  `core/ledger.md` is the short English pointer to it. Preserve that split unless asked to
   translate.
 - **Read the relevant reference before executing or editing a phase/module — do not work from
   memory.** `SKILL.md` states this as a rule, and the playbooks carry detail that `SKILL.md`

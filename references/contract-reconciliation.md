@@ -77,10 +77,12 @@ entities themselves are deterministic nodes (EXTRACTED). So:
    itself a finding (see `incompleteness` and orphan detection below), not a guess.
 
 ### 2. Normalize each representation to a common shape descriptor
-Reduce every side to a comparable descriptor: `{ name, type, nullable, enum?, constraints? }`.
-Type normalization crosses type systems (e.g. DB `varchar` ≈ ORM `str` ≈ TS `string`) via a
-small equivalence table; when equivalence is uncertain, mark `confidence: ambiguous` rather
-than asserting a mismatch.
+Reduce every side to the shared descriptor `{ name, type, nullable, enum?, constraints? }` and
+cross type systems via the equivalence table — both **authoritative in `core/shape-engine.md`**
+(shared with `greenfield-forge`, which runs the same engine in reverse to *generate* aligned
+layers instead of diffing them). When equivalence is uncertain, mark `confidence: ambiguous`
+rather than asserting a mismatch; when a field has no counterpart, that absence is itself the
+finding — never fabricate a correspondence.
 
 ### 3. Diff and classify
 For each corresponded entity, diff the descriptors across layers and emit a pin:

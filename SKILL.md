@@ -46,7 +46,7 @@ artifacts and diffs them:
 The three surfaces (map/wiki, interview, brainstorm) hold NO state of their own. They all
 read and write one `ledger.json`. This is what stops three agents discussing the same
 problem from diverging — the exact failure mode being cured in the codebase. The ledger
-schema is authoritative: see `references/ledger.md`. Read it before writing anything that
+schema is authoritative: see `core/ledger.md` (shared with the `greenfield-forge` sibling). Read it before writing anything that
 touches pins, questions, decisions, or policies.
 
 ## Prerequisites
@@ -186,7 +186,7 @@ At any point the user can pin a problem and open a brainstorm session on it. The
 agent loads full context for that one pin and proposes 2–3 options with tradeoffs, each
 disciplined by the ponytail ladder and referencing how well-architected codebases solve
 that specific problem. It writes to `pin.brainstorm.proposals[]` and **never** commits a
-decision — only the interview does. See `references/brainstorm.md`.
+decision — only the interview does. See `core/brainstorm.md`.
 
 ## Guardrails (read before acting)
 
@@ -202,14 +202,19 @@ decision — only the interview does. See `references/brainstorm.md`.
 
 Read the relevant file before executing a phase or module — do not work from memory.
 
-- `references/ledger.md` — the decisions-ledger schema (authoritative). Read first.
+Shared core (used by both skills; see the `greenfield-forge` sibling):
+- `core/ledger.md` — the decisions-ledger schema (authoritative). Read first.
+- `core/interview-funnel.md` — the compression funnel (shared mechanism).
+- `core/shape-engine.md` — the field-shape descriptor + type-equivalence table.
+- `core/brainstorm.md` — the parallel proposal agent.
+
+Rescue-specific:
 - `references/toolchain.md` — deterministic tools, install, SARIF normalization.
 - `references/phase-1-comprehension.md` — graph, wiki, finding, pin materialization.
 - `references/contract-reconciliation.md` — the cross-layer engine (core module).
-- `references/phase-2-interview.md` — the compression funnel and question generation.
+- `references/phase-2-interview.md` — how rescue sources the shared funnel (pins = findings).
 - `references/phase-3-roadmap.md` — diff + dependency sequencing.
 - `references/phase-4-remediation.md` — the ponytail ladder in practice.
 - `references/phase-5-validate.md` — evidence-based resolution.
-- `references/brainstorm.md` — the parallel proposal agent.
 - `modules.json` — the module catalog (source of truth): each module's phase, tool(s),
   pin `kind` produced, and whether it is deterministic or judgment-based.

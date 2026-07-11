@@ -1,0 +1,30 @@
+{
+  "skill_name": "greenfield-forge",
+  "note": "Test-prompt scaffold for the LATER fine-tuning phase (per skill-creator). Prompts only, no assertions yet. Add 2-3 real briefs (a CRUD SaaS, a CLI tool, an API service) as fixtures before running.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to build a new SaaS app for scheduling — think a lightweight Calendly. React frontend, some backend, a database. Help me set it up properly from the start so it doesn't turn into a mess.",
+      "expected_output": "Runs forge mode: frames the brief into open_decision pins from the decision-catalog (pruned to a web SaaS), runs a compressed interview (policies first, domain/persistence before delivery) to elect the to-be, authors the cross-layer contract once and generates aligned layer scaffolds from it, sequences a vertical-slice backlog, then builds the first slice test-first. Does not dump a boilerplate template or invent decisions silently.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Before I write any code, I just want to nail down the architecture and data model for a new multi-tenant billing service. Give me the design and the plan, I'll build it.",
+      "expected_output": "Runs spec mode: Phases 1-3 only. Materializes and elects the open decisions (tenancy model, datastore, API style, contract location), defines the contract, and emits a dependency-sequenced BuildItem backlog with the waves — stops before the build loop.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "This project already has its decisions ledger from when we set it up. Now add a notifications feature end-to-end.",
+      "expected_output": "Runs slice mode: reads the committed ledger, materializes the notifications open_decisions, elects them, extends the contract, and builds the one vertical slice through Phases 3-5 without re-running the whole interview.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Help me decide, properly, whether this new app should be a modular monolith or services, and whether to use Postgres or a document store. Record the decisions so we don't relitigate them.",
+      "expected_output": "Runs decide mode: interview only on the named forks, with tradeoffs and (optionally) a brainstorm, committing each as a DecisionEvent with flip_criteria in the ledger. No scaffolding or build.",
+      "files": []
+    }
+  ]
+}

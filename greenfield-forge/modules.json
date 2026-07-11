@@ -1,0 +1,87 @@
+{
+  "schema_version": "0.1",
+  "skill": "greenfield-forge",
+  "note": "Source of truth for greenfield-forge's module catalog (twin of codebase-rescue's). The shared drift-linter (scripts/check_consistency.py) verifies every module here has a matching reference file and that SKILL.md pointers stay consistent. 'deterministic' modules generate/scaffold from a source; 'judgment' modules require model reasoning over the brief, the decision-catalog, and the ledger. Shared spine (ledger, funnel, brainstorm, shape-engine) lives in core/ and is not re-catalogued here.",
+  "modules": [
+    {
+      "id": "decision-frame",
+      "phase": 1,
+      "kind": "core",
+      "type": "judgment",
+      "tools": [],
+      "produces": ["open_decision"],
+      "notes": "THE entry move. Expands references/decision-catalog.md against the brief, prunes by project type, and materializes one open_decision pin per fork with options, downstream implications, and depends_on wired from the catalog. Records brief-stated choices as pre-committed DecisionEvents (source: brief) rather than re-asking. This is the greenfield analog of rescue's finding modules: the pin source is the decision space, not the code.",
+      "reference": "references/phase-1-frame.md"
+    },
+    {
+      "id": "to-be-map",
+      "phase": 1,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": [],
+      "produces": "map_tobe",
+      "notes": "Visual-first design canvas: domain entities and layer lanes as ghost/planned nodes, decision pins attached, completeness traffic-light starting all-red. Unlike rescue's wiki this renders the to-be (the design), not the as-is; nodes flip ghost->solid as BuildItems resolve. React + graph lib, same artifact family as rescue's map.",
+      "reference": "references/phase-1-frame.md"
+    },
+    {
+      "id": "interview-generator",
+      "phase": 2,
+      "kind": "core",
+      "type": "judgment",
+      "tools": [],
+      "produces": ["question", "policy"],
+      "notes": "Materializes Question objects from open_decision pins and runs the shared compression funnel (core/interview-funnel.md): policy (architectural defaults) -> exception -> proposed-default, severity threshold, information-gain order (domain/persistence first). Every committed answer emits a DecisionEvent with flip_criteria.",
+      "reference": "references/phase-2-interview.md"
+    },
+    {
+      "id": "contract-propagation",
+      "phase": 3,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": ["ast-grep", "shared-types-generator"],
+      "produces": ["scaffold", "contract_carrier"],
+      "notes": "THE core module. Authors the cross-layer contract once (shared-types package, or OpenAPI/JSON-schema/protobuf) from the decided data model, then generates aligned DB schema / ORM / DTO / client-type scaffolds from it. Uses core/shape-engine.md in generate mode. Installs the same shape-diff as a CI drift-check so alignment can never regress. contract-reconciliation run forward. Read the full playbook.",
+      "reference": "references/contract-propagation.md"
+    },
+    {
+      "id": "roadmap-sequencer",
+      "phase": 3,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [],
+      "produces": ["build_item"],
+      "notes": "Emits BuildItems from decided pins and topologically sorts by depends_on. Waves (contract & data model -> paved road -> core slices -> secondary -> polish) fall out of the DAG, not hardcoded. Enforces vertical slices (feature end-to-end) over horizontal layers. Only decided pins yield items; deferred/undecided are not in the backlog.",
+      "reference": "references/phase-3-contract-roadmap.md"
+    },
+    {
+      "id": "paved-road",
+      "phase": 3,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": [],
+      "produces": ["scaffold", "configure"],
+      "notes": "Scaffolds the baseline from decided NFR/delivery decisions: test harness, linters/formatters, CI, env/secrets config, error taxonomy, and a SessionStart hook (see the session-start-hook skill). These are BuildItems too, sequenced into Wave 1 alongside the contract.",
+      "reference": "references/phase-3-contract-roadmap.md"
+    },
+    {
+      "id": "build-loop",
+      "phase": 4,
+      "kind": "core",
+      "type": "judgment",
+      "tools": [],
+      "produces": [],
+      "notes": "Restartable, context-resetting loop over the Phase-3 backlog. Two-track TDD with Track A (red->green from to_be) primary; Track B only when extending. Ponytail ladder = YAGNI by construction (never build ahead of a decision). Two-stage review + wave checkpoints; reopen dependent open_decision pins if a built wave falsifies a decision. Never fully autonomous.",
+      "reference": "references/phase-4-build.md"
+    },
+    {
+      "id": "validate",
+      "phase": 5,
+      "kind": "gate",
+      "type": "judgment",
+      "tools": ["mutmut", "stryker"],
+      "produces": [],
+      "notes": "Read-only evidence gate. Zero contract drift across generated layers, Track-A test kills mutants, built behavior reachable, paved road runs. Sets pin.state = resolved only on evidence; on failure the item returns to Phase 4. Convergence check drives the traffic-light toward gap = 0.",
+      "reference": "references/phase-5-validate.md"
+    }
+  ]
+}

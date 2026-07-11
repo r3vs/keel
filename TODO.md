@@ -34,7 +34,7 @@ referenced playbook.
 ## 2. Ledger runtime — the glue between phases
 - [ ] Code (stack-agnostic; no dependency on any specific app's infrastructure) that materializes
       policies, assigns `resolution_mode`, enforces the severity threshold, and appends immutable
-      `DecisionEvent`s. → `decisions-ledger-spec.md`, `references/ledger.md`
+      `DecisionEvent`s. → `core/decisions-ledger-spec.md`, `core/ledger.md`
 
 ## 3. Interview generator + findings gate
 - [ ] **Interview generator** — materialize `Question`s from `needs_input` pins; run the funnel
