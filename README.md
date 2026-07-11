@@ -28,8 +28,8 @@ operate & evolve, the last two feeding production back into the ledger (`flip_cr
 to close the loop.
 
 ## Layout
-- `SKILL.md` + `references/` + `modules.json` — the `codebase-rescue` skill (repo root).
-- `greenfield-forge/` — the `greenfield-forge` skill (same layout, its own dir).
+- `codebase-rescue/` — the curative skill (`SKILL.md` + `references/` + `modules.json` + `evals/`).
+- `greenfield-forge/` — the preventive skill (same layout, its own dir).
 - `core/` — the shared spine: `decisions-ledger-spec.md` (schema, v0.5, Italian), `ledger.md`
   (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`,
   `contract-testing.md`, `feedback-loop.md`.

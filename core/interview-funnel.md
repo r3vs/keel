@@ -5,7 +5,7 @@ a filtered, compressed view over the pins in state `needs_input`, that resolves 
 committed decisions **without drowning the user in questions**. What differs is only the
 *source* of the pins — and that lives in each skill's Phase-2 playbook, not here:
 
-- `codebase-rescue` — pins are **code findings** (`references/phase-2-interview.md`).
+- `codebase-rescue` — pins are **code findings** (`codebase-rescue/references/phase-2-interview.md`).
 - `greenfield-forge` — pins are **open decisions** (`greenfield-forge/references/phase-2-interview.md`).
 
 This file is the authority for the *mechanism*. Read it before writing either skill's interview.

@@ -5,7 +5,7 @@ with one equivalence table. The machinery is identical; only the **direction** d
 
 - `codebase-rescue` runs it in **diff mode** — extract the shape of the same field at each
   layer (DB / ORM / API / frontend) and compare them to find where they disagree
-  (`references/contract-reconciliation.md`).
+  (`codebase-rescue/references/contract-reconciliation.md`).
 - `greenfield-forge` runs it in **generate mode** — author one canonical shape and emit an
   aligned representation for each layer, so they cannot disagree by construction
   (`greenfield-forge/references/contract-propagation.md`).
@@ -53,7 +53,7 @@ equivalence table crosses them (illustrative, extend per stack):
 
 ## Why this is the shared spine of both contract modules
 
-Rescue's Phase-0 verdict (see `references/contract-reconciliation.md`) found that a monorepo's
+Rescue's Phase-0 verdict (see `codebase-rescue/references/contract-reconciliation.md`) found that a monorepo's
 **shared-types package is the strongest standalone contract** — stronger than any inferred
 cross-layer graph edge. That empirical finding is the hinge between the two skills:
 

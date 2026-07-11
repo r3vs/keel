@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # skill name -> its root, relative to the repo root
 SKILLS = {
-    "codebase-rescue": ".",
+    "codebase-rescue": "codebase-rescue",
     "greenfield-forge": "greenfield-forge",
 }
 
