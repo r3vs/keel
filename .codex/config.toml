@@ -1,0 +1,15 @@
+# OpenAI Codex configuration for this project.
+# Codex reads AGENTS.md natively for instructions (project + global), so the methodology and the
+# skills are already available. This file only adds MCP servers.
+#
+# Stdio servers (command + args) are the portable form used here. DeepWiki and the GitHub server
+# are HTTP (transport + url) — see docs/packaging.md; add them if your Codex version supports remote
+# MCP, and provide a GitHub token for the GitHub server.
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+
+[mcp_servers.memory]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-memory"]

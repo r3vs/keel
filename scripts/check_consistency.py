@@ -16,10 +16,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # skill name -> its root, relative to the repo root
+# Auto-discover every skill: a dir under skills/ that has a SKILL.md.
 SKILLS = {
-    "codebase-rescue": "skills/codebase-rescue",
-    "greenfield-forge": "skills/greenfield-forge",
-}
+    p.name: f"skills/{p.name}"
+    for p in sorted((ROOT / "skills").iterdir())
+    if p.is_dir() and (p / "SKILL.md").exists()
+} if (ROOT / "skills").is_dir() else {}
 
 errors, warnings = [], []
 
@@ -50,9 +52,7 @@ for skill, rel in SKILLS.items():
     sroot = (ROOT / rel).resolve()
     mod_path, skill_path = sroot / "modules.json", sroot / "SKILL.md"
 
-    if not mod_path.exists():
-        errors.append(f"[{skill}] missing modules.json")
-    else:
+    if mod_path.exists():  # modules.json is optional — only the two methodology skills have one
         try:
             mods = json.loads(read(mod_path))
         except json.JSONDecodeError as e:
@@ -114,7 +114,7 @@ for f in content_md:
 # 5. Packaging manifests are valid JSON, and the agent roster matches across adapters
 #    (Claude agents/*.md  ↔  opencode.json "agent" block).
 opencode_agents = None
-for m in (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "opencode.json"):
+for m in (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "opencode.json", ".mcp.json"):
     p = ROOT / m
     if not p.exists():
         warnings.append(f"packaging manifest missing: {m}")

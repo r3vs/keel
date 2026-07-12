@@ -6,14 +6,21 @@ Skills specification** so they run unchanged across agents (Claude Code natively
 
 Keep this file short: it is loaded as always-on context. The depth lives behind the skills.
 
-## The two skills
+## The skills
 
-- **`skills/codebase-rescue/SKILL.md`** — rescue/align an existing, misaligned codebase.
-- **`skills/greenfield-forge/SKILL.md`** — build a new project aligned from the first commit.
+Two deep, differentiated workflows:
+- **`skills/codebase-rescue/`** — rescue/align an existing, misaligned codebase.
+- **`skills/greenfield-forge/`** — build a new project aligned from the first commit.
+
+Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`static-first-analysis`**,
+**`project-memory`**, and **`writing-skills`** (meta). Generic engineering skills (TDD, debugging,
+planning, code review, git worktrees) are **composed** from `superpowers`, not reinvented here.
 
 They share one spine under **`core/`** (the decisions ledger, interview funnel, brainstorm,
-field-shape engine, contract-testing, feedback loop, static-analysis and knowledge-source
-doctrines, and the agent roster). Read a skill's `SKILL.md` first; it points to the rest.
+field-shape engine, contract-testing, feedback loop, static-analysis / knowledge-sources doctrines,
+and the agent roster). Read a skill's `SKILL.md` first; it points to the rest. Durable project facts
+live in **`MEMORY.md`**; current external knowledge comes from the **Context7 / DeepWiki / memory**
+MCP servers.
 
 ## How to activate
 
@@ -39,4 +46,5 @@ committed interview answer elects a decision; no agent commits.
 ## Install
 
 See `docs/packaging.md`. In short: **Claude Code** — add the marketplace (`.claude-plugin/`);
-**opencode** — enable the `opencode-skills` plugin and run `scripts/install-opencode.sh`.
+**opencode** — enable the `opencode-skills` plugin + `scripts/install-opencode.sh`; **Codex** and
+other AGENTS.md-aware agents read this file directly (MCP in `.codex/config.toml`).

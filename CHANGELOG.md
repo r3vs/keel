@@ -21,6 +21,14 @@ pre-implementation; versions track the design + packaging, not a released runtim
 - **Engineering hygiene**: drift-linter + pointer verifier, CI (`.github/workflows/ci.yml`), a
   version-pinning mechanism in `bootstrap.sh`, MIT `LICENSE`, `CONTRIBUTING.md`.
 
+- **Complete-package layer** (composed, not cloned): five composable skills — `using-the-ledger`,
+  `grounded-research`, `static-first-analysis`, `project-memory`, `writing-skills` (meta); a
+  **memory** subsystem (ledger + `MEMORY.md` + memory MCP); **MCP** servers wired across platforms
+  (`context7`, `deepwiki`, `memory`; `github` opt-in) via `.mcp.json`, `opencode.json`, and
+  `.codex/config.toml`; **Codex** + any AGENTS.md-aware agent supported; and `superpowers` referenced
+  in the marketplace for the generic engineering skills instead of reinventing them.
+
 ### Notes
 - Pre-implementation: `evals/` hold prompts + assertions but no runtime harness yet; the greenfield
   step-0 gating experiment is not yet run. See each skill's `TODO.md`.
+- Generic skills are **composed** from `superpowers` (MIT), not authored here.

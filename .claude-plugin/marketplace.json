@@ -15,6 +15,15 @@
       "author": {
         "name": "r3vs"
       }
+    },
+    {
+      "name": "superpowers",
+      "description": "Composed, not authored here: Jesse Vincent's generic engineering skills (TDD, systematic debugging, planning, code review, git worktrees). We reference the best-in-class library rather than reinvent it.",
+      "source": "github:obra/superpowers",
+      "category": "development",
+      "author": {
+        "name": "Jesse Vincent"
+      }
     }
   ]
 }

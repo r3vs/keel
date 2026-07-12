@@ -15,8 +15,12 @@ deliverable is prose that a future Claude instance reads and executes:
   interview funnel, the brainstorm agent, and the field-shape engine. Neither skill duplicates it.
 - **Agent-agnostic packaging** — `AGENTS.md` (cross-agent entry), `.claude-plugin/` (Claude Code
   plugin + marketplace), `opencode.json` + `.opencode/` (opencode via the `opencode-skills`
-  plugin), `agents/` (roster), `hooks/`, `commands/`. Skills follow the Anthropic Agent Skills
-  spec so they are portable. See `docs/packaging.md`.
+  plugin), `.codex/config.toml` (Codex), `agents/` (roster), `hooks/`, `commands/`, `.mcp.json`
+  (MCP). Skills follow the Anthropic Agent Skills spec so they are portable. See `docs/packaging.md`.
+- **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
+  `static-first-analysis`, `project-memory`, `writing-skills`), a memory subsystem (ledger +
+  `MEMORY.md` + memory MCP), MCP servers (`context7`/`deepwiki`/`memory`; `github` opt-in), and
+  `superpowers` **composed** (referenced in the marketplace) for the generic engineering skills.
 
 Each skill is **design-complete but pre-implementation**; its `TODO.md` is the build checklist
 (each starts with a step-0 gating experiment that decides the shape of its core engine). There is

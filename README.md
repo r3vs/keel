@@ -1,7 +1,8 @@
-# codebase-rescue & greenfield-forge
+# codebase-alignment — an agent-agnostic skills package
 
-Two sibling Claude Code skills that keep a codebase aligned across its whole lifecycle — one
-**curative**, one **preventive** — sharing a single decisions-ledger spine.
+A complete, installable package for keeping a codebase aligned across its whole lifecycle, built
+around two deep, differentiated skills — one **curative**, one **preventive** — on a single
+decisions-ledger spine. Runs on **Claude Code, opencode, and Codex** (any AGENTS.md-aware agent).
 
 - **`codebase-rescue`** — rescue a large, misaligned, often AI-generated ("vibecoded") codebase,
   reconciling backend, frontend, and database into an aligned, state-of-the-art state. Works on
@@ -30,17 +31,30 @@ to close the loop.
 ## Layout
 - `skills/codebase-rescue/` — the curative skill (`SKILL.md` + `references/` + `modules.json` + `evals/`).
 - `skills/greenfield-forge/` — the preventive skill (same layout).
+- `skills/{using-the-ledger,grounded-research,static-first-analysis,project-memory,writing-skills}/`
+  — composable helper skills. Generic skills (TDD, debug, planning, review) are **composed** from
+  [`superpowers`](https://github.com/obra/superpowers), not reinvented.
 - `core/` — the shared spine: `decisions-ledger-spec.md` (schema, v0.5, Italian), `ledger.md`
-  (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`,
-  `contract-testing.md`, `feedback-loop.md`, `static-analysis.md`, `knowledge-sources.md`.
+  (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`, `contract-testing.md`,
+  `feedback-loop.md`, `static-analysis.md`, `knowledge-sources.md`, `agents.md`.
+- **Packaging**: `AGENTS.md`, `.claude-plugin/`, `opencode.json`, `.codex/config.toml`, `agents/`,
+  `hooks/`, `commands/`, `.mcp.json`, `MEMORY.md` — see `docs/packaging.md`.
 - each skill's `TODO.md` — its build checklist. **Do step 0 (the gating experiment) first.**
-- `scripts/bootstrap.sh` — install the deterministic toolchain (shared).
-- `scripts/check_consistency.py` — drift-linter for both skills + core (run in CI).
+- `scripts/{bootstrap.sh,check_consistency.py,verify_pointers.py,install-opencode.sh}` — toolchain,
+  drift-linter, pointer verifier, opencode installer (the checks run in CI).
+
+## Install
+- **Claude Code**: `/plugin marketplace add r3vs/codebase-rescue` → `/plugin install codebase-alignment@codebase-alignment`
+- **opencode**: `opencode.json` already has `"plugin": ["opencode-skills"]`; run `bash scripts/install-opencode.sh`
+- **Codex / any AGENTS.md agent**: point it at the repo — it reads `AGENTS.md` (MCP in `.codex/config.toml`).
+
+See `docs/packaging.md` for MCP, memory, and the compose model.
 
 ## Status
-Both skills are design-complete and internally coherent; the drift-linter is green. What remains
-is implementation — see each `TODO.md`.
+Design-complete and internally coherent across two methodology skills + five composable helpers;
+packaged agent-agnostically; the drift-linter and pointer verifier are green in CI. What remains is
+runtime implementation — see each `TODO.md`.
 
 ## License
-TBD (MIT recommended — the graph backbone Graphify is MIT; GitNexus is excluded from
-commercial use).
+MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm
+Noncommercial (optional, opt-in).
