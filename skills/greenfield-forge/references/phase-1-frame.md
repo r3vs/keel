@@ -27,7 +27,7 @@ to make the interview feel like a form. Everything the brief leaves open becomes
 ## Step 3 — Frame the testable outcomes (acceptance criteria)
 
 Before the architecture forks, pin the **outcomes**: what a user must be able to do, in testable
-form. Each becomes an `acceptance_criterion` pin (`core/ledger.md`) — a Given/When/Then (or
+form. Each becomes an `acceptance_criterion` pin (`references/core/ledger.md`) — a Given/When/Then (or
 equivalent) statement with a `verify` hook, scoped bounded to v1 (`in scope` / `deferred`). These
 are the **roots of the `depends_on` DAG**: architecture `open_decision`s depend on the criteria
 they must satisfy, and the Phase-4 Track-A tests trace back to them, completing the chain
@@ -41,7 +41,7 @@ YAGNI applies to outcomes first — a deferred outcome is future backlog, not sc
 
 ## Step 4 — Expand the catalog into `open_decision` pins
 
-For each live, undecided fork, materialize one `open_decision` pin (schema: `core/ledger.md`):
+For each live, undecided fork, materialize one `open_decision` pin (schema: `references/core/ledger.md`):
 - `question` = the fork, with the catalog's **options** (candidate to-be's — never one asserted
   as correct) and each option's downstream **implication**.
 - `depends_on` = wired from the catalog (e.g. the API/contract fork `depends_on` the data-model
@@ -75,5 +75,5 @@ Phase 1 carries no conversational state forward.
 
 Never fill an unmade decision with a silent assumption. If the brief is silent on a high-fan-out
 fork, it becomes an `asked` question, never a proposed default — the severity threshold
-(`core/interview-funnel.md`) makes this a hard rule. Silent defaults are only ever for the
+(`references/core/interview-funnel.md`) makes this a hard rule. Silent defaults are only ever for the
 low-severity long tail.

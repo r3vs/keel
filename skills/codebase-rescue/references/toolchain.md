@@ -14,7 +14,7 @@ SARIF/JSON so fp-check and the interview see one format.
 - **lizard** — cyclomatic complexity / function length, ~15 languages.
 - **jscpd** — copy-paste / clone detection, 150+ formats.
 
-## Static navigation & type signal (SOTA — often under-used; read `core/static-analysis.md`)
+## Static navigation & type signal (SOTA — often under-used; read `references/core/static-analysis.md`)
 - **Type-checkers / compilers** — `tsc --noEmit`, mypy/pyright (py), `cargo check` / rust-analyzer,
   `go vet`. The highest-value static signal, tied directly to contracts and logic; a type error is
   a fact (`extracted` confidence), not a guess, and skips the heavy fp-check. Run per language tokei

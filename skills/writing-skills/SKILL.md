@@ -22,7 +22,7 @@ the directory**) and `description` (≥ 20 chars, saying what it does AND when t
   `SKILL.md` pointer together.
 
 ## Stay agent-agnostic
-Author to the spec once; never hard-code a platform. A new agent role goes in `core/agents.md`
+Author to the spec once; never hard-code a platform. A new agent role goes in `references/core/agents.md`
 first (the source of truth), then mirrors into `agents/*.md` (Claude) and `opencode.json`'s `agent`
 block — the linter enforces that parity.
 

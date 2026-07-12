@@ -91,6 +91,14 @@ are all unified under this one principle — which is why there is deliberately 
   fitness, in-loop, deterministic findings skipping fp-check) and which external knowledge source
   per phase (Context7 / DeepWiki / registry / web), with grounding, confidence, and untrusted-input
   discipline.
+- **The shared `core/` is a single authoring source, vendored into each skill (Model B).** All the
+  shared modules above are authored once under `core/*.md` (the edit point), but each skill keeps its
+  **own copy** under `skills/<skill>/references/core/x.md` so it is self-contained (independently
+  installable — no skill ever points outside its own tree at `core/`). `scripts/sync_core.py`
+  materializes those copies (following the `core→core` dependency closure) and rewrites the pointers;
+  its `--check` mode (in CI) fails if any copy drifts. This is the very anti-divergence property the
+  skills enforce on codebases, applied to the skills' own shared prose — the linter, not discipline,
+  keeps the copies identical.
 
 ## Packaging (agent-agnostic)
 
@@ -109,19 +117,25 @@ packaging manifests are valid JSON. Full details: `docs/packaging.md`.
 
 ## Editing conventions & invariants
 
-- **The three-way sync is enforced by the drift-linter — keep it green.**
-  `check_consistency.py` validates **both skills and the shared core**: every module in each
+- **The consistency gates are enforced in CI — keep them green.**
+  `check_consistency.py` validates **every skill and the shared core**: every module in each
   `modules.json` has a `reference` that exists; every `` `references/…md` `` pointer in a `SKILL.md`
-  resolves (relative to that skill's root) and every `` `core/…md` `` pointer resolves (relative to
-  the repo root); no reference or core file is orphaned (warning); no skill content file still
-  contains `STUB — scaffold only`. When you add or rename a module, update its `modules.json`
-  **and** its playbook **and** any `SKILL.md` pointer together.
-- **Path convention:** `references/x.md` is skill-root-relative (rescue's root is `skills/codebase-rescue/`,
-  greenfield's is `skills/greenfield-forge/`); `core/x.md` is always repo-root-relative and shared. A core
-  file that points at one skill's playbook uses the full `<skill>/references/x.md` path.
+  resolves relative to that skill's root (this now includes the vendored `` `references/core/…md` ``);
+  **no skill file points at the source directly** (a bare `` `core/…md` `` under `skills/` is an error
+  — vendor it); and no skill content file still contains `STUB — scaffold only`.
+  `sync_core.py --check` verifies each vendored `references/core/x.md` still equals its `core/x.md`
+  source, and `verify_pointers.py` checks every cross-reference resolves. When you add or rename a
+  module, update its `modules.json` **and** its playbook **and** any `SKILL.md` pointer together.
+- **Path convention:** `references/x.md` is skill-root-relative (rescue's root is
+  `skills/codebase-rescue/`, greenfield's is `skills/greenfield-forge/`), and this **includes the
+  vendored `references/core/x.md` copies**. A file that points at another skill's playbook uses the
+  full repo-root-relative `skills/<skill>/references/x.md` path — those deliberate cross-skill links
+  are the only pointers that leave a skill's own tree.
 - **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
-  `core/decisions-ledger-spec.md` (v0.5) is authoritative for the ledger schema (shared). Do not
-  let a `SKILL.md` or a reference summary drift from them.
+  `core/*.md` is the single authoring source for the shared doctrine — **edit it there, never in a
+  `references/core/` copy**, then run `scripts/sync_core.py` (the copies are generated). Within that,
+  `core/decisions-ledger-spec.md` (v0.5) is authoritative for the ledger schema. Do not let a
+  `SKILL.md`, a reference summary, or a vendored copy drift from them.
 - **`core/decisions-ledger-spec.md` is written in Italian** — the rest of the repo is English, and
   `core/ledger.md` is the short English pointer to it. Preserve that split unless asked to
   translate.

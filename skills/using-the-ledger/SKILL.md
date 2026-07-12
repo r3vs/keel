@@ -7,8 +7,8 @@ license: MIT
 # Using the Ledger
 
 The decisions ledger is the single source of truth the whole package runs on. This is the short
-"how to use it" for any task; the authority is `core/ledger.md` (schema
-`core/decisions-ledger-spec.md`).
+"how to use it" for any task; the authority is `references/core/ledger.md` (schema
+`references/core/decisions-ledger-spec.md`).
 
 ## The rules that matter
 - One `ledger.json`; the map, interview, and brainstorm hold no state — they project a view over it.
@@ -18,7 +18,7 @@ The decisions ledger is the single source of truth the whole package runs on. Th
   brainstorm writes `proposals[]` only. The human elects.
 - Every `DecisionEvent` carries a `flip_criteria` (when to reopen) — essential for decisions made
   on thin information.
-- Compress questions with the funnel (`core/interview-funnel.md`): cluster → policy → exception →
+- Compress questions with the funnel (`references/core/interview-funnel.md`): cluster → policy → exception →
   proposed-default; `blocker`/`high` never go to silent default.
 
 ## Use it to
@@ -26,4 +26,4 @@ The decisions ledger is the single source of truth the whole package runs on. Th
 - add a finding as a pin (with `confidence`/`provenance`; deterministic static findings carry
   `extracted` and skip fp-check);
 - record an elected decision (interview only) with a `flip_criteria`;
-- feed the feedback loop (`core/feedback-loop.md`): a fired `flip_signal` reopens a pin.
+- feed the feedback loop (`references/core/feedback-loop.md`): a fired `flip_signal` reopens a pin.

@@ -80,16 +80,22 @@ with zero extra config; `.codex/config.toml` adds the MCP servers. Any other AGE
 
 ## Shared-core resolution
 
-Both skills reference `core/*.md` at the plugin/repo root (the DRY single source). When installed,
-the whole tree ships together, so `core/` is present alongside `skills/`. The `install-opencode.sh`
-link keeps opencode's per-skill discovery pointing at the same one `skills/` tree — no duplication,
-no drift (the property the skills themselves enforce).
+`core/*.md` is the single **authoring source** for the shared doctrine, and each skill is
+**self-contained** (Model B): `scripts/sync_core.py` vendors the docs a skill needs into its own
+`references/core/` (following the `core→core` dependency closure) and rewrites the pointers, so no
+skill ever points outside its own tree. A skill directory therefore ships complete on every
+platform — Claude Code, opencode (`install-opencode.sh` links the one `skills/` tree), or a bare
+`AGENTS.md` agent — with no external `core/` dependency at read time. `core/` travels with the
+package as the edit point only; CI's `sync_core.py --check` fails if any vendored copy drifts from
+it, so the duplication can never diverge — the very anti-divergence property the skills enforce on
+the codebases they touch, applied to their own shared prose.
 
 ## Keeping adapters honest
 
 `core/agents.md` is the source of truth for the roster; `agents/*.md` (Claude) and the `agent`
-block in `opencode.json` (opencode) must mirror it. `scripts/check_consistency.py` +
-`scripts/verify_pointers.py` guard the docs; both run in CI (`.github/workflows/ci.yml`).
+block in `opencode.json` (opencode) must mirror it. `scripts/check_consistency.py`,
+`scripts/sync_core.py --check` (vendored core ↔ source), and `scripts/verify_pointers.py` guard the
+docs; all three run in CI (`.github/workflows/ci.yml`).
 
 ## External tool licenses
 

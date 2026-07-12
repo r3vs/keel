@@ -54,7 +54,7 @@ Once a test defines the target, the ladder picks the *smallest* intervention and
 Rung 1 is the whole point of greenfield: the cheapest feature is the one a decision did not ask
 for and you therefore do not build. Rung 2 is "generate it from the carrier" — the anti-drift
 default. Never build past what the item's `to_be` requires. When a rung reaches an installed
-dependency (rung 5), generate against its **current** API via Context7 (`core/knowledge-sources.md`),
+dependency (rung 5), generate against its **current** API via Context7 (`references/core/knowledge-sources.md`),
 not training-cutoff memory.
 
 ## The per-item loop
@@ -75,7 +75,7 @@ for item in roadmap.ordered_item_ids:      # fresh invocation each
 ## Static signal, in-loop
 
 Run the **type-checker** and **architecture-fitness** on the diff as you build
-(`core/static-analysis.md`). Generating layers from the contract means the type-checker catches a
+(`references/core/static-analysis.md`). Generating layers from the contract means the type-checker catches a
 contract violation before any test runs; a boundary-constraint violation fails fast. Deterministic,
 `extracted` confidence, no fp-check budget spent.
 

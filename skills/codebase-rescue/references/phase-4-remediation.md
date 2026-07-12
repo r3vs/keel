@@ -96,11 +96,11 @@ for item in roadmap.ordered_item_ids:      # fresh invocation each
 Run the deterministic static checks **on the diff, as you edit** — the type-checker,
 LSP-assisted refactor, and architecture-fitness — not only in the Phase-1 scan. A type error or a
 boundary violation caught in-loop is fixed before the two-stage review, at `extracted` confidence
-and without spending fp-check budget. See `core/static-analysis.md`.
+and without spending fp-check budget. See `references/core/static-analysis.md`.
 
 ## Ground fixes in current sources
 
-When a fix touches a library, dependency, or CVE, ground it via `core/knowledge-sources.md` —
+When a fix touches a library, dependency, or CVE, ground it via `references/core/knowledge-sources.md` —
 Context7 for the dependency's current API, the registry / advisory for the safe version and the
 migration path — rather than training-cutoff memory. Cited, with confidence set by the source; the
 fix still passes the two-stage review and Phase-5 evidence gate.

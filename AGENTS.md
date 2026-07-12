@@ -16,11 +16,12 @@ Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`sta
 **`project-memory`**, and **`writing-skills`** (meta). Generic engineering skills (TDD, debugging,
 planning, code review, git worktrees) are **composed** from `superpowers`, not reinvented here.
 
-They share one spine under **`core/`** (the decisions ledger, interview funnel, brainstorm,
-field-shape engine, contract-testing, feedback loop, static-analysis / knowledge-sources doctrines,
-and the agent roster). Read a skill's `SKILL.md` first; it points to the rest. Durable project facts
-live in **`MEMORY.md`**; current external knowledge comes from the **Context7 / DeepWiki / memory**
-MCP servers.
+They share one spine (the decisions ledger, interview funnel, brainstorm, field-shape engine,
+contract-testing, feedback loop, static-analysis / knowledge-sources doctrines, and the agent
+roster), authored once under **`core/`** and **vendored into each skill** as `references/core/` so
+every skill is self-contained. Read a skill's `SKILL.md` first; it points to the rest (its own
+`references/`, including the vendored core). Durable project facts live in **`MEMORY.md`**; current
+external knowledge comes from the **Context7 / DeepWiki / memory** MCP servers.
 
 ## How to activate
 

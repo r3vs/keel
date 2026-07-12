@@ -19,9 +19,9 @@ a hardcoded rule.
 
 From the decided NFR/delivery pins, run the **paved-road** module: scaffold the baseline the
 project rides on — test harness, linters/formatters, CI pipeline, env/secrets config, error
-taxonomy, the generated **contract tests** (`core/contract-testing.md` — the runtime complement to
+taxonomy, the generated **contract tests** (`references/core/contract-testing.md` — the runtime complement to
 the drift-check), the **type-checker** and **architecture-fitness / dependency-constraint** checks
-(`core/static-analysis.md`, enforcing the elected boundaries in CI from commit one), and a
+(`references/core/static-analysis.md`, enforcing the elected boundaries in CI from commit one), and a
 **SessionStart hook** (see the `session-start-hook` skill) so future sessions can run tests and
 linters immediately. These are `BuildItem`s (`action: scaffold`/
 `configure`) in Wave 1 alongside the contract: they carry no product decision but everything is

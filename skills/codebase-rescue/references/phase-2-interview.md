@@ -16,7 +16,7 @@ to ask, it is to **collapse pins into decisions**.
 
 The funnel mechanism — cluster → policy → exception → proposed-default, the severity threshold,
 and information-gain ordering — is **shared with the `greenfield-forge` sibling and authoritative
-in `core/interview-funnel.md`. Read it first.** How *rescue* sources it:
+in `references/core/interview-funnel.md`. Read it first.** How *rescue* sources it:
 
 - **Cluster:** the contract-reconciliation and duplication modules already assign `cluster_id`;
   extend by decision-similarity. 200 findings typically collapse to ~20 clusters.

@@ -6,7 +6,7 @@ license: MIT
 
 # Grounded Research
 
-The knowledge-sources doctrine (`core/knowledge-sources.md`) as an invokable skill. The enemy is
+The knowledge-sources doctrine (`references/core/knowledge-sources.md`) as an invokable skill. The enemy is
 the model's training cutoff — stale APIs, outdated practices; the fix is the right source per job.
 
 ## Escalation (cheapest sufficient source first)

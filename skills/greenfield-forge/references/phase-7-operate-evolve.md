@@ -22,7 +22,7 @@ From the observability decisions (a decided NFR in Phase 2), the code emits:
 
 ## Evolve — turn the loop (via the shared feedback loop)
 
-Run `core/feedback-loop.md`: evaluate the `flip_signal`s against the manifest's telemetry, and on
+Run `references/core/feedback-loop.md`: evaluate the `flip_signal`s against the manifest's telemetry, and on
 a fired signal emit a `ReopenEvent` and move the affected pin (plus its genuine dependents) back
 to `needs_input` (`reopened`). The reopened pins flow into the interview via `slice` mode; the
 new truth then flows forward through contract → build → validate → release again. The arc

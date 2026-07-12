@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Drift linter for the two sibling skills in this repo.
+"""Drift linter for the skills + shared core in this repo.
 
-Verifies that each skill's modules.json, references/, and SKILL.md stay in sync, and that the
-shared core/ (ledger, funnel, brainstorm, shape-engine) is referenced and not orphaned.
+Verifies that each skill's modules.json, references/, and SKILL.md stay in sync, that the
+shared core/ (the authoring source) is vendored into every skill that needs it, and that no
+skill points at the source directly (Model B — each skill is self-contained; see CLAUDE.md).
 
 Path convention (see CLAUDE.md):
-  - A pointer `references/x.md` resolves relative to the SKILL's own root.
-  - A pointer `core/x.md`      resolves relative to the REPO root (shared by both skills).
+  - `references/x.md` (incl. the vendored `references/core/x.md`) resolves relative to the
+    SKILL's own root.
+  - core/*.md is the single source; scripts/sync_core.py copies it into skills/*/references/core/.
+    A bare `core/x.md` pointer under skills/ is drift (a copy was not vendored).
 
-Run in CI: `python scripts/check_consistency.py` (exit 1 on drift).
+Run in CI: `python scripts/check_consistency.py` (exit 1 on drift); pair with sync_core.py --check.
 """
 import json, re, sys
 from pathlib import Path
@@ -73,12 +76,20 @@ for skill, rel in SKILLS.items():
     for ref in sorted(set(REF_RE.findall(text))):
         if not (sroot / ref).exists():
             errors.append(f"[{skill}] SKILL.md points to missing '{ref}'")
-    for ref in sorted(set(CORE_RE.findall(text))):
-        if not (ROOT / ref).exists():
-            errors.append(f"[{skill}] SKILL.md points to missing shared '{ref}'")
 
     if (sroot / "references").is_dir():
         reference_dirs.append((skill, sroot))
+
+# 1b. Model-B invariant: no skill file may point at the shared source directly — it must vendor
+#     a copy (references/core/x.md) via scripts/sync_core.py. A bare `core/x.md` under skills/ is
+#     drift. CORE_RE requires the backtick immediately before "core/", so it never matches the
+#     vendored `references/core/x.md` form.
+if (ROOT / "skills").is_dir():
+    for p in sorted((ROOT / "skills").rglob("*.md")):
+        for hit in sorted(set(CORE_RE.findall(read(p)))):
+            errors.append(
+                f"[{p.relative_to(ROOT)}] un-vendored core pointer `{hit}` — run scripts/sync_core.py"
+            )
 
 # 2. Per-skill orphan check: every references/*.md is pointed at from this skill (warn only)
 for skill, sroot in reference_dirs:
@@ -90,13 +101,19 @@ for skill, sroot in reference_dirs:
         if rel_ref not in referrers + siblings:
             warnings.append(f"[{skill}] orphan reference (not linked anywhere): {rel_ref}")
 
-# 3. Shared core orphan check: every core/*.md is referenced by some other file (warn only)
+# 3. Core source usage: each core/*.md is the authoring source and should be vendored into at
+#    least one skill (scripts/sync_core.py). A source no skill vendors is unused (warn only).
 core_dir = ROOT / "core"
 core_files = list(core_dir.glob("*.md")) if core_dir.is_dir() else []
+vendored_names = set()
+if (ROOT / "skills").is_dir():
+    for s in sorted((ROOT / "skills").iterdir()):
+        vd = s / "references" / "core"
+        if vd.is_dir():
+            vendored_names |= {g.name for g in vd.glob("*.md")}
 for f in core_files:
-    rel_ref = f"core/{f.name}"
-    if not any(rel_ref in read(p) for p in all_files if p != f):
-        warnings.append(f"orphan core file (not linked anywhere): {rel_ref}")
+    if f.name not in vendored_names:
+        warnings.append(f"unused core source (never vendored into any skill): core/{f.name}")
 
 # 4. No leftover scaffolding stubs in skill content (SKILL.md, references/, core/).
 #    Repo meta-docs (CLAUDE.md, README.md) may legitimately mention the marker.
@@ -139,9 +156,13 @@ for e in errors:
     print(f"ERROR {e}")
 
 ref_total = sum(len(list((s / 'references').glob('*.md'))) for _, s in reference_dirs)
+vendored_total = sum(
+    len(list((s / 'references' / 'core').glob('*.md')))
+    for s in (ROOT / 'skills').iterdir() if (s / 'references' / 'core').is_dir()
+) if (ROOT / 'skills').is_dir() else 0
 print(
-    f"\n{len(SKILLS)} skills, {module_count} modules, {len(core_files)} core files, "
-    f"{ref_total} references, {len(roster)} agents — "
+    f"\n{len(SKILLS)} skills, {module_count} modules, {len(core_files)} core sources "
+    f"({vendored_total} vendored copies), {ref_total} references, {len(roster)} agents — "
     f"{len(errors)} errors, {len(warnings)} warnings"
 )
 sys.exit(1 if errors else 0)

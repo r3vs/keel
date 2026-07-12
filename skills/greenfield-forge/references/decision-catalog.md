@@ -20,7 +20,7 @@ not a ceiling.
 
 Order matters: the earlier a cluster, the more downstream forks depend on it. Ask domain and
 persistence first — they fan out to everything; delivery and observability are leaves. This
-ordering *is* the information-gain order the interview funnel (`core/interview-funnel.md`) uses.
+ordering *is* the information-gain order the interview funnel (`references/core/interview-funnel.md`) uses.
 
 Each fork below lists **options** (candidate to-be's, never one asserted as correct), the
 **downstream** forks it feeds (`depends_on` runs the other way), and a **default policy**
@@ -124,7 +124,7 @@ in Phase 1 alongside the catalog expansion. Designed in, not scanned for later.
 ## Grounding the options (don't reason in a vacuum)
 
 The catalog's options are candidates, not gospel. Ground the hard forks in real sources
-(`core/knowledge-sources.md`): DeepWiki on exemplar repos ("how does a well-run system in this
+(`references/core/knowledge-sources.md`): DeepWiki on exemplar repos ("how does a well-run system in this
 space decide this?"), Context7 for whether a candidate library's *current* API actually supports
 the option, the registries for its maintenance/health. Cite what you find and carry its confidence
 onto the pin — the interview still decides; grounding only sharpens the options.
@@ -144,7 +144,7 @@ Apply before materializing pins — a whole cluster absent from the type is not 
 ## How Phase 1 uses this
 
 For each surviving fork not decided by the brief: emit an `open_decision` pin (schema:
-`core/ledger.md`) with the fork as its `question`, the options above, the downstream links as
+`references/core/ledger.md`) with the fork as its `question`, the options above, the downstream links as
 `depends_on`, a `cluster_id` grouping related forks, and `severity` set by fan-out (clusters 1–4
 tend to `high`/`blocker`; 9–10 tend to `medium`). Cluster 0's outcomes become `acceptance_criterion`
 pins that root the DAG; the threat-model pass adds security `open_decision`s. The default policies

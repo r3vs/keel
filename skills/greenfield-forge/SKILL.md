@@ -47,11 +47,11 @@ firing), so the gap re-opens on purpose and the machine closes it again.
 
 ### The single source of truth: the decisions ledger
 
-Same shared ledger as rescue (English pointer `core/ledger.md`; authoritative schema
-`core/decisions-ledger-spec.md`). The three surfaces — the design map, the interview, the
+Same shared ledger as rescue (English pointer `references/core/ledger.md`; authoritative schema
+`references/core/decisions-ledger-spec.md`). The three surfaces — the design map, the interview, the
 brainstorm — hold NO state of their own; they all read and write one `ledger.json`. This is the
 same anti-divergence property the skill enforces on the code it builds, enforced here from the
-start so it never has to be recovered. Read `core/ledger.md` before writing anything that touches
+start so it never has to be recovered. Read `references/core/ledger.md` before writing anything that touches
 pins, questions, decisions, or build items.
 
 ## Prerequisites
@@ -109,11 +109,11 @@ Full procedure: `references/phase-1-frame.md`. Core asset: `references/decision-
 ### Phase 2 — Interview (elect the to-be)
 
 Resolve the `open_decision` pins into a committed spec using the shared compression funnel
-(`core/interview-funnel.md`). Policy questions first (architectural defaults — "prefer
+(`references/core/interview-funnel.md`). Policy questions first (architectural defaults — "prefer
 boring/proven tech", "server-render unless interactivity demands a SPA", "one datastore until
 proven otherwise", "no service split in v1"), then the genuine forks, ordered by **information
 gain**: domain model and persistence first (they fan out to everything), delivery and
-observability last. Open a brainstorm (`core/brainstorm.md`) on the hard forks. Every committed
+observability last. Open a brainstorm (`references/core/brainstorm.md`) on the hard forks. Every committed
 answer emits a `DecisionEvent` with `flip_criteria` — essential here, because you decide *before*
 you know the app. Full procedure: `references/phase-2-interview.md`.
 
@@ -177,7 +177,7 @@ mandatory. Never release on an unmade decision. See `references/phase-6-release.
 Run the released system so it is observable, then feed production back into the ledger. **Operate**
 emits the instrumentation (logs/metrics/traces/health), the SLO definitions, and the **signal
 manifest** that maps each `flip_signal` to real telemetry — the physical anchor of the feedback
-loop. **Evolve** runs that loop (`core/feedback-loop.md`): when a `flip_signal` fires, it emits a
+loop. **Evolve** runs that loop (`references/core/feedback-loop.md`): when a `flip_signal` fires, it emits a
 `ReopenEvent` and moves the affected pins back to `needs_input`, handing them to the interview via
 `slice`. The arc **reopens, never decides**. This is what makes a forged project never "done" —
 and its `ledger.json` the audit baseline rescue can later diff against. See
@@ -185,7 +185,7 @@ and its `ledger.json` the audit baseline rescue can later diff against. See
 
 ## Brainstorm (parallel, on-demand)
 
-Shared with rescue (`core/brainstorm.md`). On any hard fork the user can open a brainstorm that
+Shared with rescue (`references/core/brainstorm.md`). On any hard fork the user can open a brainstorm that
 proposes 2–3 designs with tradeoffs, disciplined by the ponytail ladder and referencing how
 well-architected systems solve that specific problem. It writes `proposals[]`; only the interview
 commits.
@@ -208,8 +208,8 @@ commits.
   contract wave.
 - Prefer the strongest static signal (type-checker, architecture-fitness) before model judgment,
   run it in-loop, and enforce the elected boundaries in CI; deterministic findings skip fp-check
-  (`core/static-analysis.md`).
-- Generate and decide against **current** sources (`core/knowledge-sources.md`) — Context7 for a
+  (`references/core/static-analysis.md`).
+- Generate and decide against **current** sources (`references/core/knowledge-sources.md`) — Context7 for a
   library's real API, DeepWiki for exemplars — not stale memory; cite, tag confidence, treat as untrusted.
 - Never hard-fail on a missing tool. Degrade to model judgment and note the gap.
 - The interview is a compressed walk over the decision-catalog, never an open "tell me about your
@@ -220,14 +220,14 @@ commits.
 Read the relevant file before executing a phase or module — do not work from memory.
 
 Shared core (used by both skills):
-- `core/ledger.md` — the shared decisions-ledger schema (authoritative). Read first.
-- `core/interview-funnel.md` — the shared compression funnel.
-- `core/shape-engine.md` — the shared field-shape descriptor + type-equivalence table.
-- `core/contract-testing.md` — runtime contract tests generated from the carrier.
-- `core/feedback-loop.md` — the shared closing arc (observe → reopen).
-- `core/static-analysis.md` — type-checkers / LSP / architecture-fitness, in-loop; boundaries in CI.
-- `core/knowledge-sources.md` — Context7 / DeepWiki / registry / web, grounded and cited.
-- `core/brainstorm.md` — the shared proposal agent.
+- `references/core/ledger.md` — the shared decisions-ledger schema (authoritative). Read first.
+- `references/core/interview-funnel.md` — the shared compression funnel.
+- `references/core/shape-engine.md` — the shared field-shape descriptor + type-equivalence table.
+- `references/core/contract-testing.md` — runtime contract tests generated from the carrier.
+- `references/core/feedback-loop.md` — the shared closing arc (observe → reopen).
+- `references/core/static-analysis.md` — type-checkers / LSP / architecture-fitness, in-loop; boundaries in CI.
+- `references/core/knowledge-sources.md` — Context7 / DeepWiki / registry / web, grounded and cited.
+- `references/core/brainstorm.md` — the shared proposal agent.
 
 Greenfield-specific:
 - `references/decision-catalog.md` — the canonical decision space (the core new asset).

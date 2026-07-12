@@ -1,7 +1,7 @@
 # Phase 2 — Interview (elect the to-be)
 
 Resolve the `open_decision` pins from Phase 1 into a committed `to-be` spec. The **mechanism is
-shared** — read `core/interview-funnel.md` first; it is authoritative for the funnel (cluster →
+shared** — read `references/core/interview-funnel.md` first; it is authoritative for the funnel (cluster →
 policy → exception → proposed-default), the severity threshold, and information-gain ordering.
 This playbook is only how *greenfield* sources and frames the pins.
 
@@ -26,7 +26,7 @@ The pins are **open decisions**, not code findings. So:
 ## The hard forks — brainstorm before deciding
 
 For a genuinely open architectural fork (monolith vs services, datastore family, API style), the
-user can open a **brainstorm** (`core/brainstorm.md`): 2–3 designs with tradeoffs, disciplined by
+user can open a **brainstorm** (`references/core/brainstorm.md`): 2–3 designs with tradeoffs, disciplined by
 the ponytail ladder and referencing how well-architected systems solve that specific problem. The
 brainstorm proposes; only the answer committed here decides.
 

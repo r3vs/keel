@@ -34,14 +34,17 @@ to close the loop.
 - `skills/{using-the-ledger,grounded-research,static-first-analysis,project-memory,writing-skills}/`
   — composable helper skills. Generic skills (TDD, debug, planning, review) are **composed** from
   [`superpowers`](https://github.com/obra/superpowers), not reinvented.
-- `core/` — the shared spine: `decisions-ledger-spec.md` (schema, v0.5, Italian), `ledger.md`
-  (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`, `contract-testing.md`,
-  `feedback-loop.md`, `static-analysis.md`, `knowledge-sources.md`, `agents.md`.
+- `core/` — the shared spine, and the single **authoring source** for it: `decisions-ledger-spec.md`
+  (schema, v0.5, Italian), `ledger.md` (English pointer), `interview-funnel.md`, `brainstorm.md`,
+  `shape-engine.md`, `contract-testing.md`, `feedback-loop.md`, `static-analysis.md`,
+  `knowledge-sources.md`, `agents.md`. Each skill is **self-contained**: `scripts/sync_core.py`
+  vendors the doctrine it needs into `skills/<skill>/references/core/`, so no skill points outside
+  its own tree (CI's `sync_core.py --check` keeps the copies identical to the source).
 - **Packaging**: `AGENTS.md`, `.claude-plugin/`, `opencode.json`, `.codex/config.toml`, `agents/`,
   `hooks/`, `commands/`, `.mcp.json`, `MEMORY.md` — see `docs/packaging.md`.
 - each skill's `TODO.md` — its build checklist. **Do step 0 (the gating experiment) first.**
-- `scripts/{bootstrap.sh,check_consistency.py,verify_pointers.py,install-opencode.sh}` — toolchain,
-  drift-linter, pointer verifier, opencode installer (the checks run in CI).
+- `scripts/{bootstrap.sh,check_consistency.py,sync_core.py,verify_pointers.py,install-opencode.sh}` —
+  toolchain, drift-linter, core-vendoring sync, pointer verifier, opencode installer (checks run in CI).
 
 ## Install
 - **Claude Code**: `/plugin marketplace add r3vs/codebase-rescue` → `/plugin install codebase-alignment@codebase-alignment`

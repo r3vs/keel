@@ -30,7 +30,7 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
         always works.)
 
 ## 1. Core engine — the contract-propagation code
-- [ ] **Per-stack generators** from one normalized contract (`core/shape-engine.md` descriptor) →
+- [ ] **Per-stack generators** from one normalized contract (`references/core/shape-engine.md` descriptor) →
       DDL/migration, ORM model, DTO/route, client types. Start with live stacks; generalize via
       tree-sitter templates so new stacks are additive. → `references/contract-propagation.md`
 - [ ] **The CI drift-check** — the same shape-diff rescue uses, wired to fail the build when a
@@ -40,14 +40,14 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 
 ## 2. Ledger runtime — shared with rescue (reuse, do not fork)
 - [ ] Reuse the `core/` ledger runtime. Add only the greenfield deltas: the `open_decision` pin
-      kind and the `BuildItem` entity (`core/decisions-ledger-spec.md` v0.4). Do not duplicate
+      kind and the `BuildItem` entity (`references/core/decisions-ledger-spec.md` v0.4). Do not duplicate
       the ledger engine — both skills bind to one implementation.
 
 ## 3. Decision-frame + interview generator
 - [ ] **Decision-catalog authoring** — turn `references/decision-catalog.md` into a machine-usable
       catalog (forks, options, implications, depends_on, default policies) that the frame module
       expands and prunes against the brief.
-- [ ] **Interview generator** — reuse the shared funnel (`core/interview-funnel.md`); materialize
+- [ ] **Interview generator** — reuse the shared funnel (`references/core/interview-funnel.md`); materialize
       Question objects from `open_decision` pins, ordered by information gain.
       → `references/phase-2-interview.md`
 

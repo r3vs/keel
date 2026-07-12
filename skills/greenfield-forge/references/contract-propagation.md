@@ -3,7 +3,7 @@
 The module greenfield lives or dies on — the exact mirror of rescue's `contract-reconciliation`.
 Rescue **diffs** the same entity's representation across DB / ORM / API / frontend to find where
 they disagree. Greenfield **defines** that representation once and **generates** each layer from
-it, so they cannot disagree in the first place. Same shape engine (`core/shape-engine.md`), run
+it, so they cannot disagree in the first place. Same shape engine (`references/core/shape-engine.md`), run
 forward.
 
 ## The hinge (rescue's Phase-0 verdict, run in reverse)
@@ -40,7 +40,7 @@ Optionally also message/event schemas, GraphQL SDL, config contracts — same pr
 
 ### 1. Author the canonical entity shapes
 From the **decided** data-model pins in the ledger (never from a guess), reduce each field to the
-shared descriptor `{ name, type, nullable, enum?, constraints? }` (`core/shape-engine.md`). This
+shared descriptor `{ name, type, nullable, enum?, constraints? }` (`references/core/shape-engine.md`). This
 canonical set IS the contract; every layer is a projection of it. Only decided entities — an
 entity the interview deferred produces no shape (YAGNI by construction).
 
@@ -51,17 +51,17 @@ entity the interview deferred produces no shape (YAGNI by construction).
 Do not reach for a heavyweight schema-registry when a shared-types file suffices.
 
 ### 3. Generate each layer from the carrier
-Run the type-equivalence table (`core/shape-engine.md`) in **reverse** — one canonical descriptor
+Run the type-equivalence table (`references/core/shape-engine.md`) in **reverse** — one canonical descriptor
 → each layer's syntax: DDL/migration, ORM model, DTO/route stub, client type + fetch stub. The
 handlers' bodies are `implement` BuildItems for Phase 4 (Track A); this step only emits the
 **aligned typed surfaces**. Generate against the framework's **current** API — pull it from
-Context7 (`core/knowledge-sources.md`), not training-cutoff memory, so the scaffolds use today's
+Context7 (`references/core/knowledge-sources.md`), not training-cutoff memory, so the scaffolds use today's
 idioms.
 
 ### 4. Install the drift-check + contract tests (the preventive payload)
 Wire the same shape-diff rescue uses into CI: re-extract every layer's shapes and diff them
 against the carrier; **fail the build on any disagreement**. Generate the **contract tests** from
-the carrier too (`core/contract-testing.md`) and wire them beside the drift-check — the static
+the carrier too (`references/core/contract-testing.md`) and wire them beside the drift-check — the static
 diff catches shape edits, the runtime tests catch a boundary that typechecks but violates the
 contract with real data. Static + dynamic together. From now on a hand-edit that lets a layer
 drift is caught the moment it lands — the project stays aligned for life, not just at generation

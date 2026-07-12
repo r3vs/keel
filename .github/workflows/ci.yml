@@ -21,6 +21,8 @@ jobs:
           python-version: "3.12"
       - name: Drift linter (modules ↔ references ↔ SKILL, both skills + core)
         run: python scripts/check_consistency.py
+      - name: Vendored-core sync (skills/*/references/core ↔ core/ source)
+        run: python scripts/sync_core.py --check
       - name: Pointer verifier (intra-playbook cross-references)
         run: python scripts/verify_pointers.py
       - name: Shell syntax (bootstrap + installer + hooks)

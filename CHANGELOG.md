@@ -28,7 +28,15 @@ pre-implementation; versions track the design + packaging, not a released runtim
   `.codex/config.toml`; **Codex** + any AGENTS.md-aware agent supported; and `superpowers` referenced
   in the marketplace for the generic engineering skills instead of reinventing them.
 
+### Changed
+- **Self-contained skills (Model B)**: the shared `core/` is now a single **authoring source**,
+  vendored into each skill under `references/core/` by `scripts/sync_core.py` (following the
+  `core→core` dependency closure). No skill points at `core/` directly, so every skill directory
+  ships complete on any platform. CI gained `sync_core.py --check` (keeps each copy identical to its
+  source), and `check_consistency.py` now errors on a bare `` `core/x.md` `` pointer under `skills/`.
+
 ### Notes
 - Pre-implementation: `evals/` hold prompts + assertions but no runtime harness yet; the greenfield
   step-0 gating experiment is not yet run. See each skill's `TODO.md`.
 - Generic skills are **composed** from `superpowers` (MIT), not authored here.
+- The vendored `references/core/` copies are generated — edit `core/*.md`, then run `sync_core.py`.

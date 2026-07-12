@@ -78,7 +78,7 @@ entities themselves are deterministic nodes (EXTRACTED). So:
 
 ### 2. Normalize each representation to a common shape descriptor
 Reduce every side to the shared descriptor `{ name, type, nullable, enum?, constraints? }` and
-cross type systems via the equivalence table — both **authoritative in `core/shape-engine.md`**
+cross type systems via the equivalence table — both **authoritative in `references/core/shape-engine.md`**
 (shared with `greenfield-forge`, which runs the same engine in reverse to *generate* aligned
 layers instead of diffing them). When equivalence is uncertain, mark `confidence: ambiguous`
 rather than asserting a mismatch; when a field has no counterpart, that absence is itself the
@@ -127,7 +127,7 @@ Phase 2 interview, and — once the user elects truths — the primary driver of
 roadmap (contracts align before logic is touched, which falls out of `depends_on`).
 
 Once a truth is elected and the boundary is aligned in Phase 4, a generated **contract test**
-(`core/contract-testing.md`) pins the reconciled boundary so it cannot silently regress — the
+(`references/core/contract-testing.md`) pins the reconciled boundary so it cannot silently regress — the
 runtime complement to re-diffing shapes in Phase 5.
 
 ## TODO (implementation)

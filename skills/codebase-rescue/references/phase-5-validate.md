@@ -8,7 +8,7 @@ never a change or a guess.
 
 - **contract_mismatch / internal_contradiction** — re-extract the shapes at every anchor,
   re-diff. Must now agree with the elected canonical `to_be`. Any residual disagreement → not
-  resolved. Plus the generated **contract test** (`core/contract-testing.md`) passes at the
+  resolved. Plus the generated **contract test** (`references/core/contract-testing.md`) passes at the
   boundary — the runtime complement to the static re-diff.
 - **incompleteness (implemented)** — the previously-missing behavior now exists, is
   **reachable** (graph edge from an entry point), and its **Track-A test kills the relevant
@@ -26,7 +26,7 @@ never a change or a guess.
   items, the Track-A test is the oracle — the same test that drove the fix is the evidence.
 - **Static signal is evidence too.** The type-checker passes on the touched files and any
   architecture-fitness constraint stays green — deterministic, high-confidence, and cheaper than
-  re-running judgment checks (`core/static-analysis.md`).
+  re-running judgment checks (`references/core/static-analysis.md`).
 - **Only on evidence** set `pin.state = resolved` and record the validation evidence in the pin
   (auditable). Otherwise return the item to Phase 4 with the failing evidence attached — a
   local retry of that item, NOT a global restart.

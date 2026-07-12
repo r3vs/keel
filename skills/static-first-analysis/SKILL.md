@@ -6,7 +6,7 @@ license: MIT
 
 # Static-First Analysis
 
-The static-analysis doctrine (`core/static-analysis.md`) as an invokable skill. Static signal is
+The static-analysis doctrine (`references/core/static-analysis.md`) as an invokable skill. Static signal is
 cheap, deterministic, and high-confidence — reach for it before model judgment, and run it in-loop.
 
 ## The high-value signals
