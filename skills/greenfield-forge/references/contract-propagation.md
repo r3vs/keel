@@ -73,7 +73,7 @@ time. This is what makes forging *durable* rather than a one-time scaffold.
 > four layers on a real stack. Record here whether generation is **STRONG** (Plan A — generate all
 > four layers) or **WEAK** (Plan B — generate the shared-types/DTO layer only, hand-write the rest
 > against it, and lean on the installed drift-check to keep them aligned). Mirror how rescue
-> recorded its VibraFlow verdict in `codebase-rescue/references/contract-reconciliation.md`. One data point, not a
+> recorded its VibraFlow verdict in `skills/codebase-rescue/references/contract-reconciliation.md`. One data point, not a
 > law — re-run per stack family before trusting generation broadly.
 
 ## What NOT to do

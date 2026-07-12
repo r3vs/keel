@@ -15,19 +15,21 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKILL_DIRS = {"codebase-rescue", "greenfield-forge"}
 PTR = re.compile(r"`([\w\-./]+\.md)`")
 
 
 def skill_root(f: Path) -> Path:
     parts = f.relative_to(ROOT).parts
-    return ROOT / parts[0] if parts and parts[0] in SKILL_DIRS else ROOT
+    if len(parts) >= 2 and parts[0] == "skills":
+        return ROOT / "skills" / parts[1]
+    return ROOT
 
 
 targets = []
-for d in ("codebase-rescue", "greenfield-forge", "core"):
-    if (ROOT / d).is_dir():
-        targets += sorted((ROOT / d).rglob("*.md"))
+if (ROOT / "skills").is_dir():
+    targets += sorted((ROOT / "skills").rglob("*.md"))
+if (ROOT / "core").is_dir():
+    targets += sorted((ROOT / "core").glob("*.md"))
 
 bad = []
 for f in targets:

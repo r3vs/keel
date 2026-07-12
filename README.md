@@ -6,7 +6,7 @@ Two sibling Claude Code skills that keep a codebase aligned across its whole lif
 - **`codebase-rescue`** — rescue a large, misaligned, often AI-generated ("vibecoded") codebase,
   reconciling backend, frontend, and database into an aligned, state-of-the-art state. Works on
   unfinished codebases and treats "not built yet" as a work item, not a defect.
-- **`greenfield-forge`** (`greenfield-forge/`) — build a NEW project aligned from the first commit,
+- **`greenfield-forge`** (`skills/greenfield-forge/`) — build a NEW project aligned from the first commit,
   so it never needs rescuing. Elects the design in a compressed decision interview *before* any
   code exists, defines the cross-layer contract once and generates aligned layers from it, then
   builds thin vertical slices test-first.
@@ -28,8 +28,8 @@ operate & evolve, the last two feeding production back into the ledger (`flip_cr
 to close the loop.
 
 ## Layout
-- `codebase-rescue/` — the curative skill (`SKILL.md` + `references/` + `modules.json` + `evals/`).
-- `greenfield-forge/` — the preventive skill (same layout, its own dir).
+- `skills/codebase-rescue/` — the curative skill (`SKILL.md` + `references/` + `modules.json` + `evals/`).
+- `skills/greenfield-forge/` — the preventive skill (same layout).
 - `core/` — the shared spine: `decisions-ledger-spec.md` (schema, v0.5, Italian), `ledger.md`
   (English pointer), `interview-funnel.md`, `brainstorm.md`, `shape-engine.md`,
   `contract-testing.md`, `feedback-loop.md`, `static-analysis.md`, `knowledge-sources.md`.

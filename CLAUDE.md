@@ -7,12 +7,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repository holds **two sibling Claude Code skills**, not runnable applications. The
 deliverable is prose that a future Claude instance reads and executes:
 
-- **`codebase-rescue`** (in `codebase-rescue/`) — the **curative** skill: rescue an existing,
+- **`codebase-rescue`** (in `skills/codebase-rescue/`) — the **curative** skill: rescue an existing,
   misaligned, often AI-generated codebase. `SKILL.md` + `references/*.md` + `modules.json`.
-- **`greenfield-forge`** (in `greenfield-forge/`) — the **preventive** twin: build a NEW project
+- **`greenfield-forge`** (in `skills/greenfield-forge/`) — the **preventive** twin: build a NEW project
   aligned from the first commit, so it never needs rescuing. Same file layout under its own dir.
 - **`core/`** — the **shared spine** both skills read/write: the decisions-ledger spec, the
   interview funnel, the brainstorm agent, and the field-shape engine. Neither skill duplicates it.
+- **Agent-agnostic packaging** — `AGENTS.md` (cross-agent entry), `.claude-plugin/` (Claude Code
+  plugin + marketplace), `opencode.json` + `.opencode/` (opencode via the `opencode-skills`
+  plugin), `agents/` (roster), `hooks/`, `commands/`. Skills follow the Anthropic Agent Skills
+  spec so they are portable. See `docs/packaging.md`.
 
 Each skill is **design-complete but pre-implementation**; its `TODO.md` is the build checklist
 (each starts with a step-0 gating experiment that decides the shape of its core engine). There is
@@ -84,6 +88,21 @@ are all unified under this one principle — which is why there is deliberately 
   per phase (Context7 / DeepWiki / registry / web), with grounding, confidence, and untrusted-input
   discipline.
 
+## Packaging (agent-agnostic)
+
+Authored once to the Anthropic Agent Skills spec (`skills/<name>/SKILL.md`; `name` matches the
+dir, `description` ≥ 20 chars), then wrapped by thin per-platform adapters — no skill content
+duplicated:
+- **Claude Code**: `.claude-plugin/{plugin.json,marketplace.json}`, `agents/*.md`,
+  `hooks/hooks.json`, `commands/*.md`, auto-discovered from the plugin root (`source: "./"`).
+- **opencode**: `opencode.json` (enables `opencode-skills`, defines the `agent` roster, loads
+  `AGENTS.md`), `.opencode/command/*.md`, `scripts/install-opencode.sh` (links `.opencode/skills`).
+- **Any AGENTS.md-aware agent** (Codex, Cursor, …): root `AGENTS.md`.
+
+`core/agents.md` is the roster source of truth; `agents/*.md` (Claude) and `opencode.json`'s
+`agent` block must mirror it — `check_consistency.py` enforces roster parity and validates the
+packaging manifests are valid JSON. Full details: `docs/packaging.md`.
+
 ## Editing conventions & invariants
 
 - **The three-way sync is enforced by the drift-linter — keep it green.**
@@ -93,8 +112,8 @@ are all unified under this one principle — which is why there is deliberately 
   the repo root); no reference or core file is orphaned (warning); no skill content file still
   contains `STUB — scaffold only`. When you add or rename a module, update its `modules.json`
   **and** its playbook **and** any `SKILL.md` pointer together.
-- **Path convention:** `references/x.md` is skill-root-relative (rescue's root is `codebase-rescue/`,
-  greenfield's is `greenfield-forge/`); `core/x.md` is always repo-root-relative and shared. A core
+- **Path convention:** `references/x.md` is skill-root-relative (rescue's root is `skills/codebase-rescue/`,
+  greenfield's is `skills/greenfield-forge/`); `core/x.md` is always repo-root-relative and shared. A core
   file that points at one skill's playbook uses the full `<skill>/references/x.md` path.
 - **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
   `core/decisions-ledger-spec.md` (v0.5) is authoritative for the ledger schema (shared). Do not

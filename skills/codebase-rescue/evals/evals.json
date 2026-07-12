@@ -1,0 +1,44 @@
+{
+  "skill_name": "codebase-rescue",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Executing them needs a runtime harness (an agent runtime + an LLM-as-judge or structured ledger checks) and 2-3 real slop-repo fixtures — see TODO.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "This is a half-finished app I vibecoded — the React frontend, the FastAPI backend and the Postgres schema don't really agree with each other anymore and some things aren't finished. Help me pick it back up and get it into a proper state.",
+      "expected_output": "Runs rescue mode: builds the graph + as-is wiki, produces a pinned map, runs contract-reconciliation to surface where the three layers disagree, distinguishes unfinished-on-purpose from broken, and drives a compressed interview rather than dumping hundreds of questions.",
+      "assertions": [
+        "selects rescue mode",
+        "builds the as-is map/graph and pins problems before proposing any fix",
+        "runs contract-reconciliation and surfaces DB<->API<->frontend shape mismatches as contract_mismatch pins",
+        "marks intentional stubs as incompleteness work items, not defects",
+        "compresses the interview via clusters/policies (does not ask one question per finding)",
+        "does not edit code before the interview elects the to-be"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Just tell me where my backend and database contracts are out of sync in this repo.",
+      "expected_output": "Runs align mode: Phase 1 + contract-reconciliation only, interview limited to the resulting mismatches; no full remediation.",
+      "assertions": [
+        "selects align mode",
+        "runs Phase 1 + contract-reconciliation only",
+        "limits the interview to the resulting mismatches",
+        "does not run full remediation or unrelated finders"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Audit this finished service and give me a report of the real problems, no interview.",
+      "expected_output": "Runs audit mode: findings only through the fp-check gate, clustered, no to-be interview, no remediation.",
+      "assertions": [
+        "selects audit mode",
+        "produces findings only, passed through the fp-check gate and clustered",
+        "runs no to-be interview and no remediation",
+        "deterministic static findings (e.g. type errors) skip fp-check"
+      ],
+      "files": []
+    }
+  ]
+}

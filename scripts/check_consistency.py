@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # skill name -> its root, relative to the repo root
 SKILLS = {
-    "codebase-rescue": "codebase-rescue",
-    "greenfield-forge": "greenfield-forge",
+    "codebase-rescue": "skills/codebase-rescue",
+    "greenfield-forge": "skills/greenfield-forge",
 }
 
 errors, warnings = [], []
@@ -111,6 +111,28 @@ for f in content_md:
     if "STUB — scaffold only" in read(f):
         errors.append(f"unfilled stub remains: {f.relative_to(ROOT)}")
 
+# 5. Packaging manifests are valid JSON, and the agent roster matches across adapters
+#    (Claude agents/*.md  ↔  opencode.json "agent" block).
+opencode_agents = None
+for m in (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "opencode.json"):
+    p = ROOT / m
+    if not p.exists():
+        warnings.append(f"packaging manifest missing: {m}")
+        continue
+    try:
+        data = json.loads(read(p))
+    except json.JSONDecodeError as e:
+        errors.append(f"{m} is invalid JSON: {e}")
+        continue
+    if m == "opencode.json":
+        opencode_agents = set((data.get("agent") or {}).keys())
+
+roster = sorted(f.stem for f in (ROOT / "agents").glob("*.md")) if (ROOT / "agents").is_dir() else []
+if opencode_agents is not None and roster and set(roster) != opencode_agents:
+    errors.append(
+        f"agent roster mismatch: Claude agents/={roster} vs opencode.json agent={sorted(opencode_agents)}"
+    )
+
 for w in warnings:
     print(f"WARN  {w}")
 for e in errors:
@@ -118,8 +140,8 @@ for e in errors:
 
 ref_total = sum(len(list((s / 'references').glob('*.md'))) for _, s in reference_dirs)
 print(
-    f"\n{len(SKILLS)} skills, {module_count} modules, "
-    f"{len(core_files)} core files, {ref_total} skill references — "
+    f"\n{len(SKILLS)} skills, {module_count} modules, {len(core_files)} core files, "
+    f"{ref_total} references, {len(roster)} agents — "
     f"{len(errors)} errors, {len(warnings)} warnings"
 )
 sys.exit(1 if errors else 0)

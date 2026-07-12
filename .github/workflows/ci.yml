@@ -23,5 +23,5 @@ jobs:
         run: python scripts/check_consistency.py
       - name: Pointer verifier (intra-playbook cross-references)
         run: python scripts/verify_pointers.py
-      - name: Bootstrap shell syntax
-        run: bash -n scripts/bootstrap.sh
+      - name: Shell syntax (bootstrap + installer + hooks)
+        run: bash -n scripts/bootstrap.sh && bash -n scripts/install-opencode.sh && bash -n hooks/session-start.sh

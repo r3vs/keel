@@ -3,7 +3,7 @@
 Shared doctrine for using static signal **in the best way**, not just which tools exist. Static
 signal is cheap, deterministic, and high-confidence — so the rule is: **use the strongest static
 signal available before model judgment, and use it in-loop, not only as a batch scan.** Both
-skills read this; the concrete tool list lives in `codebase-rescue/references/toolchain.md`.
+skills read this; the concrete tool list lives in `skills/codebase-rescue/references/toolchain.md`.
 
 ## The underused SOTA signals (make these first-class)
 

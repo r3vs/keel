@@ -5,6 +5,8 @@ graph.json
 .audit/
 docs/audits/
 node_modules/
+# opencode skills link/copy — created by scripts/install-opencode.sh from the canonical skills/
+.opencode/skills
 __pycache__/
 *.pyc
 .venv/

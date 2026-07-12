@@ -1,0 +1,43 @@
+# Agent Roster (shared core) — neutral source of truth
+
+The agent roles both skills run on, defined **once, platform-neutrally**. The per-platform
+adapters materialize this roster into their native formats — Claude Code `agents/<role>.md`,
+opencode `.opencode/agent/<role>.md` (or the `agent` block in `opencode.json`). Keep those in sync
+with this file; this is the source.
+
+## The discipline: serialized writing, parallel reading
+
+Only **one** role writes code — the `executor`, one closed scope at a time. Every other role is
+**read-only** and may fan out in parallel. This is the anti-divergence property applied at the
+agent level, exactly as the single `ledger.json` applies it at the state level: many readers can
+diverge harmlessly (they only propose/verify), one writer cannot. Each role runs in a **fresh
+context** and communicates only through the ledger + artifacts on disk — never a shared session.
+
+And the hard rule both skills already enforce: **only the human's committed answer in the
+interview elects a decision.** No agent commits. Agents find, propose, build, and verify; the
+person decides.
+
+## The roles
+
+| Role | Writes? | Job | Phases |
+|------|---------|-----|--------|
+| **researcher** | no (read-only) | Comprehension & finding; catalog/threat research; grounding via `core/knowledge-sources.md`. Fans out. | rescue P1 · greenfield P1 (frame, threat-model) |
+| **brainstorm** | no (proposals only) | Proposes 2–3 options with tradeoffs to `pin.brainstorm.proposals[]`, grounded and cited; never decides. | on-demand · greenfield P2 hard forks |
+| **executor** | **yes (the one writer)** | Implements ONE closed scope (a `RemediationItem`/`BuildItem`) via two-track TDD in fresh context; opens a PR; **never merges**. Serialized. | rescue P4 · greenfield P4 build, P6 release |
+| **reviewer** | no (read-only) | Adversarial pre-merge gate. Two stages: spec-compliance vs `to_be` → code quality. Verdict `MERGE`/`ADJUST`/`REJECT`; ADJUST/REJECT restart the item. Also the wave-checkpoint reviewer. | rescue P4 · greenfield P4 |
+| **measurer** | no (read-only) | Data/evidence verdict: Phase-5 validation, and evaluating `flip_signal`s in the feedback loop. Never guesses, never writes. | rescue P5 · greenfield P5, P7 evolve |
+
+## Permissions (for the adapters)
+
+- `researcher`, `brainstorm`, `reviewer`, `measurer` → **edit: deny** (read-only; may read, search, run read-only tools, fetch grounded sources).
+- `executor` → **edit: allow** (the single writer; still gated by the reviewer and the Phase-5 evidence gate).
+
+## Mapping notes
+
+- The two-stage review the phase playbooks describe **is** the `reviewer`; the "data decides"
+  Phase-5 gate **is** the `measurer`; the brainstorm agent **is** `brainstorm`; the
+  comprehension/finding pass **is** the `researcher`; the remediation/build loop **is** the
+  `executor`. This roster names what the phases already imply, and adds the explicit
+  single-writer/parallel-reader orchestration.
+- Grounding for `researcher` and `brainstorm` follows `core/knowledge-sources.md` (Context7 /
+  DeepWiki / registry / web), cited and confidence-tagged, treated as untrusted input.
