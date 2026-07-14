@@ -29,3 +29,5 @@ jobs:
         run: bash -n scripts/bootstrap.sh && bash -n scripts/install-opencode.sh && bash -n hooks/session-start.sh
       - name: Ledger runtime tests (spec v0.6 rules as executable checks)
         run: python -m unittest discover -s tests
+      - name: Eval-spec structural gate (prompts + assertions well-formed)
+        run: python scripts/run_evals.py --validate
