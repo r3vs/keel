@@ -40,3 +40,17 @@ Assign one, with evidence, using these checks (in order — cheapest first):
 No finding reaches the map or interview without a verdict here. The gate runs at the end of
 Phase 1, after all analysis modules, on the single normalized findings stream — so reachability
 and corroboration can use the full graph and all other findings at once.
+
+## Runtime
+
+`runtime/findings.py` (repo root; stdlib-only, tested in CI) implements this gate:
+`normalize_sarif` / `normalize_osv` reduce SARIF (semgrep, gitleaks, trivy — anything
+SARIF-emitting) and OSV-scanner JSON to one finding stream; `FpGate.run()` applies the five
+checks in order and returns `{confirmed, downgraded, dropped}`; `to_pins()` maps survivors to
+`defect` pins (DOWNGRADE lowers `confidence`→`inferred` so the threshold routes it to
+`proposed_default`), collapsing N instances of one root cause into one pin with N anchors;
+`audit_log()` is the showable DROP trail. The two oracles are **injected, defaulting to keep**:
+`reachable(file)` (from the graph; unknown→keep, so a missing graph never silently drops a real
+bug) and `intentional_stub(file, line)` (from the completeness module). Deterministic diagnostics
+(type errors, compiler output) are tagged and **skip the gate** — proven, not suspected
+(`core/static-analysis.md`). CLI: `python runtime/findings.py report.sarif osv.json`.

@@ -62,8 +62,11 @@ in `runtime/shapes.py`).
       inconsistent / unsatisfiable / unstated_assumption / ignored_fanout), emit a `ChallengeEvent`,
       reopen on a sustained challenge. Reopens, never decides.
       → `references/phase-2-interview.md`, `references/phase-4-remediation.md`, `references/core/agents.md`
-- [ ] **SARIF adapters + fp-check** — run semgrep/gitleaks/osv/trivy/lizard/jscpd, normalize to one
-      stream, implement the CONFIRM/DOWNGRADE/DROP gate with graph reachability.
+- [x] **SARIF adapters + fp-check** — `runtime/findings.py`: normalize SARIF
+      (semgrep/gitleaks/trivy) + OSV JSON to one stream, the CONFIRM/DOWNGRADE/DROP gate with the
+      five ordered checks (injected reachability + intentional-stub oracles, defaulting to keep;
+      deterministic diagnostics skip the gate), root-cause clustering to one pin with N anchors,
+      and a showable DROP audit trail. `tests/test_findings.py`.
       → `references/module-fp-check.md`, `references/toolchain.md`
 - [x] **ast-grep rule pack** in `assets/ast-grep/` — 8 rules (py+ts: fake-auth, swallowed
       exceptions, not-implemented, trivial bodies) + `sgconfig.yml` + `ripgrep-markers.txt`,
