@@ -1,0 +1,24 @@
+scalar DateTime
+
+enum Role {
+  admin
+  member
+}
+
+type User {
+  id: ID!
+  email: String!
+  display_name: String!
+  role: Role!
+  created_at: DateTime!
+  projects: [Project!]!
+}
+
+type Project {
+  id: ID!
+  owner_id: ID!
+  name: String!
+  description: String
+  is_archived: Boolean!
+  created_at: DateTime!
+}

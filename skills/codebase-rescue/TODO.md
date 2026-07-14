@@ -34,8 +34,13 @@ in `runtime/shapes.py`).
       TS interfaces) → normalize to `{name,type,nullable,enum?,constraints?}`; tested against
       the step-0 fixtures (clean on aligned layers, catches injected drift).
       → `runtime/shapes.py`, `tests/test_shapes.py`
-- [ ] Generalize extractors via tree-sitter queries so new stacks (Django, Drizzle, GraphQL…)
-      are additive. → `references/contract-reconciliation.md`
+- [x] Additional stacks are additive — `runtime/shapes.py` now also extracts **Drizzle**
+      (TS ORM, balanced-brace table bodies), **Prisma** (schema, `String @default(uuid())`→uuid),
+      **Django** models, and **GraphQL SDL**; each normalizes to the one descriptor, aligned
+      fixtures diff clean against the shared contract, injected drift is caught
+      (`tests/test_stacks.py`). Full **tree-sitter** query generalization (vs the current
+      regex/line parsers) stays the next step for arbitrary stacks.
+      → `references/contract-reconciliation.md`
 - [x] **Type-equivalence table** across DB/ORM/API/TS type systems; `ambiguous` where uncertain
       (unresolved types downgrade to notes, never asserted mismatches; client uuid/datetime →
       string projections honored). → `runtime/shapes.py`

@@ -1,0 +1,23 @@
+enum Role {
+  admin
+  member
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  display_name String
+  role         Role     @default(member)
+  created_at   DateTime @default(now())
+  projects     Project[]
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  owner_id    String   @db.Uuid
+  name        String
+  description String?
+  is_archived Boolean  @default(false)
+  created_at  DateTime @default(now())
+  owner       User     @relation(fields: [owner_id], references: [id])
+}

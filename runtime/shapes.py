@@ -340,6 +340,202 @@ def extract_ddl(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
 
 
 # ---------------------------------------------------------------------------
+# additional stacks (additive — new stacks add an extractor, they don't rewrite).
+# These are line/regex parsers for the common shapes; full generalization is the
+# tree-sitter query pass on the TODO. Each still normalizes to the one descriptor.
+# ---------------------------------------------------------------------------
+
+_DRIZZLE_TYPES = {"uuid": "uuid", "text": "string", "varchar": "string", "boolean": "bool",
+                  "integer": "int", "bigint": "int", "serial": "int", "real": "float",
+                  "doublePrecision": "float", "timestamp": "datetime", "jsonb": "json",
+                  "json": "json", "date": "datetime"}
+
+
+def _balanced_braces(text: str, open_idx: int) -> str:
+    """Return the substring inside the braces starting at text[open_idx] == '{', matching nesting.
+    Regex cannot count braces; a nested `{ length: 255 }` would otherwise truncate the body."""
+    depth, i = 0, open_idx
+    while i < len(text):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx + 1:i]
+        i += 1
+    return text[open_idx + 1:]
+
+
+def extract_drizzle(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
+    """Drizzle ORM (TS): `export const users = pgTable("users", { ... })` + `pgEnum(...)`."""
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    enums: dict[str, list] = {}
+    for m in re.finditer(r'pgEnum\(\s*"(\w+)"\s*,\s*\[([^\]]*)\]', text):
+        enums[m.group(1)] = [v.strip().strip('"\'') for v in m.group(2).split(",") if v.strip()]
+    # enum-typed columns use the exported const name of the pgEnum; map const->enum-name
+    enum_consts = {m.group(1): m.group(2) for m in
+                   re.finditer(r'(?:export\s+)?const\s+(\w+)\s*=\s*pgEnum\(\s*"(\w+)"', text)}
+    out: dict[str, dict[str, dict]] = {}
+    for opening in re.finditer(r'pgTable\(\s*"(\w+)"\s*,\s*\{', text):
+        table = opening.group(1)
+        body = _balanced_braces(text, opening.end() - 1)  # nested { length: 255 } etc.
+        fields: dict[str, dict] = {}
+        for col in re.finditer(r'(\w+)\s*:\s*(\w+)\(\s*"(\w+)"([^,)]*(?:,\s*\{[^}]*\})?)?\)(.*)',
+                               body):
+            js_attr, ctor, col_name, ctor_rest, chain = col.groups()
+            chain = (ctor_rest or "") + (chain or "")
+            cons: dict = {}
+            if ctor in enum_consts:
+                t, evals = "enum", enums.get(enum_consts[ctor])
+            elif ctor in _DRIZZLE_TYPES:
+                t, evals = _DRIZZLE_TYPES[ctor], None
+                ml = re.search(r"length:\s*(\d+)", ctor_rest or "")
+                if ml:
+                    cons["max_length"] = int(ml.group(1))
+            else:
+                t, evals = "unknown", None
+            nullable = ".notNull()" not in chain and ".primaryKey()" not in chain
+            if ".primaryKey()" in chain:
+                cons["primary_key"] = True
+            if ".unique()" in chain:
+                cons["unique"] = True
+            fk = re.search(r"\.references\(\(\)\s*=>\s*(\w+)\.(\w+)", chain)
+            if fk:
+                cons["foreign_key"] = f"{fk.group(1)}.{fk.group(2)}"
+            conf = "extracted" if t != "unknown" else "ambiguous"
+            fields[col_name] = descriptor(col_name, t, nullable, evals, cons or None, conf)
+        out[table] = fields
+    return out
+
+
+_PRISMA_TYPES = {"String": "string", "Int": "int", "BigInt": "int", "Float": "float",
+                 "Boolean": "bool", "DateTime": "datetime", "Json": "json", "Bytes": "string"}
+
+
+def extract_prisma(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
+    """Prisma schema: `model User { id String @id ... }` + `enum Role { admin member }`.
+    Keyed by model name (the entity), not table name."""
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    enums: dict[str, list] = {}
+    for m in re.finditer(r"enum\s+(\w+)\s*\{([^}]*)\}", text):
+        enums[m.group(1)] = [v.strip() for v in m.group(2).split() if v.strip()]
+    out: dict[str, dict[str, dict]] = {}
+    for model in re.finditer(r"model\s+(\w+)\s*\{([^}]*)\}", text):
+        name, body = model.group(1), model.group(2)
+        fields: dict[str, dict] = {}
+        for line in body.splitlines():
+            line = line.strip()
+            m = re.match(r"^(\w+)\s+(\w+)(\?)?(\[\])?\s*(.*)$", line)
+            if not m or line.startswith("//") or line.startswith("@@"):
+                continue
+            fname, ftype, optional, is_list, attrs = m.groups()
+            if is_list or ftype in out or (ftype not in _PRISMA_TYPES and ftype not in enums
+                                           and "@relation" in attrs):
+                continue   # relation field, not a scalar column
+            cons: dict = {}
+            if ftype in enums:
+                t, evals = "enum", enums[ftype]
+            elif ftype in _PRISMA_TYPES:
+                t, evals = _PRISMA_TYPES[ftype], None
+            else:
+                continue
+            # Prisma has no uuid scalar: String @default(uuid()) / @db.Uuid IS a uuid
+            if t == "string" and ("uuid(" in attrs or "@db.Uuid" in attrs):
+                t = "uuid"
+            nullable = bool(optional)
+            if "@id" in attrs:
+                cons["primary_key"] = True
+                nullable = False
+            if "@unique" in attrs:
+                cons["unique"] = True
+            fields[fname] = descriptor(fname, t, nullable, evals, cons or None)
+        out[name] = fields
+    return out
+
+
+_DJANGO_FIELD = {"CharField": "string", "TextField": "string", "EmailField": "string",
+                 "SlugField": "string", "UUIDField": "uuid", "IntegerField": "int",
+                 "BigIntegerField": "int", "SmallIntegerField": "int", "FloatField": "float",
+                 "BooleanField": "bool", "DateTimeField": "datetime", "DateField": "datetime",
+                 "JSONField": "json", "ForeignKey": "uuid", "OneToOneField": "uuid"}
+
+
+def extract_django(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
+    """Django models: `class User(models.Model): role = models.CharField(...)`.
+    Keyed by model class name (the entity)."""
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    out: dict[str, dict[str, dict]] = {}
+    current: Optional[str] = None
+    for line in text.splitlines():
+        cls = re.match(r"class\s+(\w+)\s*\(.*models\.Model.*\)\s*:", line)
+        if cls:
+            current = cls.group(1)
+            out[current] = {}
+            continue
+        if current is None:
+            continue
+        m = re.match(r"\s+(\w+)\s*=\s*models\.(\w+)\((.*)\)\s*$", line)
+        if not m:
+            continue
+        fname, ftype, args = m.groups()
+        if ftype not in _DJANGO_FIELD:
+            continue
+        cons: dict = {}
+        t = _DJANGO_FIELD[ftype]
+        evals = None
+        ml = re.search(r"max_length\s*=\s*(\d+)", args)
+        if ml:
+            cons["max_length"] = int(ml.group(1))
+        if re.search(r"choices\s*=", args):
+            t = "enum"    # values not resolvable without the choices tuple — shape only
+        nullable = "null=True" in args
+        if "primary_key=True" in args:
+            cons["primary_key"] = True
+        if "unique=True" in args:
+            cons["unique"] = True
+        conf = "extracted" if not (t == "enum" and evals is None) else "ambiguous"
+        out[current][fname] = descriptor(fname, t, nullable, evals, cons or None, conf)
+    return out
+
+
+_GQL_TYPES = {"ID": "uuid", "String": "string", "Int": "int", "Float": "float",
+              "Boolean": "bool"}
+
+
+def extract_graphql(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
+    """GraphQL SDL: `type User { id: ID! role: Role! }` + `enum Role { admin member }`.
+    An API-layer contract; keyed by type name (the entity)."""
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    enums: dict[str, list] = {}
+    for m in re.finditer(r"enum\s+(\w+)\s*\{([^}]*)\}", text):
+        enums[m.group(1)] = [v.strip() for v in m.group(2).split() if v.strip()]
+    scalar_datetime = {"DateTime", "Date", "Timestamp"}
+    out: dict[str, dict[str, dict]] = {}
+    for typ in re.finditer(r"type\s+(\w+)\s*\{([^}]*)\}", text):
+        name, body = typ.group(1), typ.group(2)
+        fields: dict[str, dict] = {}
+        for line in body.splitlines():
+            m = re.match(r"\s*(\w+)\s*:\s*(\[?\w+\]?)(!)?", line)
+            if not m:
+                continue
+            fname, ftype, bang = m.groups()
+            if ftype.startswith("["):
+                continue    # list field / relation — not a scalar column
+            nullable = not bool(bang)
+            if ftype in enums:
+                t, evals = "enum", enums[ftype]
+            elif ftype in scalar_datetime:
+                t, evals = "datetime", None
+            elif ftype in _GQL_TYPES:
+                t, evals = _GQL_TYPES[ftype], None
+            else:
+                continue    # object type — a relation, not a scalar field
+            fields[fname] = descriptor(fname, t, nullable, evals)
+        out[name] = fields
+    return out
+
+
+# ---------------------------------------------------------------------------
 # the diff (rescue: find drift · greenfield: fail the build on drift)
 # ---------------------------------------------------------------------------
 
@@ -397,7 +593,9 @@ def diff_shapes(reference: dict[str, dict], candidate: dict[str, dict],
 
 def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                 pydantic: Optional[str] = None, typescript: Optional[str] = None,
-                ddl: Optional[str] = None) -> list[dict]:
+                ddl: Optional[str] = None, drizzle: Optional[str] = None,
+                prisma: Optional[str] = None, django: Optional[str] = None,
+                graphql: Optional[str] = None) -> list[dict]:
     """Diff every provided layer against the carrier. This IS greenfield's CI drift-check
     and rescue's contract-reconciliation core, pointed at a shared-types-style carrier."""
     contract = extract_contract(contract_path)
@@ -413,6 +611,22 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                                  "layers": ["contract", "db"], "confidence": "extracted"})
                 continue
             findings += diff_shapes(contract[entity], shapes[table], "contract", "db", entity)
+    if drizzle:            # table-keyed, like DDL (an ORM layer)
+        shapes = extract_drizzle(drizzle)
+        for table, entity in tables.items():
+            if table in shapes:
+                findings += diff_shapes(contract[entity], shapes[table],
+                                        "contract", "orm:drizzle", entity)
+    for label, path, fn in (("orm:prisma", prisma, extract_prisma),
+                            ("orm:django", django, extract_django),
+                            ("api:graphql", graphql, extract_graphql)):
+        if not path:
+            continue
+        shapes = fn(path)      # entity-keyed (model/type name == entity name)
+        for entity in contract:
+            if entity in shapes:
+                findings += diff_shapes(contract[entity], shapes[entity],
+                                        "contract", label, entity)
     if sqlalchemy:
         shapes = extract_sqlalchemy(sqlalchemy)
         for table, entity in tables.items():
@@ -449,11 +663,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--pydantic")
     parser.add_argument("--typescript")
     parser.add_argument("--ddl")
+    parser.add_argument("--drizzle")
+    parser.add_argument("--prisma")
+    parser.add_argument("--django")
+    parser.add_argument("--graphql")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
 
     findings = drift_check(args.contract, args.sqlalchemy, args.pydantic,
-                           args.typescript, args.ddl)
+                           args.typescript, args.ddl, args.drizzle, args.prisma,
+                           args.django, args.graphql)
     hard = [f for f in findings if f["confidence"] != "ambiguous"]
     if args.json:
         print(json.dumps(findings, indent=2, ensure_ascii=False))
