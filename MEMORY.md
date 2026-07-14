@@ -5,9 +5,10 @@ always-on context via `AGENTS.md`. Keep it small; promote real decisions to the 
 
 ## Facts
 - This repo is a **package of agent skills** — the deliverable is prose a future agent executes,
-  plus a growing runtime spine (`runtime/ledger.py` + tests, `scripts/run_evals.py`, the ast-grep
-  rule pack). Both step-0 gating experiments are done (rescue: WEAK→extractors; greenfield:
-  STRONG→full generation). See each skill's `TODO.md` for what remains.
+  plus a growing runtime spine (`runtime/ledger.py` + `runtime/shapes.py` + tests,
+  `scripts/run_evals.py`, the ast-grep rule pack). Greenfield's step-0 verdict: STRONG (full
+  generation). Rescue's VibraFlow step-0 is **challenged** — the 2026-07-09 run used a stale
+  `graphify-out/`; re-run on a fresh graph before citing its WEAK verdict.
 - **`core/decisions-ledger-spec.md` is Italian by design**; the rest is English (`core/ledger.md`
   is the English pointer). Do not "fix" this.
 - Skills live under `skills/<name>/` (Agent Skills spec; `name` matches the directory) and are

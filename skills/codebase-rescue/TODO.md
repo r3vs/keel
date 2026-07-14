@@ -1,8 +1,9 @@
 # codebase-rescue — Build checklist
 
 Status: **design complete; runtime spine started** (SKILL.md + 16 module playbooks + ledger
-spec v0.6 + drift-linter green). The gating experiment (step 0) has been run once on a real
-monorepo — verdict recorded below and in `references/contract-reconciliation.md`. Done since:
+spec v0.6 + drift-linter green). The gating experiment (step 0) was run once on a real monorepo
+but its graph was stale — the verdict is **challenged** and the re-run is pending (see below and
+`references/contract-reconciliation.md`). Done since:
 the shared ledger runtime (`runtime/ledger.py`, tested in CI), the ast-grep rule pack
 (`assets/ast-grep/`, fixture-validated), and the eval harness (`scripts/run_evals.py`). What
 remains is mostly the per-stack extractors, the SARIF/fp-check gate, and the map artifact.
@@ -12,18 +13,21 @@ referenced playbook.
 
 ---
 
-## 0. Gating experiment — DONE (2026-07-09, VibraFlow run) → verdict: WEAK, standalone is Plan A
-- [x] Pick a real slop codebase (ideally your own, where backend/frontend/DB diverged).
-      → VibraFlow (~177K LOC monorepo: TS + Python, Postgres + Drizzle + React).
-- [x] Run `scripts/bootstrap.sh`; run Graphify on it.
-- [x] Answer the one question that decides everything: **are Graphify's cross-layer
-      correspondences usable for computing contract diffs, or too INFERRED/noisy?**
-      → **WEAK** — 222 INFERRED of 18 742 edges (only 2 semantic), and **0 DB-schema nodes**.
-        Extractors work standalone; the graph is used only for anchoring + reachability.
-        **The fallback is now Plan A.**
-- [x] Record the verdict in `references/contract-reconciliation.md`.
-      → done — see the "Phase-0 gating verdict" section there (standalone-first posture,
-        `file:line` anchoring, and the shared-types-package-as-contract finding).
+## 0. Gating experiment — CHALLENGED (2026-07-14): the 2026-07-09 run used a STALE graph → re-run
+The VibraFlow run was made right after this repo's creation, against a `graphify-out/` **not
+rebuilt for VibraFlow's current code** — an unstated assumption (graph currency) now upheld as a
+challenge. Its WEAK verdict is unreliable evidence about Graphify; the standalone-extraction
+posture survives only as a safe default (it never depended on the graph, and is now implemented
+in `runtime/shapes.py`).
+- [x] Pick a real slop codebase. → VibraFlow (~177K LOC monorepo: TS + Python, Postgres +
+      Drizzle + React) — still the right fixture.
+- [ ] **Re-run with a fresh graph**: rebuild Graphify output on VibraFlow's *current* code
+      (delete/regenerate `graphify-out/`), then re-answer the one question: **are the graph's
+      cross-layer correspondences usable for computing contract diffs, or too INFERRED/noisy?**
+- [ ] Re-record the verdict in `references/contract-reconciliation.md` (replace the challenged
+      section); flip the correspondence-resolver posture in §1 if the fresh graph earns it.
+- Original (stale-graph) record, kept for audit: 222 INFERRED of 18 742 edges, 2 semantic,
+  0 DB-schema nodes → verdict WEAK, standalone promoted to Plan A.
 
 ## 1. Core engine — the contract-reconciliation code (v0 landed in `runtime/shapes.py`)
 - [x] **Per-stack extractors** for the live stacks (Postgres DDL, SQLAlchemy 2, Pydantic v2,

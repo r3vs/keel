@@ -4,17 +4,30 @@ This is the module the skill lives or dies on. It turns a vague "the layers aren
 into precise, verifiable pins. It is deterministic-ish: it compares representations of the
 same data entity across boundaries and reports where they disagree. Everything here anchors
 to knowledge-graph node IDs where the graph provides them, else to source locations
-(`file:line`) — so pins can render as cross-layer diffs on the map. (Phase-0 verdict below:
-on real stacks the graph often lacks DB-schema nodes, so `file:line` anchoring is the norm and
-`node_id` may be null.)
+(`file:line`) — so pins can render as cross-layer diffs on the map. (`file:line` anchoring with
+`node_id: null` is always legitimate — do not block on graph coverage; how much the graph can be
+trusted for correspondence is the challenged Phase-0 question below.)
 
-## Phase-0 gating verdict — RESOLVED (2026-07-09, VibraFlow run)
+## Phase-0 gating verdict — CHALLENGED (2026-07-14): re-run required on a fresh graph
 
-The gating experiment in `TODO.md` step 0 has been run once, on a real monorepo (VibraFlow:
-~177K LOC, TS + Python, Postgres + Drizzle + React). **Verdict: WEAK cross-layer correspondence
-from the graph — standalone shape extraction is Plan A, not the fallback.**
+> **Challenge note (class: `unstated_assumption`, upheld).** The 2026-07-09 run rested on an
+> assumption never stated in the verdict: that VibraFlow's `graphify-out/graph.json` was current.
+> It was not — the graph was built when this repo was first created and was **stale relative to
+> the code it was diffed against**. The two load-bearing evidence points below (222 INFERRED
+> edges, 0 DB-schema nodes) may therefore measure a stale artifact, not Graphify's actual
+> capability on that stack. The verdict is downgraded from RESOLVED to **UNRELIABLE**; the
+> question it answered — *are the graph's cross-layer correspondences usable?* — is open again.
+>
+> What survives the challenge (because it never depended on the graph): standalone shape
+> extraction works and is implemented (`runtime/shapes.py`), and the shared-types-package-as-
+> contract finding came from diffing source, not edges. So consequences 1–5 below **remain the
+> operating posture as a safe default** — but as a default, not an evidence-backed conclusion
+> about Graphify. Re-run step 0 with a freshly rebuilt graph before citing this verdict.
 
-Evidence from that run's graph (`graphify-out/graph.json`, 11 079 nodes / 18 742 edges):
+Original record (2026-07-09, VibraFlow: ~177K LOC, TS + Python, Postgres + Drizzle + React) —
+**verdict as recorded then: WEAK cross-layer correspondence from the graph; standalone shape
+extraction promoted to Plan A.** Evidence from that run's graph (`graphify-out/graph.json`,
+11 079 nodes / 18 742 edges — *now known to have been stale*):
 - Edge confidence: 18 518 EXTRACTED, **222 INFERRED, 2 AMBIGUOUS**. The Ollama semantic pass
   barely fired — only 1 `shares_data_with` and 1 `semantically_similar_to` edge in the whole
   graph.
@@ -37,8 +50,9 @@ Consequences, now baked into this module's posture:
    asserts `api.get<T>()` with no runtime validation, TS already ties the hooks to shared types
    — the real drift is raw `pg` / untyped route returns vs those types.
 
-One data point, not a law: re-run the experiment on a stack where Graphify *does* emit
-DB-schema nodes and richer semantic edges before generalizing this verdict.
+One challenged data point, not a law: **the re-run is now mandatory, not optional** — rebuild
+the graph fresh on the current code (and ideally also on a stack where Graphify emits DB-schema
+nodes) before treating the graph-usability question as answered in either direction.
 
 ## The boundaries
 
@@ -134,6 +148,7 @@ runtime complement to re-diffing shapes in Phase 5.
 - [ ] Per-stack extractors for the four boundaries (start with the user's live stacks, then
       generalize via tree-sitter queries so new stacks are additive, not rewrites).
 - [ ] Type-equivalence table across DB/ORM/API/TS type systems.
-- [ ] Correspondence resolver: **standalone shapes first** (Phase-0 verdict), with graph edges
-      as weak corroboration only and for anchoring/reachability. (Was "graph edges first" —
-      flipped by the VibraFlow run.)
+- [ ] Correspondence resolver: **standalone shapes first** (safe default; works graph-free),
+      with graph edges as corroboration/anchoring. The weight the graph deserves is an open
+      question again — the VibraFlow run that demoted it used a stale graph (see the challenged
+      verdict above); the step-0 re-run decides.

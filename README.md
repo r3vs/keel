@@ -96,10 +96,12 @@ agent-agnostically — and the runtime spine has started: the shared **ledger ru
 (`runtime/ledger.py`), the **field-shape engine + CI drift-check** (`runtime/shapes.py` —
 extractors for Postgres/SQLAlchemy/Pydantic/TS diffing every layer against the contract, exit 1
 on drift), the **eval harness** (`scripts/run_evals.py`), rescue's fixture-validated **ast-grep
-rule pack**, 50 tests in CI, and **both step-0 gating verdicts recorded** (rescue on a real
-177K-LOC monorepo: WEAK → standalone extractors; greenfield on FastAPI+SQLAlchemy+TS: STRONG →
-full four-layer generation). Still prose-driven: per-stack generators, tree-sitter extractor
-generalization, the SARIF/fp-check gate, the visual map. See each `TODO.md`.
+rule pack**, 50 tests in CI, and **both step-0 gating experiments recorded** (greenfield on
+FastAPI+SQLAlchemy+TS: verdict STRONG → full four-layer generation; rescue's VibraFlow run is
+**challenged** — it used a stale graph, so its WEAK verdict awaits a re-run on a fresh one, with
+standalone extraction holding as the graph-free safe default meanwhile). Still prose-driven:
+per-stack generators, tree-sitter extractor generalization, the SARIF/fp-check gate, the visual
+map. See each `TODO.md`.
 
 ## License
 MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm

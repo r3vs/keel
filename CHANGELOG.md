@@ -83,9 +83,12 @@ spine has started; versions track design + packaging + runtime together.
   source), and `check_consistency.py` now errors on a bare `` `core/x.md` `` pointer under `skills/`.
 
 ### Notes
-- Both step-0 gating experiments are now run and recorded (rescue: WEAK → standalone extractors
-  are Plan A; greenfield: STRONG → full four-layer generation is Plan A). Still prose-only: the
-  per-stack extractors/generators, the SARIF/fp-check gate, and the map artifact — see each
-  skill's `TODO.md`. Evals execute via `scripts/run_evals.py --run` once a fixture repo is wired.
+- Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is Plan A).
+  Rescue's 2026-07-09 VibraFlow verdict is **challenged (2026-07-14)**: the run used a stale
+  `graphify-out/` graph, so its WEAK conclusion about graph usability is unreliable — re-run on
+  a freshly built graph is pending; standalone extraction (`runtime/shapes.py`) holds as the
+  graph-free safe default. Still prose-only: the per-stack generators, tree-sitter extractor
+  generalization, the SARIF/fp-check gate, and the map artifact — see each skill's `TODO.md`.
+  Evals execute via `scripts/run_evals.py --run` once a fixture repo is wired.
 - Generic skills are **composed** from `superpowers` (MIT), not authored here.
 - The vendored `references/core/` copies are generated — edit `core/*.md`, then run `sync_core.py`.

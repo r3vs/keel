@@ -23,9 +23,10 @@ deliverable is prose that a future Claude instance reads and executes:
   `superpowers` **composed** (referenced in the marketplace) for the generic engineering skills.
 
 Each skill is **design-complete with the runtime spine started**; its `TODO.md` is the build
-checklist. Both step-0 gating experiments have been run and their verdicts recorded (rescue:
-WEAK → standalone extractors are Plan A; greenfield: STRONG → full four-layer generation is
-Plan A). Executable code so far: the shared ledger runtime (`runtime/ledger.py`, tested by
+checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
+Plan A); rescue's 2026-07-09 VibraFlow verdict is **challenged** (stale graph — re-run pending;
+standalone extraction holds as the graph-free default). Executable code so far: the shared
+ledger runtime (`runtime/ledger.py`, tested by
 `tests/` in CI), the eval harness (`scripts/run_evals.py`), the consistency linters and
 installers under `scripts/`, and rescue's validated ast-grep rule pack
 (`skills/codebase-rescue/assets/ast-grep/`). The per-stack extractors/generators and the map
