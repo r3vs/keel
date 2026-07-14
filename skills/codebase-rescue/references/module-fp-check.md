@@ -53,4 +53,4 @@ checks in order and returns `{confirmed, downgraded, dropped}`; `to_pins()` maps
 `reachable(file)` (from the graph; unknown→keep, so a missing graph never silently drops a real
 bug) and `intentional_stub(file, line)` (from the completeness module). Deterministic diagnostics
 (type errors, compiler output) are tagged and **skip the gate** — proven, not suspected
-(`core/static-analysis.md`). CLI: `python runtime/findings.py report.sarif osv.json`.
+(`references/core/static-analysis.md`). CLI: `python runtime/findings.py report.sarif osv.json`.
