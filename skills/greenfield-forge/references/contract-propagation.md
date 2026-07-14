@@ -126,10 +126,21 @@ installed CI drift-check — written to disk, with a `BuildItem` (`action: scaff
 the Phase-3 backlog: everything else `depends_on` the contract, which is why the contract wave
 comes first (it falls out of the DAG, not a hardcoded order).
 
+## Runtime
+
+The generate-mode engine is `runtime/generate.py` (repo root; stdlib-only, tested in CI):
+`Contract.load(contract.json)` → `generate_all()` emits DDL / SQLAlchemy 2 / Pydantic v2 / TS
+from one descriptor set, `choose_carrier(stack)` picks the lightest carrier. As a CLI:
+`python runtime/generate.py --contract contract.json --out scaffold/`. The alignment guarantee
+is mechanical: `tests/test_generate.py` generates every layer and runs `runtime/shapes.py`'s
+drift-check over the result — a correct generator round-trips to **zero drift**, so a future edit
+that breaks alignment fails CI. This is the STRONG step-0 verdict as an executable invariant.
+
 ## TODO (implementation)
-- [ ] Per-stack generators from the normalized contract (start with live stacks, generalize via
-      tree-sitter templates so new stacks are additive).
+- [x] Per-stack generators from the normalized contract (live stacks done; tree-sitter template
+      generalization for further stacks stays additive). → `runtime/generate.py`
 - [x] The CI drift-check (rescue's shape-diff, wired to fail the build). → `runtime/shapes.py`
       at the repo root: extractors for the live stacks + carrier diff, exit 1 on drift;
       validated against this module's own step-0 artifacts (`tests/test_shapes.py`).
-- [ ] Contract-carrier chooser (shared-types vs OpenAPI/JSON-schema/protobuf).
+- [x] Contract-carrier chooser (shared-types vs OpenAPI/JSON-schema/protobuf). →
+      `generate.choose_carrier(stack)`.

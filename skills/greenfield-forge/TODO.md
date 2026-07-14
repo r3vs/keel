@@ -28,16 +28,21 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
         frictions (reserved-word collisions, enum name-vs-value storage, casing policy, semantic
         validators) that keep the CI drift-check mandatory even under full generation.
 
-## 1. Core engine — the contract-propagation code
-- [ ] **Per-stack generators** from one normalized contract (`references/core/shape-engine.md` descriptor) →
-      DDL/migration, ORM model, DTO/route, client types. Start with live stacks; generalize via
-      tree-sitter templates so new stacks are additive. → `references/contract-propagation.md`
+## 1. Core engine — the contract-propagation code — DONE (`runtime/generate.py`)
+- [x] **Per-stack generators** from one normalized contract (the shape-engine descriptor) →
+      DDL/migration (Postgres), ORM model (SQLAlchemy 2), DTO (Pydantic v2), client types (TS).
+      → `runtime/generate.py`. Proven by the **round-trip test**: generate all four → the
+      shape drift-check finds **zero drift** (aligned by construction), and the step-0 frictions
+      (reserved-word aliases, enum `values_callable`, snake_case wire) are handled in code, not
+      left to the developer. `tests/test_generate.py`. Tree-sitter template generalization for
+      further stacks stays additive on the list.
 - [x] **The CI drift-check** — the same shape-diff rescue uses, wired to fail the build when a
       hand-edit breaks alignment. This is the preventive payload. → `runtime/shapes.py`
       (`python runtime/shapes.py --contract contract.json --ddl … --sqlalchemy … --pydantic …
       --typescript …` exits 1 on drift); tested by `tests/test_shapes.py`.
-- [ ] **Contract-carrier chooser** — shared-types package for a TS monorepo; OpenAPI/JSON-schema/
-      protobuf for polyglot. Ponytail: the lightest carrier that suffices.
+- [x] **Contract-carrier chooser** — `generate.choose_carrier(stack)`: shared-types for a TS
+      monorepo, OpenAPI/JSON-schema for polyglot, protobuf when an RPC/streaming decision is
+      elected. Ponytail: the lightest carrier that suffices. `tests/test_generate.py`.
 
 ## 2. Ledger runtime — DONE (shared with rescue; one implementation)
 - [x] Reuse the shared ledger runtime → `runtime/ledger.py` (repo root) implements the spec once
