@@ -106,11 +106,12 @@ agent-agnostically, with the **runtime largely implemented** (~150 tests in CI).
 | Visual map (self-contained HTML) | `runtime/map.py` |
 | Eval harness + ast-grep rule pack + fixtures | `scripts/run_evals.py`, `assets/ast-grep/`, `tests/fixtures/` |
 
-**Step-0 verdicts recorded**: greenfield (FastAPI+SQLAlchemy+TS) STRONG → full generation is Plan A;
-rescue's VibraFlow run is **challenged** (stale graph — re-run pending; standalone extraction holds
-as the graph-free default). What remains is agent-orchestrated at runtime (the per-item TDD loop),
-full tree-sitter extractor generalization, the graph-anchored correspondence resolver, and executing
-the evals against a live agent runner. See each `TODO.md`.
+**Step-0 verdicts recorded** (both now on trustworthy data): greenfield (FastAPI+SQLAlchemy+TS)
+STRONG → full generation is Plan A; rescue **re-run on a fresh VibraFlow graph** (2026-07-14, after
+the stale-graph challenge) → WEAK cross-layer correspondence → standalone extraction is Plan A,
+confirmed by `runtime/shapes.py` pulling 113 tables / 1290 fields from VibraFlow's real Drizzle
+schema. What remains is agent-orchestrated at runtime (the per-item TDD loop), full tree-sitter
+extractor generalization, and executing the evals against a live agent runner. See each `TODO.md`.
 
 ## License
 MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm

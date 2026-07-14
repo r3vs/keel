@@ -348,8 +348,8 @@ def extract_ddl(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
 
 _DRIZZLE_TYPES = {"uuid": "uuid", "text": "string", "varchar": "string", "boolean": "bool",
                   "integer": "int", "bigint": "int", "serial": "int", "real": "float",
-                  "doublePrecision": "float", "timestamp": "datetime", "jsonb": "json",
-                  "json": "json", "date": "datetime"}
+                  "doublePrecision": "float", "decimal": "float", "numeric": "float",
+                  "timestamp": "datetime", "jsonb": "json", "json": "json", "date": "datetime"}
 
 
 def _balanced_braces(text: str, open_idx: int) -> str:
@@ -367,27 +367,42 @@ def _balanced_braces(text: str, open_idx: int) -> str:
     return text[open_idx + 1:]
 
 
-def extract_drizzle(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
-    """Drizzle ORM (TS): `export const users = pgTable("users", { ... })` + `pgEnum(...)`."""
+def extract_drizzle(path: str | pathlib.Path,
+                    imported_enums: Optional[dict[str, list]] = None
+                    ) -> dict[str, dict[str, dict]]:
+    """Drizzle ORM (TS): `export const users = pgTable('users', { ... })` + `pgEnum(...)`.
+    Handles single or double quotes and multi-line column method chains (real Drizzle spreads
+    `.notNull().references(...)` across lines). Enum types are often imported from a sibling
+    `enums.ts`; pass `imported_enums` ({constName: [values]}) to resolve them, else an enum-typed
+    column extracts as `enum` with no values (shape matches, values ambiguous — honest)."""
     text = pathlib.Path(path).read_text(encoding="utf-8")
+    q = r'["\']'
     enums: dict[str, list] = {}
-    for m in re.finditer(r'pgEnum\(\s*"(\w+)"\s*,\s*\[([^\]]*)\]', text):
+    for m in re.finditer(rf'pgEnum\(\s*{q}(\w+){q}\s*,\s*\[([^\]]*)\]', text):
         enums[m.group(1)] = [v.strip().strip('"\'') for v in m.group(2).split(",") if v.strip()]
     # enum-typed columns use the exported const name of the pgEnum; map const->enum-name
     enum_consts = {m.group(1): m.group(2) for m in
-                   re.finditer(r'(?:export\s+)?const\s+(\w+)\s*=\s*pgEnum\(\s*"(\w+)"', text)}
+                   re.finditer(rf'(?:export\s+)?const\s+(\w+)\s*=\s*pgEnum\(\s*{q}(\w+){q}', text)}
+    # a const known to be a pgEnum in a sibling file: caller supplies its values (or none)
+    imported = imported_enums or {}
     out: dict[str, dict[str, dict]] = {}
-    for opening in re.finditer(r'pgTable\(\s*"(\w+)"\s*,\s*\{', text):
+    for opening in re.finditer(rf'pgTable\(\s*{q}(\w+){q}\s*,\s*\{{', text):
         table = opening.group(1)
-        body = _balanced_braces(text, opening.end() - 1)  # nested { length: 255 } etc.
+        body = _balanced_braces(text, opening.end() - 1)  # nested { precision: 12 } etc.
+        # join method-chain continuation lines (a line starting with `.`) onto the previous line
+        body = re.sub(r"\n\s*\.", ".", body)
         fields: dict[str, dict] = {}
-        for col in re.finditer(r'(\w+)\s*:\s*(\w+)\(\s*"(\w+)"([^,)]*(?:,\s*\{[^}]*\})?)?\)(.*)',
+        for col in re.finditer(rf'(\w+)\s*:\s*(\w+)\(\s*{q}(\w+){q}([^,)]*(?:,\s*\{{[^}}]*\}})?)?\)(.*)',
                                body):
             js_attr, ctor, col_name, ctor_rest, chain = col.groups()
             chain = (ctor_rest or "") + (chain or "")
             cons: dict = {}
             if ctor in enum_consts:
                 t, evals = "enum", enums.get(enum_consts[ctor])
+            elif ctor in imported:
+                t, evals = "enum", imported[ctor] or None       # cross-file enum
+            elif ctor.endswith("Enum"):
+                t, evals = "enum", None                          # named like an enum, values unknown
             elif ctor in _DRIZZLE_TYPES:
                 t, evals = _DRIZZLE_TYPES[ctor], None
                 ml = re.search(r"length:\s*(\d+)", ctor_rest or "")

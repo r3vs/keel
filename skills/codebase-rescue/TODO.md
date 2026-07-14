@@ -1,8 +1,9 @@
 # codebase-rescue — Build checklist
 
 Status: **design complete; runtime largely implemented** (SKILL.md + 16 module playbooks + ledger
-spec v0.6 + drift-linter green). The gating experiment (step 0) was run once on a real monorepo
-but its graph was stale — the verdict is **challenged** and the re-run is pending (see below and
+spec v0.6 + drift-linter green). The gating experiment (step 0) has been **re-run on a fresh graph**
+(2026-07-14): verdict **WEAK** cross-layer correspondence → standalone extraction is Plan A, now on
+a current graph (`built_at_commit` == HEAD) and confirmed on the real repo (see below and
 `references/contract-reconciliation.md`). Implemented and tested in CI: the shared ledger runtime
 (`runtime/ledger.py`), the field-shape engine + drift-check (`runtime/shapes.py`, incl. Drizzle/
 Prisma/Django/GraphQL), the findings + fp-check gate (`runtime/findings.py`), the interview funnel
@@ -16,21 +17,21 @@ referenced playbook.
 
 ---
 
-## 0. Gating experiment — CHALLENGED (2026-07-14): the 2026-07-09 run used a STALE graph → re-run
-The VibraFlow run was made right after this repo's creation, against a `graphify-out/` **not
-rebuilt for VibraFlow's current code** — an unstated assumption (graph currency) now upheld as a
-challenge. Its WEAK verdict is unreliable evidence about Graphify; the standalone-extraction
-posture survives only as a safe default (it never depended on the graph, and is now implemented
-in `runtime/shapes.py`).
+## 0. Gating experiment — RESOLVED on a FRESH graph (2026-07-14 re-run) → WEAK, standalone is Plan A
+The 2026-07-09 run used a stale `graphify-out/` (built at commit 38330055, **37 commits behind**
+HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a current graph.
 - [x] Pick a real slop codebase. → VibraFlow (~177K LOC monorepo: TS + Python, Postgres +
-      Drizzle + React) — still the right fixture.
-- [ ] **Re-run with a fresh graph**: rebuild Graphify output on VibraFlow's *current* code
-      (delete/regenerate `graphify-out/`), then re-answer the one question: **are the graph's
-      cross-layer correspondences usable for computing contract diffs, or too INFERRED/noisy?**
-- [ ] Re-record the verdict in `references/contract-reconciliation.md` (replace the challenged
-      section); flip the correspondence-resolver posture in §1 if the fresh graph earns it.
-- Original (stale-graph) record, kept for audit: 222 INFERRED of 18 742 edges, 2 semantic,
-  0 DB-schema nodes → verdict WEAK, standalone promoted to Plan A.
+      Drizzle + React).
+- [x] **Re-run with a fresh graph** — `graphify update .` re-extracted current code (45 s,
+      deterministic, no LLM) → 9 335 nodes / 15 905 edges, `built_at_commit` == HEAD. Answer to the
+      gating question: **WEAK** — 75 INFERRED (down from 222), **0** true semantic edges (the
+      semantic pass needs an unset Gemini/Google key), and while DB-schema nodes DO exist (~204
+      Drizzle table nodes — the stale verdict's "0 DB nodes" was **wrong**), they carry only
+      module-structure edges, no field-level cross-layer correspondence. Standalone stays Plan A.
+- [x] Re-recorded the verdict in `references/contract-reconciliation.md` (replaced the challenged
+      section). Confirmed positively: `runtime/shapes.py` extracts **113 tables / 1 290 fields**
+      from VibraFlow's real Drizzle schema (incl. `budgets.spent_usd`) — the standalone path works
+      end-to-end on the live repo; the graph path for correspondence does not.
 
 ## 1. Core engine — the contract-reconciliation code (v0 landed in `runtime/shapes.py`)
 - [x] **Per-stack extractors** for the live stacks (Postgres DDL, SQLAlchemy 2, Pydantic v2,

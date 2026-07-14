@@ -108,12 +108,16 @@ spine has started; versions track design + packaging + runtime together.
   "why not write the text directly in each skill?" explicitly.
 
 ### Notes
-- Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is Plan A).
-  Rescue's 2026-07-09 VibraFlow verdict is **challenged (2026-07-14)**: the run used a stale
-  `graphify-out/` graph, so its WEAK conclusion about graph usability is unreliable — re-run on
-  a freshly built graph is pending; standalone extraction (`runtime/shapes.py`) holds as the
-  graph-free safe default. Still prose-only: the per-stack generators, tree-sitter extractor
-  generalization, the SARIF/fp-check gate, and the map artifact — see each skill's `TODO.md`.
-  Evals execute via `scripts/run_evals.py --run` once a fixture repo is wired.
+- **Both step-0 gating verdicts are recorded on trustworthy data.** Greenfield (FastAPI+SQLAlchemy
+  +TS): STRONG → full four-layer generation is Plan A. Rescue's VibraFlow verdict was challenged
+  (its graph was stale — 37 commits behind HEAD) and then **re-run on a fresh graph (2026-07-14)**:
+  `graphify update` rebuilt it to current (`built_at_commit` == HEAD), and the verdict is **WEAK**
+  cross-layer correspondence → standalone extraction is Plan A — 75 INFERRED / 0 semantic edges,
+  and DB-schema nodes that exist but carry no field-level correspondence (correcting the stale
+  verdict's wrong "0 DB nodes" claim). Confirmed positively: `runtime/shapes.py` extracts 113
+  tables / 1290 fields from VibraFlow's real Drizzle schema.
+- What remains is agent-orchestrated at runtime (the per-item TDD loop) + full tree-sitter
+  extractor generalization; evals execute via `scripts/run_evals.py --run` against a live agent
+  runner. See each skill's `TODO.md`.
 - Generic skills are **composed** from `superpowers` (MIT), not authored here.
 - The vendored `references/core/` copies are generated — edit `core/*.md`, then run `sync_core.py`.

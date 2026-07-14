@@ -5,54 +5,64 @@ into precise, verifiable pins. It is deterministic-ish: it compares representati
 same data entity across boundaries and reports where they disagree. Everything here anchors
 to knowledge-graph node IDs where the graph provides them, else to source locations
 (`file:line`) — so pins can render as cross-layer diffs on the map. (`file:line` anchoring with
-`node_id: null` is always legitimate — do not block on graph coverage; how much the graph can be
-trusted for correspondence is the challenged Phase-0 question below.)
+`node_id: null` is always legitimate — do not block on graph coverage; the fresh Phase-0 re-run
+below confirms the graph carries DB nodes for anchoring but no field-level correspondence edges.)
 
-## Phase-0 gating verdict — CHALLENGED (2026-07-14): re-run required on a fresh graph
+## Phase-0 gating verdict — RESOLVED on a FRESH graph (2026-07-14 re-run)
 
-> **Challenge note (class: `unstated_assumption`, upheld).** The 2026-07-09 run rested on an
-> assumption never stated in the verdict: that VibraFlow's `graphify-out/graph.json` was current.
-> It was not — the graph was built when this repo was first created and was **stale relative to
-> the code it was diffed against**. The two load-bearing evidence points below (222 INFERRED
-> edges, 0 DB-schema nodes) may therefore measure a stale artifact, not Graphify's actual
-> capability on that stack. The verdict is downgraded from RESOLVED to **UNRELIABLE**; the
-> question it answered — *are the graph's cross-layer correspondences usable?* — is open again.
->
-> What survives the challenge (because it never depended on the graph): standalone shape
-> extraction works and is implemented (`runtime/shapes.py`), and the shared-types-package-as-
-> contract finding came from diffing source, not edges. So consequences 1–5 below **remain the
-> operating posture as a safe default** — but as a default, not an evidence-backed conclusion
-> about Graphify. Re-run step 0 with a freshly rebuilt graph before citing this verdict.
+The 2026-07-09 verdict was challenged (its graph turned out stale) and has now been **re-run on a
+freshly rebuilt graph**. Same posture (standalone-first), one piece of evidence **corrected**, and
+now trustworthy because the graph is current.
 
-Original record (2026-07-09, VibraFlow: ~177K LOC, TS + Python, Postgres + Drizzle + React) —
-**verdict as recorded then: WEAK cross-layer correspondence from the graph; standalone shape
-extraction promoted to Plan A.** Evidence from that run's graph (`graphify-out/graph.json`,
-11 079 nodes / 18 742 edges — *now known to have been stale*):
-- Edge confidence: 18 518 EXTRACTED, **222 INFERRED, 2 AMBIGUOUS**. The Ollama semantic pass
-  barely fired — only 1 `shares_data_with` and 1 `semantically_similar_to` edge in the whole
-  graph.
-- **0 DB-schema nodes** — Graphify did not model the Postgres schema as nodes on this stack, so
-  there were no DB anchors for cross-layer edges to attach to in the first place.
+**Staleness confirmed, then eliminated.** The challenged graph was built at commit `38330055`,
+objectively **37 commits behind** VibraFlow's HEAD (`e0d00d6`) — the `unstated_assumption`
+challenge was correct. `graphify update .` re-extracted the current code (45 s, deterministic, no
+LLM) to a graph whose `built_at_commit` now equals HEAD.
 
-Consequences, now baked into this module's posture:
+**Fresh graph (9 335 nodes / 15 905 edges):**
+- Edge confidence: 15 830 EXTRACTED, **75 INFERRED, 0 AMBIGUOUS** (fewer INFERRED than the stale
+  222). True semantic edges (`shares_data_with` / `semantically_similar_to`) are **0** — the
+  semantic pass needs a Gemini/Google API key that was never set (`cost.json` shows 0 tokens across
+  all historical runs), so it never fired. Cross-layer *correspondence* edges are effectively
+  absent by construction here.
+- **DB-schema nodes DO exist** — ~204 nodes live in `packages/backend/src/db/schema/*`, including
+  real Drizzle table consts (`budgets`, `secretScanResults`, `dataDeletionRequests`, …).
+  **This corrects the stale verdict's "0 DB-schema nodes" claim, which was wrong**: on a
+  Drizzle/TS stack the DB schema *is* TS code, so Graphify's AST pass models the tables as nodes.
+- **But those nodes carry only module-structure edges** — `imports` / `re_exports` / `calls` — to
+  the rest of the codebase, **not field-level correspondence edges**. A table node tells you where
+  it lives and who imports it (anchoring + blast radius); it does **not** tell you which API field
+  maps to which column. That correspondence is exactly what the graph does not encode.
+
+**Verdict (fresh, trustworthy): WEAK cross-layer correspondence from the graph — standalone shape
+extraction is Plan A.** Same conclusion as before, now on a current graph and for a sharper reason:
+not "no DB nodes" but "the DB nodes exist, yet no field-level cross-layer edges connect them; and
+the semantic pass that might infer such edges requires an unset API key."
+
+**Positively confirmed on the real repo:** `runtime/shapes.py`'s standalone Drizzle extractor pulls
+**113 tables / 1 290 fields** from VibraFlow's actual `db/schema/*.ts` (after being hardened for
+real Drizzle: single quotes, multi-line method chains, cross-file/named enums, `decimal`) —
+including `budgets.spent_usd`, the field behind the known budget-enforcement blocker. The
+standalone path works end-to-end on the live target; the graph path for field correspondence does
+not.
+
+Consequences, baked into this module's posture (unchanged — the fresh run reaffirms them):
 1. **Compute contracts STANDALONE from source** (DDL/migration, ORM model, DTO/route, shared
-   types). Do not wait on the graph's cross-layer edges — treat any that exist as weak
-   corroboration only.
-2. **Use the graph ONLY for** anchoring, imports/calls reachability (blast radius), and
-   community structure — never for field-level correspondence.
-3. **Anchor pins to `source_location` (`file:line`), accepting `node_id: null`.** Do not anchor
-   to nodes the graph lacks, and never to files a stale graph still references but that no
-   longer exist.
-4. **A monorepo shared-types package is the strongest standalone contract when present.** On
-   VibraFlow, `@vibraflow/shared` *was* the explicit contract the inferred edges failed to
-   supply; DB↔shared diffing off it produced all 11 contract pins deterministically.
-5. **Check route returns against the shared types, not just the FE hooks.** Where the frontend
-   asserts `api.get<T>()` with no runtime validation, TS already ties the hooks to shared types
-   — the real drift is raw `pg` / untyped route returns vs those types.
+   types) via `runtime/shapes.py`. Treat any graph cross-layer edges as weak corroboration only.
+2. **Use the graph ONLY for** anchoring, imports/calls reachability (blast radius), and community
+   structure — never for field-level correspondence.
+3. **Anchor pins to `source_location` (`file:line`), accepting `node_id: null`.** Do not anchor to
+   nodes the graph lacks, and never to files a stale graph still references. (And rebuild the graph
+   before use — a graph 37 commits behind is worse than none: check `built_at_commit` == HEAD.)
+4. **A monorepo shared-types package is the strongest standalone contract when present** — diff the
+   layers against it (carrier-anchored `shapes.drift_check`); when absent, diff two layers directly
+   (`shapes.reconcile_layers`).
+5. **Check route returns against the shared types, not just the FE hooks** — the real drift is raw
+   `pg` / untyped route returns vs those types.
 
-One challenged data point, not a law: **the re-run is now mandatory, not optional** — rebuild
-the graph fresh on the current code (and ideally also on a stack where Graphify emits DB-schema
-nodes) before treating the graph-usability question as answered in either direction.
+One data point per stack, not a law: re-run per stack family — and always on a graph rebuilt for
+the current code (`graphify update <path>`; confirm `built_at_commit`), the lesson the stale run
+paid for.
 
 ## The boundaries
 
@@ -148,7 +158,8 @@ runtime complement to re-diffing shapes in Phase 5.
 - [ ] Per-stack extractors for the four boundaries (start with the user's live stacks, then
       generalize via tree-sitter queries so new stacks are additive, not rewrites).
 - [ ] Type-equivalence table across DB/ORM/API/TS type systems.
-- [ ] Correspondence resolver: **standalone shapes first** (safe default; works graph-free),
-      with graph edges as corroboration/anchoring. The weight the graph deserves is an open
-      question again — the VibraFlow run that demoted it used a stale graph (see the challenged
-      verdict above); the step-0 re-run decides.
+- [x] Correspondence resolver: **standalone shapes first** — implemented in `runtime/shapes.py`
+      (`drift_check` carrier-anchored, `reconcile_layers` carrier-less), with graph edges as
+      corroboration/anchoring only. The fresh Phase-0 re-run (above) settled the graph's weight:
+      DB nodes for anchoring, no field-level correspondence edges. Graph-edge *anchoring* of pins
+      (attaching `node_id` when the graph has the node) stays a nice-to-have enhancement.

@@ -37,6 +37,23 @@ class TestExtraction(unittest.TestCase):
         self.assertTrue(out["users"]["email"]["constraints"]["unique"])
         self.assertEqual(out["tasks"]["assignee_id"]["constraints"]["foreign_key"], "users.id")
 
+    def test_drizzle_real_world_forms(self):
+        # single quotes, multi-line method chains, the 3-arg pgTable(...,(table)=>...) form,
+        # decimal(), and a cross-file/named enum — the shapes VibraFlow's real schema uses
+        out = shapes.extract_drizzle(str(STACKS / "schema.drizzle.real.ts"))
+        self.assertIn("budgets", out)
+        b = out["budgets"]
+        self.assertEqual(b["spent_usd"]["type"], "float")          # decimal -> float
+        self.assertFalse(b["spent_usd"]["nullable"])               # .notNull() across lines
+        self.assertEqual(b["project_id"]["constraints"]["foreign_key"], "projects.id")  # multi-line .references
+        self.assertEqual(b["alert_level"]["type"], "enum")         # alertLevelEnum (named, cross-file)
+        self.assertEqual(b["id"]["constraints"]["primary_key"], True)
+
+    def test_drizzle_imported_enum_values_resolve_when_supplied(self):
+        out = shapes.extract_drizzle(str(STACKS / "schema.drizzle.real.ts"),
+                                     imported_enums={"alertLevelEnum": ["green", "amber", "red"]})
+        self.assertEqual(out["budgets"]["alert_level"]["enum"], ["green", "amber", "red"])
+
     def test_prisma_model_enum_and_uuid_mapping(self):
         out = shapes.extract_prisma(str(STACKS / "schema.prisma"))
         self.assertEqual(out["User"]["role"]["type"], "enum")

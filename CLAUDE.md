@@ -24,8 +24,8 @@ deliverable is prose that a future Claude instance reads and executes:
 
 Each skill is **design-complete with the runtime largely implemented**; its `TODO.md` is the build
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
-Plan A); rescue's 2026-07-09 VibraFlow verdict is **challenged** (stale graph — re-run pending;
-standalone extraction holds as the graph-free default). The runtime lives under `runtime/`
+Plan A); rescue's VibraFlow verdict was **re-run on a fresh graph** (2026-07-14 — WEAK cross-layer
+correspondence, so standalone extraction is Plan A). The runtime lives under `runtime/`
 (stdlib-only, ~150 tests in CI): `ledger.py` (spec v0.6), `shapes.py` (field-shape engine +
 drift-check, 8 stacks), `generate.py` (contract generators, round-trip to zero drift),
 `findings.py` (SARIF/OSV + fp-check gate), `interview.py` + `assets/decision-catalog.json`
