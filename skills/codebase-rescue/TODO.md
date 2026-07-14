@@ -54,13 +54,17 @@ in `runtime/shapes.py`).
       `DecisionEvent` writable by any non-interview source).
 
 ## 3. Interview generator + findings gate
-- [ ] **Interview generator** — materialize `Question`s from `needs_input` pins; run the funnel
-      (cluster → policy → exception → proposed-default), ordered by information gain.
+- [x] **Interview generator** — the funnel is code in `runtime/interview.py` (`funnel()`:
+      materializes the `needs_input` view, assigns `resolution_mode`, orders the asked questions by
+      transitive information gain, routes the low-severity tail to `proposed_default`) + the
+      ledger's `apply_policies()` (cluster → policy → exception). Shared with greenfield.
       → `references/phase-2-interview.md`
-- [ ] **Challenger pass** (read-only oracle red-team) — after the interview commits and at each
-      wave checkpoint, refute each elected `to_be`/`acceptance_criterion` (unfalsifiable /
-      inconsistent / unsatisfiable / unstated_assumption / ignored_fanout), emit a `ChallengeEvent`,
-      reopen on a sustained challenge. Reopens, never decides.
+- [x] **Challenger pass** — `runtime/challenger.py` mechanizes the deterministic classes
+      (`unfalsifiable` = an elected `to_be`/criterion with no testable `verify`; `ignored_fanout`
+      = a high-fan-out pin silently defaulted), emitting upheld `ChallengeEvent`s that reopen via
+      the ledger; the judgment classes (`inconsistent`/`unsatisfiable`/`unstated_assumption`) stay
+      agent-driven through the same `ledger.challenge()` sink. Reopens, never decides.
+      `tests/test_challenger.py`.
       → `references/phase-2-interview.md`, `references/phase-4-remediation.md`, `references/core/agents.md`
 - [x] **SARIF adapters + fp-check** — `runtime/findings.py`: normalize SARIF
       (semgrep/gitleaks/trivy) + OSV JSON to one stream, the CONFIRM/DOWNGRADE/DROP gate with the

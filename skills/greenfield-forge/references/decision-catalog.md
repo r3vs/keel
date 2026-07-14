@@ -149,3 +149,16 @@ For each surviving fork not decided by the brief: emit an `open_decision` pin (s
 tend to `high`/`blocker`; 9–10 tend to `medium`). Cluster 0's outcomes become `acceptance_criterion`
 pins that root the DAG; the threat-model pass adds security `open_decision`s. The default policies
 become the interview's opening policy questions. See `references/phase-1-frame.md`.
+
+## Runtime
+
+The machine-usable form of this catalog is `assets/decision-catalog.json` (this doc stays the
+authoring source — keep them in step). `runtime/interview.py` loads it and runs Phase 1:
+`expand_catalog(ledger, catalog, project_type, brief_decisions)` prunes by project type, skips the
+forks the brief already decided (pre-committed, never re-asked), materializes one pin per surviving
+fork, and wires `depends_on` to the created pin ids; `funnel(ledger)` compresses to the asked
+questions ordered by transitive information gain with the tail as `proposed_default`;
+`default_policies()` offers the per-cluster defaults. `runtime/challenger.py` then red-teams the
+elected oracles (deterministic classes). CLI:
+`python runtime/interview.py ledger.json --project-type web-saas`. Tested in
+`tests/test_interview.py`.

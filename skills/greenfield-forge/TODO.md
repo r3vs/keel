@@ -50,20 +50,21 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
       `BuildItem` (build verbs + `build_track` + `contract_carrier`), `flip_signal`/`ReopenEvent`.
       Tested by `tests/test_ledger.py` in CI.
 
-## 3. Decision-frame + interview generator
-- [ ] **Decision-catalog authoring** — turn `references/decision-catalog.md` into a machine-usable
-      catalog (forks, options, implications, depends_on, default policies) that the frame module
-      expands and prunes against the brief.
-- [ ] **Interview generator** — reuse the shared funnel (`references/core/interview-funnel.md`); materialize
-      Question objects from `open_decision` pins, ordered by information gain.
-      → `references/phase-2-interview.md`
-- [ ] **Challenger pass** (shared with rescue; read-only) — after the interview commits and at each
-      wave checkpoint, refute each elected `acceptance_criterion`/`to_be`/`Policy` (unfalsifiable /
-      inconsistent / unsatisfiable / unstated_assumption / ignored_fanout) *before* Phase 3 turns it
-      into the contract; emit a `ChallengeEvent`, reopen on a sustained challenge. Reopens, never
-      decides. → `references/phase-2-interview.md`, `references/phase-4-build.md`, `references/core/agents.md`
-- [ ] **Assumption-surfacing** — when a brief gap forces an assumption, materialize it as a pin with
-      `provenance: agent_assumption` (never a silent given). Shared discipline with rescue.
+## 3. Decision-frame + interview generator — DONE (`runtime/interview.py` + catalog asset)
+- [x] **Decision-catalog authoring** — `assets/decision-catalog.json`: the 11 clusters (0–10) as
+      machine-usable data (forks, options, implications, depends_on, default policies, per-type
+      prune lists, information-gain order). Authoring source stays `references/decision-catalog.md`.
+- [x] **Interview generator** — `runtime/interview.py`: `expand_catalog()` prunes by project type,
+      skips brief-decided forks (pre-committed, never re-asked), wires `depends_on` to pin ids;
+      `funnel()` compresses to the asked questions ordered by **transitive** information gain with
+      the low-severity tail as `proposed_default`. `tests/test_interview.py`.
+- [x] **Challenger pass** — the mechanizable classes are in `runtime/challenger.py`
+      (`unfalsifiable` = an elected `to_be`/criterion with no testable `verify`; `ignored_fanout`
+      = a high-fan-out pin silently defaulted), emitting `ChallengeEvent`s via the ledger. The
+      judgment classes (`inconsistent`/`unsatisfiable`) stay agent-driven per the playbook.
+      → `references/phase-2-interview.md`, `references/core/agents.md`
+- [x] **Assumption-surfacing** — shared with rescue via `Ledger.surface_assumption()`
+      (`provenance: agent_assumption`, confidence enforced, threshold applied).
       → `references/core/assumptions.md`
 
 ## 4. React artifact — the to-be design map (uses the frontend-design skill)
