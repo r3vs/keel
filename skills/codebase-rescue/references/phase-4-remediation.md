@@ -113,6 +113,13 @@ Stop at each wave boundary from the Phase-3 roadmap — especially after **Wave 
 - Re-validate downstream `depends_on` assumptions. Aligning the contracts sometimes reveals an
   elected truth was wrong; you only see it once the aligned contracts run. If so, **reopen the
   dependent pins** (back to `needs_input`) rather than building on a bad foundation.
+- Re-run the **`challenger`** (`references/core/agents.md`) on the wave's decisions — the same
+  upstream arc as Phase 2, now armed with build evidence. Building can expose an oracle as
+  `unsatisfiable` (the elected shape can't meet what the code really needs) or resting on an
+  `unstated_assumption` visible only now. A sustained `ChallengeEvent` reopens the pin (`challenged`)
+  before the next wave compounds the error (`references/core/decisions-ledger-spec.md` v0.6). Distinct
+  from a fired `flip_criteria`: that is production falsifying a decision *downstream*; this is the
+  build falsifying the oracle *at the boundary*.
 
 A fully autonomous start-to-finish loop on slop is over-confident. A loop that pauses at
 dependency (wave) boundaries is cautious at exactly the right points.

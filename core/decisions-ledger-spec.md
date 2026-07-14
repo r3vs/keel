@@ -1,4 +1,4 @@
-# Decisions Ledger — Spec v0.3
+# Decisions Ledger — Spec v0.6
 
 Il ledger è la **singola fonte di verità** che le tre superfici della skill (mappa/wiki, intervista, brainstorm) leggono e scrivono. Nessuna delle tre tiene stato proprio: tutte proiettano una vista sul ledger. Questo è ciò che impedisce a tre agenti che parlano dello stesso problema di divergere — cioè lo stesso failure mode che la skill cura nelle codebase.
 
@@ -378,3 +378,41 @@ Le fasi 6 (Release) e 7 (Operate) non introducono entità nuove: sono `BuildItem
 ```
 
 Il **signal manifest** prodotto in Operate è ciò che i `flip_signal` guardano: è l'aggancio fisico dell'arco di feedback. Senza instrumentazione l'arco non ha input — per questo la fetta-codebase di Operate è **precondizione** di Evolve, non un extra.
+
+---
+
+## v0.6 — Challenge dell'oracolo (arco adversarial *a monte*)
+
+Finora la verità eletta era trattata come corretta fino a prova contraria **dalla produzione**: `flip_signal`/`ReopenEvent` la riaprono solo quando *la realtà cambia* (arco a valle), e il wave-checkpoint la mette in dubbio solo *durante* il build. Mancava l'arco **a monte**: e se l'oracolo — un `acceptance_criterion`, il `to_be` eletto, una `Policy` — fosse sbagliato *in partenza*, prima di costruirci sopra? Un oracolo sbagliato congelato è **peggio** di nessun oracolo: scala la propria wrongness e indossa l'autorità di un check verde. v0.6 aggiunge il ruolo e l'evento che **sfidano l'oracolo** in modo adversarial, subito dopo l'intervista e a ogni wave. Additivo: nessuna variante esistente cambia.
+
+### `ChallengeEvent` — la sfida neutra che può riaprire un pin
+
+Un `challenger` read-only (ruolo in `core/agents.md`, gemello adversarial del `reviewer`: il reviewer *fa rispettare* l'oracolo, il challenger lo *mette in dubbio*) esamina i pin `decided` e i loro `to_be`/criteri e cerca attivamente di **refutarli**. Come il brainstorm e il feedback-loop è **neutro: sfida, non decide.** Emette un `ChallengeEvent` immutabile; se la sfida regge la revisione di soglia, riporta il pin a `needs_input` (sotto-stato `challenged`, gemello di `reopened`) e lo rimanda all'intervista — che resta l'unica a committare.
+
+```jsonc
+// ChallengeEvent (dentro decision_log[]) — immutabile, neutro
+{ "id": "chl_0002", "pin_id": "pin_0007", "timestamp": "ISO-8601",
+  "target": "acceptance_criterion",  // acceptance_criterion | to_be | policy | decision
+  "class": "unfalsifiable",          // unfalsifiable | inconsistent | unsatisfiable | unstated_assumption | ignored_fanout | other
+  "argument": "il criterio 'l'app è veloce' non ha verify testabile: nessun test può fallirlo",
+  "severity": "high",                // stessa soglia dei pin: high/blocker → sempre re-asked, mai default
+  "upheld": true,                    // esito della revisione di soglia; true → riapre
+  "source": "challenge:challenger" } // originato dall'agente, mai committa
+```
+
+Le **classi di sfida** (il `class`) sono i modi tipici in cui un oracolo è sbagliato a monte, non una tassonomia chiusa (`other` resta l'escape hatch):
+- `unfalsifiable` — il `to_be`/criterio non ha un `verify` che possa fallire (nessun test lo può refutare) → non è un oracolo, è uno slogan.
+- `inconsistent` — due criteri/decisioni mutuamente incoerenti (soddisfarne uno viola l'altro).
+- `unsatisfiable` — il `to_be` non è realizzabile dai `givens`/vincoli noti (impegno impossibile).
+- `unstated_assumption` — la decisione poggia su un'assunzione mai dichiarata (vedi `provenance: agent_assumption` sotto): riaprila esplicitandola.
+- `ignored_fanout` — un `open_decision`/criterio ad alto fan-out risolto come se non lo fosse (default silenzioso dove serviva `asked`).
+
+Regola di neutralità (imposta come per brainstorm/feedback-loop): il challenger scrive **solo** `ChallengeEvent` e, se `upheld`, porta il pin a `needs_input`. Non scrive `DecisionEvent`, non elegge, non edita codice. Soglia identica: una sfida `high`/`blocker` sostenuta è **sempre** `asked` di nuovo, mai un default silenzioso. **Riapre il minimo** — il pin sfidato più i soli dipendenti che poggiavano sull'oracolo falsificato (via `depends_on`), esattamente come il feedback-loop. Un challenger che riapre tutto rigenera la stessa churn che le skill curano.
+
+### `provenance: agent_assumption` — l'assunzione forzata resa veto-abile
+
+Precondizione della sfida, e regola anti-slop a sé: quando un agente **deve** assumere per procedere su input sotto-specificato, non codifica l'assunzione in silenzio — la materializza come pin (o come voce di `provenance` sul pin che sta creando) con `confidence: inferred|ambiguous` e `provenance: [{ "source": "agent_assumption", "detail": "..." }]`. Così l'assunzione è **visibile** sulla mappa, **veto-abile** in intervista, e **sfidabile** dal challenger (classe `unstated_assumption`) — invece di diventare una decisione muta. È la traduzione a livello-schema del principio "su input vago, alza l'effort facendo emergere i buchi, non indovinando in modo confidente". La dottrina di superficie sta in `core/assumptions.md`; qui vive solo la forma dato.
+
+### Perché questo è l'arco mancante
+
+Il feedback-loop chiude l'anello *a valle* (la produzione falsifica la decisione → riapri). Il challenger chiude l'anello *a monte* (l'oracolo è incoerente/non-testabile/non-soddisfacibile → riapri **prima** di costruire). Insieme coprono i due modi in cui una verità eletta può essere sbagliata: sbagliata *diventata* (realtà cambiata) e sbagliata *nata*. Entrambi gli archi **riaprono e non decidono** — la neutralità è la stessa proprietà anti-divergenza che regge tutto il ledger.

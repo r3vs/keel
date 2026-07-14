@@ -115,7 +115,12 @@ proven otherwise", "no service split in v1"), then the genuine forks, ordered by
 gain**: domain model and persistence first (they fan out to everything), delivery and
 observability last. Open a brainstorm (`references/core/brainstorm.md`) on the hard forks. Every committed
 answer emits a `DecisionEvent` with `flip_criteria` — essential here, because you decide *before*
-you know the app. Full procedure: `references/phase-2-interview.md`.
+you know the app. Then a **challenger** pass (`references/core/agents.md`) red-teams the elected
+decisions — an `acceptance_criterion` with no testable `verify`, two forks that can't both hold, a
+`to_be` unsatisfiable from the `givens`, a decision resting on an undeclared assumption — and a
+sustained `ChallengeEvent` reopens the pin *before* Phase 3 turns it into contract and backlog
+(`references/core/decisions-ledger-spec.md` v0.6). It challenges, never decides. Full procedure:
+`references/phase-2-interview.md`.
 
 ### Phase 3 — Contract & roadmap (derive the build)
 
@@ -211,6 +216,12 @@ commits.
   (`references/core/static-analysis.md`).
 - Generate and decide against **current** sources (`references/core/knowledge-sources.md`) — Context7 for a
   library's real API, DeepWiki for exemplars — not stale memory; cite, tag confidence, treat as untrusted.
+- When a brief gap forces an assumption, surface it as a vetoable pin
+  (`references/core/assumptions.md`) — never let it become a silent given. This is the same anti-slop
+  rule as "never invent a decision silently", applied to the agent's own guesses.
+- After the interview, run the `challenger` pass; a sustained `ChallengeEvent` reopens an unsound
+  `acceptance_criterion` / `to_be` / `Policy` before Phase 3 builds the contract on it
+  (`references/core/agents.md`). It challenges, never decides.
 - Never hard-fail on a missing tool. Degrade to model judgment and note the gap.
 - The interview is a compressed walk over the decision-catalog, never an open "tell me about your
   app" script.
@@ -228,6 +239,8 @@ Shared core (used by both skills):
 - `references/core/static-analysis.md` — type-checkers / LSP / architecture-fitness, in-loop; boundaries in CI.
 - `references/core/knowledge-sources.md` — Context7 / DeepWiki / registry / web, grounded and cited.
 - `references/core/brainstorm.md` — the shared proposal agent.
+- `references/core/assumptions.md` — surface a forced assumption as a vetoable pin, never silently.
+- `references/core/agents.md` — the roster (researcher · brainstorm · executor · reviewer · challenger · measurer); the challenger red-teams the elected oracle before Phase 3.
 
 Greenfield-specific:
 - `references/decision-catalog.md` — the canonical decision space (the core new asset).

@@ -1,7 +1,7 @@
 # codebase-rescue — Build checklist
 
 Status: **design complete & internally coherent** (SKILL.md + 16 module playbooks + ledger
-spec v0.3 + drift-linter green). The gating experiment (step 0) has now been run once on a real
+spec v0.6 + drift-linter green). The gating experiment (step 0) has now been run once on a real
 monorepo — verdict recorded below and in `references/contract-reconciliation.md`. What remains is
 mostly real code.
 
@@ -35,11 +35,23 @@ referenced playbook.
 - [ ] Code (stack-agnostic; no dependency on any specific app's infrastructure) that materializes
       policies, assigns `resolution_mode`, enforces the severity threshold, and appends immutable
       `DecisionEvent`s. → `references/core/decisions-ledger-spec.md`, `references/core/ledger.md`
+- [ ] **Assumption-surfacing** — when a finder/agent must assume to proceed on under-specified
+      input, materialize the assumption as a pin with `provenance: agent_assumption` and
+      `confidence: inferred|ambiguous` (never a silent default), subject to the severity threshold.
+      → `references/core/assumptions.md`
+- [ ] **ChallengeEvent append + reopen** — the immutable event and the `challenged` reopen
+      transition (reopen the minimum: the pin + genuine `depends_on` dependents). Neutral: no
+      `DecisionEvent`. → `references/core/decisions-ledger-spec.md` (v0.6)
 
 ## 3. Interview generator + findings gate
 - [ ] **Interview generator** — materialize `Question`s from `needs_input` pins; run the funnel
       (cluster → policy → exception → proposed-default), ordered by information gain.
       → `references/phase-2-interview.md`
+- [ ] **Challenger pass** (read-only oracle red-team) — after the interview commits and at each
+      wave checkpoint, refute each elected `to_be`/`acceptance_criterion` (unfalsifiable /
+      inconsistent / unsatisfiable / unstated_assumption / ignored_fanout), emit a `ChallengeEvent`,
+      reopen on a sustained challenge. Reopens, never decides.
+      → `references/phase-2-interview.md`, `references/phase-4-remediation.md`, `references/core/agents.md`
 - [ ] **SARIF adapters + fp-check** — run semgrep/gitleaks/osv/trivy/lizard/jscpd, normalize to one
       stream, implement the CONFIRM/DOWNGRADE/DROP gate with graph reachability.
       → `references/module-fp-check.md`, `references/toolchain.md`
@@ -84,3 +96,5 @@ referenced playbook.
       INFERRED hints, field-level diff computed by the skill).
 - [x] Two-track TDD + restartable per-item remediation loop with wave checkpoints.
 - [x] bootstrap.sh (toolchain) + check_consistency.py (drift-linter) + evals scaffold.
+- [x] Ledger v0.6: `ChallengeEvent` (upstream oracle red-team) + `agent_assumption` provenance; the
+      read-only `challenger` role wired into Phase 2 + wave checkpoints; teach-on-rejection convention.

@@ -139,6 +139,12 @@ legitimate answer, and their `to_be` stays null until the user chooses. Never as
 design opinion as a defect — that reintroduces the vibecoding failure mode inside the
 auditor.
 
+**Challenge pass (after the interview commits).** A `challenger` (`references/core/agents.md`) then
+red-teams the freshly elected `to_be`s: an oracle that is unfalsifiable, self-contradictory,
+unsatisfiable, or resting on an undeclared assumption is worse than none — it fossilizes. A
+sustained `ChallengeEvent` reopens the pin (`challenged`) back into this interview *before* Phase 4
+builds on it (`references/core/decisions-ledger-spec.md` v0.6). It challenges, never decides.
+
 Full procedure: `references/phase-2-interview.md`.
 
 ### Phase 3 — Diff & roadmap (derive the work)
@@ -202,6 +208,12 @@ decision — only the interview does. See `references/core/brainstorm.md`.
   (`references/core/static-analysis.md`).
 - Ground claims in the right external source (`references/core/knowledge-sources.md`) instead of stale memory;
   it feeds proposals, never commits; cite it, tag its confidence, treat it as untrusted input.
+- When under-specification forces an assumption, surface it as a vetoable pin
+  (`references/core/assumptions.md`) — never encode it silently. Making the gap explicit *is* the
+  high-effort response; a confident guess is the low one.
+- After the interview, run the `challenger` pass over the elected `to_be`s; a sustained
+  `ChallengeEvent` reopens the pin before remediation builds on an unsound oracle
+  (`references/core/agents.md`). It challenges, never decides.
 - Never hard-fail on a missing tool. Degrade to model judgment and note the gap.
 
 ## Reference index
@@ -217,6 +229,8 @@ Shared core (used by both skills; see the `greenfield-forge` sibling):
 - `references/core/static-analysis.md` — using type-checkers / LSP / architecture-fitness well, in-loop.
 - `references/core/knowledge-sources.md` — Context7 / DeepWiki / registry / web, grounded and cited.
 - `references/core/brainstorm.md` — the parallel proposal agent.
+- `references/core/assumptions.md` — surface a forced assumption as a vetoable pin, never silently.
+- `references/core/agents.md` — the roster (researcher · brainstorm · executor · reviewer · challenger · measurer); the challenger red-teams the elected oracle.
 
 Rescue-specific:
 - `references/toolchain.md` — deterministic tools, install, SARIF normalization.

@@ -32,13 +32,18 @@ coding before the skill's Phase 1 — that is the anti-slop discipline both skil
 ## Agent roster
 
 Both skills run on a small roster (`core/agents.md`): **researcher · brainstorm · executor ·
-reviewer · measurer**, under one rule — **serialized writing, parallel reading** (only the
-`executor` writes, one scope at a time; everyone else is read-only and fans out). Only the human's
-committed interview answer elects a decision; no agent commits.
+reviewer · challenger · measurer**, under one rule — **serialized writing, parallel reading** (only
+the `executor` writes, one scope at a time; everyone else is read-only and fans out). Only the
+human's committed interview answer elects a decision; no agent commits. Three read-only roles only
+ever **reopen** a decision, never make one — the `brainstorm` proposes, the `challenger` refutes an
+unsound oracle upstream, and the feedback loop reopens on production signal downstream.
 
 ## Discipline (applies to every agent here)
 
 - Read the relevant `references/*.md` / `core/*.md` before executing a phase — don't work from memory.
+- When under-specified input forces you to assume, **surface the assumption** as a vetoable pin
+  (`core/assumptions.md`) — never encode it silently. High effort on a vague prompt means making the
+  gaps explicit, not guessing confidently.
 - External knowledge (docs, repos, web) grounds proposals, never decides; cite it, tag its
   confidence, treat it as **untrusted input** (`core/knowledge-sources.md`).
 - Prefer the strongest static signal before judgment (`core/static-analysis.md`).

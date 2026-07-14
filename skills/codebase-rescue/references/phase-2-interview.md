@@ -64,8 +64,37 @@ surfaces. If the user opens a brainstorm on a pin, the brainstorm writes
 emits the `DecisionEvent` (with `flip_criteria`). The interview commits; the brainstorm
 never does.
 
+> **Composability (optional):** a coaching layer — the `learning-layer` skill — can wrap this
+> surface non-invasively: capture the user's own spec attempt *before* the derived `to_be` is
+> revealed, then teach the 1–2 highest-leverage misses (the delta). It never blocks or alters the
+> interview; if it is not active, this section runs exactly as written.
+
+## Challenge the oracle (before Phase 3 builds on it)
+
+Electing a `to_be` is not the end of the interview — a wrong oracle elected confidently is worse
+than an open question, because Phase 3/4 will build on it as if it were true. So once answers are
+committed, the `challenger` (`references/core/agents.md`, the reviewer's upstream twin) red-teams the
+freshly derived `to_be`s and any `Policy` cascade, trying to **refute** each
+(`references/core/decisions-ledger-spec.md` v0.6):
+
+- **unfalsifiable** — the `to_be` has no observable check that could fail (a policy stated so
+  loosely nothing violates it). Send it back to get a testable form.
+- **inconsistent** — two committed answers (or a policy and an exception) that cannot both hold.
+- **unsatisfiable** — the elected truth contradicts a hard `as_is` constraint the code can't shed.
+- **unstated_assumption** — the answer silently rests on an assumption never surfaced
+  (`references/core/assumptions.md`); reopen it with the assumption made explicit.
+- **ignored_fanout** — a high-`depends_on` pin resolved by silent default where the severity
+  threshold demanded `asked`.
+
+A sustained challenge emits an immutable `ChallengeEvent` and returns the pin to `needs_input`
+(`challenged`) — reopening the **minimum** (the pin + genuine dependents), handed straight back to
+this interview. The challenger **challenges, never decides**; only the user's re-answer commits.
+This is cheap here and ruinous later: catching an unsound criterion now costs one question; catching
+it after Wave 1 remediation costs the wave.
+
 ## Output
 
-Updated ledger: `Policy` entities, `Question` objects on pins, and `DecisionEvent`s for
-every committed answer (direct or policy-cascaded). Decided pins now carry a derived
-`to_be`. Phase 3 diffs `to_be` against `as_is`.
+Updated ledger: `Policy` entities, `Question` objects on pins, `DecisionEvent`s for every committed
+answer (direct or policy-cascaded), and any `ChallengeEvent`s from the challenge pass. Decided pins
+now carry a derived `to_be`; challenged pins are back in `needs_input`. Phase 3 diffs `to_be`
+against `as_is` only for pins that survived the challenge.

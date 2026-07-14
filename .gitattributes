@@ -1,0 +1,13 @@
+# Deterministic line endings across operating systems.
+# All text files are stored AND checked out with LF, so a contributor on Windows
+# (where tools may emit CRLF) never produces line-ending churn in the diff — the same
+# anti-drift discipline the skills enforce, applied to the repo's own bytes.
+* text=auto eol=lf
+
+# Belt-and-suspenders for the file types actually in this repo.
+*.md   text eol=lf
+*.json text eol=lf
+*.py   text eol=lf
+*.sh   text eol=lf
+*.toml text eol=lf
+*.yml  text eol=lf

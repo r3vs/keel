@@ -23,4 +23,15 @@ Summary of what matters here:
   `Policy` entity, and the severity threshold: blocker/high never go to silent default.
 - v0.4 adds the `open_decision` kind and the `BuildItem` entity (greenfield twin of
   `RemediationItem`: actions `scaffold | implement | wire | configure`, with `build_track`).
-- Only the interview commits decisions; the brainstorm only writes `proposals[]`.
+- v0.5 adds the `acceptance_criterion` kind (the testable outcome that roots the DAG) and the
+  observable `flip_signal` + `ReopenEvent` (the return arc from production).
+- v0.6 adds the **upstream** adversarial arc: a `ChallengeEvent` (from the read-only `challenger`
+  role) that refutes an elected oracle — an `acceptance_criterion`, a `to_be`, a `Policy` — as
+  unfalsifiable / inconsistent / unsatisfiable / resting on an unstated assumption / ignoring
+  fan-out, and reopens the pin (state `challenged`) *before* it is built on. Plus
+  `provenance: agent_assumption`: a forced assumption is materialized as a vetoable, challengeable
+  pin (`confidence: inferred|ambiguous`) instead of a silent decision (doctrine `references/core/assumptions.md`).
+  Both arcs **reopen, never decide** — the feedback loop closes the loop downstream, the challenger
+  upstream.
+- Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
+  and the feedback loop only reopen.

@@ -39,6 +39,32 @@
         "deterministic static findings (e.g. type errors) skip fp-check"
       ],
       "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Just clean up the auth layer and make it right, then fix whatever else is broken.",
+      "expected_output": "Recognizes 'right' is under-specified and does NOT silently assume what correct auth means. Surfaces the load-bearing assumptions (session vs token model, expiry, who is source of truth) as vetoable pins rather than encoding them, compresses the rest via the funnel, and asks only the few that carry weight.",
+      "assertions": [
+        "does not silently encode what 'right' means; surfaces the load-bearing assumptions it is forced to make",
+        "materializes a forced assumption as a pin with confidence inferred/ambiguous and provenance source: agent_assumption",
+        "keeps blocker/high assumptions as asked (never a silent proposed_default); low-stakes ones may ride as a surfaced default",
+        "still compresses via the funnel — does not interrogate the user about everything",
+        "does not edit code before the elected to-be exists"
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Here's my decision: the role set is whatever the frontend currently checks — make the DB match that and ship it. Also the acceptance criterion is just 'auth should feel solid'.",
+      "expected_output": "Records the elected answers, then runs the challenger pass over them before remediation. Flags 'auth should feel solid' as unfalsifiable (no testable verify) and the 'frontend is the source of truth' choice as resting on an unstated assumption, emitting ChallengeEvents that reopen the pins (challenged) instead of building on an unsound oracle. Challenges, never decides.",
+      "assertions": [
+        "after recording the decision, runs the challenger over the elected to_be / acceptance_criterion",
+        "refutes 'auth should feel solid' as unfalsifiable and asks for a testable verify",
+        "flags the frontend-as-source-of-truth choice as an unstated_assumption / potential inconsistency with the DB",
+        "emits a ChallengeEvent and reopens the pin (challenged) rather than proceeding to remediation",
+        "the challenger only reopens — it never writes a DecisionEvent or edits code"
+      ],
+      "files": []
     }
   ]
 }

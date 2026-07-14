@@ -16,13 +16,30 @@ pre-implementation; versions track the design + packaging, not a released runtim
 - **Agent-agnostic packaging**: Agent-Skills-spec `skills/<name>/`, root `AGENTS.md`, a Claude Code
   plugin (`.claude-plugin/`, `agents/`, `hooks/`, `commands/`) and an opencode adapter
   (`opencode.json` + `opencode-skills` + `.opencode/command/` + `scripts/install-opencode.sh`).
-- **Agent roster** (`core/agents.md`): researcher · brainstorm · executor · reviewer · measurer,
-  under serialized-writing / parallel-reading.
+- **Agent roster** (`core/agents.md`): researcher · brainstorm · executor · reviewer · challenger ·
+  measurer, under serialized-writing / parallel-reading.
+- **Three-gap harness** (the definitive-harness pass): the package now closes three gaps with one
+  anti-divergence machine, not one.
+  - *Oracle gap* — a new read-only **`challenger`** role + `ChallengeEvent` (ledger **v0.6**) that
+    red-teams an elected oracle **upstream** (unfalsifiable / inconsistent / unsatisfiable / unstated
+    assumption / ignored fan-out) and reopens the pin before code rests on it — the feedback loop's
+    upstream twin. Both **reopen, never decide**.
+  - *Silent-assumption gap* — `core/assumptions.md` doctrine + `provenance: agent_assumption`: a
+    forced assumption is materialized as a vetoable, challengeable pin, never encoded silently.
+  - *Operator gap* — a composable **`learning-layer`** skill: senior-grade output *while the user
+    learns*, via one-mode (default-on, opt-out) micro-retrieval, teach-from-the-delta ranked to 1–2
+    items, teach-the-class, and a **learner-model** gradebook (the operator-gap twin of the ledger)
+    that measures mastery, fades scaffolds on evidence, and detects cargo-cult.
+  - *Teach-on-rejection* — a blocking gate (reviewer / challenger / feedback loop) now names the
+    class and the recognition cue, not a bare verdict — raising the operator, not just the code.
+  - *Prefer-the-checkable-formulation* — a selection heuristic in `core/static-analysis.md`: author
+    the spec so the strongest static signal applies, not only run it in-loop.
 - **Engineering hygiene**: drift-linter + pointer verifier, CI (`.github/workflows/ci.yml`), a
   version-pinning mechanism in `bootstrap.sh`, MIT `LICENSE`, `CONTRIBUTING.md`.
 
-- **Complete-package layer** (composed, not cloned): five composable skills — `using-the-ledger`,
-  `grounded-research`, `static-first-analysis`, `project-memory`, `writing-skills` (meta); a
+- **Complete-package layer** (composed, not cloned): six composable skills — `using-the-ledger`,
+  `grounded-research`, `static-first-analysis`, `project-memory`, `learning-layer`, `writing-skills`
+  (meta); a
   **memory** subsystem (ledger + `MEMORY.md` + memory MCP); **MCP** servers wired across platforms
   (`context7`, `deepwiki`, `memory`; `github` opt-in) via `.mcp.json`, `opencode.json`, and
   `.codex/config.toml`; **Codex** + any AGENTS.md-aware agent supported; and `superpowers` referenced

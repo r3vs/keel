@@ -50,6 +50,14 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 - [ ] **Interview generator** — reuse the shared funnel (`references/core/interview-funnel.md`); materialize
       Question objects from `open_decision` pins, ordered by information gain.
       → `references/phase-2-interview.md`
+- [ ] **Challenger pass** (shared with rescue; read-only) — after the interview commits and at each
+      wave checkpoint, refute each elected `acceptance_criterion`/`to_be`/`Policy` (unfalsifiable /
+      inconsistent / unsatisfiable / unstated_assumption / ignored_fanout) *before* Phase 3 turns it
+      into the contract; emit a `ChallengeEvent`, reopen on a sustained challenge. Reopens, never
+      decides. → `references/phase-2-interview.md`, `references/phase-4-build.md`, `references/core/agents.md`
+- [ ] **Assumption-surfacing** — when a brief gap forces an assumption, materialize it as a pin with
+      `provenance: agent_assumption` (never a silent given). Shared discipline with rescue.
+      → `references/core/assumptions.md`
 
 ## 4. React artifact — the to-be design map (uses the frontend-design skill)
 - [ ] Ghost/planned nodes that flip solid as BuildItems resolve; contract panels; linked
@@ -93,6 +101,9 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
       brainstorm, shape-engine) so neither skill duplicates the spine.
 - [x] Ledger v0.4–v0.5: `open_decision` + `acceptance_criterion` kinds, `BuildItem` + `ReopenEvent`,
       observable `flip_criteria`.
+- [x] Ledger v0.6 (shared): `ChallengeEvent` (upstream oracle red-team) + `agent_assumption`
+      provenance; the read-only `challenger` wired into Phase 2 + wave checkpoints — the mirror of
+      the downstream feedback loop, catching an unsound oracle before it becomes the contract.
 - [x] SKILL.md orchestrator: 7 phases, 5 modes (forge/spec/slice/decide/evolve), preventive guardrails.
 - [x] 10 playbooks (decision-catalog, contract-propagation, threat-model, phases 1–7); drift-linter green.
 - [x] Contract-propagation posture: author once, generate aligned, install the drift-check + contract tests.

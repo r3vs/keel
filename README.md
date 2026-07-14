@@ -31,13 +31,14 @@ to close the loop.
 ## Layout
 - `skills/codebase-rescue/` — the curative skill (`SKILL.md` + `references/` + `modules.json` + `evals/`).
 - `skills/greenfield-forge/` — the preventive skill (same layout).
-- `skills/{using-the-ledger,grounded-research,static-first-analysis,project-memory,writing-skills}/`
-  — composable helper skills. Generic skills (TDD, debug, planning, review) are **composed** from
+- `skills/{using-the-ledger,grounded-research,static-first-analysis,project-memory,learning-layer,writing-skills}/`
+  — composable helper skills (`learning-layer` closes the **operator** gap: senior-grade output while
+  the user learns). Generic skills (TDD, debug, planning, review) are **composed** from
   [`superpowers`](https://github.com/obra/superpowers), not reinvented.
 - `core/` — the shared spine, and the single **authoring source** for it: `decisions-ledger-spec.md`
-  (schema, v0.5, Italian), `ledger.md` (English pointer), `interview-funnel.md`, `brainstorm.md`,
+  (schema, v0.6, Italian), `ledger.md` (English pointer), `interview-funnel.md`, `brainstorm.md`,
   `shape-engine.md`, `contract-testing.md`, `feedback-loop.md`, `static-analysis.md`,
-  `knowledge-sources.md`, `agents.md`. Each skill is **self-contained**: `scripts/sync_core.py`
+  `knowledge-sources.md`, `assumptions.md`, `agents.md`. Each skill is **self-contained**: `scripts/sync_core.py`
   vendors the doctrine it needs into `skills/<skill>/references/core/`, so no skill points outside
   its own tree (CI's `sync_core.py --check` keeps the copies identical to the source).
 - **Packaging**: `AGENTS.md`, `.claude-plugin/`, `opencode.json`, `.codex/config.toml`, `agents/`,
@@ -54,7 +55,7 @@ to close the loop.
 See `docs/packaging.md` for MCP, memory, and the compose model.
 
 ## Status
-Design-complete and internally coherent across two methodology skills + five composable helpers;
+Design-complete and internally coherent across two methodology skills + six composable helpers;
 packaged agent-agnostically; the drift-linter and pointer verifier are green in CI. What remains is
 runtime implementation — see each `TODO.md`.
 

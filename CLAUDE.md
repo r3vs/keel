@@ -18,7 +18,7 @@ deliverable is prose that a future Claude instance reads and executes:
   plugin), `.codex/config.toml` (Codex), `agents/` (roster), `hooks/`, `commands/`, `.mcp.json`
   (MCP). Skills follow the Anthropic Agent Skills spec so they are portable. See `docs/packaging.md`.
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
-  `static-first-analysis`, `project-memory`, `writing-skills`), a memory subsystem (ledger +
+  `static-first-analysis`, `project-memory`, `learning-layer`, `writing-skills`), a memory subsystem (ledger +
   `MEMORY.md` + memory MCP), MCP servers (`context7`/`deepwiki`/`memory`; `github` opt-in), and
   `superpowers` **composed** (referenced in the marketplace) for the generic engineering skills.
 
@@ -64,13 +64,17 @@ are all unified under this one principle — which is why there is deliberately 
 - **The decisions ledger is the single source of truth.** Three surfaces — the visual map/wiki,
   the interview, and the brainstorm — hold *no state of their own*; they all read/write one
   `ledger.json`. This is deliberate: it is the exact anti-divergence property the skills enforce on
-  the codebases they touch. Schema authority: `core/decisions-ledger-spec.md` (shared, v0.5);
+  the codebases they touch. Schema authority: `core/decisions-ledger-spec.md` (shared, v0.6);
   English pointer summary: `core/ledger.md`.
 - **A `Pin` is a discriminated union on `kind`** (`contract_mismatch | internal_contradiction |
   ambiguity | incompleteness | design_concern | defect | open_decision | acceptance_criterion |
   other`). The `kind` constrains the shape of the pin's `as_is` / `to_be` / `question` payload.
   `open_decision` (v0.4) is the greenfield fork (nothing built yet); `acceptance_criterion` (v0.5)
-  is the testable outcome that roots the dependency DAG.
+  is the testable outcome that roots the dependency DAG. A `ChallengeEvent` (v0.6) is not a pin kind
+  but an append-only event: the read-only `challenger` refutes an elected oracle and reopens the pin
+  *upstream* (before build), the mirror of the feedback loop's downstream reopen. Both reopen, never
+  decide. `provenance: agent_assumption` (v0.6) makes a forced assumption a vetoable pin, not a
+  silent decision (`core/assumptions.md`).
 - **Each phase is a separate invocation with fresh context**, communicating ONLY through on-disk
   artifacts (the ledger, the map, the graph/contract). Rescue has five phases; greenfield has seven
   (Frame → Interview → Contract → Build → Validate → Release → Operate & Evolve), the last two
@@ -86,11 +90,13 @@ are all unified under this one principle — which is why there is deliberately 
   (`core/interview-funnel.md`, `core/brainstorm.md`, `core/contract-testing.md`,
   `core/feedback-loop.md`): same machinery, different direction (rescue reconciles/finds; greenfield
   generates/prevents). The feedback loop (`flip_criteria` → reopen) is what closes the lifecycle.
-- **Two cross-cutting doctrines are shared too** (`core/static-analysis.md`,
-  `core/knowledge-sources.md`): how to use static tools well (type-checkers / LSP / architecture-
-  fitness, in-loop, deterministic findings skipping fp-check) and which external knowledge source
-  per phase (Context7 / DeepWiki / registry / web), with grounding, confidence, and untrusted-input
-  discipline.
+- **Cross-cutting doctrines are shared too** (`core/static-analysis.md`, `core/knowledge-sources.md`,
+  `core/assumptions.md`): how to use static tools well (type-checkers / LSP / architecture-fitness,
+  in-loop, deterministic findings skipping fp-check — and *authoring the spec so the strongest signal
+  applies*); which external knowledge source per phase (Context7 / DeepWiki / registry / web), with
+  grounding, confidence, and untrusted-input discipline; and how an agent surfaces its **own** forced
+  assumptions as vetoable pins instead of encoding them silently (the anti-slop rule turned on the
+  agent itself).
 - **The shared `core/` is a single authoring source, vendored into each skill (Model B).** All the
   shared modules above are authored once under `core/*.md` (the edit point), but each skill keeps its
   **own copy** under `skills/<skill>/references/core/x.md` so it is self-contained (independently
@@ -134,7 +140,7 @@ packaging manifests are valid JSON. Full details: `docs/packaging.md`.
 - **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
   `core/*.md` is the single authoring source for the shared doctrine — **edit it there, never in a
   `references/core/` copy**, then run `scripts/sync_core.py` (the copies are generated). Within that,
-  `core/decisions-ledger-spec.md` (v0.5) is authoritative for the ledger schema. Do not let a
+  `core/decisions-ledger-spec.md` (v0.6) is authoritative for the ledger schema. Do not let a
   `SKILL.md`, a reference summary, or a vendored copy drift from them.
 - **`core/decisions-ledger-spec.md` is written in Italian** — the rest of the repo is English, and
   `core/ledger.md` is the short English pointer to it. Preserve that split unless asked to

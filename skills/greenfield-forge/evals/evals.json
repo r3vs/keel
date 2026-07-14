@@ -51,6 +51,32 @@
         "does no scaffolding or build"
       ],
       "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Build me a new analytics service. The one acceptance criterion is that it should be scalable and fast. Design the architecture and start building to that.",
+      "expected_output": "Frames and interviews as usual, then runs the challenger over the elected decisions before Phase 3. Refutes 'scalable and fast' as unfalsifiable (no testable verify that could fail) and reopens it for a concrete outcome (e.g. p95 latency + throughput target) rather than generating the contract on a slogan. Challenges, never decides.",
+      "assertions": [
+        "runs the challenger over the acceptance_criterion / elected to_be before Phase 3 generates the contract",
+        "refutes 'scalable and fast' as unfalsifiable and asks for a testable verify (concrete SLO)",
+        "emits a ChallengeEvent and reopens the pin (challenged) instead of building the contract on it",
+        "does not generate the cross-layer contract on an unfalsifiable oracle",
+        "the challenger only reopens — never commits a decision or writes code"
+      ],
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Build me a marketplace app — you figure out the details.",
+      "expected_output": "Refuses to fill the unmade decisions silently. Frames the load-bearing forks (tenancy, payments, auth, catalog model) as open_decision pins and, where it must assume to proceed, surfaces the assumption as a vetoable pin (provenance agent_assumption) rather than encoding it. Runs the compressed interview; never invents product/architecture decisions silently.",
+      "assertions": [
+        "does not silently fill unmade decisions from a vague brief (no open 'tell me about your app' free-fill)",
+        "materializes the load-bearing forks as open_decision pins from the catalog",
+        "where forced to assume, surfaces it as a pin with provenance source: agent_assumption and confidence inferred/ambiguous",
+        "compresses via the funnel (policies first), keeping high-fan-out decisions asked",
+        "elects the to-be in the interview before any scaffolding"
+      ],
+      "files": []
     }
   ]
 }

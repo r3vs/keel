@@ -47,6 +47,20 @@ mutation. Three high-value static signals are commonly under-used:
 - **Degrade gracefully.** No language server or checker for a language → fall back to the graph /
   grep and note the gap. Never hard-fail (same posture as the rest of the toolchain).
 
+## Prefer the checkable formulation (a selection heuristic)
+
+Verification is usually strictly cheaper than generation — checking a passing test, a type, or a
+failed constraint costs far less than producing correct code, and the gap is widest exactly where
+the static signal is strong. So when a `to_be` or an `acceptance_criterion` can be expressed more
+than one way, **prefer the formulation whose correctness a machine can check** — because that moves
+the property out of "someone has to notice" and into "the build fails". Concretely: state an outcome
+with a mechanical `verify` (an e2e assertion) over a prose intent; encode an elected boundary as an
+architecture-fitness rule over a comment; make an invariant a runtime assert or a property test over
+a hope. This is the design-time companion to running the tools in-loop: don't only *check* with the
+strongest signal, **author the spec so the strongest signal applies.** A `to_be` with no possible
+failing test is a smell — it is precisely what the `challenger` refutes as `unfalsifiable`
+(`references/core/agents.md`, `references/core/decisions-ledger-spec.md` v0.6).
+
 ## Output
 
 High-confidence static findings feeding pins (rescue) or standing CI checks (greenfield), used

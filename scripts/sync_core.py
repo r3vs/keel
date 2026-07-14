@@ -34,6 +34,13 @@ def read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def write_lf(p: Path, text: str) -> None:
+    """Write with LF newlines on every OS. `write_text` translates '\\n' -> os.linesep on Windows
+    (CRLF), which would flip the vendored copies' line endings and produce spurious full-file diffs;
+    writing bytes bypasses that so the generated copies are byte-identical across platforms."""
+    p.write_bytes(text.encode("utf-8"))
+
+
 def vendored_transform(text: str) -> str:
     """Deterministic transform applied to a core doc when copied into a skill: rewrite its own
     internal `core/y.md` pointers to `references/core/y.md` so they resolve within the skill."""
@@ -95,7 +102,7 @@ def plan(check: bool):
                 changes.append(("WRITE", dest.relative_to(ROOT)))
                 if not check:
                     dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_text(content, encoding="utf-8")
+                    write_lf(dest, content)
 
         # drop stale copies no longer needed
         if vendor_dir.is_dir():
@@ -112,7 +119,7 @@ def plan(check: bool):
             if nt != t:
                 changes.append(("REWRITE", f.relative_to(ROOT)))
                 if not check:
-                    f.write_text(nt, encoding="utf-8")
+                    write_lf(f, nt)
 
     return changes, missing
 

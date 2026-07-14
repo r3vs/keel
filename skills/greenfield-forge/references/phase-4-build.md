@@ -89,6 +89,12 @@ checkpoint:
   it does, the pin's `flip_criteria` has fired: **reopen the dependent `open_decision` pins** (back
   to `needs_input`) rather than building on a foundation you now know is wrong. This is the loop's
   self-correction, and it is why greenfield is not fire-and-forget.
+- Re-run the **`challenger`** (`references/core/agents.md`) on the wave's decisions — the Phase-2
+  upstream arc, now with build evidence. It is cheapest to catch an `unsatisfiable` `to_be` or an
+  `unstated_assumption` here, before the contract propagates it into another layer; a sustained
+  `ChallengeEvent` reopens the pin (`challenged`) (`references/core/decisions-ledger-spec.md` v0.6).
+  A `flip_criteria` firing is production falsifying a decision downstream; a `ChallengeEvent` is the
+  build falsifying the oracle at the boundary — same reopen, opposite end of the lifecycle.
 
 A fully autonomous idea-to-app loop is how you get confident slop. A loop that pauses at wave
 boundaries is cautious at exactly the dependency points that matter.

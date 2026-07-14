@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "codebase-alignment",
-      "description": "codebase-rescue (align an existing, misaligned codebase) + greenfield-forge (build a new one aligned from the first commit), sharing one decisions-ledger core and a researcher/executor/reviewer/measurer/brainstorm agent roster.",
+      "description": "codebase-rescue (align an existing, misaligned codebase) + greenfield-forge (build a new one aligned from the first commit), sharing one decisions-ledger core and a researcher/executor/reviewer/challenger/measurer/brainstorm agent roster; plus a learning-layer that closes the operator gap.",
       "version": "0.1.0",
       "source": "./",
       "category": "development",

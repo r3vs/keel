@@ -48,6 +48,10 @@ a periodic "did X happen?" asked at a wave boundary or on a schedule. Never a ha
 - **Cadence is a mode, not a daemon in-context.** `evolve` runs on a schedule or on an incident;
   each run is a fresh invocation reading the ledger + manifest from disk (same context-reset
   discipline as every other phase).
+- **A reopen teaches.** The `ReopenEvent.reason` is written to be read: it names *which class* of
+  assumption production falsified and *why the flip criterion was the right tripwire* — not a bare
+  "signal fired". Same teach-on-rejection posture as the reviewer/challenger (`core/agents.md`): the
+  observer that reopens also explains, so the loop raises the operator, not just the code.
 
 ## Why this is the payoff of `flip_criteria`
 

@@ -53,9 +53,39 @@ on thin information from fossilizing — the ledger becomes a living ADR that kn
 - A fork the user wants to punt → `deferred`: it leaves v1 scope as a future backlog item (the
   natural handoff to `slice` mode later), not silent scaffolding.
 
+> **Composability (optional):** the `learning-layer` skill can wrap this surface non-invasively —
+> capture the user's own decision attempt *before* the derived `to_be` is revealed, then teach the
+> 1–2 highest-leverage misses. It never blocks or alters the interview; absent it, this runs as
+> written.
+
+## Challenge the oracle (before it becomes the contract)
+
+In greenfield the stakes are higher than in rescue: the elected `to_be` doesn't just guide a fix, it
+becomes the **contract** every layer is generated from (Phase 3). An unsound decision here propagates
+into DB schema, API, and client *by construction* — the very drift-proofing that makes greenfield
+strong also makes a bad oracle harder to walk back. So before Phase 3, the `challenger`
+(`references/core/agents.md`, the reviewer's upstream twin) red-teams the committed decisions
+(`references/core/decisions-ledger-spec.md` v0.6):
+
+- **unfalsifiable** — an `acceptance_criterion` with no testable `verify`; it can't root a Track-A
+  test, so it can't root the DAG. Reopen for a testable form.
+- **inconsistent** — two decisions (or a policy and a fork) that can't both hold in one design.
+- **unsatisfiable** — a `to_be` not reachable from the `givens` (e.g. "on-prem, no cloud" vs a
+  managed-service choice).
+- **unstated_assumption** — a decision resting on a brief gap the agent filled silently
+  (`references/core/assumptions.md`); reopen with it surfaced.
+- **ignored_fanout** — a high-`depends_on` fork resolved as a silent default instead of `asked`.
+
+A sustained challenge emits an immutable `ChallengeEvent`, returns the pin to `needs_input`
+(`challenged`), and reopens the **minimum** (the fork + genuine dependents) back into this interview.
+The challenger **challenges, never decides**; only a re-answer commits. Catching an unsound decision
+now costs one question; catching it after the contract is generated costs a regeneration across
+every layer.
+
 ## Output
 
-Updated ledger: `Policy` entities, `Question` objects on pins, and a `DecisionEvent` (with
-`flip_criteria`) for every committed answer — direct or policy-cascaded. Decided pins now carry a
-derived `to_be` (the elected spec). The to-be map fills in: ghost nodes gain their committed
-shape. Phase 3 turns those decided pins into the contract and the build backlog.
+Updated ledger: `Policy` entities, `Question` objects on pins, a `DecisionEvent` (with
+`flip_criteria`) for every committed answer — direct or policy-cascaded — and any `ChallengeEvent`s
+from the challenge pass. Decided pins now carry a derived `to_be` (the elected spec); challenged pins
+are back in `needs_input`. The to-be map fills in: ghost nodes gain their committed shape. Phase 3
+turns the *surviving* decided pins into the contract and the build backlog.

@@ -7,5 +7,5 @@ cat <<'MSG'
   - greenfield-forge : build a NEW project aligned from the first commit.
 Read AGENTS.md, then the relevant skills/<name>/SKILL.md. Do NOT start coding before the skill's
 Phase 1 — that is the anti-slop discipline. Only the human's committed interview answer elects a
-decision; agents find, propose, build, and verify.
+decision; agents find, propose, build, verify, and challenge — they reopen a decision, never make one.
 MSG
