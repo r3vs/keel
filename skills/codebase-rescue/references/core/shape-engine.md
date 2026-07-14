@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/shape-engine.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # The Field-Shape Engine (shared core)
 
 Both skills reduce a data field to one comparable descriptor and reason across type systems

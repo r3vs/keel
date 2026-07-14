@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/assumptions.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # Surfacing Assumptions (shared core)
 
 Shared doctrine both skills read. It governs the agent's **own** behavior, not the codebase's: what
@@ -15,20 +17,20 @@ not "try harder and guess better"; it is **raise the effort on making the gaps e
 effort on a vague input means *enumerate what is missing and surface it*, never *elaborate a
 confident guess*. This doctrine is the schema-level enforcement of that principle.
 
-It is the precondition for two other mechanisms: you cannot **challenge** an oracle (`references/core/agents.md`
-challenger) that rests on a hidden assumption, and you cannot **learn** from a decision that was
+It is the precondition for two other mechanisms: you cannot **challenge** an oracle (the
+`challenger` role) that rests on a hidden assumption, and you cannot **learn** from a decision that was
 never made visible. A silent assumption defeats both arcs — so it is never allowed to be silent.
 
 ## The rule (non-negotiable)
 
 - **A forced assumption is a pin, not a default.** When an agent must assume to proceed, it writes
-  the assumption into the ledger (`references/core/ledger.md`) — either as its own pin, or as a `provenance`
+  the assumption into the ledger — either as its own pin, or as a `provenance`
   entry on the pin it is creating — with `provenance: [{ source: "agent_assumption", detail: "…" }]`
   and `confidence: inferred | ambiguous` (never `extracted`; an assumption is not a fact).
 - **Confidence tags the guess honestly.** `inferred` = a defensible reading from real signal;
   `ambiguous` = genuinely undecided, multiple readings live. The severity threshold then applies as
   always: a `blocker`/`high` assumption is **always `asked`**, never a silent `proposed_default`
-  (`references/core/interview-funnel.md`). Only low-stakes assumptions may ride as a proposed default the user
+  (the interview-funnel rule). Only low-stakes assumptions may ride as a proposed default the user
   skims and overrides by exception.
 - **One assumption, one line of why.** Record *what* was assumed and *what would change if it is
   wrong* (its blast radius via `depends_on`), so the interview can veto it with the cost in view and

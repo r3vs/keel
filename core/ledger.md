@@ -30,7 +30,7 @@ Summary of what matters here:
   unfalsifiable / inconsistent / unsatisfiable / resting on an unstated assumption / ignoring
   fan-out, and reopens the pin (state `challenged`) *before* it is built on. Plus
   `provenance: agent_assumption`: a forced assumption is materialized as a vetoable, challengeable
-  pin (`confidence: inferred|ambiguous`) instead of a silent decision (doctrine `core/assumptions.md`).
+  pin (`confidence: inferred|ambiguous`) instead of a silent decision (the assumptions doctrine).
   Both arcs **reopen, never decide** — the feedback loop closes the loop downstream, the challenger
   upstream.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger

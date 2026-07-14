@@ -94,6 +94,26 @@ package as the edit point only; CI's `sync_core.py --check` fails if any vendore
 it, so the duplication can never diverge — the very anti-divergence property the skills enforce on
 the codebases they touch, applied to their own shared prose.
 
+### Why not just write the text directly in each skill (and delete `core/`)?
+
+Because the same doctrine is load-bearing in several places at once — the ledger spec alone is
+used by both methodology skills, two helpers, and the challenger agent. Written "directly where
+needed" it becomes N hand-maintained copies with **no mechanical guard**: the next spec bump
+updates some copies and misses others, and nothing can flag it because there is no source to
+compare against. That silent divergence is the exact failure mode this package exists to cure, so
+the repo applies its own medicine: one source, generated copies, a CI gate. The copies exist only
+because the Agent Skills spec's unit of distribution is a **standalone skill folder** — a skill
+copied out of the repo must not contain dangling pointers.
+
+Three rules keep the model honest:
+- every vendored copy carries a `GENERATED FILE — do not edit` banner (the source is `core/`);
+- the sharing surface stays **minimal**: only load-bearing dependencies are backticked pointers
+  (which the closure follows); see-also mentions stay plain text, so helpers vendor only the doc
+  that is their actual subject;
+- `agents/*.md` and other **plugin-root adapters may point at `core/` directly** — they are not
+  skills, never ship standalone, and always travel with the repo root. Only files under `skills/`
+  must use vendored copies (the linter enforces exactly this split).
+
 ## Keeping adapters honest
 
 `core/agents.md` is the source of truth for the roster; `agents/*.md` (Claude) and the `agent`

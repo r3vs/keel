@@ -58,5 +58,5 @@ decision-catalog's option set (greenfield).
 ## What only the interview may do
 
 Only the interview commits a decision: it sets `state: decided` and emits the `DecisionEvent`
-(with `flip_criteria`). The brainstorm (`core/brainstorm.md`) only writes `proposals[]` and
+(with `flip_criteria`). The brainstorm (its own doctrine doc) only writes `proposals[]` and
 never decides. This separation is what keeps the interview neutral in both skills.

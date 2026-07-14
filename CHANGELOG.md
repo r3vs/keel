@@ -81,6 +81,13 @@ spine has started; versions track design + packaging + runtime together.
   `core→core` dependency closure). No skill points at `core/` directly, so every skill directory
   ships complete on any platform. CI gained `sync_core.py --check` (keeps each copy identical to its
   source), and `check_consistency.py` now errors on a bare `` `core/x.md` `` pointer under `skills/`.
+- **Model B slimmed** (after review feedback that the vendoring surface was confusing): see-also
+  cross-links inside `core/*.md` demoted to plain text so the dependency closure only follows
+  load-bearing pointers — vendored copies drop **65 → 39** and each helper skill now carries only
+  the doc(s) that are its actual subject; every vendored copy is stamped with a
+  `GENERATED FILE — do not edit` banner by `sync_core.py`; `check_consistency.py` gained
+  **command parity** (`commands/` ↔ `.opencode/command/`); and `docs/packaging.md` now answers
+  "why not write the text directly in each skill?" explicitly.
 
 ### Notes
 - Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is Plan A).

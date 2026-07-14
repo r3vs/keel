@@ -150,6 +150,16 @@ if opencode_agents is not None and roster and set(roster) != opencode_agents:
         f"agent roster mismatch: Claude agents/={roster} vs opencode.json agent={sorted(opencode_agents)}"
     )
 
+# 6. Command parity across adapters: commands/*.md (Claude) ↔ .opencode/command/*.md (opencode).
+#    Same rule as the agent roster — adapters mirror one source, the linter enforces it.
+claude_cmds = sorted(f.stem for f in (ROOT / "commands").glob("*.md")) if (ROOT / "commands").is_dir() else []
+opencode_cmds = sorted(f.stem for f in (ROOT / ".opencode" / "command").glob("*.md")) \
+    if (ROOT / ".opencode" / "command").is_dir() else []
+if set(claude_cmds) != set(opencode_cmds):
+    errors.append(
+        f"command parity mismatch: commands/={claude_cmds} vs .opencode/command/={opencode_cmds}"
+    )
+
 for w in warnings:
     print(f"WARN  {w}")
 for e in errors:
@@ -162,7 +172,7 @@ vendored_total = sum(
 ) if (ROOT / 'skills').is_dir() else 0
 print(
     f"\n{len(SKILLS)} skills, {module_count} modules, {len(core_files)} core sources "
-    f"({vendored_total} vendored copies), {ref_total} references, {len(roster)} agents — "
-    f"{len(errors)} errors, {len(warnings)} warnings"
+    f"({vendored_total} vendored copies), {ref_total} references, {len(roster)} agents, "
+    f"{len(claude_cmds)} commands — {len(errors)} errors, {len(warnings)} warnings"
 )
 sys.exit(1 if errors else 0)

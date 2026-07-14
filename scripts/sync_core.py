@@ -41,10 +41,15 @@ def write_lf(p: Path, text: str) -> None:
     p.write_bytes(text.encode("utf-8"))
 
 
-def vendored_transform(text: str) -> str:
-    """Deterministic transform applied to a core doc when copied into a skill: rewrite its own
-    internal `core/y.md` pointers to `references/core/y.md` so they resolve within the skill."""
-    return REWRITE_RE.sub(r"`references/core/\1`", text)
+def vendored_transform(text: str, name: str) -> str:
+    """Deterministic transform applied to a core doc when copied into a skill: stamp a
+    GENERATED banner (so nobody edits the copy by mistake — the CI check would catch it, but
+    the file should say so itself) and rewrite its own internal `core/y.md` pointers to
+    `references/core/y.md` so they resolve within the skill. The banner deliberately avoids
+    backticked .md paths so the pointer checkers ignore it."""
+    banner = (f"<!-- GENERATED FILE - do not edit. Source: core/{name} at the repo root; "
+              "regenerate with: python scripts/sync_core.py -->\n\n")
+    return banner + REWRITE_RE.sub(r"`references/core/\1`", text)
 
 
 def core_deps(name: str) -> set:
@@ -93,7 +98,7 @@ def plan(check: bool):
             if not src.exists():
                 missing.append(f"{sroot.name}: needs core/{n} but the source does not exist")
                 continue
-            desired[n] = vendored_transform(read(src))
+            desired[n] = vendored_transform(read(src), n)
 
         # write/refresh needed copies
         for n, content in desired.items():

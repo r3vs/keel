@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/static-analysis.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # Using Static Analysis Well (shared core)
 
 Shared doctrine for using static signal **in the best way**, not just which tools exist. Static
@@ -59,7 +61,7 @@ architecture-fitness rule over a comment; make an invariant a runtime assert or 
 a hope. This is the design-time companion to running the tools in-loop: don't only *check* with the
 strongest signal, **author the spec so the strongest signal applies.** A `to_be` with no possible
 failing test is a smell — it is precisely what the `challenger` refutes as `unfalsifiable`
-(`references/core/agents.md`, `references/core/decisions-ledger-spec.md` v0.6).
+(agents doctrine; ledger spec v0.6).
 
 ## Output
 

@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/interview-funnel.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # The Interview Compression Funnel (shared core)
 
 The interview mechanism is **shared by both skills**. It is the same machine in both:
@@ -58,5 +60,5 @@ decision-catalog's option set (greenfield).
 ## What only the interview may do
 
 Only the interview commits a decision: it sets `state: decided` and emits the `DecisionEvent`
-(with `flip_criteria`). The brainstorm (`references/core/brainstorm.md`) only writes `proposals[]` and
+(with `flip_criteria`). The brainstorm (its own doctrine doc) only writes `proposals[]` and
 never decides. This separation is what keeps the interview neutral in both skills.

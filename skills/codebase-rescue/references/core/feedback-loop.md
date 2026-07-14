@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/feedback-loop.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # The Feedback Loop (shared core) — the lifecycle's closing arc
 
 The arc that turns two open-ended skills into a **closed loop**. Both skills produce a ledger
@@ -50,7 +52,7 @@ a periodic "did X happen?" asked at a wave boundary or on a schedule. Never a ha
   discipline as every other phase).
 - **A reopen teaches.** The `ReopenEvent.reason` is written to be read: it names *which class* of
   assumption production falsified and *why the flip criterion was the right tripwire* — not a bare
-  "signal fired". Same teach-on-rejection posture as the reviewer/challenger (`references/core/agents.md`): the
+  "signal fired". Same teach-on-rejection posture as the reviewer/challenger (agents doctrine): the
   observer that reopens also explains, so the loop raises the operator, not just the code.
 
 ## Why this is the payoff of `flip_criteria`

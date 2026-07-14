@@ -59,7 +59,7 @@ architecture-fitness rule over a comment; make an invariant a runtime assert or 
 a hope. This is the design-time companion to running the tools in-loop: don't only *check* with the
 strongest signal, **author the spec so the strongest signal applies.** A `to_be` with no possible
 failing test is a smell — it is precisely what the `challenger` refutes as `unfalsifiable`
-(`core/agents.md`, `core/decisions-ledger-spec.md` v0.6).
+(agents doctrine; ledger spec v0.6).
 
 ## Output
 

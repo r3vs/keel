@@ -112,7 +112,11 @@ are all unified under this one principle — which is why there is deliberately 
   **own copy** under `skills/<skill>/references/core/x.md` so it is self-contained (independently
   installable — no skill ever points outside its own tree at `core/`). `scripts/sync_core.py`
   materializes those copies (following the `core→core` dependency closure) and rewrites the pointers;
-  its `--check` mode (in CI) fails if any copy drifts. This is the very anti-divergence property the
+  its `--check` mode (in CI) fails if any copy drifts. Two rules keep the surface lean: inside
+  `core/*.md`, only **load-bearing** dependencies are backticked pointers (see-also mentions stay
+  plain text, so the closure — and each helper's vendored set — stays minimal), and every copy is
+  stamped with a `GENERATED FILE — do not edit` banner. Plugin-root adapters (`agents/`,
+  `commands/`, `hooks/`) may point at `core/` directly — they never ship standalone. This is the very anti-divergence property the
   skills enforce on codebases, applied to the skills' own shared prose — the linter, not discipline,
   keeps the copies identical.
 

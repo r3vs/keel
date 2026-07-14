@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/brainstorm.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # Brainstorm Agent (parallel, on-demand) — shared core
 
 **Shared by both skills.** The user opens it on ONE pin to think through the best answer to give

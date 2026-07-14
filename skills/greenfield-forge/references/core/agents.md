@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/agents.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # Agent Roster (shared core) — neutral source of truth
 
 The agent roles both skills run on, defined **once, platform-neutrally**. The per-platform
@@ -21,7 +23,7 @@ person decides.
 
 | Role | Writes? | Job | Phases |
 |------|---------|-----|--------|
-| **researcher** | no (read-only) | Comprehension & finding; catalog/threat research; grounding via `references/core/knowledge-sources.md`. Fans out. | rescue P1 · greenfield P1 (frame, threat-model) |
+| **researcher** | no (read-only) | Comprehension & finding; catalog/threat research; grounding per the knowledge-sources doctrine. Fans out. | rescue P1 · greenfield P1 (frame, threat-model) |
 | **brainstorm** | no (proposals only) | Proposes 2–3 options with tradeoffs to `pin.brainstorm.proposals[]`, grounded and cited; never decides. | on-demand · greenfield P2 hard forks |
 | **executor** | **yes (the one writer)** | Implements ONE closed scope (a `RemediationItem`/`BuildItem`) via two-track TDD in fresh context; opens a PR; **never merges**. Serialized. | rescue P4 · greenfield P4 build, P6 release |
 | **reviewer** | no (read-only) | Adversarial pre-merge gate. Two stages: spec-compliance vs `to_be` → code quality. Verdict `MERGE`/`ADJUST`/`REJECT`; ADJUST/REJECT restart the item. Also the wave-checkpoint reviewer. A rejection **teaches** (see below). | rescue P4 · greenfield P4 |
@@ -40,14 +42,14 @@ person decides.
   comprehension/finding pass **is** the `researcher`; the remediation/build loop **is** the
   `executor`. This roster names what the phases already imply, and adds the explicit
   single-writer/parallel-reader orchestration.
-- Grounding for `researcher` and `brainstorm` follows `references/core/knowledge-sources.md` (Context7 /
+- Grounding for `researcher` and `brainstorm` follows the knowledge-sources doctrine (Context7 /
   DeepWiki / registry / web), cited and confidence-tagged, treated as untrusted input.
-- The `challenger` is the **upstream** twin of the feedback loop (`references/core/feedback-loop.md`): the
+- The `challenger` is the **upstream** twin of the feedback loop (the feedback-loop doctrine): the
   feedback loop reopens a decision when *production* falsifies it (downstream), the challenger
   reopens it when the *oracle itself* is unsound (upstream, before build). Both **reopen and never
   decide** — same schema-enforced neutrality as the brainstorm. Its `ChallengeEvent` schema and the
-  `unstated_assumption` precondition live in `references/core/decisions-ledger-spec.md` (v0.6) and
-  `references/core/assumptions.md`. It runs right after the interview commits (Phase 2) and again at each wave
+  `unstated_assumption` precondition live in the ledger spec (decisions-ledger-spec, v0.6) and the
+  assumptions doctrine. It runs right after the interview commits (Phase 2) and again at each wave
   checkpoint (Phase 4), so an unsound oracle is caught before, not after, code rests on it.
 
 ## Teach on rejection (a gate that blocks must also teach)

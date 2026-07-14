@@ -387,7 +387,7 @@ Finora la verità eletta era trattata come corretta fino a prova contraria **dal
 
 ### `ChallengeEvent` — la sfida neutra che può riaprire un pin
 
-Un `challenger` read-only (ruolo in `core/agents.md`, gemello adversarial del `reviewer`: il reviewer *fa rispettare* l'oracolo, il challenger lo *mette in dubbio*) esamina i pin `decided` e i loro `to_be`/criteri e cerca attivamente di **refutarli**. Come il brainstorm e il feedback-loop è **neutro: sfida, non decide.** Emette un `ChallengeEvent` immutabile; se la sfida regge la revisione di soglia, riporta il pin a `needs_input` (sotto-stato `challenged`, gemello di `reopened`) e lo rimanda all'intervista — che resta l'unica a committare.
+Un `challenger` read-only (ruolo definito nella dottrina degli agenti, gemello adversarial del `reviewer`: il reviewer *fa rispettare* l'oracolo, il challenger lo *mette in dubbio*) esamina i pin `decided` e i loro `to_be`/criteri e cerca attivamente di **refutarli**. Come il brainstorm e il feedback-loop è **neutro: sfida, non decide.** Emette un `ChallengeEvent` immutabile; se la sfida regge la revisione di soglia, riporta il pin a `needs_input` (sotto-stato `challenged`, gemello di `reopened`) e lo rimanda all'intervista — che resta l'unica a committare.
 
 ```jsonc
 // ChallengeEvent (dentro decision_log[]) — immutabile, neutro
@@ -411,7 +411,7 @@ Regola di neutralità (imposta come per brainstorm/feedback-loop): il challenger
 
 ### `provenance: agent_assumption` — l'assunzione forzata resa veto-abile
 
-Precondizione della sfida, e regola anti-slop a sé: quando un agente **deve** assumere per procedere su input sotto-specificato, non codifica l'assunzione in silenzio — la materializza come pin (o come voce di `provenance` sul pin che sta creando) con `confidence: inferred|ambiguous` e `provenance: [{ "source": "agent_assumption", "detail": "..." }]`. Così l'assunzione è **visibile** sulla mappa, **veto-abile** in intervista, e **sfidabile** dal challenger (classe `unstated_assumption`) — invece di diventare una decisione muta. È la traduzione a livello-schema del principio "su input vago, alza l'effort facendo emergere i buchi, non indovinando in modo confidente". La dottrina di superficie sta in `core/assumptions.md`; qui vive solo la forma dato.
+Precondizione della sfida, e regola anti-slop a sé: quando un agente **deve** assumere per procedere su input sotto-specificato, non codifica l'assunzione in silenzio — la materializza come pin (o come voce di `provenance` sul pin che sta creando) con `confidence: inferred|ambiguous` e `provenance: [{ "source": "agent_assumption", "detail": "..." }]`. Così l'assunzione è **visibile** sulla mappa, **veto-abile** in intervista, e **sfidabile** dal challenger (classe `unstated_assumption`) — invece di diventare una decisione muta. È la traduzione a livello-schema del principio "su input vago, alza l'effort facendo emergere i buchi, non indovinando in modo confidente". La dottrina di superficie sta nel doc assumptions; qui vive solo la forma dato.
 
 ### Perché questo è l'arco mancante
 

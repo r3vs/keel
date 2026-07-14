@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/knowledge-sources.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # External Knowledge Sources (shared core)
 
 Both skills need **current, grounded** external knowledge — the model's training cutoff is the

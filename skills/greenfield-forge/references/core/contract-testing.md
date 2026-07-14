@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/contract-testing.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # Contract Testing (shared core) — the runtime complement to the drift-check
 
 Both skills own a cross-layer contract (rescue reconciles one from divergent layers; greenfield

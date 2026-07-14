@@ -1,3 +1,5 @@
+<!-- GENERATED FILE - do not edit. Source: core/ledger.md at the repo root; regenerate with: python scripts/sync_core.py -->
+
 # The Decisions Ledger (authoritative schema) — shared core
 
 The full, authoritative schema lives in `references/core/decisions-ledger-spec.md` (written in Italian).
@@ -30,7 +32,7 @@ Summary of what matters here:
   unfalsifiable / inconsistent / unsatisfiable / resting on an unstated assumption / ignoring
   fan-out, and reopens the pin (state `challenged`) *before* it is built on. Plus
   `provenance: agent_assumption`: a forced assumption is materialized as a vetoable, challengeable
-  pin (`confidence: inferred|ambiguous`) instead of a silent decision (doctrine `references/core/assumptions.md`).
+  pin (`confidence: inferred|ambiguous`) instead of a silent decision (the assumptions doctrine).
   Both arcs **reopen, never decide** — the feedback loop closes the loop downstream, the challenger
   upstream.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
