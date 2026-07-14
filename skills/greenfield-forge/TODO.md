@@ -1,11 +1,10 @@
 # greenfield-forge — Build checklist
 
-Status: **design complete, pre-implementation** — twin of `codebase-rescue`, sharing the `core/`
-spine (ledger, funnel, brainstorm, shape-engine, contract-testing, feedback-loop). SKILL.md + 10
-playbooks + the shared core; the drift-linter (`scripts/check_consistency.py`) covers both skills
-and is green. As with rescue,
-what remains is mostly real code. **Start with step 0** — the gating experiment that decides the
-shape of the core engine.
+Status: **design complete; runtime spine started** — twin of `codebase-rescue`, sharing the
+`core/` spine (ledger, funnel, brainstorm, shape-engine, contract-testing, feedback-loop).
+SKILL.md + 10 playbooks + the shared core; the drift-linter covers both skills and is green.
+Step 0 is **done** (verdict STRONG, below) and the shared ledger runtime exists
+(`runtime/ledger.py`, tested in CI). What remains is mostly the per-stack generators and the map.
 
 Work top-down: each block depends on the ones above it. Detail for every item lives in the
 referenced playbook.

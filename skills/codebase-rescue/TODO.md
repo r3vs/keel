@@ -1,9 +1,11 @@
 # codebase-rescue — Build checklist
 
-Status: **design complete & internally coherent** (SKILL.md + 16 module playbooks + ledger
-spec v0.6 + drift-linter green). The gating experiment (step 0) has now been run once on a real
-monorepo — verdict recorded below and in `references/contract-reconciliation.md`. What remains is
-mostly real code.
+Status: **design complete; runtime spine started** (SKILL.md + 16 module playbooks + ledger
+spec v0.6 + drift-linter green). The gating experiment (step 0) has been run once on a real
+monorepo — verdict recorded below and in `references/contract-reconciliation.md`. Done since:
+the shared ledger runtime (`runtime/ledger.py`, tested in CI), the ast-grep rule pack
+(`assets/ast-grep/`, fixture-validated), and the eval harness (`scripts/run_evals.py`). What
+remains is mostly the per-stack extractors, the SARIF/fp-check gate, and the map artifact.
 
 Work top-down: each block depends on the ones above it. Detail for every item lives in the
 referenced playbook.

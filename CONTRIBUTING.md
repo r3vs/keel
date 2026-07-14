@@ -1,15 +1,19 @@
 # Contributing
 
 This repository is **two Claude/agent skills + a shared core**, authored to the Anthropic Agent
-Skills specification and packaged agent-agnostically (Claude Code + opencode). It is
-design-complete and pre-implementation — see each skill's `TODO.md`. Contributions are welcome;
-please keep the invariants below green.
+Skills specification and packaged agent-agnostically (Claude Code + opencode + Codex/AGENTS.md).
+The design is complete and the runtime spine has started (ledger runtime, eval harness, rule
+pack) — see each skill's `TODO.md` for what remains. Contributions are welcome; please keep the
+invariants below green.
 
 ## The checks (must pass — they run in CI)
 
 ```bash
-python scripts/check_consistency.py   # drift-linter: modules ↔ references ↔ SKILL, both skills + core
+python scripts/check_consistency.py   # drift-linter: modules ↔ references ↔ SKILL, all skills + core
+python scripts/sync_core.py --check   # vendored references/core copies identical to core/ source
 python scripts/verify_pointers.py     # every intra-playbook *.md pointer resolves
+python -m unittest discover -s tests  # ledger-runtime tests (spec v0.6 rules)
+python scripts/run_evals.py --validate # eval specs well-formed
 bash -n scripts/bootstrap.sh          # installer shell syntax
 ```
 

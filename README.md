@@ -61,10 +61,43 @@ to close the loop.
 
 See `docs/packaging.md` for MCP, memory, and the compose model.
 
+## Try it in 5 minutes
+
+**Rescue an existing messy repo** (Claude Code, plugin installed):
+
+```text
+> this codebase is a mess — the frontend, backend and DB don't agree. rescue it.
+```
+
+The skill self-triggers (or invoke it explicitly), and the phases run as separate, restartable
+invocations that communicate only through on-disk artifacts:
+
+1. **Comprehension** — builds the as-is map; every problem becomes a *pin* in `ledger.json`
+   (contract mismatches, intentional stubs rendered as neutral work items — never as errors).
+2. **Interview** — you elect the truth: 200 findings compress to ~10 real questions via
+   clusters + policies. Nothing is decided for you; blocker/high items are always asked.
+3. **Roadmap → TDD remediation → validate** — the gap between elected to-be and as-is is closed
+   item by item, each decision carrying its `flip_criteria` (the condition to reopen it).
+
+Watch the state at any point — the ledger is the single source of truth all surfaces project:
+
+```bash
+python runtime/ledger.py summary   <target>/.audit/ledger.json   # counts by state
+python runtime/ledger.py interview <target>/.audit/ledger.json   # open questions, best first
+```
+
+**Forge a new project** the same way: `> new project: <brief> — forge it`, and the interview
+elects the design *before* any code exists; one contract then generates DB/ORM/API/client
+aligned by construction, guarded for life by a CI drift-check.
+
 ## Status
-Design-complete and internally coherent across two methodology skills + six composable helpers;
-packaged agent-agnostically; the drift-linter and pointer verifier are green in CI. What remains is
-runtime implementation — see each `TODO.md`.
+Design-complete across two methodology skills + six composable helpers, packaged
+agent-agnostically — and the runtime spine has started: the shared **ledger runtime**
+(`runtime/ledger.py`, 35 tests in CI), the **eval harness** (`scripts/run_evals.py`), rescue's
+fixture-validated **ast-grep rule pack**, and **both step-0 gating verdicts recorded** (rescue on
+a real 177K-LOC monorepo: WEAK → standalone extractors; greenfield on FastAPI+SQLAlchemy+TS:
+STRONG → full four-layer generation). Still prose-driven: per-stack extractors/generators, the
+SARIF/fp-check gate, the visual map. See each `TODO.md`.
 
 ## License
 MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm

@@ -1,11 +1,34 @@
 # Changelog
 
-All notable changes to this project are documented here. The project is design-complete and
-pre-implementation; versions track the design + packaging, not a released runtime.
+All notable changes to this project are documented here. The design is complete and the runtime
+spine has started; versions track design + packaging + runtime together.
 
 ## [0.1.0] — unreleased
 
 ### Added
+- **Runtime spine** (the first executable layer):
+  - `runtime/ledger.py` — the shared decisions-ledger runtime (spec v0.6), stdlib-only, the one
+    implementation both skills bind to: kind-discriminated pin validation, append-only
+    Decision/Reopen/Challenge events, enforced brainstorm/challenger/feedback **neutrality**,
+    the severity threshold (blocker/high never silently defaulted), policy cascade
+    (`source: policy:<id>`), `agent_assumption` surfacing, minimal transitive reopen on both
+    arcs, RemediationItem/BuildItem verbs, an information-gain-ordered interview view, and a
+    read-only CLI. Covered by `tests/test_ledger.py` (35 tests) in CI.
+  - `scripts/run_evals.py` — eval harness: `--validate` (CI structural gate over every
+    `evals.json`) and `--run` (behavioral execution against a real agent runner + fixture with
+    LLM-as-judge per assertion; refuses to pretend without one).
+  - `skills/codebase-rescue/assets/ast-grep/` — the placeholder/stub rule pack the playbooks
+    referenced: 8 python+typescript rules + `sgconfig.yml` + ripgrep markers, fixture-validated
+    (18 expected findings, 0 false positives), with severity→pin routing documented.
+- **Greenfield step-0 gating experiment run** (2026-07-14): verdict **STRONG** — one 4-entity
+  contract carrier generated all four layers (DDL, SQLAlchemy 2 ORM, Pydantic-v2/FastAPI DTOs +
+  routes, TS client), each machine-validated; full generation is Plan A for that stack family,
+  with four recorded frictions keeping the CI drift-check mandatory
+  (`skills/greenfield-forge/references/contract-propagation.md`).
+- **Activation contract**: the SessionStart hook upgraded from a nudge to a mandatory-workflow
+  bootstrap (entry rule + 8-skill inventory + the three non-negotiable disciplines).
+- **Cursor install steps** (README + `docs/packaging.md`) and a README note on the
+  repo-vs-package naming split (`codebase-rescue` repo, `codebase-alignment` package).
 - **Two sibling skills on a shared core**: `codebase-rescue` (curative) and `greenfield-forge`
   (preventive), unified by `gap = diff(to-be, as-is)` and one append-only decisions ledger.
 - **Full lifecycle loop** for greenfield (7 phases): frame (acceptance criteria + threat model) →
@@ -53,7 +76,9 @@ pre-implementation; versions track the design + packaging, not a released runtim
   source), and `check_consistency.py` now errors on a bare `` `core/x.md` `` pointer under `skills/`.
 
 ### Notes
-- Pre-implementation: `evals/` hold prompts + assertions but no runtime harness yet; the greenfield
-  step-0 gating experiment is not yet run. See each skill's `TODO.md`.
+- Both step-0 gating experiments are now run and recorded (rescue: WEAK → standalone extractors
+  are Plan A; greenfield: STRONG → full four-layer generation is Plan A). Still prose-only: the
+  per-stack extractors/generators, the SARIF/fp-check gate, and the map artifact — see each
+  skill's `TODO.md`. Evals execute via `scripts/run_evals.py --run` once a fixture repo is wired.
 - Generic skills are **composed** from `superpowers` (MIT), not authored here.
 - The vendored `references/core/` copies are generated — edit `core/*.md`, then run `sync_core.py`.

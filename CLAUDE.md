@@ -22,9 +22,14 @@ deliverable is prose that a future Claude instance reads and executes:
   `MEMORY.md` + memory MCP), MCP servers (`context7`/`deepwiki`/`memory`; `github` opt-in), and
   `superpowers` **composed** (referenced in the marketplace) for the generic engineering skills.
 
-Each skill is **design-complete but pre-implementation**; its `TODO.md` is the build checklist
-(each starts with a step-0 gating experiment that decides the shape of its core engine). There is
-almost no executable code — only two helper scripts (a toolchain installer and a CI drift-linter).
+Each skill is **design-complete with the runtime spine started**; its `TODO.md` is the build
+checklist. Both step-0 gating experiments have been run and their verdicts recorded (rescue:
+WEAK → standalone extractors are Plan A; greenfield: STRONG → full four-layer generation is
+Plan A). Executable code so far: the shared ledger runtime (`runtime/ledger.py`, tested by
+`tests/` in CI), the eval harness (`scripts/run_evals.py`), the consistency linters and
+installers under `scripts/`, and rescue's validated ast-grep rule pack
+(`skills/codebase-rescue/assets/ast-grep/`). The per-stack extractors/generators and the map
+artifact are still prose playbooks.
 
 A skill's *runtime* behavior — what it does when invoked — is fully described in its `SKILL.md`.
 Read it before changing how that skill works. Working on this repo means editing that design, not

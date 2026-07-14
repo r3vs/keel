@@ -4,8 +4,10 @@ Durable, cross-session facts about THIS repository (see the `project-memory` ski
 always-on context via `AGENTS.md`. Keep it small; promote real decisions to the ledger.
 
 ## Facts
-- This repo is a **package of agent skills**, not a runnable app — the deliverable is prose a future
-  agent executes. Design-complete, pre-implementation (see each skill's `TODO.md`).
+- This repo is a **package of agent skills** — the deliverable is prose a future agent executes,
+  plus a growing runtime spine (`runtime/ledger.py` + tests, `scripts/run_evals.py`, the ast-grep
+  rule pack). Both step-0 gating experiments are done (rescue: WEAK→extractors; greenfield:
+  STRONG→full generation). See each skill's `TODO.md` for what remains.
 - **`core/decisions-ledger-spec.md` is Italian by design**; the rest is English (`core/ledger.md`
   is the English pointer). Do not "fix" this.
 - Skills live under `skills/<name>/` (Agent Skills spec; `name` matches the directory) and are
