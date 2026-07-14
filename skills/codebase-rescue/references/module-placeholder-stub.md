@@ -23,8 +23,10 @@ semantic patterns (they need AST context), ripgrep for the pure-text fast first 
 
 1. ripgrep text pass for the literal markers (fast, catches TODO/empty-catch/nosec).
 2. ast-grep structural rules for the semantic ones (return-true-inside-an-auth-function needs
-   the AST, not a regex). Write these as reusable YAML rules under `assets/` so they grow with
-   experience (variant-analysis: once you see a new placeholder shape, add a rule).
+   the AST, not a regex). The reusable YAML rules live in `assets/ast-grep/` (one file per rule,
+   wired by `sgconfig.yml`; the text-pass markers in `ripgrep-markers.txt`; see its README for
+   run commands and the severity→pin routing). Grow the pack with experience
+   (variant-analysis: once you see a new placeholder shape, add a rule file).
 3. Cross-check with the graph: a placeholder on a reachable prod path (inbound edge from an
    entry point) is high/blocker (fake auth guarding a real route = blocker); the same shape on
    an unfinished/unreachable path is `incompleteness`, not a defect — route through completeness.

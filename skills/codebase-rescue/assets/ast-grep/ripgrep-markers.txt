@@ -1,0 +1,12 @@
+TODO
+FIXME
+XXX
+HACK
+nosec
+noqa
+eslint-disable
+ts-ignore
+ts-nocheck
+type: ignore
+pragma: no cover
+istanbul ignore

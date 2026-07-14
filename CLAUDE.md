@@ -32,8 +32,8 @@ running an app.
 
 ## Commands
 
-No build step and no test suite exist yet (each skill's `evals/evals.json` holds prompts but no
-assertions).
+No build step exists. Each skill's `evals/evals.json` holds prompts **with assertions**, but no
+runtime harness executes them yet.
 The only executable checks:
 
 ```bash

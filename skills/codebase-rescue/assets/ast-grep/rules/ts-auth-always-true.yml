@@ -1,0 +1,18 @@
+id: ts-auth-always-true
+language: typescript
+severity: error
+message: Auth-like function unconditionally returns true — placeholder guard (fake auth).
+note: >-
+  Candidate `defect` when it guards a reachable route/middleware; route through fp-check.
+  Duplicate this file with `language: tsx` if the codebase keeps guards in .tsx files.
+rule:
+  any:
+    - pattern: function $FUNC($$$ARGS) { return true; }
+    - pattern: async function $FUNC($$$ARGS) { return true; }
+    - pattern: const $FUNC = ($$$ARGS) => true
+    - pattern: const $FUNC = ($$$ARGS) => { return true; }
+    - pattern: const $FUNC = async ($$$ARGS) => true
+    - pattern: const $FUNC = async ($$$ARGS) => { return true; }
+constraints:
+  FUNC:
+    regex: '^(is[A-Z_]|can[A-Z_]|has[A-Z_]|verify|check|auth)'

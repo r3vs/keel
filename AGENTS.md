@@ -13,8 +13,9 @@ Two deep, differentiated workflows:
 - **`skills/greenfield-forge/`** — build a new project aligned from the first commit.
 
 Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`static-first-analysis`**,
-**`project-memory`**, and **`writing-skills`** (meta). Generic engineering skills (TDD, debugging,
-planning, code review, git worktrees) are **composed** from `superpowers`, not reinvented here.
+**`project-memory`**, **`learning-layer`** (senior-grade output while the operator learns), and
+**`writing-skills`** (meta). Generic engineering skills (TDD, debugging, planning, code review, git
+worktrees) are **composed** from `superpowers`, not reinvented here.
 
 They share one spine (the decisions ledger, interview funnel, brainstorm, field-shape engine,
 contract-testing, feedback loop, static-analysis / knowledge-sources doctrines, and the agent

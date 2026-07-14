@@ -72,16 +72,20 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 
 ## 6. Test & tuning
 - [ ] Build fixtures: 2–3 real briefs (a CRUD SaaS, a CLI tool, an API service) as test cases.
-- [ ] Add assertions to `evals/evals.json` (currently prompts only).
+- [x] Add assertions to `evals/evals.json`. → done — 6 cases, each with an `assertions[]` array;
+      what's missing is the runtime harness that executes them (see below).
+- [ ] Execute the evals via `scripts/run_evals.py` against the fixtures (LLM-judge over the
+      assertions; structural validation runs in CI).
 - [ ] Run the skill on the fixtures, review outputs, iterate (skill-creator loop).
 - [ ] **SkillOpt** — optimize `SKILL.md` against the benchmark; optimize the description for
       triggering ("new project", "from scratch", "greenfield", "design before I build").
 
-## 7. Package & ship
-- [ ] `README.md` section for humans (SKILL.md is for the model) — done at repo level.
-- [ ] Same license as rescue (MIT recommended).
-- [ ] If shipping as a Claude Code marketplace: shared `core/` needs a bundling decision (symlink,
-      copy at build, or a shared package the two skills depend on). → repo-level TODO.
+## 7. Package & ship — DONE at repo level
+- [x] `README.md` section for humans (SKILL.md is for the model). → repo-root `README.md`.
+- [x] Same license as rescue. → MIT (`LICENSE`).
+- [x] Shared `core/` bundling decision. → **resolved: Model B** — `scripts/sync_core.py` vendors
+      `core/*.md` into each skill's `references/core/` (CI `--check` keeps the copies identical),
+      so every skill ships self-contained.
 
 ---
 

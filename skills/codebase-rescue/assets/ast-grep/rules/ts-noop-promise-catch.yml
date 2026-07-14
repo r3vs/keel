@@ -1,0 +1,10 @@
+id: ts-noop-promise-catch
+language: typescript
+severity: warning
+message: .catch with a no-op handler silently swallows the rejection.
+rule:
+  any:
+    - pattern: $P.catch(() => {})
+    - pattern: $P.catch(($E) => {})
+    - pattern: $P.catch(function ($E) {})
+    - pattern: $P.catch(function () {})

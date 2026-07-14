@@ -1,0 +1,18 @@
+id: py-trivial-function-body
+language: python
+severity: hint
+message: Trivial function body (pass / ... / return None) — completeness signal, not a defect.
+note: >-
+  Feeds the completeness module's "trivial body" signal. Never surface directly as an
+  error — the hard rule is that intentional stubs render neutral.
+rule:
+  any:
+    - pattern: |
+        def $FUNC($$$ARGS):
+            pass
+    - pattern: |
+        def $FUNC($$$ARGS):
+            ...
+    - pattern: |
+        def $FUNC($$$ARGS):
+            return None

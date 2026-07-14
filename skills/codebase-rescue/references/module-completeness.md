@@ -13,7 +13,8 @@ module is deliberately conservative and always routes its output through `fp-che
 
 ## Signals (gather first, classify second)
 
-Collect candidate signals from ast-grep/ripgrep + the graph:
+Collect candidate signals from ast-grep/ripgrep (the shared rule pack in `assets/ast-grep/` —
+its `hint`-severity rules are this module's trivial-body feed) + the graph:
 
 - **Trivial body**: `pass`, `return None/null`, `throw NotImplementedError`, empty function,
   empty React component, handler that returns hardcoded/mock data, `// TODO` as the body.

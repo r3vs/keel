@@ -55,8 +55,9 @@ referenced playbook.
 - [ ] **SARIF adapters + fp-check** — run semgrep/gitleaks/osv/trivy/lizard/jscpd, normalize to one
       stream, implement the CONFIRM/DOWNGRADE/DROP gate with graph reachability.
       → `references/module-fp-check.md`, `references/toolchain.md`
-- [ ] **ast-grep rule pack** in `assets/` — the YAML rules the placeholder-stub and completeness
-      playbooks reference but that don't exist yet.
+- [x] **ast-grep rule pack** in `assets/ast-grep/` — 8 rules (py+ts: fake-auth, swallowed
+      exceptions, not-implemented, trivial bodies) + `sgconfig.yml` + `ripgrep-markers.txt`,
+      validated against positive/negative fixtures (18 hits / 0 false positives).
 
 ## 4. React artifact — the visual-first map (uses the frontend-design skill)
 - [ ] Clickable pins, three-column contract-diff panels, linked interview questions, brainstorm
@@ -67,15 +68,19 @@ referenced playbook.
 ## 5. Test & tuning (the deferred phase, now due)
 - [ ] Build fixtures: 2–3 real slop repos as test cases (any messy multi-layer codebase you have
       can serve as one — it is only a test target, never a dependency).
-- [ ] Add assertions to `evals/evals.json` (currently prompts only).
+- [x] Add assertions to `evals/evals.json`. → done — 5 cases, each with an `assertions[]` array;
+      what's missing is the runtime harness that executes them (see below).
+- [ ] Execute the evals via `scripts/run_evals.py` against the fixtures (LLM-judge over the
+      assertions; structural validation runs in CI).
 - [ ] Run the skill on the fixtures, review outputs, iterate (skill-creator loop).
 - [ ] **SkillOpt** — optimize `SKILL.md` against the benchmark with validation gates; optimize the
       description for triggering.
 
-## 6. Package & ship
-- [ ] `README.md` for humans (SKILL.md is for the model).
-- [ ] Choose the license (MIT is clean; Graphify is MIT — GitNexus stays excluded from commercial use).
-- [ ] If shipping as a Claude Code marketplace: `marketplace.json` + `plugin.json`.
+## 6. Package & ship — DONE at repo level
+- [x] `README.md` for humans (SKILL.md is for the model). → repo-root `README.md`.
+- [x] Choose the license. → MIT (`LICENSE`); GitNexus stays excluded from commercial use (opt-in only).
+- [x] Claude Code marketplace: `.claude-plugin/marketplace.json` + `plugin.json` (plus opencode,
+      Codex, and AGENTS.md adapters — see `docs/packaging.md`).
 
 ---
 

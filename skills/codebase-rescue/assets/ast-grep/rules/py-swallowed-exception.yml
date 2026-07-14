@@ -1,0 +1,37 @@
+id: py-swallowed-exception
+language: python
+severity: warning
+message: Exception swallowed — except block body is only `pass`/`...`.
+note: Correctness-critical placeholder; classify reachable-vs-not via fp-check.
+rule:
+  any:
+    - pattern: |
+        try:
+            $$$BODY
+        except:
+            pass
+    - pattern: |
+        try:
+            $$$BODY
+        except $EX:
+            pass
+    - pattern: |
+        try:
+            $$$BODY
+        except $EX as $E:
+            pass
+    - pattern: |
+        try:
+            $$$BODY
+        except:
+            ...
+    - pattern: |
+        try:
+            $$$BODY
+        except $EX:
+            ...
+    - pattern: |
+        try:
+            $$$BODY
+        except $EX as $E:
+            ...

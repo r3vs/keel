@@ -48,8 +48,15 @@ to close the loop.
   toolchain, drift-linter, core-vendoring sync, pointer verifier, opencode installer (checks run in CI).
 
 ## Install
+
+> **Naming note:** the GitHub repo is `codebase-rescue` (the historical name of the flagship
+> skill); the installable package/plugin is **`codebase-alignment`**. The commands below are
+> consistent with that split.
+
 - **Claude Code**: `/plugin marketplace add r3vs/codebase-rescue` → `/plugin install codebase-alignment@codebase-alignment`
 - **opencode**: `opencode.json` already has `"plugin": ["opencode-skills"]`; run `bash scripts/install-opencode.sh`
+- **Cursor**: open the repo (or add it to your workspace root) — Cursor reads `AGENTS.md` natively;
+  add the MCP servers from `.mcp.json` in *Cursor Settings → MCP* if you want live docs + memory.
 - **Codex / any AGENTS.md agent**: point it at the repo — it reads `AGENTS.md` (MCP in `.codex/config.toml`).
 
 See `docs/packaging.md` for MCP, memory, and the compose model.

@@ -43,6 +43,10 @@ bash scripts/install-opencode.sh     # links .opencode/skills -> ../skills
 The five agents and the `/rescue` · `/forge` commands come from `opencode.json` +
 `.opencode/command/`. `instructions: ["AGENTS.md"]` orients every session.
 
+**Cursor** — open the repo (or add it to the workspace root); Cursor reads `AGENTS.md` natively,
+which routes it to `skills/<name>/SKILL.md`. For live docs + memory, add the servers from
+`.mcp.json` (context7, deepwiki, memory) under *Cursor Settings → MCP*.
+
 **Any other AGENTS.md-aware agent** — point it at the repo; it reads `AGENTS.md`, which sends it to
 `skills/<name>/SKILL.md` and `core/`.
 

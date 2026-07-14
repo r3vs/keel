@@ -1,0 +1,11 @@
+id: ts-empty-catch
+language: typescript
+severity: warning
+message: Empty catch block swallows the error.
+note: Correctness-critical placeholder; classify reachable-vs-not via fp-check.
+rule:
+  any:
+    - pattern: try { $$$BODY } catch ($E) {}
+    - pattern: try { $$$BODY } catch {}
+    - pattern: try { $$$BODY } catch ($E) {} finally { $$$FIN }
+    - pattern: try { $$$BODY } catch {} finally { $$$FIN }
