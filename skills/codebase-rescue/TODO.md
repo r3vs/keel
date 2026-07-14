@@ -53,9 +53,11 @@ HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a
       via `shapes.reconcile_layers(layer_a, path_a, layer_b, path_b)` (symmetric diff, case- and
       singular/plural-folding entity matching, `missing_entity`/`extra_entity` when a side is
       absent — never fabricates). `tests/test_shapes.py::TestCarrierlessReconcile`.
-- [ ] **Graph-edge anchoring** for the resolver stays open — it depends on the challenged step-0
-      re-run deciding whether the graph's cross-layer edges are trustworthy. Name+shape heuristics
-      are the working default until then.
+- [ ] **Graph-edge anchoring (nice-to-have)** — attach `node_id` to a pin when the graph has the
+      node, for map navigation + blast-radius. The fresh step-0 re-run settled the substance: the
+      graph carries DB nodes for *anchoring* but no field-level *correspondence* edges, so the
+      name+shape resolver above is the correct default and this is a UI/navigation enhancement,
+      not a blocker.
 
 ## 2. Ledger runtime — DONE (`runtime/ledger.py`, stdlib-only, 35 tests in CI)
 - [x] Code (stack-agnostic) that materializes policies, assigns `resolution_mode`, enforces the
