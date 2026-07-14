@@ -93,11 +93,13 @@ aligned by construction, guarded for life by a CI drift-check.
 ## Status
 Design-complete across two methodology skills + six composable helpers, packaged
 agent-agnostically — and the runtime spine has started: the shared **ledger runtime**
-(`runtime/ledger.py`, 35 tests in CI), the **eval harness** (`scripts/run_evals.py`), rescue's
-fixture-validated **ast-grep rule pack**, and **both step-0 gating verdicts recorded** (rescue on
-a real 177K-LOC monorepo: WEAK → standalone extractors; greenfield on FastAPI+SQLAlchemy+TS:
-STRONG → full four-layer generation). Still prose-driven: per-stack extractors/generators, the
-SARIF/fp-check gate, the visual map. See each `TODO.md`.
+(`runtime/ledger.py`), the **field-shape engine + CI drift-check** (`runtime/shapes.py` —
+extractors for Postgres/SQLAlchemy/Pydantic/TS diffing every layer against the contract, exit 1
+on drift), the **eval harness** (`scripts/run_evals.py`), rescue's fixture-validated **ast-grep
+rule pack**, 50 tests in CI, and **both step-0 gating verdicts recorded** (rescue on a real
+177K-LOC monorepo: WEAK → standalone extractors; greenfield on FastAPI+SQLAlchemy+TS: STRONG →
+full four-layer generation). Still prose-driven: per-stack generators, tree-sitter extractor
+generalization, the SARIF/fp-check gate, the visual map. See each `TODO.md`.
 
 ## License
 MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm

@@ -20,6 +20,13 @@ spine has started; versions track design + packaging + runtime together.
   - `skills/codebase-rescue/assets/ast-grep/` — the placeholder/stub rule pack the playbooks
     referenced: 8 python+typescript rules + `sgconfig.yml` + ripgrep markers, fixture-validated
     (18 expected findings, 0 false positives), with severity→pin routing documented.
+  - `runtime/shapes.py` — the field-shape engine (`core/shape-engine.md`) for the live stacks:
+    extractors (Postgres DDL, SQLAlchemy 2, Pydantic v2, TS interfaces) normalizing to the
+    shared descriptor, the cross-type-system diff with both honesty rules (unresolved →
+    `ambiguous` note; absence is the finding), and the **CI drift-check CLI** (exit 1 on drift)
+    — greenfield's preventive payload and rescue's contract-reconciliation core. Tested against
+    the step-0 artifacts (clean on aligned layers; catches injected enum/nullability/type/
+    missing-field drift) in `tests/test_shapes.py`.
 - **Greenfield step-0 gating experiment run** (2026-07-14): verdict **STRONG** — one 4-entity
   contract carrier generated all four layers (DDL, SQLAlchemy 2 ORM, Pydantic-v2/FastAPI DTOs +
   routes, TS client), each machine-validated; full generation is Plan A for that stack family,

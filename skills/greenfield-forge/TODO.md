@@ -32,8 +32,10 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 - [ ] **Per-stack generators** from one normalized contract (`references/core/shape-engine.md` descriptor) →
       DDL/migration, ORM model, DTO/route, client types. Start with live stacks; generalize via
       tree-sitter templates so new stacks are additive. → `references/contract-propagation.md`
-- [ ] **The CI drift-check** — the same shape-diff rescue uses, wired to fail the build when a
-      hand-edit breaks alignment. This is the preventive payload.
+- [x] **The CI drift-check** — the same shape-diff rescue uses, wired to fail the build when a
+      hand-edit breaks alignment. This is the preventive payload. → `runtime/shapes.py`
+      (`python runtime/shapes.py --contract contract.json --ddl … --sqlalchemy … --pydantic …
+      --typescript …` exits 1 on drift); tested by `tests/test_shapes.py`.
 - [ ] **Contract-carrier chooser** — shared-types package for a TS monorepo; OpenAPI/JSON-schema/
       protobuf for polyglot. Ponytail: the lightest carrier that suffices.
 

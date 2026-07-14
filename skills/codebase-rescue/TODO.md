@@ -25,13 +25,19 @@ referenced playbook.
       → done — see the "Phase-0 gating verdict" section there (standalone-first posture,
         `file:line` anchoring, and the shared-types-package-as-contract finding).
 
-## 1. Core engine — the contract-reconciliation code (currently prose TODOs)
-- [ ] **Per-stack extractors** (DDL/migration, ORM model, API DTO/route, frontend call/type) →
-      normalize each to `{name,type,nullable,enum?,constraints?}`. Start with live stacks
-      (FastAPI/Django + React + Postgres); generalize via tree-sitter queries so new stacks are
-      additive. → `references/contract-reconciliation.md`
-- [ ] **Type-equivalence table** across DB/ORM/API/TS type systems; `ambiguous` where uncertain.
-- [ ] **Correspondence resolver** — graph edges first, name+shape heuristics second, never fabricate.
+## 1. Core engine — the contract-reconciliation code (v0 landed in `runtime/shapes.py`)
+- [x] **Per-stack extractors** for the live stacks (Postgres DDL, SQLAlchemy 2, Pydantic v2,
+      TS interfaces) → normalize to `{name,type,nullable,enum?,constraints?}`; tested against
+      the step-0 fixtures (clean on aligned layers, catches injected drift).
+      → `runtime/shapes.py`, `tests/test_shapes.py`
+- [ ] Generalize extractors via tree-sitter queries so new stacks (Django, Drizzle, GraphQL…)
+      are additive. → `references/contract-reconciliation.md`
+- [x] **Type-equivalence table** across DB/ORM/API/TS type systems; `ambiguous` where uncertain
+      (unresolved types downgrade to notes, never asserted mismatches; client uuid/datetime →
+      string projections honored). → `runtime/shapes.py`
+- [ ] **Correspondence resolver** — name+shape heuristics work for carrier-anchored flows
+      (`drift_check` maps carrier→table→DTO-class→interface); graph-edge anchoring and
+      carrier-less layer-pair matching still open. Never fabricate.
 
 ## 2. Ledger runtime — DONE (`runtime/ledger.py`, stdlib-only, 35 tests in CI)
 - [x] Code (stack-agnostic) that materializes policies, assigns `resolution_mode`, enforces the

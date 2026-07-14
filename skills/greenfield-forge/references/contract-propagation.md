@@ -129,5 +129,7 @@ comes first (it falls out of the DAG, not a hardcoded order).
 ## TODO (implementation)
 - [ ] Per-stack generators from the normalized contract (start with live stacks, generalize via
       tree-sitter templates so new stacks are additive).
-- [ ] The CI drift-check (rescue's shape-diff, wired to fail the build).
+- [x] The CI drift-check (rescue's shape-diff, wired to fail the build). → `runtime/shapes.py`
+      at the repo root: extractors for the live stacks + carrier diff, exit 1 on drift;
+      validated against this module's own step-0 artifacts (`tests/test_shapes.py`).
 - [ ] Contract-carrier chooser (shared-types vs OpenAPI/JSON-schema/protobuf).

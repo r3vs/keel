@@ -65,3 +65,11 @@ cross-layer graph edge. That empirical finding is the hinge between the two skil
 
 Same descriptor, same table, same "never fabricate" discipline — pointed backward to reconcile,
 or forward to prevent.
+
+**Runtime:** `runtime/shapes.py` (repo root; stdlib-only, tested in CI) implements this file for
+the live stacks: extractors for Postgres DDL / SQLAlchemy 2 / Pydantic v2 / TS interfaces that
+normalize to the descriptor, plus `diff_shapes`/`drift_check` with both honesty rules enforced
+(unresolved → `ambiguous` note, absence → `missing_field`/`extra_field` finding). As a CLI it is
+greenfield's CI drift-check: `python runtime/shapes.py --contract … --ddl … --sqlalchemy …
+--pydantic … --typescript …` exits 1 on drift. New stacks are additive (tree-sitter
+generalization on the TODO).
