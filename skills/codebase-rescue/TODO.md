@@ -81,11 +81,15 @@ in `runtime/shapes.py`).
       exceptions, not-implemented, trivial bodies) + `sgconfig.yml` + `ripgrep-markers.txt`,
       validated against positive/negative fixtures (18 hits / 0 false positives).
 
-## 4. React artifact — the visual-first map (uses the frontend-design skill)
-- [ ] Clickable pins, three-column contract-diff panels, linked interview questions, brainstorm
-      button, completeness traffic-light.
-- [ ] **Decide first (open):** build from scratch, or wrap CodeWiki output and overlay pins?
-      (ponytail applies — reuse before build.) → `references/phase-1-comprehension.md`
+## 4. Visual-first map — DONE (`runtime/map.py`, shared with greenfield)
+- [x] Clickable pins, three-column contract-diff panels (disagreeing layer flagged), linked
+      interview questions with options+implications, anchors, completeness traffic-light,
+      as-is/to-be toggle. Verified rendered in a browser (no console errors);
+      `tests/test_map.py` guards it stays self-contained. → `runtime/map.py`
+- [x] **Decided:** build a **zero-dependency single HTML file** rather than wrap CodeWiki —
+      ponytail: the lightest thing that works, opens offline, safe to hand to anyone. The
+      map/wiki holds no state; it projects a view over `ledger.json`.
+      → `references/phase-1-comprehension.md`
 
 ## 5. Test & tuning (the deferred phase, now due)
 - [ ] Build fixtures: 2–3 real slop repos as test cases (any messy multi-layer codebase you have
@@ -106,10 +110,15 @@ in `runtime/shapes.py`).
 
 ---
 
-## Open decisions (resolve as you reach them)
-- [ ] **Wiki:** custom React vs wrapper over CodeWiki (reuse vs build).
-- [ ] **Ledger persistence:** plain `ledger.json` on disk only, or Postgres-backed for an app layer?
-- [ ] **Brainstorm:** a mode in v1, or a truly parallel second agent? (marked v2 — YAGNI on yourself)
+## Open decisions — resolved
+- [x] **Wiki:** custom vs wrapper over CodeWiki → **build one zero-dependency HTML file**
+      (`runtime/map.py`); reuse-before-build weighed CodeWiki but a single self-contained file
+      that projects the ledger is lighter and has no runtime dependency.
+- [x] **Ledger persistence:** → **plain `ledger.json` on disk** for v1 (portable, git-versionable,
+      diffable). The spec already maps 1:1 onto Postgres tables if an app layer ever needs it —
+      YAGNI until then.
+- [x] **Brainstorm:** → **an agent in the roster** (`agents/brainstorm.md`), invoked on demand,
+      not a always-on parallel process. A truly parallel second agent stays a v2 option (YAGNI).
 
 ---
 

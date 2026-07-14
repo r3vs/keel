@@ -67,11 +67,13 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
       (`provenance: agent_assumption`, confidence enforced, threshold applied).
       → `references/core/assumptions.md`
 
-## 4. React artifact — the to-be design map (uses the frontend-design skill)
-- [ ] Ghost/planned nodes that flip solid as BuildItems resolve; contract panels; linked
-      interview questions; brainstorm button; completeness traffic-light converging to green.
-- [ ] **Decide first (open):** build from scratch, or share rescue's map component and toggle
-      as-is/to-be rendering? (ponytail — reuse before build.) → `references/phase-1-frame.md`
+## 4. Visual map — DONE (shared `runtime/map.py`, as-is/to-be toggle)
+- [x] The to-be design map: pins render their elected `to_be` under the **to-be** toggle
+      (`open_decision`/`acceptance_criterion`), contract panels, linked interview questions,
+      completeness traffic-light. As BuildItems/decisions resolve, the traffic-light converges to
+      green. → `runtime/map.py`, `tests/test_map.py`.
+- [x] **Decided:** **share rescue's map** with an as-is/to-be toggle (one component, not a fork) —
+      ponytail: reuse before build. → `references/phase-1-frame.md`
 
 ## 5. Build-loop harness
 - [ ] Restartable per-item loop (fresh invocation per BuildItem), Track-A-primary two-track TDD,
@@ -100,9 +102,11 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 ## Open decisions (resolve as you reach them)
 - [x] **Contract generation depth:** set by step 0 → **all four layers** (Plan A) for the
       FastAPI/SQLAlchemy/Postgres/TS family; re-run step 0 before assuming it for a new family.
-- [ ] **Map component:** fork rescue's, or share one with an as-is/to-be toggle.
-- [ ] **Slice mode handoff:** does `slice` mode share code with rescue's `resume` mode? (both
-      operate Phases 3–5 on a subset of a committed ledger.)
+- [x] **Map component:** → **share one** with an as-is/to-be toggle (`runtime/map.py`), not a fork.
+- [x] **Slice mode handoff:** → **yes, share the ledger runtime**. `slice` (greenfield) and
+      `resume` (rescue) both operate Phases 3–5 on a subset of a committed ledger; both read/write
+      the same `runtime/ledger.py` (the interview view, funnel, and challenger are ledger
+      operations, not mode-specific code). The mode only scopes *which* pins are in play.
 
 ---
 
