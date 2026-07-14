@@ -12,22 +12,22 @@ referenced playbook.
 
 ---
 
-## 0. Gating experiment — the contract-propagation reality check (do this first)
+## 0. Gating experiment — DONE (2026-07-14) → verdict: **STRONG**, full generation is Plan A
 The riskiest assumption in greenfield is the mirror of rescue's: rescue bet that the graph's
 cross-layer edges were usable (they weren't — extractors standalone won). Greenfield bets that
 **one authored contract can generate aligned, idiomatic scaffolds** across a real stack.
-- [ ] Pick a target stack (start with a live one: FastAPI/Django + React + Postgres, or a TS
-      monorepo with a shared-types package).
-- [ ] Author a small contract by hand (3–4 entities) as the single source of truth.
-- [ ] Generate the four layer scaffolds from it (DDL/migration, ORM model, API DTO/route, client
-      types). Answer the one question that decides everything: **are the generated layers good
-      enough to build on, or unidiomatic enough that a developer would throw them away?**
-- [ ] Record the verdict in `references/contract-propagation.md`:
-      - **STRONG** → full generation is Plan A (generate all four layers).
-      - **WEAK** → degrade to Plan B: author the contract + generate only the shared-types/DTO
-        layer, hand-write the rest against it, and rely on the installed CI drift-check to keep
-        them aligned. (Rescue's shape-diff, run forward as a guardrail, is the fallback that
-        always works.)
+- [x] Pick a target stack. → FastAPI + SQLAlchemy 2 + Postgres + React/TS client (the polyglot
+      case — harder carrier problem, same family as rescue's VibraFlow).
+- [x] Author a small contract by hand. → 4 entities (User/Project/Task/Comment) as a JSON
+      descriptor-set carrier, exercising the full equivalence table (uuid, enum, json, datetime,
+      nullables, FKs + on-delete).
+- [x] Generate the four layer scaffolds and judge. → **good enough to build on** — and
+      machine-validated, not eyeballed: ORM imports + builds all tables, `app.openapi()` forces
+      DTO validation (9 paths / 10 schemas), `tsc --strict` passes on the client.
+- [x] Record the verdict in `references/contract-propagation.md`.
+      → done — see the "Phase-0 gating verdict" section: **STRONG** (Plan A), with four recorded
+        frictions (reserved-word collisions, enum name-vs-value storage, casing policy, semantic
+        validators) that keep the CI drift-check mandatory even under full generation.
 
 ## 1. Core engine — the contract-propagation code
 - [ ] **Per-stack generators** from one normalized contract (`references/core/shape-engine.md` descriptor) →
@@ -90,8 +90,8 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 ---
 
 ## Open decisions (resolve as you reach them)
-- [ ] **Contract generation depth:** all four layers, or shared-types + drift-check only (set by
-      step 0).
+- [x] **Contract generation depth:** set by step 0 → **all four layers** (Plan A) for the
+      FastAPI/SQLAlchemy/Postgres/TS family; re-run step 0 before assuming it for a new family.
 - [ ] **Map component:** fork rescue's, or share one with an as-is/to-be toggle.
 - [ ] **Slice mode handoff:** does `slice` mode share code with rescue's `resume` mode? (both
       operate Phases 3–5 on a subset of a committed ledger.)

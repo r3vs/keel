@@ -67,14 +67,44 @@ contract with real data. Static + dynamic together. From now on a hand-edit that
 drift is caught the moment it lands — the project stays aligned for life, not just at generation
 time. This is what makes forging *durable* rather than a one-time scaffold.
 
-## Phase-0 gating verdict — TODO (fill from `TODO.md` step 0)
+## Phase-0 gating verdict — **STRONG** (2026-07-14; FastAPI + SQLAlchemy 2 + Postgres + TS client)
 
-> Run the step-0 experiment before generalizing: author a small contract by hand and generate the
-> four layers on a real stack. Record here whether generation is **STRONG** (Plan A — generate all
-> four layers) or **WEAK** (Plan B — generate the shared-types/DTO layer only, hand-write the rest
-> against it, and lean on the installed drift-check to keep them aligned). Mirror how rescue
-> recorded its VibraFlow verdict in `skills/codebase-rescue/references/contract-reconciliation.md`. One data point, not a
-> law — re-run per stack family before trusting generation broadly.
+Run once on the polyglot live stack (the harder carrier case — same family as rescue's VibraFlow):
+a hand-authored 4-entity contract (`{name,type,nullable,enum?,constraints?}` descriptor set as a
+JSON carrier; User/Project/Task/Comment exercising uuid, string+constraints, enum×2, bool, int,
+datetime, json, nullables, FKs with on-delete) generated all four layers, and **each generated
+layer was machine-validated**, not eyeballed:
+
+- **DDL** (Postgres migration): PG `ENUM` types, `gen_random_uuid()` PKs, FKs with
+  `ON DELETE`, indexes. (Authored to current idiom; not executed — no live Postgres in the
+  experiment env.)
+- **ORM** (SQLAlchemy 2.0 `Mapped`/`mapped_column`): imports clean; `Base.metadata` builds all
+  4 tables.
+- **API** (Pydantic-v2 DTOs + FastAPI route stubs): app assembles and `app.openapi()` —
+  which forces validation of every response model — emits 9 paths / 10 schemas.
+- **Client** (TS types + typed fetch stubs): `tsc --strict` passes.
+
+**Verdict: full four-layer generation is Plan A for this stack family.** The scaffolds are
+idiomatic (current-API idioms, typed end-to-end) and a developer would build on them, not throw
+them away.
+
+**Recorded frictions — why the drift-check stays mandatory even under Plan A:**
+1. **Reserved-word collisions**: the contract field `metadata` collides with SQLAlchemy's
+   `Base.metadata`; the generator must know per-layer reserved-name tables (attribute `metadata_`
+   + column alias + DTO `validation_alias`). A naive generator ships a broken model here.
+2. **Enum storage is a silent drift source**: SQLAlchemy stores enum member *names* by default —
+   the DDL's PG ENUM holds *values*; `values_callable` was required. This typechecks on every
+   layer and still breaks at the DB boundary — exactly the class of mismatch only the shape-diff /
+   contract tests catch.
+3. **Casing policy is a decision, not a derivation** (snake_case wire vs camelCase TS): must be
+   elected in the interview and carried by the contract, else it is an `ambiguity`.
+4. **Semantic validators are not derivable** (email stayed `str`; `EmailStr` would be generation
+   inventing semantics): if wanted, the descriptor grows an optional `format` — a contract
+   decision, never a generator default.
+
+One data point, not a law — re-run per stack family before trusting generation broadly (mirror of
+how rescue recorded its VibraFlow verdict in
+`skills/codebase-rescue/references/contract-reconciliation.md`).
 
 ## What NOT to do
 
