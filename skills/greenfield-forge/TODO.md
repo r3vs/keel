@@ -75,10 +75,14 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 - [x] **Decided:** **share rescue's map** with an as-is/to-be toggle (one component, not a fork) —
       ponytail: reuse before build. → `references/phase-1-frame.md`
 
-## 5. Build-loop harness
-- [ ] Restartable per-item loop (fresh invocation per BuildItem), Track-A-primary two-track TDD,
-      ladder logging, two-stage review, wave checkpoints. Much of this mirrors rescue's Phase-4
-      harness — share what is generic. → `references/phase-4-build.md`
+## 5. Build-loop harness — DONE (mechanizable half; shared with rescue Phase 4)
+- [x] The scheduling harness is `runtime/buildloop.py` (shared by rescue's remediation loop and
+      greenfield's build loop): `waves()` levels the BuildItem/pin DAG topologically ("contract →
+      paved road → slice → polish" falls out of `depends_on`, not a hardcode), `ready()` yields
+      the pins whose deps are closed and work is unfinished, `next_item()` picks the next unit,
+      `checkpoint()` gates each wave. Restart-safe because the ledger is the state.
+      `tests/test_buildloop.py`. The per-item **agent** work (Track-A TDD, ladder logging,
+      two-stage review) stays agent-orchestrated per the playbook. → `references/phase-4-build.md`
 
 ## 6. Test & tuning
 - [ ] Build fixtures: 2–3 real briefs (a CRUD SaaS, a CLI tool, an API service) as test cases.
