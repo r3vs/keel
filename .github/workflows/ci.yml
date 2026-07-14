@@ -27,3 +27,5 @@ jobs:
         run: python scripts/verify_pointers.py
       - name: Shell syntax (bootstrap + installer + hooks)
         run: bash -n scripts/bootstrap.sh && bash -n scripts/install-opencode.sh && bash -n hooks/session-start.sh
+      - name: Ledger runtime tests (spec v0.6 rules as executable checks)
+        run: python -m unittest discover -s tests

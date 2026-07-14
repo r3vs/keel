@@ -35,3 +35,9 @@ Summary of what matters here:
   upstream.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen.
+
+**Runtime:** the spec's load-bearing rules are implemented once, for both skills, in
+`runtime/ledger.py` (repo root; stdlib-only, tested in CI). Agents operate the ledger through it
+— pin CRUD with kind validation, append-only events, policy cascade under the severity threshold,
+assumption surfacing, both reopen arcs, and the interview view — instead of hand-editing
+`ledger.json`. `python runtime/ledger.py summary|interview <path>` gives read-only views.

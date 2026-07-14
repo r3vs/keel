@@ -32,15 +32,19 @@ running an app.
 
 ## Commands
 
-No build step exists. Each skill's `evals/evals.json` holds prompts **with assertions**, but no
-runtime harness executes them yet.
-The only executable checks:
+No build step exists. The executable checks:
 
 ```bash
 python scripts/check_consistency.py   # drift-linter — modules ↔ references ↔ SKILL (both skills + core); exits 1 on drift
 python scripts/verify_pointers.py     # intra-playbook cross-reference check (complements the linter); exits 1 on dangling
+python -m unittest discover -s tests  # ledger-runtime tests (spec v0.6 rules as executable checks)
 bash scripts/bootstrap.sh             # install the deterministic toolchain (idempotent, best-effort, never hard-fails)
 ```
+
+The ledger runtime (`runtime/ledger.py`, stdlib-only) is the one implementation of the spec both
+skills bind to. Each skill's `evals/evals.json` holds prompts **with assertions**;
+`scripts/run_evals.py` validates their structure (CI) and executes them when an agent runner is
+available.
 
 Both Python checks run in CI on every PR (`.github/workflows/ci.yml`). On Windows use `python`
 (present) and run the `.sh` script from the Bash shell / Git Bash.

@@ -38,10 +38,11 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 - [ ] **Contract-carrier chooser** — shared-types package for a TS monorepo; OpenAPI/JSON-schema/
       protobuf for polyglot. Ponytail: the lightest carrier that suffices.
 
-## 2. Ledger runtime — shared with rescue (reuse, do not fork)
-- [ ] Reuse the `core/` ledger runtime. Add only the greenfield deltas: the `open_decision` pin
-      kind and the `BuildItem` entity (`references/core/decisions-ledger-spec.md` v0.4). Do not duplicate
-      the ledger engine — both skills bind to one implementation.
+## 2. Ledger runtime — DONE (shared with rescue; one implementation)
+- [x] Reuse the shared ledger runtime → `runtime/ledger.py` (repo root) implements the spec once
+      for both skills, greenfield deltas included: `open_decision` + `acceptance_criterion` kinds,
+      `BuildItem` (build verbs + `build_track` + `contract_carrier`), `flip_signal`/`ReopenEvent`.
+      Tested by `tests/test_ledger.py` in CI.
 
 ## 3. Decision-frame + interview generator
 - [ ] **Decision-catalog authoring** — turn `references/decision-catalog.md` into a machine-usable

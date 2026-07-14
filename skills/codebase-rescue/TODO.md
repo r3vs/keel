@@ -31,17 +31,15 @@ referenced playbook.
 - [ ] **Type-equivalence table** across DB/ORM/API/TS type systems; `ambiguous` where uncertain.
 - [ ] **Correspondence resolver** — graph edges first, name+shape heuristics second, never fabricate.
 
-## 2. Ledger runtime — the glue between phases
-- [ ] Code (stack-agnostic; no dependency on any specific app's infrastructure) that materializes
-      policies, assigns `resolution_mode`, enforces the severity threshold, and appends immutable
-      `DecisionEvent`s. → `references/core/decisions-ledger-spec.md`, `references/core/ledger.md`
-- [ ] **Assumption-surfacing** — when a finder/agent must assume to proceed on under-specified
-      input, materialize the assumption as a pin with `provenance: agent_assumption` and
-      `confidence: inferred|ambiguous` (never a silent default), subject to the severity threshold.
-      → `references/core/assumptions.md`
-- [ ] **ChallengeEvent append + reopen** — the immutable event and the `challenged` reopen
-      transition (reopen the minimum: the pin + genuine `depends_on` dependents). Neutral: no
-      `DecisionEvent`. → `references/core/decisions-ledger-spec.md` (v0.6)
+## 2. Ledger runtime — DONE (`runtime/ledger.py`, stdlib-only, 35 tests in CI)
+- [x] Code (stack-agnostic) that materializes policies, assigns `resolution_mode`, enforces the
+      severity threshold, and appends immutable `DecisionEvent`s. → `runtime/ledger.py`,
+      tested by `tests/test_ledger.py` (runs in CI).
+- [x] **Assumption-surfacing** — `Ledger.surface_assumption()`: pin with
+      `provenance: agent_assumption`, `confidence: inferred|ambiguous` enforced, threshold applied.
+- [x] **ChallengeEvent append + reopen** — `Ledger.challenge()`: immutable event, `challenged`
+      substate, minimal transitive reopen via `depends_on`, neutrality enforced (no
+      `DecisionEvent` writable by any non-interview source).
 
 ## 3. Interview generator + findings gate
 - [ ] **Interview generator** — materialize `Question`s from `needs_input` pins; run the funnel
