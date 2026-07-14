@@ -47,9 +47,14 @@ in `runtime/shapes.py`).
 - [x] **Type-equivalence table** across DB/ORM/API/TS type systems; `ambiguous` where uncertain
       (unresolved types downgrade to notes, never asserted mismatches; client uuid/datetime →
       string projections honored). → `runtime/shapes.py`
-- [ ] **Correspondence resolver** — name+shape heuristics work for carrier-anchored flows
-      (`drift_check` maps carrier→table→DTO-class→interface); graph-edge anchoring and
-      carrier-less layer-pair matching still open. Never fabricate.
+- [x] **Correspondence resolver (name+shape heuristics)** — carrier-anchored flows via
+      `drift_check` (carrier→table→DTO-class→interface), **and carrier-less pairwise reconcile**
+      via `shapes.reconcile_layers(layer_a, path_a, layer_b, path_b)` (symmetric diff, case- and
+      singular/plural-folding entity matching, `missing_entity`/`extra_entity` when a side is
+      absent — never fabricates). `tests/test_shapes.py::TestCarrierlessReconcile`.
+- [ ] **Graph-edge anchoring** for the resolver stays open — it depends on the challenged step-0
+      re-run deciding whether the graph's cross-layer edges are trustworthy. Name+shape heuristics
+      are the working default until then.
 
 ## 2. Ledger runtime — DONE (`runtime/ledger.py`, stdlib-only, 35 tests in CI)
 - [x] Code (stack-agnostic) that materializes policies, assigns `resolution_mode`, enforces the

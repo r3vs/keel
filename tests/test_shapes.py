@@ -14,6 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "runtime"))
 
+import shapes  # noqa: E402
 from shapes import (  # noqa: E402
     diff_shapes,
     drift_check,
@@ -138,6 +139,37 @@ class TestInjectedDrift(unittest.TestCase):
         findings = drift_check(str(FIXTURES / "contract.json"), ddl=path)
         self.assertIn(("legacy_flag", "extra_field"),
                       {(f["field"], f["kind"]) for f in findings})
+
+
+class TestCarrierlessReconcile(unittest.TestCase):
+    """rescue's path when a repo has no shared-types carrier: diff two layers directly."""
+
+    def test_aligned_layers_reconcile_clean(self):
+        # step-0 DDL and ORM both match the contract, so they match each other
+        findings = shapes.reconcile_layers(
+            "ddl", str(FIXTURES / "001_initial.sql"),
+            "sqlalchemy", str(FIXTURES / "models.py"))
+        hard = [f for f in findings if f["confidence"] != "ambiguous"]
+        self.assertEqual(hard, [])
+
+    def test_symmetric_missing_and_extra_entities(self):
+        slop = pathlib.Path(__file__).parent / "fixtures" / "slop-repo" / "schema.sql"
+        stacks = pathlib.Path(__file__).parent / "fixtures" / "stacks" / "schema.drizzle.ts"
+        findings = shapes.reconcile_layers("ddl", str(slop), "drizzle", str(stacks))
+        kinds = {(f["entity"], f["kind"]) for f in findings}
+        # slop DDL has only users; drizzle has users+tasks → tasks is an extra_entity on side b
+        self.assertIn(("tasks", "extra_entity"), kinds)
+        # and users still field-diffs: the slop DDL's planted drift shows up
+        self.assertIn(("users", "nullability_mismatch"),
+                      {(f["entity"], f["kind"]) for f in findings})
+
+    def test_singular_plural_entity_matching(self):
+        # 'users' (DDL table) must line up with 'User' (Prisma model)
+        ddl = pathlib.Path(__file__).parent / "fixtures" / "step0" / "001_initial.sql"
+        prisma = pathlib.Path(__file__).parent / "fixtures" / "stacks" / "schema.prisma"
+        findings = shapes.reconcile_layers("ddl", str(ddl), "prisma", str(prisma))
+        missing = {f["entity"] for f in findings if f["kind"] == "missing_entity"}
+        self.assertNotIn("users", missing)     # users↔User matched, not reported missing
 
 
 class TestHonestyRules(unittest.TestCase):

@@ -592,6 +592,49 @@ def diff_shapes(reference: dict[str, dict], candidate: dict[str, dict],
     return findings
 
 
+# Registry so a carrier-less reconcile can pick the extractor by stack name.
+EXTRACTORS = {
+    "ddl": extract_ddl, "sqlalchemy": extract_sqlalchemy, "pydantic": extract_pydantic,
+    "typescript": extract_typescript, "drizzle": extract_drizzle, "prisma": extract_prisma,
+    "django": extract_django, "graphql": extract_graphql,
+}
+
+
+def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> list[dict]:
+    """Carrier-less reconciliation: diff two extracted layers **directly** against each other,
+    matching entities by table/model/type name and fields by name. This is rescue's path when a
+    repo has no shared-types carrier to anchor against (the Phase-0 verdict found the carrier is
+    the strongest anchor *when present* — this covers when it is not). Neither side is 'truth': the
+    diff is symmetric, so a field present only on one side surfaces as missing_field/extra_field
+    (`core/shape-engine.md` honesty rule 2). Entity-name matching is case-insensitive with a light
+    singular/plural fold (users↔User) so the two layers' conventions line up."""
+    a = EXTRACTORS[layer_a](path_a)
+    b = EXTRACTORS[layer_b](path_b)
+
+    def key(name: str) -> str:
+        n = name.lower()
+        return n[:-1] if n.endswith("s") else n
+
+    b_by_key = {key(k): k for k in b}
+    findings: list[dict] = []
+    matched_b = set()
+    for ea, fields_a in a.items():
+        bk = b_by_key.get(key(ea))
+        if bk is None:
+            findings.append({"entity": ea, "field": "*", "kind": "missing_entity",
+                             "detail": f"{ea} in {layer_a} has no counterpart in {layer_b}",
+                             "layers": [layer_a, layer_b], "confidence": "inferred"})
+            continue
+        matched_b.add(bk)
+        findings += diff_shapes(fields_a, b[bk], layer_a, layer_b, ea)
+    for eb in b:
+        if eb not in matched_b:
+            findings.append({"entity": eb, "field": "*", "kind": "extra_entity",
+                             "detail": f"{eb} in {layer_b} has no counterpart in {layer_a}",
+                             "layers": [layer_a, layer_b], "confidence": "inferred"})
+    return findings
+
+
 def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                 pydantic: Optional[str] = None, typescript: Optional[str] = None,
                 ddl: Optional[str] = None, drizzle: Optional[str] = None,
