@@ -2,7 +2,7 @@
 
 # The Decisions Ledger (authoritative schema) — shared core
 
-The full, authoritative schema lives in `references/core/decisions-ledger-spec.md` (written in Italian).
+The full, authoritative schema lives in `references/core/decisions-ledger-spec.md`.
 It is **shared by both skills** in this repo — `codebase-rescue` (curative) and
 `greenfield-forge` (preventive) read and write the same `ledger.json`. Read the spec before
 writing anything that touches pins, questions, decisions, policies, or build/remediation items.

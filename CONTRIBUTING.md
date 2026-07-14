@@ -28,8 +28,8 @@ bash -n scripts/bootstrap.sh          # installer shell syntax
   hyphens, matching the directory) and `description` (≥ 20 chars). This is what makes it portable.
 - **Adapters mirror the core.** `core/agents.md` is the roster's source of truth; keep `agents/*.md`
   (Claude) and the `agent` block in `opencode.json` (opencode) consistent with it.
-- **The ledger spec (`core/decisions-ledger-spec.md`) is written in Italian** by design; the rest
-  of the repo is English, with `core/ledger.md` as the English pointer.
+- **The ledger spec (`core/decisions-ledger-spec.md`) is the authoritative schema**; `core/ledger.md`
+  is the short English pointer summary to it. Keep both in sync with the spec version.
 - **Read the relevant reference before editing a phase/module** — don't work from memory.
 
 ## Licensing

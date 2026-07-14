@@ -156,9 +156,8 @@ packaging manifests are valid JSON. Full details: `docs/packaging.md`.
   `references/core/` copy**, then run `scripts/sync_core.py` (the copies are generated). Within that,
   `core/decisions-ledger-spec.md` (v0.6) is authoritative for the ledger schema. Do not let a
   `SKILL.md`, a reference summary, or a vendored copy drift from them.
-- **`core/decisions-ledger-spec.md` is written in Italian** — the rest of the repo is English, and
-  `core/ledger.md` is the short English pointer to it. Preserve that split unless asked to
-  translate.
+- **`core/decisions-ledger-spec.md` is the authoritative schema** (English, like the rest of the
+  repo); `core/ledger.md` is the short English pointer summary to it.
 - **Read the relevant reference before executing or editing a phase/module — do not work from
   memory.** `SKILL.md` states this as a rule, and the playbooks carry detail that `SKILL.md`
   deliberately omits.

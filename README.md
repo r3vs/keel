@@ -36,7 +36,7 @@ to close the loop.
   the user learns). Generic skills (TDD, debug, planning, review) are **composed** from
   [`superpowers`](https://github.com/obra/superpowers), not reinvented.
 - `core/` — the shared spine, and the single **authoring source** for it: `decisions-ledger-spec.md`
-  (schema, v0.6, Italian), `ledger.md` (English pointer), `interview-funnel.md`, `brainstorm.md`,
+  (schema, v0.6), `ledger.md` (English pointer summary), `interview-funnel.md`, `brainstorm.md`,
   `shape-engine.md`, `contract-testing.md`, `feedback-loop.md`, `static-analysis.md`,
   `knowledge-sources.md`, `assumptions.md`, `agents.md`. Each skill is **self-contained**: `scripts/sync_core.py`
   vendors the doctrine it needs into `skills/<skill>/references/core/`, so no skill points outside

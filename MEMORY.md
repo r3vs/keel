@@ -9,8 +9,9 @@ always-on context via `AGENTS.md`. Keep it small; promote real decisions to the 
   `scripts/run_evals.py`, the ast-grep rule pack). Greenfield's step-0 verdict: STRONG (full
   generation). Rescue's VibraFlow step-0 is **challenged** — the 2026-07-09 run used a stale
   `graphify-out/`; re-run on a fresh graph before citing its WEAK verdict.
-- **`core/decisions-ledger-spec.md` is Italian by design**; the rest is English (`core/ledger.md`
-  is the English pointer). Do not "fix" this.
+- **`core/decisions-ledger-spec.md` is the authoritative ledger schema** (English); `core/ledger.md`
+  is the short English pointer summary. (Historical note: the spec was authored in Italian and
+  translated to English on 2026-07-14.)
 - Skills live under `skills/<name>/` (Agent Skills spec; `name` matches the directory) and are
   **self-contained** (Model B): each keeps its own copy of the shared doctrine under
   `references/core/`. `core/*.md` is the single **authoring source** — edit it there, then run
