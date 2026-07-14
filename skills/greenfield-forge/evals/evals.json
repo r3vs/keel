@@ -1,6 +1,7 @@
 {
   "skill_name": "greenfield-forge",
-  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Executing them needs a runtime harness + real briefs as fixtures (a CRUD SaaS, a CLI tool, an API service) — see TODO.",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. Three real briefs are fixtures under tests/fixtures/briefs/ (crud-saas, cli-tool, api-service). To execute against a real agent: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture <a fresh temp dir> --skill greenfield-forge` (greenfield forges INTO an empty dir; feed a brief via the prompt).",
+  "briefs": "tests/fixtures/briefs",
   "evals": [
     {
       "id": 1,

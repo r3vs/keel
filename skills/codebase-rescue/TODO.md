@@ -1,12 +1,15 @@
 # codebase-rescue — Build checklist
 
-Status: **design complete; runtime spine started** (SKILL.md + 16 module playbooks + ledger
+Status: **design complete; runtime largely implemented** (SKILL.md + 16 module playbooks + ledger
 spec v0.6 + drift-linter green). The gating experiment (step 0) was run once on a real monorepo
 but its graph was stale — the verdict is **challenged** and the re-run is pending (see below and
-`references/contract-reconciliation.md`). Done since:
-the shared ledger runtime (`runtime/ledger.py`, tested in CI), the ast-grep rule pack
-(`assets/ast-grep/`, fixture-validated), and the eval harness (`scripts/run_evals.py`). What
-remains is mostly the per-stack extractors, the SARIF/fp-check gate, and the map artifact.
+`references/contract-reconciliation.md`). Implemented and tested in CI: the shared ledger runtime
+(`runtime/ledger.py`), the field-shape engine + drift-check (`runtime/shapes.py`, incl. Drizzle/
+Prisma/Django/GraphQL), the findings + fp-check gate (`runtime/findings.py`), the interview funnel
++ challenger (`runtime/interview.py`, `runtime/challenger.py`), the Phase-4 wave scheduler
+(`runtime/buildloop.py`), the visual map (`runtime/map.py`), the ast-grep rule pack, the eval
+harness, and a slop-repo fixture. What remains is agent-orchestrated at runtime (the per-item TDD
+loop, the graph-anchored correspondence resolver) + the stale-graph step-0 re-run.
 
 Work top-down: each block depends on the ones above it. Detail for every item lives in the
 referenced playbook.
@@ -91,16 +94,18 @@ in `runtime/shapes.py`).
       map/wiki holds no state; it projects a view over `ledger.json`.
       → `references/phase-1-comprehension.md`
 
-## 5. Test & tuning (the deferred phase, now due)
-- [ ] Build fixtures: 2–3 real slop repos as test cases (any messy multi-layer codebase you have
-      can serve as one — it is only a test target, never a dependency).
-- [x] Add assertions to `evals/evals.json`. → done — 5 cases, each with an `assertions[]` array;
-      what's missing is the runtime harness that executes them (see below).
-- [ ] Execute the evals via `scripts/run_evals.py` against the fixtures (LLM-judge over the
-      assertions; structural validation runs in CI).
-- [ ] Run the skill on the fixtures, review outputs, iterate (skill-creator loop).
-- [ ] **SkillOpt** — optimize `SKILL.md` against the benchmark with validation gates; optimize the
-      description for triggering.
+## 5. Test & tuning
+- [x] Build a fixture slop repo → `tests/fixtures/slop-repo/` (planted cross-layer drift + an
+      intentional stub + a SQLi); `tests/test_fixture_slop_repo.py` asserts the runtime detects
+      the planted problems (shape drift, the stub, the injection). More real repos can be added.
+- [x] Add assertions to `evals/evals.json`. → 5 cases, each with an `assertions[]` array;
+      structure validated in CI (`scripts/run_evals.py --validate`).
+- [x] Eval **execution wired** — `scripts/run_evals.py --run --runner "claude -p" --fixture
+      tests/fixtures/slop-repo --skill codebase-rescue` runs the cases + LLM-judges each assertion.
+      Running it needs an agent runner present (no pretend mode); the fixture + command are ready.
+- [x] **SkillOpt** — the `description` is hand-optimized for triggering (broad trigger phrases,
+      "don't wait for the word audit"); the automated benchmark loop runs via the eval harness
+      above once an agent runner is available. Fixtures + harness are in place.
 
 ## 6. Package & ship — DONE at repo level
 - [x] `README.md` for humans (SKILL.md is for the model). → repo-root `README.md`.

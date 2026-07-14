@@ -22,15 +22,17 @@ deliverable is prose that a future Claude instance reads and executes:
   `MEMORY.md` + memory MCP), MCP servers (`context7`/`deepwiki`/`memory`; `github` opt-in), and
   `superpowers` **composed** (referenced in the marketplace) for the generic engineering skills.
 
-Each skill is **design-complete with the runtime spine started**; its `TODO.md` is the build
+Each skill is **design-complete with the runtime largely implemented**; its `TODO.md` is the build
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
 Plan A); rescue's 2026-07-09 VibraFlow verdict is **challenged** (stale graph — re-run pending;
-standalone extraction holds as the graph-free default). Executable code so far: the shared
-ledger runtime (`runtime/ledger.py`, tested by
-`tests/` in CI), the eval harness (`scripts/run_evals.py`), the consistency linters and
-installers under `scripts/`, and rescue's validated ast-grep rule pack
-(`skills/codebase-rescue/assets/ast-grep/`). The per-stack extractors/generators and the map
-artifact are still prose playbooks.
+standalone extraction holds as the graph-free default). The runtime lives under `runtime/`
+(stdlib-only, ~150 tests in CI): `ledger.py` (spec v0.6), `shapes.py` (field-shape engine +
+drift-check, 8 stacks), `generate.py` (contract generators, round-trip to zero drift),
+`findings.py` (SARIF/OSV + fp-check gate), `interview.py` + `assets/decision-catalog.json`
+(frame + funnel), `challenger.py`, `buildloop.py` (Phase-4 wave scheduler), `map.py`
+(self-contained visual map). Plus the eval harness (`scripts/run_evals.py`), the consistency
+linters under `scripts/`, and rescue's ast-grep rule pack. What remains is agent-orchestrated at
+runtime (the per-item TDD loop) + full tree-sitter generalization.
 
 A skill's *runtime* behavior — what it does when invoked — is fully described in its `SKILL.md`.
 Read it before changing how that skill works. Working on this repo means editing that design, not

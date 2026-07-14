@@ -298,6 +298,7 @@ _DDL_TYPE_MAP = {"uuid": "uuid", "text": "string", "boolean": "bool", "integer":
 
 def extract_ddl(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
     text = pathlib.Path(path).read_text(encoding="utf-8")
+    text = re.sub(r"--[^\n]*", "", text)   # strip SQL line comments (real DDL has them)
     enums: dict[str, list] = {}
     for m in re.finditer(r"CREATE TYPE (\w+) AS ENUM \(([^)]*)\)", text, re.I):
         enums[m.group(1)] = [v.strip().strip("'") for v in m.group(2).split(",")]

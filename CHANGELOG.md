@@ -6,27 +6,45 @@ spine has started; versions track design + packaging + runtime together.
 ## [0.1.0] — unreleased
 
 ### Added
-- **Runtime spine** (the first executable layer):
-  - `runtime/ledger.py` — the shared decisions-ledger runtime (spec v0.6), stdlib-only, the one
-    implementation both skills bind to: kind-discriminated pin validation, append-only
-    Decision/Reopen/Challenge events, enforced brainstorm/challenger/feedback **neutrality**,
-    the severity threshold (blocker/high never silently defaulted), policy cascade
-    (`source: policy:<id>`), `agent_assumption` surfacing, minimal transitive reopen on both
-    arcs, RemediationItem/BuildItem verbs, an information-gain-ordered interview view, and a
-    read-only CLI. Covered by `tests/test_ledger.py` (35 tests) in CI.
-  - `scripts/run_evals.py` — eval harness: `--validate` (CI structural gate over every
-    `evals.json`) and `--run` (behavioral execution against a real agent runner + fixture with
-    LLM-as-judge per assertion; refuses to pretend without one).
-  - `skills/codebase-rescue/assets/ast-grep/` — the placeholder/stub rule pack the playbooks
-    referenced: 8 python+typescript rules + `sgconfig.yml` + ripgrep markers, fixture-validated
-    (18 expected findings, 0 false positives), with severity→pin routing documented.
-  - `runtime/shapes.py` — the field-shape engine (`core/shape-engine.md`) for the live stacks:
-    extractors (Postgres DDL, SQLAlchemy 2, Pydantic v2, TS interfaces) normalizing to the
-    shared descriptor, the cross-type-system diff with both honesty rules (unresolved →
-    `ambiguous` note; absence is the finding), and the **CI drift-check CLI** (exit 1 on drift)
-    — greenfield's preventive payload and rescue's contract-reconciliation core. Tested against
-    the step-0 artifacts (clean on aligned layers; catches injected enum/nullability/type/
-    missing-field drift) in `tests/test_shapes.py`.
+- **Runtime** — the executable layer both skills bind to (all stdlib-only, tested in CI;
+  **~150 tests** across `tests/`):
+  - `runtime/ledger.py` — the shared decisions-ledger runtime (spec v0.6): kind-discriminated pin
+    validation, append-only Decision/Reopen/Challenge events, enforced brainstorm/challenger/
+    feedback **neutrality**, the severity threshold (blocker/high never silently defaulted), policy
+    cascade, `agent_assumption` surfacing, minimal transitive reopen on both arcs, RemediationItem/
+    BuildItem verbs, an information-gain-ordered interview view, a read-only CLI.
+  - `runtime/shapes.py` — the field-shape engine (`core/shape-engine.md`): extractors for
+    **Postgres DDL, SQLAlchemy 2, Pydantic v2, TypeScript, Drizzle, Prisma, Django, GraphQL**
+    (new stacks are additive), the cross-type-system diff with both honesty rules (unresolved →
+    `ambiguous` note; absence is the finding), and the **CI drift-check CLI** (exit 1 on drift) —
+    rescue's contract-reconciliation core and greenfield's guardrail.
+  - `runtime/generate.py` — greenfield's **contract generators**: one descriptor → DDL / SQLAlchemy
+    / Pydantic / TS, aligned by construction. Proven by a **round-trip test** (generate → drift-check
+    == zero drift), turning the step-0 STRONG verdict into an executable invariant; `choose_carrier`
+    picks shared-types / OpenAPI / protobuf.
+  - `runtime/findings.py` — the mandatory **false-positive gate** (`module-fp-check.md`): normalize
+    SARIF + OSV to one stream, the CONFIRM/DOWNGRADE/DROP gate (five ordered checks, injected
+    reachability + stub oracles defaulting to keep, deterministic diagnostics skip the gate),
+    root-cause clustering to one pin with N anchors, a showable DROP audit trail.
+  - `runtime/interview.py` + `skills/greenfield-forge/assets/decision-catalog.json` — the
+    **decision-frame + funnel**: the 11-cluster catalog as machine-usable data; `expand_catalog`
+    prunes by project type and skips brief-decided forks; `funnel` compresses to the asked questions
+    ordered by transitive information gain with the tail as `proposed_default`.
+  - `runtime/challenger.py` — the deterministic slice of the v0.6 oracle red-team (`unfalsifiable`,
+    `ignored_fanout`), emitting upheld `ChallengeEvent`s that reopen via the ledger; judgment classes
+    stay agent-driven. Neutrality tested (never writes a DecisionEvent).
+  - `runtime/buildloop.py` — the shared **Phase-4 wave scheduler**: levels the BuildItem/pin DAG
+    topologically (cycle-detecting), yields ready pins, gates each wave checkpoint; restart-safe
+    because the ledger is the state.
+  - `runtime/map.py` — the **visual map** as one self-contained HTML file (no build step, no
+    external fetch): clickable pins, three-column contract-diff, linked interview questions,
+    completeness traffic-light, as-is/to-be toggle; shared by both skills.
+  - `scripts/run_evals.py` — eval harness: `--validate` (CI structural gate) and `--run` (behavioral
+    execution against a real agent runner + fixture, LLM-judge per assertion; no pretend mode).
+  - `skills/codebase-rescue/assets/ast-grep/` — the placeholder/stub rule pack: 8 python+typescript
+    rules + `sgconfig.yml` + ripgrep markers, fixture-validated (18 findings, 0 false positives).
+  - Fixtures: `tests/fixtures/slop-repo/` (a misaligned mini-repo whose planted drift/stub/SQLi the
+    runtime detects) and `tests/fixtures/briefs/` (crud-saas, cli-tool, api-service).
 - **Greenfield step-0 gating experiment run** (2026-07-14): verdict **STRONG** — one 4-entity
   contract carrier generated all four layers (DDL, SQLAlchemy 2 ORM, Pydantic-v2/FastAPI DTOs +
   routes, TS client), each machine-validated; full generation is Plan A for that stack family,

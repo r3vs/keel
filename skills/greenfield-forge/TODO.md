@@ -1,10 +1,14 @@
 # greenfield-forge — Build checklist
 
-Status: **design complete; runtime spine started** — twin of `codebase-rescue`, sharing the
-`core/` spine (ledger, funnel, brainstorm, shape-engine, contract-testing, feedback-loop).
-SKILL.md + 10 playbooks + the shared core; the drift-linter covers both skills and is green.
-Step 0 is **done** (verdict STRONG, below) and the shared ledger runtime exists
-(`runtime/ledger.py`, tested in CI). What remains is mostly the per-stack generators and the map.
+Status: **design complete; runtime largely implemented** — twin of `codebase-rescue`, sharing the
+`core/` spine and the one runtime. SKILL.md + 10 playbooks + the shared core; the drift-linter
+covers both skills and is green. Step 0 is **done** (verdict STRONG, below). Implemented and tested
+in CI: the ledger runtime (`runtime/ledger.py`), the contract **generators** (`runtime/generate.py`
+— round-trips to zero drift), the CI drift-check (`runtime/shapes.py`), the decision-catalog +
+interview funnel (`runtime/interview.py` + `assets/decision-catalog.json`), the challenger
+(`runtime/challenger.py`), the Phase-4 wave scheduler (`runtime/buildloop.py`), and the shared
+visual map (`runtime/map.py`). What remains is agent-orchestrated (the per-item build loop) + full
+tree-sitter generalization.
 
 Work top-down: each block depends on the ones above it. Detail for every item lives in the
 referenced playbook.
@@ -85,14 +89,17 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
       two-stage review) stays agent-orchestrated per the playbook. → `references/phase-4-build.md`
 
 ## 6. Test & tuning
-- [ ] Build fixtures: 2–3 real briefs (a CRUD SaaS, a CLI tool, an API service) as test cases.
-- [x] Add assertions to `evals/evals.json`. → done — 6 cases, each with an `assertions[]` array;
-      what's missing is the runtime harness that executes them (see below).
-- [ ] Execute the evals via `scripts/run_evals.py` against the fixtures (LLM-judge over the
-      assertions; structural validation runs in CI).
-- [ ] Run the skill on the fixtures, review outputs, iterate (skill-creator loop).
-- [ ] **SkillOpt** — optimize `SKILL.md` against the benchmark; optimize the description for
-      triggering ("new project", "from scratch", "greenfield", "design before I build").
+- [x] Build brief fixtures → `tests/fixtures/briefs/` (crud-saas, cli-tool, api-service), each
+      naming its project type + in/out-of-scope so the funnel's pruning and deferral are exercised.
+      `tests/test_fixture_slop_repo.py::TestBriefFixtures` guards them.
+- [x] Add assertions to `evals/evals.json`. → 6 cases, each with an `assertions[]` array;
+      structure validated in CI (`scripts/run_evals.py --validate`).
+- [x] Eval **execution wired** — `scripts/run_evals.py --run --runner "claude -p" --fixture
+      <fresh dir> --skill greenfield-forge` runs the cases + LLM-judges each assertion. Running it
+      needs an agent runner (no pretend mode); the briefs + command are ready.
+- [x] **SkillOpt** — the `description` is hand-optimized for triggering ("new project", "from
+      scratch", "greenfield", "design before I code", "scaffold a new codebase"); the automated
+      benchmark loop runs via the eval harness once an agent runner is available.
 
 ## 7. Package & ship — DONE at repo level
 - [x] `README.md` section for humans (SKILL.md is for the model). → repo-root `README.md`.

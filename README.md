@@ -92,16 +92,25 @@ aligned by construction, guarded for life by a CI drift-check.
 
 ## Status
 Design-complete across two methodology skills + six composable helpers, packaged
-agent-agnostically — and the runtime spine has started: the shared **ledger runtime**
-(`runtime/ledger.py`), the **field-shape engine + CI drift-check** (`runtime/shapes.py` —
-extractors for Postgres/SQLAlchemy/Pydantic/TS diffing every layer against the contract, exit 1
-on drift), the **eval harness** (`scripts/run_evals.py`), rescue's fixture-validated **ast-grep
-rule pack**, 50 tests in CI, and **both step-0 gating experiments recorded** (greenfield on
-FastAPI+SQLAlchemy+TS: verdict STRONG → full four-layer generation; rescue's VibraFlow run is
-**challenged** — it used a stale graph, so its WEAK verdict awaits a re-run on a fresh one, with
-standalone extraction holding as the graph-free safe default meanwhile). Still prose-driven:
-per-stack generators, tree-sitter extractor generalization, the SARIF/fp-check gate, the visual
-map. See each `TODO.md`.
+agent-agnostically, with the **runtime largely implemented** (~150 tests in CI). Executable today:
+
+| Piece | Module |
+|---|---|
+| Decisions-ledger runtime (spec v0.6) | `runtime/ledger.py` |
+| Field-shape engine + CI drift-check (8 stacks incl. Drizzle/Prisma/Django/GraphQL) | `runtime/shapes.py` |
+| Contract generators (round-trip to zero drift) | `runtime/generate.py` |
+| Findings + false-positive gate (SARIF/OSV) | `runtime/findings.py` |
+| Decision catalog + interview funnel | `runtime/interview.py` + `assets/decision-catalog.json` |
+| Oracle challenger (deterministic classes) | `runtime/challenger.py` |
+| Phase-4 wave scheduler | `runtime/buildloop.py` |
+| Visual map (self-contained HTML) | `runtime/map.py` |
+| Eval harness + ast-grep rule pack + fixtures | `scripts/run_evals.py`, `assets/ast-grep/`, `tests/fixtures/` |
+
+**Step-0 verdicts recorded**: greenfield (FastAPI+SQLAlchemy+TS) STRONG → full generation is Plan A;
+rescue's VibraFlow run is **challenged** (stale graph — re-run pending; standalone extraction holds
+as the graph-free default). What remains is agent-orchestrated at runtime (the per-item TDD loop),
+full tree-sitter extractor generalization, the graph-anchored correspondence resolver, and executing
+the evals against a live agent runner. See each `TODO.md`.
 
 ## License
 MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm
