@@ -46,7 +46,10 @@ class TestExtraction(unittest.TestCase):
         self.assertEqual(b["spent_usd"]["type"], "float")          # decimal -> float
         self.assertFalse(b["spent_usd"]["nullable"])               # .notNull() across lines
         self.assertEqual(b["project_id"]["constraints"]["foreign_key"], "projects.id")  # multi-line .references
-        self.assertEqual(b["alert_level"]["type"], "enum")         # alertLevelEnum (named, cross-file)
+        # a cross-file enum whose values aren't supplied is honestly `unknown`/ambiguous — the
+        # extractor never guesses "it's an enum" from the const's name (the next test resolves it)
+        self.assertEqual(b["alert_level"]["type"], "unknown")
+        self.assertEqual(b["alert_level"]["confidence"], "ambiguous")
         self.assertEqual(b["id"]["constraints"]["primary_key"], True)
 
     def test_drizzle_imported_enum_values_resolve_when_supplied(self):

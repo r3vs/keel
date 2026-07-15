@@ -6,9 +6,10 @@ covers both skills and is green. Step 0 is **done** (verdict STRONG, below). Imp
 in CI: the ledger runtime (`runtime/ledger.py`), the contract **generators** (`runtime/generate.py`
 — round-trips to zero drift), the CI drift-check (`runtime/shapes.py`), the decision-catalog +
 interview funnel (`runtime/interview.py` + `assets/decision-catalog.json`), the challenger
-(`runtime/challenger.py`), the Phase-4 wave scheduler (`runtime/buildloop.py`), and the shared
-visual map (`runtime/map.py`). What remains is agent-orchestrated (the per-item build loop) + full
-tree-sitter generalization.
+(`runtime/challenger.py`), the Phase-4 wave scheduler (`runtime/buildloop.py`), the shared
+visual map (`runtime/map.py`) + graph anchoring/blast-radius (`runtime/graph.py`), and the optional
+tree-sitter generic backend (`runtime/treesitter_extract.py`). What remains is agent-orchestrated
+(the per-item build loop).
 
 Work top-down: each block depends on the ones above it. Detail for every item lives in the
 referenced playbook.
@@ -38,8 +39,9 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
       → `runtime/generate.py`. Proven by the **round-trip test**: generate all four → the
       shape drift-check finds **zero drift** (aligned by construction), and the step-0 frictions
       (reserved-word aliases, enum `values_callable`, snake_case wire) are handled in code, not
-      left to the developer. `tests/test_generate.py`. Tree-sitter template generalization for
-      further stacks stays additive on the list.
+      left to the developer. `tests/test_generate.py`. The extraction side (used by the CI
+      drift-check) gained an optional **tree-sitter** generic backend
+      (`runtime/treesitter_extract.py`) so new stacks are additive via a query, not a new parser.
 - [x] **The CI drift-check** — the same shape-diff rescue uses, wired to fail the build when a
       hand-edit breaks alignment. This is the preventive payload. → `runtime/shapes.py`
       (`python runtime/shapes.py --contract contract.json --ddl … --sqlalchemy … --pydantic …

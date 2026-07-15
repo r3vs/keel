@@ -74,5 +74,27 @@ class TestSelfContained(unittest.TestCase):
         self.assertIn("role enum drift", result.read_text(encoding="utf-8"))
 
 
+class TestGraphAnchoredRendering(unittest.TestCase):
+    """Anchors enriched by runtime/graph.py (node_id + blast_radius) reach the page — the map
+    stays a self-contained projection: the graph is needed at anchor time, never at view time."""
+
+    def test_node_id_and_blast_radius_inlined(self):
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(
+            kind="contract_mismatch", title="role enum drift", severity="blocker",
+            confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+            anchors=[{"node_id": "table_users", "layer": "db", "role": "src",
+                      "loc": "packages/db/schema/users.ts:12",
+                      "blast_radius": {"count": 3, "depth": 2, "edges": "structural/extracted",
+                                       "sample": ["backend/models.py:30", "frontend/types.ts:5"]}}],
+            as_is={"db": "x", "frontend": "y", "disagreeing_layers": ["frontend"]})
+        html = mapmod.render(led.data, title="anchored")
+        self.assertIn("table_users", html)          # node_id inlined
+        self.assertIn("impact:", html)               # blast-radius line present
+        self.assertIn("backend/models.py:30", html)  # sample dependent inlined
+        # still self-contained: no external fetch introduced
+        self.assertNotIn("fetch(", html.split("const LEDGER =", 1)[1].split("\n", 1)[0])
+
+
 if __name__ == "__main__":
     unittest.main()

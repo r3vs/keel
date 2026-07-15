@@ -66,11 +66,13 @@ class TestExtractors(unittest.TestCase):
         self.assertEqual(classes["TaskRead"]["status"]["enum"],
                          ["todo", "in_progress", "done"])
 
-    def test_typescript_unions_and_branding(self):
+    def test_typescript_unions_and_types(self):
         shapes = extract_typescript(FIXTURES / "types.ts")
-        self.assertEqual(shapes["User"]["role"]["type"], "enum")
-        self.assertEqual(shapes["User"]["id"]["type"], "uuid")          # `// uuid` brand
-        self.assertEqual(shapes["User"]["created_at"]["type"], "datetime")  # `// ISO datetime`
+        self.assertEqual(shapes["User"]["role"]["type"], "enum")        # named string-literal union
+        # TS has no uuid/datetime type: a `string` stays `string` (no comment sniffing). The
+        # uuid/datetime↔string equivalence is applied at diff time (see TestHonestyRules below).
+        self.assertEqual(shapes["User"]["id"]["type"], "string")
+        self.assertEqual(shapes["User"]["created_at"]["type"], "string")
         self.assertTrue(shapes["Task"]["due_date"]["nullable"])         # `| null`
 
     def test_ddl_enums_nullability_fk(self):
@@ -163,13 +165,23 @@ class TestCarrierlessReconcile(unittest.TestCase):
         self.assertIn(("users", "nullability_mismatch"),
                       {(f["entity"], f["kind"]) for f in findings})
 
-    def test_singular_plural_entity_matching(self):
-        # 'users' (DDL table) must line up with 'User' (Prisma model)
+    def test_no_pluralization_guess_across_naming_conventions(self):
+        # a `users` table and a `User` model do NOT auto-correspond: pluralization is a guess
+        # (English-specific, irregular plurals). The deterministic path for that correspondence is
+        # the carrier (drift_check maps table→entity explicitly), never a name fold here.
         ddl = pathlib.Path(__file__).parent / "fixtures" / "step0" / "001_initial.sql"
         prisma = pathlib.Path(__file__).parent / "fixtures" / "stacks" / "schema.prisma"
         findings = shapes.reconcile_layers("ddl", str(ddl), "prisma", str(prisma))
         missing = {f["entity"] for f in findings if f["kind"] == "missing_entity"}
-        self.assertNotIn("users", missing)     # users↔User matched, not reported missing
+        self.assertIn("users", missing)        # honestly unmatched, not folded to User
+
+    def test_same_name_layers_still_reconcile(self):
+        # the deterministic case: two layers that share the table name line up exactly
+        ddl = pathlib.Path(__file__).parent / "fixtures" / "step0" / "001_initial.sql"
+        sqla = pathlib.Path(__file__).parent / "fixtures" / "step0" / "models.py"
+        findings = shapes.reconcile_layers("ddl", str(ddl), "sqlalchemy", str(sqla))
+        missing = {f["entity"] for f in findings if f["kind"] in ("missing_entity", "extra_entity")}
+        self.assertNotIn("users", missing)     # users↔users: exact match, no guessing needed
 
 
 class TestHonestyRules(unittest.TestCase):
@@ -189,13 +201,15 @@ class TestHonestyRules(unittest.TestCase):
         self.assertEqual([f for f in findings if f["kind"] == "missing_field"], [])
 
     def test_client_projection_of_uuid_and_datetime_is_not_drift(self):
-        # equivalence table: uuid -> string (branded), datetime -> string (ISO) on the client
+        # equivalence table: on a stringly-typed layer, uuid/datetime carry as `string`
         ref = {"id": {"name": "id", "type": "uuid", "nullable": False,
                       "confidence": "extracted"}}
         cand = {"id": {"name": "id", "type": "string", "nullable": False,
                        "confidence": "extracted"}}
         self.assertEqual(diff_shapes(ref, cand, "contract", "client", "X"), [])
-        # …but the same pair on the ORM layer IS drift
+        # symmetric: the stringly-typed side may be the reference too (e.g. a TS-vs-DDL reconcile)
+        self.assertEqual(diff_shapes(cand, ref, "typescript", "db", "X"), [])
+        # …but the same pair on the ORM layer (which HAS a uuid type) IS drift
         self.assertEqual(diff_shapes(ref, cand, "contract", "orm", "X")[0]["kind"],
                          "type_mismatch")
 

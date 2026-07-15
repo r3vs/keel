@@ -6,11 +6,12 @@ spec v0.6 + drift-linter green). The gating experiment (step 0) has been **re-ru
 a current graph (`built_at_commit` == HEAD) and confirmed on the real repo (see below and
 `references/contract-reconciliation.md`). Implemented and tested in CI: the shared ledger runtime
 (`runtime/ledger.py`), the field-shape engine + drift-check (`runtime/shapes.py`, incl. Drizzle/
-Prisma/Django/GraphQL), the findings + fp-check gate (`runtime/findings.py`), the interview funnel
-+ challenger (`runtime/interview.py`, `runtime/challenger.py`), the Phase-4 wave scheduler
-(`runtime/buildloop.py`), the visual map (`runtime/map.py`), the ast-grep rule pack, the eval
-harness, and a slop-repo fixture. What remains is agent-orchestrated at runtime (the per-item TDD
-loop, the graph-anchored correspondence resolver) + the stale-graph step-0 re-run.
+Prisma/Django/GraphQL, plus an optional **tree-sitter** generic backend
+`runtime/treesitter_extract.py`), the findings + fp-check gate (`runtime/findings.py`), the
+interview funnel + challenger (`runtime/interview.py`, `runtime/challenger.py`), the Phase-4 wave
+scheduler (`runtime/buildloop.py`), the visual map (`runtime/map.py`), **graph anchoring +
+blast-radius** (`runtime/graph.py`), the ast-grep rule pack, the eval harness, and a slop-repo
+fixture. What remains is agent-orchestrated at runtime (the per-item TDD loop).
 
 Work top-down: each block depends on the ones above it. Detail for every item lives in the
 referenced playbook.
@@ -42,22 +43,42 @@ HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a
       (TS ORM, balanced-brace table bodies), **Prisma** (schema, `String @default(uuid())`→uuid),
       **Django** models, and **GraphQL SDL**; each normalizes to the one descriptor, aligned
       fixtures diff clean against the shared contract, injected drift is caught
-      (`tests/test_stacks.py`). Full **tree-sitter** query generalization (vs the current
-      regex/line parsers) stays the next step for arbitrary stacks.
+      (`tests/test_stacks.py`).
       → `references/contract-reconciliation.md`
+- [x] **Tree-sitter backend (declarative, no heuristics)** — `runtime/treesitter_extract.py`: one
+      **generic engine driven by declarative per-grammar DATA** (a `STACKS` entry = a tree-sitter
+      query + type/​node maps — no per-stack code, no comment sniffing, no name matching), the
+      state-of-the-art shape (ast-grep/semgrep) for stack-agnostic extraction. Verified data specs
+      for **TypeScript interfaces** and **GraphQL SDL** (a deliberately different grammar). It is
+      **optional** (the core runtime stays stdlib-only):
+      `shapes.extract_typescript/graphql(path, backend="auto"|"treesitter")` routes to it when
+      installed and **degrades to the stdlib parser** when not. Verified drop-in (byte-identical to
+      the stdlib extractors on the fixtures, so drift is identical) and strictly more robust — it
+      recovers multi-line / nested-generic fields the line parser silently drops.
+      `tests/test_treesitter.py` (skips cleanly without tree-sitter). Adding a grammar = adding a
+      data entry. → `references/contract-reconciliation.md`
 - [x] **Type-equivalence table** across DB/ORM/API/TS type systems; `ambiguous` where uncertain
-      (unresolved types downgrade to notes, never asserted mismatches; client uuid/datetime →
-      string projections honored). → `runtime/shapes.py`
-- [x] **Correspondence resolver (name+shape heuristics)** — carrier-anchored flows via
-      `drift_check` (carrier→table→DTO-class→interface), **and carrier-less pairwise reconcile**
-      via `shapes.reconcile_layers(layer_a, path_a, layer_b, path_b)` (symmetric diff, case- and
-      singular/plural-folding entity matching, `missing_entity`/`extra_entity` when a side is
-      absent — never fabricates). `tests/test_shapes.py::TestCarrierlessReconcile`.
-- [ ] **Graph-edge anchoring (nice-to-have)** — attach `node_id` to a pin when the graph has the
-      node, for map navigation + blast-radius. The fresh step-0 re-run settled the substance: the
-      graph carries DB nodes for *anchoring* but no field-level *correspondence* edges, so the
-      name+shape resolver above is the correct default and this is a UI/navigation enhancement,
-      not a blocker.
+      (unresolved types downgrade to notes, never asserted mismatches; the uuid/datetime↔string
+      equivalence for stringly-typed layers is applied deterministically at diff time — symmetric,
+      never sniffed from a comment). → `runtime/shapes.py`
+- [x] **Correspondence resolver (deterministic)** — carrier-anchored flows via `drift_check`
+      (carrier→table→DTO-class→interface, the carrier declaring table→entity explicitly), **and
+      carrier-less pairwise reconcile** via `shapes.reconcile_layers(...)` with **case-insensitive
+      EXACT** entity matching (no pluralization guessing — that is English-specific), `missing_entity`
+      /`extra_entity` when a side is absent — never fabricates. Cross-convention correspondence
+      (`users` table vs `User` model) comes from the carrier, the Phase-0 verdict's strongest anchor.
+      `tests/test_shapes.py::TestCarrierlessReconcile`.
+- [x] **Graph-edge anchoring (deterministic)** — `runtime/graph.py`: loads graphify's NetworkX
+      `graph.json`, resolves a pin anchor to a stable `node_id` **only by its `file:line`** (exact,
+      or a node's declared line-range — no name matching, no plural fold, no basename/nearest
+      guess), computes **blast-radius** by reverse reachability over the graph's own **EXTRACTED
+      edges** (its confidence tag — never the INFERRED cross-layer edges, no editorial edge-type
+      filter), enforces the `built_at_commit == HEAD` staleness gate (refuses to write on a stale
+      graph — worse than none), and enriches the ledger's `anchors[]` in place so the map navigates
+      + shows impact while staying self-contained. `tests/test_graph.py`. The fresh step-0 re-run
+      settled the substance (DB nodes for anchoring, no field-level correspondence edges), so this
+      is exactly the navigation + blast-radius enhancement it was scoped to be; the carrier stays
+      the correspondence source of truth.
 
 ## 2. Ledger runtime — DONE (`runtime/ledger.py`, stdlib-only, 35 tests in CI)
 - [x] Code (stack-agnostic) that materializes policies, assigns `resolution_mode`, enforces the

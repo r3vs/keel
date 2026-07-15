@@ -60,6 +60,8 @@ main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0;min-height
 .opt{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:6px 0}
 .opt b{font-weight:600}.opt .imp{color:var(--mut);font-size:12px}
 .anchors code{display:block;font:12px ui-monospace,monospace;color:var(--mut);padding:2px 0}
+.anchors .nid{color:var(--accent);font-weight:600}
+.imp{color:var(--high);font-size:12px;padding:0 0 4px 0}
 .kv{display:flex;gap:8px;font-size:13px;margin:3px 0}.kv b{color:var(--mut);min-width:88px}
 .empty{color:var(--mut);padding:40px;text-align:center}
 </style></head><body>
@@ -112,7 +114,15 @@ function detail(p){
   if(p.question) body+=`<div class="card q"><b>Interview question</b><p>${esc(p.question.prompt)}</p>`+
     (p.question.options||[]).map(o=>`<div class="opt"><b>${esc(o.label)}</b>${o.implication?`<div class="imp">→ ${esc(o.implication)}</div>`:''}</div>`).join('')+`</div>`;
   if((p.anchors||[]).length) body+=`<div class="card anchors"><b>Anchors</b>`+
-    p.anchors.map(a=>`<code>${esc(a.layer||'')} ${esc(a.loc||a.node_id||'')}</code>`).join('')+`</div>`;
+    p.anchors.map(a=>{
+      const nid=a.node_id?` <span class="nid">${esc(a.node_id)}</span>`:'';
+      let br='';
+      if(a.blast_radius&&a.blast_radius.count){
+        const s=(a.blast_radius.sample||[]).map(esc).join(', ');
+        br=`<div class="imp">↯ impact: ${a.blast_radius.count} dependent(s)`+(s?` — ${s}`:'')+`</div>`;
+      }
+      return `<code>${esc(a.layer||'')} ${esc(a.loc||a.node_id||'')}${nid}</code>${br}`;
+    }).join('')+`</div>`;
   if(p.decision) body+=`<div class="card"><div class="kv"><b>decided</b><span>${esc(p.decision.outcome)}</span></div></div>`;
   return `<h2>${esc(p.title)}</h2><div class="sub"><span class="sev" style="background:${SEV[p.severity]||'#888'}">${p.severity}</span> · ${esc(p.kind)} · ${esc(p.state)}${p.substate?' ('+esc(p.substate)+')':''}</div>`+body;
 }

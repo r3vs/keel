@@ -71,5 +71,10 @@ the live stacks: extractors for Postgres DDL / SQLAlchemy 2 / Pydantic v2 / TS i
 normalize to the descriptor, plus `diff_shapes`/`drift_check` with both honesty rules enforced
 (unresolved → `ambiguous` note, absence → `missing_field`/`extra_field` finding). As a CLI it is
 greenfield's CI drift-check: `python runtime/shapes.py --contract … --ddl … --sqlalchemy …
---pydantic … --typescript …` exits 1 on drift. New stacks are additive (tree-sitter
-generalization on the TODO).
+--pydantic … --typescript …` exits 1 on drift. New stacks are additive: an optional tree-sitter
+backend (`runtime/treesitter_extract.py`) is one generic engine driven by declarative per-grammar
+**data** (a query + type maps — no per-stack code, no heuristics, no comment sniffing), so a new
+stack is a data entry, not a parser. It degrades to the stdlib parsers when tree-sitter is absent —
+pass `--treesitter` (or `backend="auto"`) to route TS/GraphQL through it. Types come only from the
+grammar's own type system; the uuid/datetime↔string equivalence for stringly-typed layers is
+applied deterministically at diff time, never inferred from a comment.

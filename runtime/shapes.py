@@ -30,6 +30,11 @@ from typing import Optional
 
 CANONICAL = ("string", "int", "float", "bool", "enum", "uuid", "json", "datetime")
 
+# Layers whose language has no native uuid/datetime type, so they carry both as `string`
+# (a JS/TS client). The uuid/datetime ⟷ string equivalence is applied deterministically at diff
+# time for these layers (see diff_shapes) — never inferred from a comment during extraction.
+_STRINGLY_LAYERS = ("client", "typescript", "ts")
+
 # ---------------------------------------------------------------------------
 # descriptor helpers
 # ---------------------------------------------------------------------------
@@ -43,6 +48,30 @@ def descriptor(name: str, type_: str, nullable: bool, enum: Optional[list] = Non
     if constraints:
         d["constraints"] = constraints
     return d
+
+
+def _try_treesitter(lang: str, text: str, backend: str):
+    """Opt-in tree-sitter backend for an extractor. `backend`:
+      - "regex"      (default) — the stdlib line/ast parser; keeps the runtime dependency-free
+                     and deterministic regardless of environment (the stdlib-only invariant).
+      - "auto"       — the tree-sitter parse when installed (more robust on multi-line / nested
+                     declarations), else transparently fall back to the stdlib parser.
+      - "treesitter" — force it; raise if tree-sitter is not installed.
+    Returns the extracted `{entity: {field: descriptor}}`, or None to fall through to stdlib."""
+    if backend == "regex":
+        return None
+    if backend not in ("auto", "treesitter"):
+        raise ValueError(f"backend must be regex|auto|treesitter, got {backend!r}")
+    try:
+        import treesitter_extract as _ts
+    except Exception:
+        _ts = None
+    if _ts is None or not _ts.available():
+        if backend == "treesitter":
+            raise RuntimeError("backend='treesitter' requested but tree-sitter is not installed "
+                               "(pip install tree-sitter tree-sitter-language-pack)")
+        return None
+    return _ts.extract(text, lang)
 
 
 # ---------------------------------------------------------------------------
@@ -237,10 +266,20 @@ _TS_FIELD = re.compile(r"^\s*(\w+)(\?)?:\s*(.+?);\s*(?://\s*(.*))?$")
 _TS_UNION = re.compile(r'^export type (\w+) = (.+);', re.M)
 
 
-def extract_typescript(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
-    """Returns per-INTERFACE shapes. `// uuid` / `// ISO datetime` trailing comments refine
-    the branded-string convention from `core/shape-engine.md`'s equivalence table."""
+def extract_typescript(path: str | pathlib.Path, backend: str = "regex"
+                       ) -> dict[str, dict[str, dict]]:
+    """Returns per-INTERFACE shapes, read only from the TS type system (no comment sniffing):
+    a `string` stays `string`. The uuid/datetime↔string equivalence is applied deterministically
+    at diff time for stringly-typed layers (see `diff_shapes` / `_STRINGLY_LAYERS`), per
+    `core/shape-engine.md`'s equivalence table.
+
+    `backend="auto"|"treesitter"` routes to the tree-sitter parse (`runtime/treesitter_extract.py`),
+    which recovers multi-line / nested-generic fields this line parser drops; default stays the
+    stdlib line parser (see `_try_treesitter`)."""
     text = pathlib.Path(path).read_text(encoding="utf-8")
+    ts = _try_treesitter("typescript", text, backend)
+    if ts is not None:
+        return ts
     unions: dict[str, list] = {}
     for m in _TS_UNION.finditer(text):
         parts = [p.strip() for p in m.group(2).split("|")]
@@ -261,8 +300,7 @@ def extract_typescript(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
             m = _TS_FIELD.match(line)
             if not m:
                 continue
-            name, optional, ts_type, comment = m.groups()
-            comment = (comment or "").lower()
+            name, optional, ts_type, _comment = m.groups()
             nullable = False
             base = ts_type.strip()
             if base.endswith("| null"):
@@ -274,14 +312,12 @@ def extract_typescript(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
             enum_vals = unions.get(base)
             if enum_vals:
                 t = "enum"
-            elif "uuid" in comment:
-                t = "uuid"           # branded string (equivalence-table row: uuid → string)
-            elif "datetime" in comment or "iso" in comment:
-                t = "datetime"       # ISO string projection
             elif base in _TS_TYPE_MAP:
                 t = _TS_TYPE_MAP[base]
             else:
-                t = "unknown"
+                t = "unknown"        # TS has no uuid/datetime type: a `string` stays `string`.
+                                     # The uuid/datetime↔string equivalence is a deterministic
+                                     # diff-time rule (see diff_shapes), never sniffed from a comment.
             conf = "extracted" if t != "unknown" else "ambiguous"
             out[current][name] = descriptor(name, t, nullable, enum_vals, None, conf)
     return out
@@ -373,8 +409,10 @@ def extract_drizzle(path: str | pathlib.Path,
     """Drizzle ORM (TS): `export const users = pgTable('users', { ... })` + `pgEnum(...)`.
     Handles single or double quotes and multi-line column method chains (real Drizzle spreads
     `.notNull().references(...)` across lines). Enum types are often imported from a sibling
-    `enums.ts`; pass `imported_enums` ({constName: [values]}) to resolve them, else an enum-typed
-    column extracts as `enum` with no values (shape matches, values ambiguous — honest)."""
+    `enums.ts`; pass `imported_enums` ({constName: [values]}) to resolve them. A column whose
+    constructor is a locally-declared `pgEnum` resolves to `enum` (+ values); one whose enum const
+    is unresolved (imported, not supplied) extracts as `unknown`/ambiguous — honestly undecided,
+    never guessed from the const's name."""
     text = pathlib.Path(path).read_text(encoding="utf-8")
     q = r'["\']'
     enums: dict[str, list] = {}
@@ -400,9 +438,7 @@ def extract_drizzle(path: str | pathlib.Path,
             if ctor in enum_consts:
                 t, evals = "enum", enums.get(enum_consts[ctor])
             elif ctor in imported:
-                t, evals = "enum", imported[ctor] or None       # cross-file enum
-            elif ctor.endswith("Enum"):
-                t, evals = "enum", None                          # named like an enum, values unknown
+                t, evals = "enum", imported[ctor] or None       # cross-file enum (caller-resolved)
             elif ctor in _DRIZZLE_TYPES:
                 t, evals = _DRIZZLE_TYPES[ctor], None
                 ml = re.search(r"length:\s*(\d+)", ctor_rest or "")
@@ -518,10 +554,17 @@ _GQL_TYPES = {"ID": "uuid", "String": "string", "Int": "int", "Float": "float",
               "Boolean": "bool"}
 
 
-def extract_graphql(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
+def extract_graphql(path: str | pathlib.Path, backend: str = "regex"
+                    ) -> dict[str, dict[str, dict]]:
     """GraphQL SDL: `type User { id: ID! role: Role! }` + `enum Role { admin member }`.
-    An API-layer contract; keyed by type name (the entity)."""
+    An API-layer contract; keyed by type name (the entity).
+
+    `backend="auto"|"treesitter"` routes to the tree-sitter SDL parse (a different grammar from TS,
+    proving the engine generalizes); default stays the stdlib regex parser."""
     text = pathlib.Path(path).read_text(encoding="utf-8")
+    ts = _try_treesitter("graphql", text, backend)
+    if ts is not None:
+        return ts
     enums: dict[str, list] = {}
     for m in re.finditer(r"enum\s+(\w+)\s*\{([^}]*)\}", text):
         enums[m.group(1)] = [v.strip() for v in m.group(2).split() if v.strip()]
@@ -581,13 +624,16 @@ def diff_shapes(reference: dict[str, dict], candidate: dict[str, dict],
                 f"could not resolve type on one side ({ref['type']} vs {cand['type']})",
                 confidence="ambiguous"))
             continue
-        # equivalence-table projections (core/shape-engine.md): on the client layer,
-        # uuid and datetime legitimately project to plain `string` (branded/ISO) — a
-        # trailing `// uuid` / `// ISO datetime` comment refines them back when present.
-        client_projection = (cand_layer.startswith("client")
-                             and ref["type"] in ("uuid", "datetime")
-                             and cand["type"] == "string")
-        if ref["type"] != cand["type"] and not client_projection:
+        # equivalence-table projection (core/shape-engine.md): a stringly-typed layer (a JS/TS
+        # client, no native uuid/datetime) carries both as `string`, so string ⟷ uuid/datetime
+        # across such a boundary is a deterministic type-system equivalence, not drift. Applied
+        # symmetrically here at diff time — never inferred from a comment during extraction.
+        projection = (
+            (cand_layer.startswith(_STRINGLY_LAYERS) and cand["type"] == "string"
+             and ref["type"] in ("uuid", "datetime"))
+            or (ref_layer.startswith(_STRINGLY_LAYERS) and ref["type"] == "string"
+                and cand["type"] in ("uuid", "datetime")))
+        if ref["type"] != cand["type"] and not projection:
             findings.append(finding(
                 "type_mismatch", name,
                 f"{ref_layer}={ref['type']} vs {cand_layer}={cand['type']}"))
@@ -621,14 +667,16 @@ def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> li
     repo has no shared-types carrier to anchor against (the Phase-0 verdict found the carrier is
     the strongest anchor *when present* — this covers when it is not). Neither side is 'truth': the
     diff is symmetric, so a field present only on one side surfaces as missing_field/extra_field
-    (`core/shape-engine.md` honesty rule 2). Entity-name matching is case-insensitive with a light
-    singular/plural fold (users↔User) so the two layers' conventions line up."""
+    (`core/shape-engine.md` honesty rule 2). Entity-name matching is case-insensitive EXACT — no
+    pluralization guessing (that is English-specific and unreliable). When two layers use different
+    naming conventions (a `users` table vs a `User` model), their correspondence is a fact the
+    carrier declares: use `drift_check` (carrier-anchored), which the Phase-0 verdict names the
+    strongest anchor. Here, absent an exact name match, a side is honestly missing/extra."""
     a = EXTRACTORS[layer_a](path_a)
     b = EXTRACTORS[layer_b](path_b)
 
     def key(name: str) -> str:
-        n = name.lower()
-        return n[:-1] if n.endswith("s") else n
+        return name.lower()   # case-insensitive exact; no singular/plural fold (a guess)
 
     b_by_key = {key(k): k for k in b}
     findings: list[dict] = []
@@ -654,9 +702,12 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                 pydantic: Optional[str] = None, typescript: Optional[str] = None,
                 ddl: Optional[str] = None, drizzle: Optional[str] = None,
                 prisma: Optional[str] = None, django: Optional[str] = None,
-                graphql: Optional[str] = None) -> list[dict]:
+                graphql: Optional[str] = None, backend: str = "regex") -> list[dict]:
     """Diff every provided layer against the carrier. This IS greenfield's CI drift-check
-    and rescue's contract-reconciliation core, pointed at a shared-types-style carrier."""
+    and rescue's contract-reconciliation core, pointed at a shared-types-style carrier.
+
+    `backend` routes the TS/GraphQL layers to the tree-sitter parse when "auto"/"treesitter"
+    (the other layers already use `ast`/robust parsers); default "regex" keeps it stdlib-only."""
     contract = extract_contract(contract_path)
     tables = contract_tables(contract_path)
     findings: list[dict] = []
@@ -681,7 +732,7 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                             ("api:graphql", graphql, extract_graphql)):
         if not path:
             continue
-        shapes = fn(path)      # entity-keyed (model/type name == entity name)
+        shapes = fn(path, backend=backend) if fn is extract_graphql else fn(path)
         for entity in contract:
             if entity in shapes:
                 findings += diff_shapes(contract[entity], shapes[entity],
@@ -702,7 +753,7 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                 findings += diff_shapes(contract[entity], classes[f"{entity}Create"],
                                         "contract", "api:create", entity, partial=True)
     if typescript:
-        interfaces = extract_typescript(typescript)
+        interfaces = extract_typescript(typescript, backend=backend)
         for entity in contract:
             if entity in interfaces:
                 findings += diff_shapes(contract[entity], interfaces[entity],
@@ -727,11 +778,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--django")
     parser.add_argument("--graphql")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument("--treesitter", action="store_true",
+                        help="use the tree-sitter backend for TS/GraphQL when installed "
+                             "(more robust on multi-line/nested decls); falls back to regex")
     args = parser.parse_args(argv)
 
     findings = drift_check(args.contract, args.sqlalchemy, args.pydantic,
                            args.typescript, args.ddl, args.drizzle, args.prisma,
-                           args.django, args.graphql)
+                           args.django, args.graphql,
+                           backend="auto" if args.treesitter else "regex")
     hard = [f for f in findings if f["confidence"] != "ambiguous"]
     if args.json:
         print(json.dumps(findings, indent=2, ensure_ascii=False))

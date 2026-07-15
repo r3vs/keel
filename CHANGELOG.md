@@ -6,8 +6,8 @@ spine has started; versions track design + packaging + runtime together.
 ## [0.1.0] — unreleased
 
 ### Added
-- **Runtime** — the executable layer both skills bind to (all stdlib-only, tested in CI;
-  **~150 tests** across `tests/`):
+- **Runtime** — the executable layer both skills bind to (core stdlib-only, tested in CI;
+  **~165 tests** across `tests/`):
   - `runtime/ledger.py` — the shared decisions-ledger runtime (spec v0.6): kind-discriminated pin
     validation, append-only Decision/Reopen/Challenge events, enforced brainstorm/challenger/
     feedback **neutrality**, the severity threshold (blocker/high never silently defaulted), policy
@@ -38,7 +38,28 @@ spine has started; versions track design + packaging + runtime together.
     because the ledger is the state.
   - `runtime/map.py` — the **visual map** as one self-contained HTML file (no build step, no
     external fetch): clickable pins, three-column contract-diff, linked interview questions,
-    completeness traffic-light, as-is/to-be toggle; shared by both skills.
+    completeness traffic-light, as-is/to-be toggle; shared by both skills. Now renders a pin
+    anchor's `node_id` and a **blast-radius impact line** when the graph enriched it.
+  - `runtime/graph.py` — **deterministic graph anchoring + blast-radius** over graphify's NetworkX
+    `graph.json`, with **no heuristics**: resolves a pin anchor to a stable `node_id` **only by its
+    `file:line`** (exact, or a node's declared line-range — no name-matching, no plural folding, no
+    basename/nearest guessing); computes blast-radius by **reverse reachability over the graph's own
+    EXTRACTED edges** (its deterministic confidence tag — never the INFERRED cross-layer edges, and
+    no editorial edge-type filter); enforces the `built_at_commit == HEAD` staleness gate (**refuses
+    to write on a stale graph** — worse than none); enriches the ledger's `anchors[]` in place so
+    the map stays self-contained. Exactly the two things the Phase-0 verdict leaves the graph —
+    anchoring + impact — and nothing it is not (no field-level correspondence). `tests/test_graph.py`.
+  - `runtime/treesitter_extract.py` — the **optional tree-sitter backend**: one **generic engine
+    driven by declarative per-grammar DATA** (a `STACKS` entry = a tree-sitter query + type/​node
+    maps; **no per-stack code, no heuristics, no comment-sniffing**) — the state-of-the-art shape
+    (ast-grep/semgrep) for stack-agnostic extraction. Adding a stack = adding a data entry, not a
+    parser. Ships verified specs for **TypeScript interfaces** and **GraphQL SDL** (a deliberately
+    different grammar). Stays **optional** (the core runtime is stdlib-only):
+    `shapes.extract_typescript/graphql(path, backend="auto"|"treesitter")` and `shapes.py
+    --treesitter` route to it when installed and **degrade to the stdlib parsers** when not.
+    Verified drop-in (byte-identical to the stdlib extractors on the fixtures — so the drift-check
+    is identical) and strictly more robust (recovers multi-line / nested-generic fields the line
+    parser drops). `tests/test_treesitter.py` (skips cleanly without the backend).
   - `scripts/run_evals.py` — eval harness: `--validate` (CI structural gate) and `--run` (behavioral
     execution against a real agent runner + fixture, LLM-judge per assertion; no pretend mode).
   - `skills/codebase-rescue/assets/ast-grep/` — the placeholder/stub rule pack: 8 python+typescript
@@ -94,6 +115,21 @@ spine has started; versions track design + packaging + runtime together.
   in the marketplace for the generic engineering skills instead of reinventing them.
 
 ### Changed
+- **No-heuristics pass on the shape engine + graph** (design directive: deterministic, tech-stack
+  agnostic). Extraction now reads only a stack's own type system — the guessing came out:
+  - **comment-branding removed** — a TS `// uuid` / `// ISO datetime` no longer coerces a `string`
+    to uuid/datetime. The uuid/datetime↔string equivalence is instead a **deterministic, symmetric
+    diff-time rule** for stringly-typed layers (`diff_shapes` / `_STRINGLY_LAYERS`) — where it
+    belongs, per the equivalence table — so the drift-check stays clean without sniffing comments.
+  - **Drizzle enum name-guess removed** — a column whose enum const is unresolved is honestly
+    `unknown`/ambiguous, never guessed to be an enum from a `…Enum` name.
+  - **pluralization guess removed** from carrier-less `reconcile_layers` (it was English-specific):
+    entity matching is now **case-insensitive exact**. Cross-convention correspondence (`users`
+    table ↔ `User` model) comes from the **carrier** (`drift_check`), the Phase-0 verdict's
+    strongest anchor — not from folding names.
+  - **`runtime/graph.py` anchors by `file:line` only** (exact/containment), and blast-radius is
+    reverse reachability over the graph's own **EXTRACTED** edges — no `_LAYER_TYPES` name matching,
+    no basename/nearest guessing, no editorial edge-type lists.
 - **Self-contained skills (Model B)**: the shared `core/` is now a single **authoring source**,
   vendored into each skill under `references/core/` by `scripts/sync_core.py` (following the
   `core→core` dependency closure). No skill points at `core/` directly, so every skill directory
@@ -125,8 +161,7 @@ spine has started; versions track design + packaging + runtime together.
   and DB-schema nodes that exist but carry no field-level correspondence (correcting the stale
   verdict's wrong "0 DB nodes" claim). Confirmed positively: `runtime/shapes.py` extracts 113
   tables / 1290 fields from VibraFlow's real Drizzle schema.
-- What remains is agent-orchestrated at runtime (the per-item TDD loop) + full tree-sitter
-  extractor generalization; evals execute via `scripts/run_evals.py --run` against a live agent
-  runner. See each skill's `TODO.md`.
+- What remains is agent-orchestrated at runtime (the per-item TDD loop); evals execute via
+  `scripts/run_evals.py --run` against a live agent runner. See each skill's `TODO.md`.
 - Generic skills are **composed** from `superpowers` (MIT), not authored here.
 - The vendored `references/core/` copies are generated — edit `core/*.md`, then run `sync_core.py`.

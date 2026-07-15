@@ -72,6 +72,18 @@ if have pip3 || have pip; then
   have codewiki || { python3 -m pip install --user "$(pipspec codewiki "$CODEWIKI_VER")" >/dev/null 2>&1 && ok "codewiki (pip)"; } || warn "codewiki not installed — as-is wiki degraded"
 fi
 
+# --- Optional shape-engine backend: tree-sitter (generic extractor generalization) -----
+# runtime/treesitter_extract.py uses it when present for more robust TS/GraphQL/arbitrary-stack
+# extraction (a stack = a query, not a new parser). The runtime stays stdlib-only and degrades to
+# the regex/ast parsers when it is absent — so this is genuinely optional.
+if have pip3 || have pip; then
+  python3 -c "import tree_sitter, tree_sitter_language_pack" >/dev/null 2>&1 \
+    && ok "tree-sitter (present, optional shape-engine backend)" \
+    || { python3 -m pip install --user tree-sitter tree-sitter-language-pack >/dev/null 2>&1 \
+         && ok "tree-sitter (pip, optional shape-engine backend)"; } \
+    || warn "tree-sitter not installed — shape engine uses the stdlib parsers (fine)"
+fi
+
 # --- Static analysis: architecture-fitness (best-effort; type-checkers are per-language) --
 # Closes the doc<->installer gap: core/static-analysis.md documents these. Install the
 # language-agnostic ones here; the per-language type-checkers are in the on-demand list below.

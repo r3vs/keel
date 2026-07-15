@@ -50,10 +50,16 @@ Consequences, baked into this module's posture (unchanged — the fresh run reaf
 1. **Compute contracts STANDALONE from source** (DDL/migration, ORM model, DTO/route, shared
    types) via `runtime/shapes.py`. Treat any graph cross-layer edges as weak corroboration only.
 2. **Use the graph ONLY for** anchoring, imports/calls reachability (blast radius), and community
-   structure — never for field-level correspondence.
+   structure — never for field-level correspondence. This is exactly what `runtime/graph.py` does,
+   **deterministically**: it resolves a pin anchor to a `node_id` **by `file:line` only** and walks
+   **reverse reachability over the graph's own EXTRACTED edges** for blast-radius — never an
+   INFERRED/semantic edge, and with no editorial edge-type filter.
 3. **Anchor pins to `source_location` (`file:line`), accepting `node_id: null`.** Do not anchor to
-   nodes the graph lacks, and never to files a stale graph still references. (And rebuild the graph
-   before use — a graph 37 commits behind is worse than none: check `built_at_commit` == HEAD.)
+   nodes the graph lacks, and never to files a stale graph still references. `runtime/graph.py`
+   fills `node_id` (and a compact blast-radius) onto each anchor **only from an exact/containment
+   `file:line` match** — no name matching, no pluralization, no nearest-line guess — leaves it null
+   otherwise, and **refuses to write at all when `built_at_commit` != HEAD** (a graph 37 commits
+   behind is worse than none — rebuild with `graphify update <path>` first).
 4. **A monorepo shared-types package is the strongest standalone contract when present** — diff the
    layers against it (carrier-anchored `shapes.drift_check`); when absent, diff two layers directly
    (`shapes.reconcile_layers`).
@@ -155,11 +161,19 @@ Once a truth is elected and the boundary is aligned in Phase 4, a generated **co
 runtime complement to re-diffing shapes in Phase 5.
 
 ## TODO (implementation)
-- [ ] Per-stack extractors for the four boundaries (start with the user's live stacks, then
-      generalize via tree-sitter queries so new stacks are additive, not rewrites).
-- [ ] Type-equivalence table across DB/ORM/API/TS type systems.
+- [x] Per-stack extractors for the four boundaries — the live stacks in `runtime/shapes.py`
+      (DDL/SQLAlchemy/Pydantic/TS + Drizzle/Prisma/Django/GraphQL), **generalized** via
+      `runtime/treesitter_extract.py`: one generic engine driven by declarative per-grammar **data**
+      (a query + type maps — no per-stack code, no heuristics), so a new stack is a data entry, not
+      a rewrite. Optional backend, degrades to the stdlib parsers.
+- [x] Type-equivalence table across DB/ORM/API/TS type systems — in `runtime/shapes.py`
+      (`_ann_to_canonical`, the `_*_TYPE_MAP`s, and `diff_shapes`' equivalence/honesty rules).
 - [x] Correspondence resolver: **standalone shapes first** — implemented in `runtime/shapes.py`
       (`drift_check` carrier-anchored, `reconcile_layers` carrier-less), with graph edges as
       corroboration/anchoring only. The fresh Phase-0 re-run (above) settled the graph's weight:
-      DB nodes for anchoring, no field-level correspondence edges. Graph-edge *anchoring* of pins
-      (attaching `node_id` when the graph has the node) stays a nice-to-have enhancement.
+      DB nodes for anchoring, no field-level correspondence edges.
+- [x] Graph-edge *anchoring* of pins — `runtime/graph.py` attaches `node_id` + blast-radius **only
+      from an exact/containment `file:line` match** (staleness-gated, EXTRACTED edges only), leaving
+      `node_id: null` legitimate. It does no correspondence itself; the carrier (`drift_check`)
+      stays the correspondence source of truth. This is navigation + impact, exactly the scope the
+      Phase-0 verdict leaves the graph.
