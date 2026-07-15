@@ -114,5 +114,20 @@ class TestCarrierChooser(unittest.TestCase):
             "protobuf")
 
 
+class TestExplicitTable(unittest.TestCase):
+    def test_generation_requires_explicit_table(self):
+        # the table name is a decision the contract declares — generation errors rather than
+        # guess it by pluralizing the entity name (the symmetric twin of contract_tables).
+        import json
+        import tempfile
+        fd, p = tempfile.mkstemp(suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"entities": {"User": {"fields": [
+                {"name": "id", "type": "uuid", "nullable": False}]}}}, fh)   # no "table"
+        contract = generate.Contract.load(p)
+        with self.assertRaises(ValueError):
+            generate.generate_ddl(contract)
+
+
 if __name__ == "__main__":
     unittest.main()

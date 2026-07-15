@@ -44,6 +44,15 @@ class TestExtractors(unittest.TestCase):
         role = shapes["User"]["role"]
         self.assertEqual((role["type"], role["enum"]), ("enum", ["admin", "member"]))
 
+    def test_contract_tables_requires_explicit_table(self):
+        # a table name is a decision — contract_tables errors rather than pluralize the entity name
+        import json
+        fd, p = tempfile.mkstemp(suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"entities": {"User": {"fields": []}}}, fh)   # no "table"
+        with self.assertRaises(ValueError):
+            shapes.contract_tables(p)
+
     def test_sqlalchemy_reserved_word_column(self):
         shapes = extract_sqlalchemy(FIXTURES / "models.py")
         # attribute is metadata_ but the COLUMN is "metadata" — the reserved-word escape

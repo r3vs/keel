@@ -92,7 +92,7 @@ aligned by construction, guarded for life by a CI drift-check.
 
 ## Status
 Design-complete across two methodology skills + six composable helpers, packaged
-agent-agnostically, with the **runtime largely implemented** (~150 tests in CI). Executable today:
+agent-agnostically, with the **runtime largely implemented** (~170 tests in CI). Executable today:
 
 | Piece | Module |
 |---|---|
@@ -104,6 +104,8 @@ agent-agnostically, with the **runtime largely implemented** (~150 tests in CI).
 | Oracle challenger (deterministic classes) | `runtime/challenger.py` |
 | Phase-4 wave scheduler | `runtime/buildloop.py` |
 | Visual map (self-contained HTML) | `runtime/map.py` |
+| Graph anchoring + blast-radius (deterministic, by `file:line`) | `runtime/graph.py` |
+| Tree-sitter backend (optional; generic engine + declarative per-grammar data) | `runtime/treesitter_extract.py` |
 | Eval harness + ast-grep rule pack + fixtures | `scripts/run_evals.py`, `assets/ast-grep/`, `tests/fixtures/` |
 
 **Step-0 verdicts recorded** (both now on trustworthy data): greenfield (FastAPI+SQLAlchemy+TS)

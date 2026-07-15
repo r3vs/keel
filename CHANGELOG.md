@@ -7,7 +7,7 @@ spine has started; versions track design + packaging + runtime together.
 
 ### Added
 - **Runtime** — the executable layer both skills bind to (core stdlib-only, tested in CI;
-  **~165 tests** across `tests/`):
+  **~170 tests** across `tests/`):
   - `runtime/ledger.py` — the shared decisions-ledger runtime (spec v0.6): kind-discriminated pin
     validation, append-only Decision/Reopen/Challenge events, enforced brainstorm/challenger/
     feedback **neutrality**, the severity threshold (blocker/high never silently defaulted), policy

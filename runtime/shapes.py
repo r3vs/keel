@@ -94,10 +94,18 @@ def extract_contract(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
 
 
 def contract_tables(path: str | pathlib.Path) -> dict[str, str]:
-    """table name → entity name (for the DDL layer)."""
+    """table name → entity name (for the DDL layer). The contract must declare `table` per entity:
+    a table name is a decision, never guessed by pluralizing the entity name (English-specific)."""
     data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-    return {spec.get("table", entity.lower() + "s"): entity
-            for entity, spec in data.get("entities", {}).items()}
+    out: dict[str, str] = {}
+    for entity, spec in data.get("entities", {}).items():
+        table = spec.get("table")
+        if not table:
+            raise ValueError(
+                f"contract entity {entity!r} has no `table`: declare it explicitly "
+                f"(the table name is a decision, never guessed from the entity name)")
+        out[table] = entity
+    return out
 
 
 # ---------------------------------------------------------------------------

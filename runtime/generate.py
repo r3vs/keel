@@ -52,7 +52,12 @@ def _snake(name: str) -> str:
 
 
 def _table_of(entity: str, spec: dict) -> str:
-    return spec.get("table") or (_snake(entity) + "s")
+    table = spec.get("table")
+    if not table:
+        raise ValueError(
+            f"contract entity {entity!r} must declare `table` explicitly "
+            f"(the table name is a decision, never guessed by pluralizing the entity name)")
+    return table
 
 
 def _enum_type_name(entity: str, field: str) -> str:
