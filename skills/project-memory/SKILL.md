@@ -17,9 +17,13 @@ Three layers, cheapest first.
   durable facts the ledger doesn't hold — conventions ("we use pattern X"), gotchas ("Y looks
   wrong but is intentional"), environment quirks, and user preferences. Loaded as always-on
   context via `AGENTS.md`; edited deliberately, never a dumping ground.
-- **Graph memory (optional) = the `memory` MCP** (`@modelcontextprotocol/server-memory`, wired in
-  `.mcp.json` / `opencode.json`): a queryable knowledge graph for larger, associative recall when
-  `MEMORY.md` is not enough.
+- **Graph memory (optional) = the `cognee` MCP** (`cognee/cognee-mcp`, wired in `.mcp.json` /
+  `opencode.json` / `.codex/config.toml`): a queryable, self-editing knowledge graph for larger,
+  associative recall when `MEMORY.md` is not enough. It supports **deliberate writes**
+  (`cognee.remember("…")`) — use those, not conversational auto-capture, so this stays curated and
+  not a dump. Heavier than a flat file: it needs the cognee Docker container running on `:8000`
+  and an `LLM_API_KEY` (it runs its own extraction), so treat it as opt-in for a project big enough
+  to earn it. See `docs/packaging.md`.
 
 ## When to write
 Record something only if it is (a) durable across sessions, (b) non-obvious / not cheaply

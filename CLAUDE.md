@@ -19,7 +19,7 @@ deliverable is prose that a future Claude instance reads and executes:
   (MCP). Skills follow the Anthropic Agent Skills spec so they are portable. See `docs/packaging.md`.
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
   `static-first-analysis`, `project-memory`, `learning-layer`, `writing-skills`), a memory subsystem (ledger +
-  `MEMORY.md` + memory MCP), MCP servers (`context7`/`deepwiki`/`memory`; `github` opt-in), and
+  `MEMORY.md` + cognee MCP), MCP servers (`context7`/`deepwiki`/`cognee`; `github` opt-in), and
   `superpowers` **composed** (referenced in the marketplace) for the generic engineering skills.
 
 Each skill is **design-complete with the runtime largely implemented**; its `TODO.md` is the build

@@ -88,8 +88,8 @@ spine has started; versions track design + packaging + runtime together.
 - **Complete-package layer** (composed, not cloned): six composable skills — `using-the-ledger`,
   `grounded-research`, `static-first-analysis`, `project-memory`, `learning-layer`, `writing-skills`
   (meta); a
-  **memory** subsystem (ledger + `MEMORY.md` + memory MCP); **MCP** servers wired across platforms
-  (`context7`, `deepwiki`, `memory`; `github` opt-in) via `.mcp.json`, `opencode.json`, and
+  **memory** subsystem (ledger + `MEMORY.md` + cognee MCP); **MCP** servers wired across platforms
+  (`context7`, `deepwiki`, `cognee`; `github` opt-in) via `.mcp.json`, `opencode.json`, and
   `.codex/config.toml`; **Codex** + any AGENTS.md-aware agent supported; and `superpowers` referenced
   in the marketplace for the generic engineering skills instead of reinventing them.
 
@@ -106,6 +106,15 @@ spine has started; versions track design + packaging + runtime together.
   `GENERATED FILE — do not edit` banner by `sync_core.py`; `check_consistency.py` gained
   **command parity** (`commands/` ↔ `.opencode/command/`); and `docs/packaging.md` now answers
   "why not write the text directly in each skill?" explicitly.
+- **Graph-memory backend: `@modelcontextprotocol/server-memory` → `cognee` (`cognee/cognee-mcp`)**
+  across `.mcp.json`, `opencode.json`, `.codex/config.toml`, the `project-memory` skill, and the
+  docs. Cognee is Apache-2.0, ships an official MCP server, runs on a single Postgres or fully
+  embedded (no Neo4j), self-edits (re-weights rather than append-only-grow), and supports
+  **deliberate writes** (`cognee.remember(...)`) that match the skill's "one crisp line" discipline.
+  Trade-off, documented: unlike the zero-config `server-memory`, cognee needs its Docker container
+  running on `:8000` and an `LLM_API_KEY` — so it stays **opt-in**; the ledger + `MEMORY.md` cover
+  durable memory without it. (The layer was flagged as the weakest/most-optional; this makes it a
+  genuine upgrade when a project's scale earns it, or a clean drop when it doesn't.)
 
 ### Notes
 - **Both step-0 gating verdicts are recorded on trustworthy data.** Greenfield (FastAPI+SQLAlchemy

@@ -8,9 +8,9 @@
       "type": "http",
       "url": "https://mcp.deepwiki.com/mcp"
     },
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    "cognee": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
     }
   }
 }

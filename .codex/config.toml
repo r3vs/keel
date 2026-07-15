@@ -10,6 +10,9 @@
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]
 
-[mcp_servers.memory]
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-memory"]
+# Cognee memory MCP — served over HTTP by the cognee/cognee-mcp Docker container on :8000.
+# Start it first:  docker run -e TRANSPORT_MODE=http --env-file ./.env -p 8000:8000 --rm -it cognee/cognee-mcp:main
+# (.env must set LLM_API_KEY — Cognee runs its own LLM extraction). Remote MCP support is
+# version-dependent — see docs/packaging.md.
+[mcp_servers.cognee]
+url = "http://localhost:8000/mcp"

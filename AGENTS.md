@@ -22,7 +22,8 @@ contract-testing, feedback loop, static-analysis / knowledge-sources doctrines, 
 roster), authored once under **`core/`** and **vendored into each skill** as `references/core/` so
 every skill is self-contained. Read a skill's `SKILL.md` first; it points to the rest (its own
 `references/`, including the vendored core). Durable project facts live in **`MEMORY.md`**; current
-external knowledge comes from the **Context7 / DeepWiki / memory** MCP servers.
+external knowledge comes from the **Context7 / DeepWiki** MCP servers, and optional durable graph
+memory from the **cognee** MCP.
 
 ## How to activate
 

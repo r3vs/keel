@@ -53,20 +53,33 @@ which routes it to `skills/<name>/SKILL.md`. For live docs + memory, add the ser
 ## MCP servers
 
 The methodology's live-knowledge and memory servers are declared per platform:
-- **Claude Code** — `.mcp.json` (`context7`, `deepwiki` over HTTP; `memory` over stdio).
+- **Claude Code** — `.mcp.json` (`context7`, `deepwiki` over HTTP; `cognee` over HTTP at `:8000`).
 - **opencode** — the `mcp` block in `opencode.json` (same three enabled; `github` present but
   disabled — enable it and set a token).
-- **Codex** — `.codex/config.toml` (`context7`, `memory` stdio; DeepWiki/GitHub HTTP as documented).
+- **Codex** — `.codex/config.toml` (`context7` stdio; `cognee` HTTP; DeepWiki/GitHub HTTP as documented).
 
 `context7` (live library/framework docs) and `deepwiki` (public-repo exemplars) power
-`core/knowledge-sources.md`; `memory` powers the memory subsystem. **GitHub is opt-in** — the
-official server (`https://api.githubcopilot.com/mcp/`) needs a token.
+`core/knowledge-sources.md`; `cognee` powers the optional graph-memory layer. **GitHub is opt-in** —
+the official server (`https://api.githubcopilot.com/mcp/`) needs a token.
+
+**Cognee memory is opt-in and has a setup cost** (unlike the old zero-config `server-memory`): it
+is served by the `cognee/cognee-mcp` Docker container and runs its own LLM extraction, so start the
+container and give it a key before the MCP entry resolves:
+```
+# .env holds LLM_API_KEY=sk-...
+docker run -e TRANSPORT_MODE=http --env-file ./.env -p 8000:8000 --rm -it cognee/cognee-mcp:main
+```
+Then the declared `cognee` entry (`http://localhost:8000/mcp`) connects. Prefer **deliberate
+writes** (`cognee.remember("…")`) over conversational auto-capture, so the graph stays curated.
+If you don't want the container + key, drop the `cognee` entry entirely — the ledger + `MEMORY.md`
+cover durable memory without it.
 
 ## Memory
 
 Durable, cross-session memory in three layers (the `project-memory` skill): the **ledger**
 (decision-memory, with `flip_criteria`), **`MEMORY.md`** (project facts, always-on via `AGENTS.md`
-and opencode `instructions`), and the optional **memory MCP** (`@modelcontextprotocol/server-memory`).
+and opencode `instructions`), and the optional **cognee MCP** (`cognee/cognee-mcp`) — a
+queryable, self-editing graph for associative recall at scale, opt-in per the setup above.
 
 ## Composing generic skills
 
