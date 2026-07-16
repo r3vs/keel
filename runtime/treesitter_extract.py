@@ -19,9 +19,13 @@ enum table / node-type map / type map. Nullability is read structurally (a nulla
 non-null wrapper, or a union member that is the grammar's null, or an optional-token child) — a
 fact, not an inference.
 
-Optional, never a hard dependency: the core runtime stays stdlib-only; `available()` probes for
-`tree_sitter` + a grammar source and everything degrades to `runtime/shapes.py`'s stdlib parsers
-when it is absent. Grammars load from `tree_sitter_language_pack` (100+ languages) or an individual
+This is the **primary** extraction path (`shapes.py` defaults to `backend="auto"`): a real grammar
+parses the whole language, so real-world TS/GraphQL/SQL just works with no per-repo patches — the
+fragility that made the regex extractors need a targeted fix per codebase. It is not a *hard*
+dependency, though: `available()` probes for `tree_sitter` + a grammar source, and everything
+degrades to `runtime/shapes.py`'s stdlib parsers when it is absent (so a stdlib-only environment
+still runs). `bootstrap.sh` installs it. The ledger/core stay stdlib-only; only extraction prefers
+tree-sitter. Grammars load from `tree_sitter_language_pack` (100+ languages) or an individual
 `tree_sitter_<lang>` module. Targets current py-tree-sitter (Language(caps) → Parser → Query +
 QueryCursor.matches) with a fallback to the pre-QueryCursor `query.matches`.
 """
@@ -124,6 +128,71 @@ STACKS: dict[str, dict] = {
                      "Boolean": "bool", "DateTime": "datetime", "Date": "datetime",
                      "Timestamp": "datetime"},
         "skip_node_types": ["list_type"],
+    },
+    # ---- backend struct/class stacks: "container with typed fields" — same engine, different
+    # nullability convention (Go `*T`, Rust `Option<T>`, C# `T?`, Java primitives), all DATA ----
+    "go": {
+        "grammar": "go",
+        "entity_query": """
+            (type_spec name: (type_identifier) @entity type: (struct_type (field_declaration_list
+              (field_declaration name: (field_identifier) @field type: (_) @type))))
+        """,
+        "nullable_default": False,
+        "nullable_wrapper_nodes": ["pointer_type"],     # *T is nullable
+        "strip_package": True,                          # uuid.UUID → uuid, time.Time → time
+        "skip_node_types": ["slice_type", "map_type", "array_type"],
+        "type_map": {"string": "string", "bool": "bool", "byte": "int", "rune": "int",
+                     "int": "int", "int8": "int", "int16": "int", "int32": "int", "int64": "int",
+                     "uint": "int", "uint8": "int", "uint16": "int", "uint32": "int", "uint64": "int",
+                     "float32": "float", "float64": "float",
+                     "uuid": "uuid", "time": "datetime", "rawmessage": "json"},
+    },
+    "java": {
+        "grammar": "java",
+        "entity_query": """
+            (class_declaration name: (identifier) @entity body: (class_body
+              (field_declaration type: (_) @type declarator: (variable_declarator
+                name: (identifier) @field))))
+        """,
+        "nullable_default": True,                       # object references are nullable
+        "non_null_node_types": ["integral_type", "floating_point_type", "boolean_type"],  # primitives
+        "type_map": {"string": "string", "uuid": "uuid", "char": "string",
+                     "int": "int", "integer": "int", "long": "int", "short": "int", "byte": "int",
+                     "biginteger": "int", "double": "float", "float": "float", "bigdecimal": "float",
+                     "boolean": "bool", "instant": "datetime", "localdate": "datetime",
+                     "localdatetime": "datetime", "offsetdatetime": "datetime",
+                     "zoneddatetime": "datetime", "date": "datetime", "timestamp": "datetime"},
+    },
+    "rust": {
+        "grammar": "rust",
+        "entity_query": """
+            (struct_item name: (type_identifier) @entity body: (field_declaration_list
+              (field_declaration name: (field_identifier) @field type: (_) @type)))
+        """,
+        "nullable_default": False,
+        "generic_node": "generic_type",
+        "nullable_generic_names": ["Option"],           # Option<T> is nullable
+        "type_map": {"string": "string", "str": "string", "bool": "bool",
+                     "i8": "int", "i16": "int", "i32": "int", "i64": "int", "i128": "int",
+                     "isize": "int", "u8": "int", "u16": "int", "u32": "int", "u64": "int",
+                     "u128": "int", "usize": "int", "f32": "float", "f64": "float",
+                     "uuid": "uuid", "datetime": "datetime", "naivedatetime": "datetime",
+                     "naivedate": "datetime", "value": "json"},
+    },
+    "csharp": {
+        "grammar": "csharp",
+        "entity_query": """
+            (class_declaration name: (identifier) @entity body: (declaration_list
+              (property_declaration type: (_) @type name: (identifier) @field)))
+        """,
+        "nullable_default": False,
+        "nullable_wrapper_nodes": ["nullable_type"],    # T? is nullable
+        "type_map": {"string": "string", "guid": "uuid", "char": "string",
+                     "int": "int", "long": "int", "short": "int", "byte": "int", "uint": "int",
+                     "ulong": "int", "ushort": "int", "sbyte": "int", "double": "float",
+                     "float": "float", "decimal": "float", "bool": "bool",
+                     "datetime": "datetime", "datetimeoffset": "datetime", "dateonly": "datetime",
+                     "timeonly": "datetime"},
     },
 }
 
@@ -241,15 +310,28 @@ def _collect_enums(spec: dict, root) -> dict[str, list]:
     return enums
 
 
-def _type_name(node, spec: dict) -> str:
-    """The identifying text of a type node: a named_type's inner name, else the node's own text."""
+def _generic_arg(node):
+    """The first type argument of a generic type node (Rust `Option<String>` → `String`)."""
+    for c in node.named_children:
+        if c.type == "type_arguments" and c.named_child_count:
+            return c.named_children[0]
+    return None
+
+
+def _type_name_raw(node, spec: dict) -> str:
+    """The identifying text of a type node (case preserved): a named_type's inner name, else the
+    node's own text with any generic arguments stripped for the base lookup."""
+    import re
     if node.type == spec.get("named_type_node") and node.named_child_count:
         return _txt(node.named_children[0])
-    return _txt(node).strip()
+    return re.sub(r"\s*<.*", "", _txt(node).strip())
 
 
 def _resolve(type_node, sig_node, spec: dict, enums: dict) -> Optional[tuple]:
-    """(canonical_type, nullable, enum_values) or None to skip (a relation/collection)."""
+    """(canonical_type, nullable, enum_values) or None to skip. One code path; every language's
+    nullability convention is spec DATA, not code: a non-null wrapper (GraphQL), a union-with-null
+    (TS), a nullable wrapper node (Go `*T`, C# `T?`), a nullable generic (Rust `Option<T>`), an
+    optional token (TS `?`), or non-null node types that override a nullable default (Java primitives)."""
     node = type_node
     nullable = bool(spec.get("nullable_default", False))
 
@@ -269,23 +351,48 @@ def _resolve(type_node, sig_node, spec: dict, enums: dict) -> Optional[tuple]:
         if non_null and node.type == non_null and node.named_child_count:
             node = node.named_children[0]
 
+    # wrapper-nullable (Go `pointer_type`, C# `nullable_type`) and generic-nullable (Rust
+    # `Option<T>`): the wrapper marks the field nullable; unwrap to the inner type. Peel defensively.
+    wrappers = tuple(spec.get("nullable_wrapper_nodes", ()))
+    generic_node = spec.get("generic_node")
+    generic_names = set(spec.get("nullable_generic_names", ()))
+    for _ in range(4):
+        if wrappers and node.type in wrappers and node.named_child_count:
+            nullable = True
+            node = node.named_children[0]
+        elif generic_node and node.type == generic_node and generic_names \
+                and node.named_child_count and _txt(node.named_children[0]) in generic_names:
+            nullable = True
+            arg = _generic_arg(node)
+            if arg is None:
+                break
+            node = arg
+        else:
+            break
+
     optional_token = spec.get("optional_token")
     if optional_token and sig_node is not None and \
             any(c.type == optional_token for c in sig_node.children):
         nullable = True
 
+    if node.type in spec.get("non_null_node_types", ()):
+        nullable = False        # a primitive (Java int/boolean) overrides a nullable default
+
     if node.type in spec.get("skip_node_types", ()):
         return None
 
-    name = _type_name(node, spec)
-    if name in enums:
-        return "enum", nullable, enums[name]
+    raw = _type_name_raw(node, spec)
+    if raw in enums:
+        return "enum", nullable, enums[raw]
     ntm = spec.get("node_type_map", {})
     if node.type in ntm:
         return ntm[node.type], nullable, None
     tm = spec.get("type_map", {})
-    if name in tm:
-        return tm[name], nullable, None
+    # try the name case-sensitively (GraphQL `ID`/`String`), then folded (Java `Integer`, C# `Guid`),
+    # then the last path component (Go `uuid.UUID` → `uuid`) — all deterministic.
+    for key in (raw, raw.lower(), raw.lower().split(".")[-1] if spec.get("strip_package") else None):
+        if key and key in tm:
+            return tm[key], nullable, None
     return "unknown", nullable, None
 
 
@@ -315,18 +422,92 @@ def extract_with_spec(source: str, spec: dict) -> dict[str, dict[str, dict]]:
 
 
 # ---------------------------------------------------------------------------
+# SQL DDL — a custom extractor (SQL columns are positional `name type ...`, not the
+# type-node model TS/GraphQL share). Still declarative: tree-sitter parses ALL of Postgres
+# natively (IF NOT EXISTS, `public.` schema prefixes, quoted idents, multi-word types) — no
+# per-repo patches — and the type meaning comes from the same finite map `shapes` uses.
+# ---------------------------------------------------------------------------
+
+_SQL_COLS_QUERY = """
+(create_table
+  (object_reference) @table
+  (column_definitions (column_definition) @def))
+"""
+_SQL_ENUM_QUERY = """
+(create_type (object_reference (identifier) @name) (enum_elements) @elements)
+"""
+
+
+def _extract_sql(source: str) -> dict[str, dict[str, dict]]:
+    import re
+    from shapes import _DDL_TYPE_MAP, _STRING_SIZED, descriptor   # single-source the type map
+    root = parse(source, "sql")
+
+    enums: dict[str, list] = {}
+    for _, caps in _matches("sql", _SQL_ENUM_QUERY, root):
+        name, elems = _cap1(caps, "name"), _cap1(caps, "elements")
+        if name is None or elems is None:
+            continue
+        vals = [_txt(lit).strip("'\"") for lit in elems.named_children if lit.type == "literal"]
+        if vals:
+            enums[_txt(name).split(".")[-1].strip('"')] = vals
+
+    out: dict[str, dict[str, dict]] = {}
+    for _, caps in _matches("sql", _SQL_COLS_QUERY, root):
+        tref, defnode = _cap1(caps, "table"), _cap1(caps, "def")
+        if tref is None or defnode is None:
+            continue
+        table = _txt(tref).split(".")[-1].strip('"')
+        out.setdefault(table, {})
+        kids = defnode.named_children
+        if len(kids) < 2 or kids[0].type != "identifier":
+            continue
+        col = _txt(kids[0]).strip('"')
+        raw = re.sub(r"\s+", " ", _txt(kids[1]).strip().lower())      # 2nd child is the type
+        base = re.sub(r"\s*\(.*", "", raw)                            # strip (size)
+        cons: dict = {}
+        evals = None
+        if base in _STRING_SIZED:
+            t = "string"
+            if (m := re.search(r"\((\d+)", raw)):
+                cons["max_length"] = int(m.group(1))
+        elif base in _DDL_TYPE_MAP:
+            t = _DDL_TYPE_MAP[base]
+        elif base in enums:
+            t, evals = "enum", enums[base]
+        else:
+            t = "unknown"
+        dtext = _txt(defnode)
+        du = dtext.upper()
+        nullable = "NOT NULL" not in du and "PRIMARY KEY" not in du
+        if "PRIMARY KEY" in du:
+            cons["primary_key"] = True
+        if "UNIQUE" in du:
+            cons["unique"] = True
+        fk = re.search(r'REFERENCES\s+(?:"?\w+"?\.)?"?(\w+)"?\s*\((\w+)\)', dtext, re.I)
+        if fk:
+            cons["foreign_key"] = f"{fk.group(1)}.{fk.group(2)}"
+        conf = "extracted" if t != "unknown" else "ambiguous"
+        out[table][col] = descriptor(col, t, nullable, evals, cons or None, conf)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # public surface
 # ---------------------------------------------------------------------------
 
 REGISTRY = STACKS  # back-compat alias
+_CUSTOM = {"sql": _extract_sql}   # grammars whose shape needs a small custom walk, not the engine
 
 
 def extract(source: str, lang: str) -> dict[str, dict[str, dict]]:
-    """Extract `{entity: {field: descriptor}}` from source in `lang` via its declarative spec."""
+    """Extract `{entity: {field: descriptor}}` from source in `lang` via its spec / custom walk."""
     if not available():
         raise TreeSitterUnavailable("tree-sitter backend not installed")
+    if lang in _CUSTOM:
+        return _CUSTOM[lang](source)
     if lang not in STACKS:
-        raise KeyError(f"no stack spec for {lang!r}; known: {sorted(STACKS)}")
+        raise KeyError(f"no stack spec for {lang!r}; known: {sorted(set(STACKS) | set(_CUSTOM))}")
     return extract_with_spec(source, STACKS[lang])
 
 

@@ -49,17 +49,21 @@ spine has started; versions track design + packaging + runtime together.
     to write on a stale graph** — worse than none); enriches the ledger's `anchors[]` in place so
     the map stays self-contained. Exactly the two things the Phase-0 verdict leaves the graph —
     anchoring + impact — and nothing it is not (no field-level correspondence). `tests/test_graph.py`.
-  - `runtime/treesitter_extract.py` — the **optional tree-sitter backend**: one **generic engine
-    driven by declarative per-grammar DATA** (a `STACKS` entry = a tree-sitter query + type/​node
-    maps; **no per-stack code, no heuristics, no comment-sniffing**) — the state-of-the-art shape
-    (ast-grep/semgrep) for stack-agnostic extraction. Adding a stack = adding a data entry, not a
-    parser. Ships verified specs for **TypeScript interfaces** and **GraphQL SDL** (a deliberately
-    different grammar). Stays **optional** (the core runtime is stdlib-only):
-    `shapes.extract_typescript/graphql(path, backend="auto"|"treesitter")` and `shapes.py
-    --treesitter` route to it when installed and **degrade to the stdlib parsers** when not.
-    Verified drop-in (byte-identical to the stdlib extractors on the fixtures — so the drift-check
-    is identical) and strictly more robust (recovers multi-line / nested-generic fields the line
-    parser drops). `tests/test_treesitter.py` (skips cleanly without the backend).
+  - `runtime/treesitter_extract.py` — the **primary extraction backend** (`shapes.py` defaults to
+    `backend="auto"`): a real grammar parses the whole language, so real-world **TypeScript,
+    GraphQL, and SQL** just work — none of the per-repo regex patches the stdlib parsers needed. It
+    is one **generic engine driven by declarative per-grammar DATA** (a `STACKS` entry = a
+    tree-sitter query + type/​node maps; **no per-stack code, no heuristics, no comment-sniffing**),
+    plus a small custom walk where a grammar's shape differs (SQL columns are positional). Ships
+    verified specs for **TS interfaces**, **GraphQL SDL**, **Postgres/SQL DDL**, and the backend
+    struct/class stacks **Go, Java, Rust, C#** (each language's nullability convention — Go `*T`,
+    Rust `Option<T>`, C# `T?`, Java primitives-vs-boxed — is spec DATA, not code); adding a stack is
+    a data entry, not a parser. Not a *hard* dependency: it **degrades to the stdlib parsers**
+    when tree-sitter is absent (a stdlib-only environment still runs; the ledger/core stay
+    stdlib-only). Every spec is a verified **byte-identical drop-in** with the stdlib extractor on
+    the fixtures (so the drift-check is identical) and strictly more robust on real code.
+    `tests/test_treesitter.py` (skips cleanly without the backend; the full suite is green both with
+    tree-sitter and with it simulated absent).
   - `scripts/run_evals.py` — eval harness: `--validate` (CI structural gate) and `--run` (behavioral
     execution against a real agent runner + fixture, LLM-judge per assertion; no pretend mode).
   - `skills/codebase-rescue/assets/ast-grep/` — the placeholder/stub rule pack: 8 python+typescript
@@ -130,6 +134,34 @@ spine has started; versions track design + packaging + runtime together.
   - **`runtime/graph.py` anchors by `file:line` only** (exact/containment), and blast-radius is
     reverse reachability over the graph's own **EXTRACTED** edges — no `_LAYER_TYPES` name matching,
     no basename/nearest guessing, no editorial edge-type lists.
+- **Real-repo end-to-end validation** (`plastital_lca`, a polyglot Supabase + FastAPI + React LCA
+  app) drove two deterministic extractor improvements: `extract_ddl` **hardened for real Postgres/
+  Supabase DDL** (`CREATE TABLE IF NOT EXISTS`, `public.` schema prefixes, quoted identifiers,
+  multi-word types like `timestamp with time zone`, `numeric`/`decimal`) — it went from **0 → 17
+  tables / 290 fields** on that schema; and an **int ⟷ float equivalence** for JS/TS-family layers
+  (a client's single `number` cannot express, nor get wrong, the distinction), which removed ~109
+  false type mismatches. The run produced a real **102-pin** ledger + map across 40 corresponded
+  API↔client entities (genuine missing/extra-field and nullability drift, e.g. a `last_checked` vs
+  `last_check` rename), found **0** DB↔code name correspondence (no carrier, divergent vocabularies),
+  and surfaced 3 name collisions — confirming the Phase-0 thesis that the carrier is the strongest
+  anchor. Both improvements are covered by tests (`test_ddl_real_world_postgres_forms`,
+  `test_int_float_equivalent_across_js_layer`).
+- **Tree-sitter promoted to the primary extraction path** (the durable answer to the DDL fragility
+  above: a real grammar, not per-repo regex patches). `shapes.py` now defaults to `backend="auto"`,
+  and **SQL DDL** joined TS/GraphQL on tree-sitter — a byte-identical drop-in with the (hardened)
+  regex parser on the fixtures, but it eats plastital's real Postgres (`IF NOT EXISTS`, `public.`
+  prefixes, `numeric`, `timestamp with time zone`) with **zero targeted patches**. The regex/line
+  parsers stay as the always-available fallback; the Python `ast` extractors (SQLAlchemy/Pydantic/
+  Django) are already real parsers and are unchanged. The full suite is green both with tree-sitter
+  installed and with it simulated absent (regex fallback).
+- **Stack coverage broadened** toward "the vast majority of cases". Extraction now covers, per
+  layer: **DB** — Postgres/SQL DDL (tree-sitter); **ORM/model** — SQLAlchemy · Django (Python `ast`),
+  Drizzle · Prisma (regex); **API/DTO** — Pydantic (`ast`), GraphQL SDL (tree-sitter); **client** —
+  TypeScript (tree-sitter); and the **backend struct/class stacks Go · Java · Rust · C#**
+  (tree-sitter), each added as a declarative spec (query + type map + nullability convention as
+  DATA — Go `*T`, Rust `Option<T>`, C# `T?`, Java primitive-vs-boxed), verified on fixtures. Still
+  open: migrate Drizzle/Prisma off regex, and add more stacks (Kotlin, PHP, Ruby, protobuf, …) —
+  the same one-spec-per-stack pattern, each hardened on a real repo when one is available.
 - **Self-contained skills (Model B)**: the shared `core/` is now a single **authoring source**,
   vendored into each skill under `references/core/` by `scripts/sync_core.py` (following the
   `core→core` dependency closure). No skill points at `core/` directly, so every skill directory

@@ -92,6 +92,35 @@ class TestExtractors(unittest.TestCase):
         self.assertEqual(shapes["comments"]["task_id"]["constraints"]["foreign_key"],
                          "tasks.id")
 
+    def test_ddl_real_world_postgres_forms(self):
+        # the shapes real Supabase/Postgres DDL uses (validated on plastital_lca): CREATE TABLE IF
+        # NOT EXISTS, a `public.` schema prefix, multi-word types, `numeric`, quoted refs.
+        sql = """
+        CREATE TABLE IF NOT EXISTS public.db_impatti (
+            id numeric PRIMARY KEY DEFAULT nextval('db_impatti_id_seq'),
+            codice text NOT NULL,
+            gwp_t numeric,
+            created_at timestamp with time zone DEFAULT (now() AT TIME ZONE 'Europe/Rome'),
+            descrizione character varying(255),
+            owner_id bigint REFERENCES public."profiles"(id),
+            UNIQUE NULLS NOT DISTINCT (codice)
+        );
+        """
+        fd, p = tempfile.mkstemp(suffix=".sql")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(sql)
+        out = extract_ddl(p)
+        t = out["db_impatti"]                                   # IF NOT EXISTS + public. handled
+        self.assertEqual(t["id"]["type"], "float")             # numeric -> float
+        self.assertEqual(t["gwp_t"]["type"], "float")
+        self.assertEqual(t["created_at"]["type"], "datetime")  # timestamp with time zone (multi-word)
+        self.assertEqual(t["descrizione"]["type"], "string")   # character varying(255)
+        self.assertEqual(t["descrizione"]["constraints"]["max_length"], 255)
+        self.assertFalse(t["codice"]["nullable"])              # NOT NULL
+        self.assertTrue(t["gwp_t"]["nullable"])
+        self.assertEqual(t["owner_id"]["constraints"]["foreign_key"], "profiles.id")  # quoted ref
+        self.assertNotIn("UNIQUE", t)                          # table constraint, not a column
+
 
 class TestGreenCase(unittest.TestCase):
     def test_aligned_stack_diffs_clean(self):
@@ -221,6 +250,16 @@ class TestHonestyRules(unittest.TestCase):
         # …but the same pair on the ORM layer (which HAS a uuid type) IS drift
         self.assertEqual(diff_shapes(ref, cand, "contract", "orm", "X")[0]["kind"],
                          "type_mismatch")
+
+    def test_int_float_equivalent_across_js_layer(self):
+        # JS/TS has one `number` — int↔float across that boundary is not drift (the client can
+        # neither express nor get wrong the distinction). Real repos hit this on every float field.
+        flt = {"x": {"name": "x", "type": "float", "nullable": False, "confidence": "extracted"}}
+        i = {"x": {"name": "x", "type": "int", "nullable": False, "confidence": "extracted"}}
+        self.assertEqual(diff_shapes(flt, i, "api", "client", "E"), [])
+        self.assertEqual(diff_shapes(i, flt, "typescript", "api", "E"), [])      # symmetric
+        # but int↔float between two server layers (which DO distinguish) IS drift
+        self.assertEqual(diff_shapes(flt, i, "contract", "orm", "E")[0]["kind"], "type_mismatch")
 
 
 if __name__ == "__main__":

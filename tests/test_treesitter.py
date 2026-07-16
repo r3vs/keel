@@ -33,23 +33,27 @@ class TestAlwaysOn(unittest.TestCase):
     def test_available_is_bool(self):
         self.assertIsInstance(tse.available(), bool)
 
-    def test_default_backend_is_regex_and_stdlib(self):
-        # default path must not touch tree-sitter (the stdlib-only invariant)
+    def test_regex_backend_forces_the_stdlib_parser(self):
+        # backend="regex" is the explicit opt-out (the always-available stdlib fallback);
+        # it never touches tree-sitter, whatever the default is.
         self.assertIsNone(shapes._try_treesitter("typescript", "x", "regex"))
 
     def test_bad_backend_name_errors(self):
         with self.assertRaises(ValueError):
             shapes._try_treesitter("typescript", "x", "nonsense")
 
-    def test_registry_has_two_grammars(self):
+    def test_registry_has_the_stack_specs(self):
         self.assertIn("typescript", tse.REGISTRY)
         self.assertIn("graphql", tse.REGISTRY)
+        self.assertIn("sql", tse._CUSTOM)
 
-    def test_auto_backend_matches_regex_on_fixture(self):
-        # whether or not tree-sitter is present, backend="auto" yields the same shapes on the
-        # aligned fixture — installed → via tree-sitter, absent → via regex fallback.
+    def test_default_and_auto_and_regex_agree_on_fixture(self):
+        # the default is now tree-sitter-preferred ("auto"); on the aligned fixture it must equal
+        # the explicit regex path (byte-identical drop-in) whether tree-sitter is present or not.
+        default = shapes.extract_typescript(FIXTURES / "step0" / "types.ts")
         auto = shapes.extract_typescript(FIXTURES / "step0" / "types.ts", backend="auto")
         regex = shapes.extract_typescript(FIXTURES / "step0" / "types.ts", backend="regex")
+        self.assertEqual(default, auto)
         self.assertEqual(auto, regex)
 
 
@@ -79,8 +83,8 @@ class TestTypeScriptAdapter(unittest.TestCase):
         fd, p = tempfile.mkstemp(suffix=".ts")
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(multiline)
-        regex = shapes.extract_typescript(p)["Widget"]
-        self.assertNotIn("metadata", regex)                  # the line parser silently drops it
+        regex = shapes.extract_typescript(p, backend="regex")["Widget"]
+        self.assertNotIn("metadata", regex)                  # the stdlib line parser silently drops it
 
     def test_through_shapes_entrypoint(self):
         forced = shapes.extract_typescript(FIXTURES / "step0" / "types.ts", backend="treesitter")
@@ -102,6 +106,65 @@ class TestGraphQLAdapter(unittest.TestCase):
         self.assertFalse(user["id"]["nullable"])            # ID! → non-null
         self.assertEqual(user["role"]["type"], "enum")      # Role enum resolved
         self.assertTrue(user["description"]["nullable"]) if "description" in user else None
+
+
+@skip_no_ts
+class TestSqlExtractor(unittest.TestCase):
+    def test_matches_regex_ddl_dropin(self):
+        # byte-identical to the stdlib DDL parser on the fixture (incl. enums, FK, constraints)
+        path = FIXTURES / "step0" / "001_initial.sql"
+        ts = tse.extract(path.read_text(encoding="utf-8"), "sql")
+        regex = shapes.extract_ddl(path, backend="regex")
+        self.assertEqual(ts, regex)
+
+    def test_real_postgres_forms_no_patches(self):
+        # the grammar parses real Postgres natively — no IF-NOT-EXISTS / schema-prefix / multi-word
+        # / numeric patches (the exact shapes that broke the regex on plastital_lca)
+        sql = ("CREATE TABLE IF NOT EXISTS public.db_impatti (\n"
+               "  id numeric PRIMARY KEY,\n"
+               "  created_at timestamp with time zone,\n"
+               "  descrizione character varying(255)\n);")
+        t = tse.extract(sql, "sql")["db_impatti"]
+        self.assertEqual(t["id"]["type"], "float")                 # numeric
+        self.assertEqual(t["created_at"]["type"], "datetime")      # timestamp with time zone
+        self.assertEqual(t["descrizione"]["type"], "string")       # character varying(255)
+        self.assertEqual(t["descrizione"]["constraints"]["max_length"], 255)
+
+
+@skip_no_ts
+class TestBackendLanguageStacks(unittest.TestCase):
+    """The generic engine covers backend struct/class stacks — each a declarative spec (query +
+    type map + a nullability convention as DATA), not a new parser. Adding a stack = adding data."""
+
+    def test_go_pointer_nullability_and_qualified_types(self):
+        out = tse.extract("type User struct {\n\tID uuid.UUID\n\tEmail *string\n\tAge int\n}\n",
+                          "go")["User"]
+        self.assertEqual(out["ID"]["type"], "uuid")          # uuid.UUID (package-qualified)
+        self.assertTrue(out["Email"]["nullable"])            # *string → pointer is nullable
+        self.assertFalse(out["Age"]["nullable"])
+
+    def test_java_primitive_vs_boxed_nullability(self):
+        out = tse.extract("class User {\n  int age;\n  Integer score;\n  String name;\n}\n",
+                          "java")["User"]
+        self.assertFalse(out["age"]["nullable"])             # primitive int → non-null
+        self.assertTrue(out["score"]["nullable"])            # boxed Integer → nullable
+        self.assertTrue(out["name"]["nullable"])             # object reference → nullable
+
+    def test_rust_option_nullability(self):
+        out = tse.extract("struct User {\n  id: Uuid,\n  email: Option<String>,\n}\n",
+                          "rust")["User"]
+        self.assertEqual(out["id"]["type"], "uuid")
+        self.assertTrue(out["email"]["nullable"])            # Option<String> → nullable
+
+    def test_csharp_nullable_type(self):
+        out = tse.extract("class User {\n  public Guid Id { get; set; }\n"
+                          "  public int? Age { get; set; }\n}\n", "csharp")["User"]
+        self.assertEqual(out["Id"]["type"], "uuid")          # Guid → uuid
+        self.assertTrue(out["Age"]["nullable"])              # int? → nullable
+
+    def test_registered_in_shapes_extractors(self):
+        for lang in ("go", "java", "rust", "csharp"):
+            self.assertIn(lang, shapes.EXTRACTORS)
 
 
 @skip_no_ts

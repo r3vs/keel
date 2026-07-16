@@ -8,8 +8,8 @@ guarded by this very diff as the CI drift-check):
 - extract_sqlalchemy  : SQLAlchemy 2.0 `Mapped`/`mapped_column` models (Python `ast`, no imports)
 - extract_pydantic    : Pydantic-v2 DTOs (`<Entity>Read` = full projection, `<Entity>Create`
                         = partial: present fields must match, missing ones are not drift)
-- extract_typescript  : `export interface` / `export type` unions (line parser)
-- extract_ddl         : Postgres `CREATE TABLE` / `CREATE TYPE ... AS ENUM`
+- extract_typescript  : `export interface` / `export type` unions (tree-sitter primary; line parser fallback)
+- extract_ddl         : Postgres `CREATE TABLE` / `CREATE TYPE ... AS ENUM` (tree-sitter primary; regex fallback)
 
 Every representation reduces to `{name, type, nullable, enum?, constraints?}` with a canonical
 type (string|int|float|bool|enum|uuid|json|datetime), then `diff_shapes` compares any two
@@ -17,8 +17,11 @@ projections. The two honesty rules are enforced:
   1. uncertain equivalence → `confidence: ambiguous`, downgraded to a note, never asserted;
   2. a field absent on one side IS the finding (missing_field) — never papered over.
 
-Stdlib-only, deliberately dependency-free; new stacks are additive (tree-sitter generalization
-stays on the TODO). Findings are dicts shaped to feed `runtime/ledger.py` contract_mismatch pins.
+Extraction is **tree-sitter-primary** (`runtime/treesitter_extract.py`): a real grammar parses the
+whole language, so real-world TS/GraphQL/SQL just works — no per-repo regex patches. The stdlib
+line/`ast`/regex parsers here are the always-available fallback (used when tree-sitter is absent);
+the Python `ast` extractors (SQLAlchemy/Pydantic/Django) are already full parsers and stay as-is.
+Findings are dicts shaped to feed `runtime/ledger.py` contract_mismatch pins.
 """
 from __future__ import annotations
 
@@ -30,9 +33,10 @@ from typing import Optional
 
 CANONICAL = ("string", "int", "float", "bool", "enum", "uuid", "json", "datetime")
 
-# Layers whose language has no native uuid/datetime type, so they carry both as `string`
-# (a JS/TS client). The uuid/datetime ⟷ string equivalence is applied deterministically at diff
-# time for these layers (see diff_shapes) — never inferred from a comment during extraction.
+# The JS/TS-family layers. Their language has no native uuid/datetime (both carried as `string`)
+# AND no int/float distinction (both are `number`). Two deterministic diff-time equivalences follow
+# from that (see diff_shapes): string ⟷ uuid/datetime, and int ⟷ float — never inferred, just the
+# type system's own facts. A client cannot express, nor get wrong, either distinction.
 _STRINGLY_LAYERS = ("client", "typescript", "ts")
 
 # ---------------------------------------------------------------------------
@@ -51,12 +55,13 @@ def descriptor(name: str, type_: str, nullable: bool, enum: Optional[list] = Non
 
 
 def _try_treesitter(lang: str, text: str, backend: str):
-    """Opt-in tree-sitter backend for an extractor. `backend`:
-      - "regex"      (default) — the stdlib line/ast parser; keeps the runtime dependency-free
-                     and deterministic regardless of environment (the stdlib-only invariant).
-      - "auto"       — the tree-sitter parse when installed (more robust on multi-line / nested
-                     declarations), else transparently fall back to the stdlib parser.
-      - "treesitter" — force it; raise if tree-sitter is not installed.
+    """Tree-sitter backend selector for an extractor. `backend`:
+      - "auto"       (default) — the tree-sitter parse when installed (a real grammar, robust on
+                     real-world code with no per-repo patches), else transparently fall back to the
+                     stdlib parser. Tree-sitter is the primary path; bootstrap installs it.
+      - "regex"      — force the stdlib line/regex parser (the always-available fallback; used in a
+                     stdlib-only environment, or to compare paths).
+      - "treesitter" — force tree-sitter; raise if it is not installed.
     Returns the extracted `{entity: {field: descriptor}}`, or None to fall through to stdlib."""
     if backend == "regex":
         return None
@@ -274,7 +279,7 @@ _TS_FIELD = re.compile(r"^\s*(\w+)(\?)?:\s*(.+?);\s*(?://\s*(.*))?$")
 _TS_UNION = re.compile(r'^export type (\w+) = (.+);', re.M)
 
 
-def extract_typescript(path: str | pathlib.Path, backend: str = "regex"
+def extract_typescript(path: str | pathlib.Path, backend: str = "auto"
                        ) -> dict[str, dict[str, dict]]:
     """Returns per-INTERFACE shapes, read only from the TS type system (no comment sniffing):
     a `string` stays `string`. The uuid/datetime↔string equivalence is applied deterministically
@@ -335,33 +340,68 @@ def extract_typescript(path: str | pathlib.Path, backend: str = "regex"
 # Postgres DDL
 # ---------------------------------------------------------------------------
 
-_DDL_TYPE_MAP = {"uuid": "uuid", "text": "string", "boolean": "bool", "integer": "int",
-                 "bigint": "int", "timestamptz": "datetime", "jsonb": "json",
-                 "real": "float", "double precision": "float"}
+# Postgres type → canonical (the equivalence table). Multi-word types are matched as-is; a
+# language without a distinct uuid/datetime carries them as `string`, handled at diff time.
+_DDL_TYPE_MAP = {
+    "uuid": "uuid",
+    "text": "string", "varchar": "string", "character varying": "string",
+    "char": "string", "character": "string", "bpchar": "string", "citext": "string", "name": "string",
+    "boolean": "bool", "bool": "bool",
+    "integer": "int", "int": "int", "int2": "int", "int4": "int", "int8": "int",
+    "smallint": "int", "bigint": "int", "serial": "int", "bigserial": "int", "smallserial": "int",
+    "numeric": "float", "decimal": "float", "real": "float", "float": "float",
+    "float4": "float", "float8": "float", "double precision": "float", "money": "float",
+    "timestamptz": "datetime", "timestamp": "datetime", "date": "datetime", "time": "datetime",
+    "timetz": "datetime", "timestamp with time zone": "datetime",
+    "timestamp without time zone": "datetime", "time with time zone": "datetime",
+    "time without time zone": "datetime",
+    "jsonb": "json", "json": "json", "bytea": "string",
+}
+_STRING_SIZED = ("varchar", "character varying", "char", "character", "bpchar")
+# name  <multi-word type>  optional (size[,scale])  rest. Multi-word alternatives come first so
+# `timestamp with time zone` is not truncated to `timestamp`; a schema prefix/quotes are tolerated.
+_PG_COL = re.compile(
+    r'^"?(?P<name>\w+)"?\s+'
+    r'(?P<type>timestamp with time zone|timestamp without time zone|time with time zone|'
+    r'time without time zone|double precision|character varying|character|\w+)'
+    r'\s*(?P<size>\(\s*\d+(?:\s*,\s*\d+)?\s*\))?'
+    r'(?P<rest>.*)$', re.I | re.S)
+_TABLE_NAME = r'(?:IF NOT EXISTS\s+)?(?:"?\w+"?\.)?"?(\w+)"?'   # opt IF NOT EXISTS / schema / quotes
 
 
-def extract_ddl(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
+def extract_ddl(path: str | pathlib.Path, backend: str = "auto"
+                ) -> dict[str, dict[str, dict]]:
+    """Postgres DDL → shapes. Default `backend="auto"` uses the tree-sitter SQL grammar when
+    installed (parses real Postgres — IF NOT EXISTS, `public.` prefixes, multi-word types — with no
+    per-repo patches) and degrades to the stdlib regex parser below when it is not."""
     text = pathlib.Path(path).read_text(encoding="utf-8")
+    ts = _try_treesitter("sql", text, backend)
+    if ts is not None:
+        return ts
     text = re.sub(r"--[^\n]*", "", text)   # strip SQL line comments (real DDL has them)
     enums: dict[str, list] = {}
-    for m in re.finditer(r"CREATE TYPE (\w+) AS ENUM \(([^)]*)\)", text, re.I):
+    for m in re.finditer(rf"CREATE TYPE {_TABLE_NAME}\s+AS ENUM\s*\(([^)]*)\)", text, re.I):
         enums[m.group(1)] = [v.strip().strip("'") for v in m.group(2).split(",")]
     out: dict[str, dict[str, dict]] = {}
-    for m in re.finditer(r"CREATE TABLE (\w+)\s*\((.*?)\);", text, re.S | re.I):
+    for m in re.finditer(rf"CREATE TABLE {_TABLE_NAME}\s*\((.*?)\);", text, re.S | re.I):
         table, body = m.group(1), m.group(2)
         fields: dict[str, dict] = {}
         for raw in re.split(r",\s*\n", body):
             line = raw.strip()
-            col = re.match(r"^(\w+)\s+(\w+(?:\(\d+\))?|double precision)(.*)$", line, re.I)
-            if not col or line.upper().startswith(("PRIMARY", "FOREIGN", "UNIQUE", "CHECK",
-                                                   "CONSTRAINT")):
+            if line.upper().startswith(("PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT",
+                                        "EXCLUDE", "LIKE")):
                 continue
-            name, sql_type, rest = col.group(1), col.group(2).lower(), col.group(3)
+            col = _PG_COL.match(line)
+            if not col:
+                continue
+            name = col.group("name")
+            sql_type = re.sub(r"\s+", " ", col.group("type").strip().lower())
+            size, rest = col.group("size"), col.group("rest")
             constraints: dict = {}
-            varchar = re.match(r"varchar\((\d+)\)", sql_type)
-            if varchar:
+            if sql_type in _STRING_SIZED:
                 t = "string"
-                constraints["max_length"] = int(varchar.group(1))
+                if size and (num := re.search(r"\d+", size)):
+                    constraints["max_length"] = int(num.group())
             elif sql_type in _DDL_TYPE_MAP:
                 t = _DDL_TYPE_MAP[sql_type]
             elif sql_type in enums:
@@ -374,7 +414,7 @@ def extract_ddl(path: str | pathlib.Path) -> dict[str, dict[str, dict]]:
                 constraints["primary_key"] = True
             if "UNIQUE" in rest_u:
                 constraints["unique"] = True
-            fk = re.search(r"REFERENCES\s+(\w+)\s*\((\w+)\)", rest, re.I)
+            fk = re.search(r'REFERENCES\s+(?:"?\w+"?\.)?"?(\w+)"?\s*\((\w+)\)', rest, re.I)
             if fk:
                 constraints["foreign_key"] = f"{fk.group(1)}.{fk.group(2)}"
             conf = "extracted" if t != "unknown" else "ambiguous"
@@ -562,7 +602,7 @@ _GQL_TYPES = {"ID": "uuid", "String": "string", "Int": "int", "Float": "float",
               "Boolean": "bool"}
 
 
-def extract_graphql(path: str | pathlib.Path, backend: str = "regex"
+def extract_graphql(path: str | pathlib.Path, backend: str = "auto"
                     ) -> dict[str, dict[str, dict]]:
     """GraphQL SDL: `type User { id: ID! role: Role! }` + `enum Role { admin member }`.
     An API-layer contract; keyed by type name (the entity).
@@ -632,15 +672,18 @@ def diff_shapes(reference: dict[str, dict], candidate: dict[str, dict],
                 f"could not resolve type on one side ({ref['type']} vs {cand['type']})",
                 confidence="ambiguous"))
             continue
-        # equivalence-table projection (core/shape-engine.md): a stringly-typed layer (a JS/TS
-        # client, no native uuid/datetime) carries both as `string`, so string ⟷ uuid/datetime
-        # across such a boundary is a deterministic type-system equivalence, not drift. Applied
-        # symmetrically here at diff time — never inferred from a comment during extraction.
+        # equivalence-table projection (core/shape-engine.md): across a JS/TS-family boundary two
+        # of the client's type-system facts hold deterministically, so neither is drift —
+        #  1. string ⟷ uuid/datetime (the client has no native uuid/datetime), and
+        #  2. int ⟷ float (the client has one `number`; it cannot express the difference).
+        # Applied symmetrically at diff time — never inferred from a comment during extraction.
+        js = cand_layer.startswith(_STRINGLY_LAYERS) or ref_layer.startswith(_STRINGLY_LAYERS)
         projection = (
             (cand_layer.startswith(_STRINGLY_LAYERS) and cand["type"] == "string"
              and ref["type"] in ("uuid", "datetime"))
             or (ref_layer.startswith(_STRINGLY_LAYERS) and ref["type"] == "string"
-                and cand["type"] in ("uuid", "datetime")))
+                and cand["type"] in ("uuid", "datetime"))
+            or (js and ref["type"] in ("int", "float") and cand["type"] in ("int", "float")))
         if ref["type"] != cand["type"] and not projection:
             findings.append(finding(
                 "type_mismatch", name,
@@ -662,10 +705,33 @@ def diff_shapes(reference: dict[str, dict], candidate: dict[str, dict],
 
 
 # Registry so a carrier-less reconcile can pick the extractor by stack name.
+def _treesitter_only(lang: str):
+    """A path→shapes extractor for a tree-sitter-only stack (Go/Java/Rust/C#): there is no stdlib
+    fallback — you cannot read those languages without a real parser — so it raises if tree-sitter
+    is absent. The per-stack knowledge is the declarative spec in `treesitter_extract.STACKS`."""
+    def extractor(path: str | pathlib.Path, backend: str = "auto") -> dict[str, dict[str, dict]]:
+        text = pathlib.Path(path).read_text(encoding="utf-8")
+        result = _try_treesitter(lang, text, "auto" if backend == "regex" else backend)
+        if result is None:
+            raise RuntimeError(f"{lang!r} extraction requires the tree-sitter backend "
+                               f"(pip install tree-sitter tree-sitter-language-pack)")
+        return result
+    extractor.__name__ = f"extract_{lang}"
+    return extractor
+
+
+# Backend struct/class stacks read only via tree-sitter (a real parser per language).
+extract_go = _treesitter_only("go")
+extract_java = _treesitter_only("java")
+extract_rust = _treesitter_only("rust")
+extract_csharp = _treesitter_only("csharp")
+
+
 EXTRACTORS = {
     "ddl": extract_ddl, "sqlalchemy": extract_sqlalchemy, "pydantic": extract_pydantic,
     "typescript": extract_typescript, "drizzle": extract_drizzle, "prisma": extract_prisma,
     "django": extract_django, "graphql": extract_graphql,
+    "go": extract_go, "java": extract_java, "rust": extract_rust, "csharp": extract_csharp,
 }
 
 
@@ -710,7 +776,7 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                 pydantic: Optional[str] = None, typescript: Optional[str] = None,
                 ddl: Optional[str] = None, drizzle: Optional[str] = None,
                 prisma: Optional[str] = None, django: Optional[str] = None,
-                graphql: Optional[str] = None, backend: str = "regex") -> list[dict]:
+                graphql: Optional[str] = None, backend: str = "auto") -> list[dict]:
     """Diff every provided layer against the carrier. This IS greenfield's CI drift-check
     and rescue's contract-reconciliation core, pointed at a shared-types-style carrier.
 

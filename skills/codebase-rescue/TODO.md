@@ -45,18 +45,20 @@ HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a
       fixtures diff clean against the shared contract, injected drift is caught
       (`tests/test_stacks.py`).
       → `references/contract-reconciliation.md`
-- [x] **Tree-sitter backend (declarative, no heuristics)** — `runtime/treesitter_extract.py`: one
-      **generic engine driven by declarative per-grammar DATA** (a `STACKS` entry = a tree-sitter
-      query + type/​node maps — no per-stack code, no comment sniffing, no name matching), the
-      state-of-the-art shape (ast-grep/semgrep) for stack-agnostic extraction. Verified data specs
-      for **TypeScript interfaces** and **GraphQL SDL** (a deliberately different grammar). It is
-      **optional** (the core runtime stays stdlib-only):
-      `shapes.extract_typescript/graphql(path, backend="auto"|"treesitter")` routes to it when
-      installed and **degrades to the stdlib parser** when not. Verified drop-in (byte-identical to
-      the stdlib extractors on the fixtures, so drift is identical) and strictly more robust — it
-      recovers multi-line / nested-generic fields the line parser silently drops.
-      `tests/test_treesitter.py` (skips cleanly without tree-sitter). Adding a grammar = adding a
-      data entry. → `references/contract-reconciliation.md`
+- [x] **Tree-sitter = the PRIMARY extraction path (declarative, no heuristics)** —
+      `runtime/treesitter_extract.py`: one **generic engine driven by declarative per-grammar DATA**
+      (a `STACKS` entry = a tree-sitter query + type/​node maps — no per-stack code, no comment
+      sniffing, no name matching), plus a small custom walk where a grammar's shape differs (SQL).
+      `shapes.py` **defaults to `backend="auto"`** — a real grammar parses the whole language, so
+      real-world **TS / GraphQL / Postgres SQL** just work with no per-repo patches (the fragility
+      that made the regex parsers need a fix per codebase). Verified specs for those three, each a
+      **byte-identical drop-in** with the stdlib parser on the fixtures. Not a hard dependency: it
+      **degrades to the stdlib parsers** when tree-sitter is absent (stdlib-only still runs; the
+      ledger/core stay stdlib-only). `tests/test_treesitter.py`; the suite is green both with
+      tree-sitter and with it simulated absent. **Still open:** migrate the last two regex
+      extractors (Drizzle, Prisma) onto tree-sitter — same one-spec-per-stack pattern; the Python
+      `ast` extractors (SQLAlchemy/Pydantic/Django) are already real parsers and stay.
+      → `references/contract-reconciliation.md`
 - [x] **Type-equivalence table** across DB/ORM/API/TS type systems; `ambiguous` where uncertain
       (unresolved types downgrade to notes, never asserted mismatches; the uuid/datetime↔string
       equivalence for stringly-typed layers is applied deterministically at diff time — symmetric,
