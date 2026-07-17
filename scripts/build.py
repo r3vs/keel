@@ -94,6 +94,11 @@ FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.S)
 # runtime by the ledger gate instead.
 DENY_TOOLS = "Write, Edit, NotebookEdit"
 
+# The MCP servers the doctrine REQUIRES, parsed from its own table (src/core/knowledge-sources.md).
+# `- `name` → **http** `url` — …`  is required; `→ **opt-in**` is named there and deliberately left
+# undeclared. Same shape as the roster: the doc that states the rule is the source the build reads.
+MCP_REQUIRED = re.compile(r"^- `([\w-]+)` → \*\*http\*\* `(\S+)`", re.M)
+
 PLUGINS = {
     "alignment-core": {
         "description": (
@@ -126,13 +131,17 @@ PLUGINS = {
     },
     "alignment-helpers": {
         "description": (
-            "Composable helpers, useful standalone and with no runtime dependency: grounded-research "
-            "(cite current sources, never stale memory), static-first-analysis (strongest "
-            "deterministic signal before judgment), project-memory (durable facts), and "
-            "learning-layer (senior-grade output while the operator levels up)."
+            "Composable helpers, each useful on its own: grounded-research (cite current sources, "
+            "never stale memory), static-first-analysis (strongest deterministic signal before "
+            "judgment), project-memory (durable facts), and learning-layer (senior-grade output "
+            "while the operator levels up)."
         ),
         "skills": ["grounded-research", "static-first-analysis", "project-memory", "learning-layer"],
-        "dependencies": [],
+        # It depends on the core, and the honest reason is the MCP servers, not the ledger:
+        # `grounded-research` IS the Context7/DeepWiki doctrine as a skill, and core is where those
+        # servers are declared. This used to say `dependencies: []` and "no runtime dependency" —
+        # which read well and shipped a skill that orders the agent to use a server it never got.
+        "dependencies": ["alignment-core"],
     },
 }
 
@@ -343,10 +352,7 @@ def plugin_payload(name: str, spec: dict) -> dict:
             out[f"mcp/{m.name}"] = read(m)
         for r in sorted(RUNTIME.glob("*.py")):
             out[f"mcp/runtime/{r.name}"] = read(r)
-        out[".mcp.json"] = json.dumps({"mcpServers": {"codebase-alignment": {
-            "command": "uv",
-            "args": ["run", "--script", "${CLAUDE_PLUGIN_ROOT}/mcp/server.py"],
-        }}}, indent=2) + "\n"
+        out[".mcp.json"] = mcp_json()
     if spec.get("hooks"):
         for h in sorted((SRC / "hooks").iterdir()):
             if h.is_file():
@@ -396,6 +402,43 @@ def codex_manifest(name: str, spec: dict) -> str:
     if spec.get("hooks"):
         m["hooks"] = "hooks/hooks.json"
     return json.dumps(m, indent=2) + "\n"
+
+
+def mcp_json() -> str:
+    """Every MCP server the package needs at runtime — ours, plus the ones its doctrine mandates.
+
+    The required list is **parsed from the table in src/core/knowledge-sources.md**, the same way the
+    write verb is parsed from the roster table: that doc orders the agent to ground claims via those
+    servers, so it is the thing entitled to say which they are. Nothing here hardcodes them.
+
+    Why it is parsed and not grepped: "GitHub" appears in that doc twice as ordinary English
+    (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a registry). A word-match would
+    "find" a server nobody declared — a heuristic, and this package does not guess. Correspondence
+    comes from a declared fact or not at all.
+
+    The bug this closes: those servers used to be declared only in this repo's own root `.mcp.json`,
+    which no user ever receives — so the product commanded a capability it never shipped.
+    """
+    servers = {
+        "codebase-alignment": {
+            "type": "stdio",
+            "command": "uv",
+            # The host expands this; a repo-relative path would resolve into the USER'S project.
+            "args": ["run", "--script", "${CLAUDE_PLUGIN_ROOT}/mcp/server.py"],
+        }
+    }
+    doc = read(CORE / "knowledge-sources.md")
+    for name, url in MCP_REQUIRED.findall(doc):
+        servers[name] = {"type": "http", "url": url}
+    if len(servers) == 1:
+        problems.append(
+            "src/core/knowledge-sources.md declares no required MCP servers — the doctrine orders "
+            "the agent to ground claims somewhere; if that changed, say so there, not here"
+        )
+    # opt-in servers are named in the same table and deliberately NOT declared: each needs external
+    # setup (cognee a container + key, github a token), and a declared-but-unreachable server is a
+    # broken entry in every user's session.
+    return json.dumps({"mcpServers": servers}, indent=2) + "\n"
 
 
 def marketplace() -> str:

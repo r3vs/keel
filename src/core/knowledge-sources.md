@@ -24,6 +24,25 @@ cheapest sufficient source, and go outward only when the local signal can't answ
 | **Registry / advisory** (npm · PyPI · crates · OSV · GitHub Advisory) | dependency health, latest versions, deprecations, CVE detail | rescue dependencies module, greenfield stack choice + Phase-6 release |
 | **Exa / web search** | open research on state of the art, novel problems with no obvious source | the brainstorm, last resort after the above |
 
+## The MCP servers this doctrine requires — **the build reads this table**
+
+This doc orders the agent to ground its claims in these servers, so the package must **ship** them:
+`build.py` parses the lines below and generates the plugin's `.mcp.json` from them. That is not
+tidiness. These servers used to be declared only in this repo's own root config — which no user ever
+receives — so the doctrine commanded a capability the reader did not have. Worse than a tool nobody
+calls: a tool the prose demands and that is simply absent.
+
+The table is the carrier. Do not grep this prose for server names — "GitHub" appears above twice as
+ordinary English (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a registry), and a
+word-match would "find" a server nobody declared. Correspondence comes from a declared fact.
+
+- `context7` → **http** `https://mcp.context7.com/mcp` — live library / framework / API docs.
+- `deepwiki` → **http** `https://mcp.deepwiki.com/mcp` — public-repo exemplars.
+- `cognee` → **opt-in** — graph memory. Runs its own LLM extraction, so it needs a Docker container
+  on `:8000` plus an `LLM_API_KEY`. Declaring it by default would hand every user a server that
+  fails to connect; the ledger and `MEMORY.md` cover durable memory without it.
+- `github` → **opt-in** — the official server needs a token, and nothing above requires it.
+
 ## The discipline (non-negotiable)
 
 - **Feeds proposals and decisions — never commits.** External knowledge populates the

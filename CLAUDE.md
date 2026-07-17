@@ -205,6 +205,25 @@ must mirror it. `check_consistency.py` enforces **both name and permission parit
 it cannot close: **`Bash` is a write vector Claude Code cannot restrict** — the ledger gate is what
 closes that at runtime. Full details: `docs/packaging.md`.
 
+## The two files at the root that look like product and are not
+
+`.mcp.json` and `opencode.json` sit at the repo root because **their hosts demand exactly that
+path** (verified in opencode's source: it globs `opencode.json` walking up from cwd; Claude Code's
+`.mcp.json` is project-scoped). They cannot move. What they are is easy to get backwards, so:
+
+- **They are this repo dogfooding its own product**, not config the product needs. Nothing installs
+  them; `build.py` never copies them.
+- **There are two `.mcp.json` and they are different things.** The root one declares what *we* run
+  while developing here. `plugins/alignment-core/.mcp.json` is **generated** and is what a *user*
+  gets. Same filename, different jobs — that collision is the whole reason this section exists.
+- **The servers the doctrine mandates ship with the product**, and are generated from the table in
+  `src/core/knowledge-sources.md` — the doc that orders the agent to use them is the thing entitled
+  to name them. They were once declared *only* at this root, so the package commanded a capability
+  no user received. `tests/test_mcp_declaration.py` is the gate.
+- **Keep the root mirroring the product.** Developing this repo without our own MCP server is how
+  "twelve playbooks invoke the runtime zero times" survived for months: nobody saw the tools, so
+  nobody noticed nothing called them. Dogfooding is the detector, not hygiene.
+
 ## Editing conventions & invariants
 
 - **The consistency gates are enforced in CI — keep them green.**

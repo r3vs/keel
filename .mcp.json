@@ -1,5 +1,10 @@
 {
   "mcpServers": {
+    "codebase-alignment": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--script", "${CLAUDE_PROJECT_DIR:-.}/src/mcp/server.py"]
+    },
     "context7": {
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
@@ -7,10 +12,6 @@
     "deepwiki": {
       "type": "http",
       "url": "https://mcp.deepwiki.com/mcp"
-    },
-    "cognee": {
-      "type": "http",
-      "url": "http://localhost:8000/mcp"
     }
   }
 }
