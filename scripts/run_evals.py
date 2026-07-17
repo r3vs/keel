@@ -43,7 +43,7 @@ Judge only what the transcript shows; unsupported claims FAIL.
 
 
 def find_eval_files() -> list[pathlib.Path]:
-    return sorted(ROOT.glob("skills/*/evals/evals.json"))
+    return sorted(ROOT.glob("src/skills/*/evals/evals.json"))
 
 
 def validate(paths: list[pathlib.Path]) -> int:

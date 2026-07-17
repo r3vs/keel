@@ -1,0 +1,22 @@
+{
+  "name": "alignment-core",
+  "description": "The spine: the decisions-ledger MCP server (contract diff, blast radius, interview funnel, wave scheduler, findings gate), the researcher/brainstorm/executor/reviewer/challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. Installed automatically as a dependency of codebase-rescue and greenfield-forge.",
+  "version": "0.1.0",
+  "author": {
+    "name": "r3vs"
+  },
+  "homepage": "https://github.com/r3vs/codebase-rescue",
+  "repository": "https://github.com/r3vs/codebase-rescue",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "codebase",
+    "rescue",
+    "greenfield",
+    "architecture",
+    "cross-layer-contract",
+    "decisions-ledger",
+    "refactoring",
+    "tdd"
+  ]
+}

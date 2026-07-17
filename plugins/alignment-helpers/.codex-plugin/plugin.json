@@ -1,0 +1,22 @@
+{
+  "name": "alignment-helpers",
+  "version": "0.1.0",
+  "description": "Composable helpers, useful standalone and with no runtime dependency: grounded-research (cite current sources, never stale memory), static-first-analysis (strongest deterministic signal before judgment), project-memory (durable facts), and learning-layer (senior-grade output while the operator levels up).",
+  "keywords": [
+    "skills",
+    "codebase",
+    "rescue",
+    "greenfield",
+    "architecture",
+    "cross-layer-contract",
+    "decisions-ledger",
+    "refactoring",
+    "tdd"
+  ],
+  "skills": [
+    "skills/grounded-research",
+    "skills/static-first-analysis",
+    "skills/project-memory",
+    "skills/learning-layer"
+  ]
+}

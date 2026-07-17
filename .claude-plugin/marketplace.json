@@ -1,16 +1,46 @@
 {
   "name": "codebase-alignment",
   "version": "0.1.0",
-  "description": "Curative + preventive codebase-alignment skills on a shared decisions-ledger core.",
+  "description": "Curative + preventive codebase-alignment plugins on a shared decisions-ledger core.",
   "owner": {
     "name": "r3vs"
   },
   "plugins": [
     {
-      "name": "codebase-alignment",
-      "description": "codebase-rescue (align an existing, misaligned codebase) + greenfield-forge (build a new one aligned from the first commit), sharing one decisions-ledger core and a researcher/executor/reviewer/challenger/measurer/brainstorm agent roster; plus a learning-layer that closes the operator gap.",
+      "name": "alignment-core",
+      "description": "The spine: the decisions-ledger MCP server (contract diff, blast radius, interview funnel, wave scheduler, findings gate), the researcher/brainstorm/executor/reviewer/challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. Installed automatically as a dependency of codebase-rescue and greenfield-forge.",
       "version": "0.1.0",
-      "source": "./",
+      "source": "./plugins/alignment-core",
+      "category": "development",
+      "author": {
+        "name": "r3vs"
+      }
+    },
+    {
+      "name": "codebase-rescue",
+      "description": "Curative: rescue a large, misaligned, often AI-generated codebase \u2014 reconcile backend, frontend and database into an aligned state. Runs the diff backward: as-is exists, derive the to-be from an elected interview, close the gap.",
+      "version": "0.1.0",
+      "source": "./plugins/codebase-rescue",
+      "category": "development",
+      "author": {
+        "name": "r3vs"
+      }
+    },
+    {
+      "name": "greenfield-forge",
+      "description": "Preventive: build a new project aligned from the first commit. Elects the design in a compressed interview before any code exists, then generates every layer from one contract so they cannot drift.",
+      "version": "0.1.0",
+      "source": "./plugins/greenfield-forge",
+      "category": "development",
+      "author": {
+        "name": "r3vs"
+      }
+    },
+    {
+      "name": "alignment-helpers",
+      "description": "Composable helpers, useful standalone and with no runtime dependency: grounded-research (cite current sources, never stale memory), static-first-analysis (strongest deterministic signal before judgment), project-memory (durable facts), and learning-layer (senior-grade output while the operator levels up).",
+      "version": "0.1.0",
+      "source": "./plugins/alignment-helpers",
       "category": "development",
       "author": {
         "name": "r3vs"
@@ -18,7 +48,7 @@
     },
     {
       "name": "superpowers",
-      "description": "Composed, not authored here: Jesse Vincent's generic engineering skills (TDD, systematic debugging, planning, code review, git worktrees). We reference the best-in-class library rather than reinvent it.",
+      "description": "Composed, not authored here: Jesse Vincent's generic engineering skills (TDD, systematic debugging, planning, code review, git worktrees).",
       "source": "github:obra/superpowers",
       "category": "development",
       "author": {

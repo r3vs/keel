@@ -1,12 +1,15 @@
-# Runtime artifacts (generati dalla skill, non da versionare)
+# Runtime artifacts — the skills GENERATE these into a target project; they are never authored here.
 ledger.json
 graph.json
 *.skill
 .audit/
 docs/audits/
+
+# NOTE what is deliberately NOT ignored: plugins/. It is build output, and it is committed, because
+# a marketplace installs straight from the repo — there is nowhere else for it to live. That is what
+# `python scripts/build.py --check` is for: it fails CI if the committed output drifts from src/.
+
 node_modules/
-# opencode skills link/copy — created by scripts/install-opencode.sh from the canonical skills/
-.opencode/skills
 __pycache__/
 *.pyc
 .venv/

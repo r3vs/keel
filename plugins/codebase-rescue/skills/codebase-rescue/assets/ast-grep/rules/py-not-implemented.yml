@@ -1,0 +1,11 @@
+id: py-not-implemented
+language: python
+severity: warning
+message: raise NotImplementedError — stub on a possibly-live path.
+note: >-
+  Not a defect by itself: completeness classifies intentional-stub vs broken; fp-check
+  decides reachability. On a reachable prod path this promotes to `defect`.
+rule:
+  any:
+    - pattern: raise NotImplementedError
+    - pattern: raise NotImplementedError($$$MSG)

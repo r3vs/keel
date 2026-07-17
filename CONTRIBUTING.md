@@ -14,7 +14,7 @@ python scripts/sync_core.py --check   # vendored references/core copies identica
 python scripts/verify_pointers.py     # every intra-playbook *.md pointer resolves
 python -m unittest discover -s tests  # ledger-runtime tests (spec v0.6 rules)
 python scripts/run_evals.py --validate # eval specs well-formed
-bash -n scripts/bootstrap.sh          # installer shell syntax
+bash -n src/tools/bootstrap.sh          # installer shell syntax
 ```
 
 ## Editing conventions

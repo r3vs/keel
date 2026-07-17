@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "codebase-alignment": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--script",
+        "${CLAUDE_PLUGIN_ROOT}/mcp/server.py"
+      ]
+    }
+  }
+}

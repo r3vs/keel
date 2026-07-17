@@ -14,7 +14,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "runtime"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
 import map as mapmod  # noqa: E402
 from ledger import Ledger  # noqa: E402

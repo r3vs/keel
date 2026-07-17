@@ -1,0 +1,25 @@
+{
+  "name": "greenfield-forge",
+  "description": "Preventive: build a new project aligned from the first commit. Elects the design in a compressed interview before any code exists, then generates every layer from one contract so they cannot drift.",
+  "version": "0.1.0",
+  "author": {
+    "name": "r3vs"
+  },
+  "homepage": "https://github.com/r3vs/codebase-rescue",
+  "repository": "https://github.com/r3vs/codebase-rescue",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "codebase",
+    "rescue",
+    "greenfield",
+    "architecture",
+    "cross-layer-contract",
+    "decisions-ledger",
+    "refactoring",
+    "tdd"
+  ],
+  "dependencies": [
+    "alignment-core"
+  ]
+}

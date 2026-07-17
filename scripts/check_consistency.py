@@ -8,10 +8,10 @@ skill points at the source directly (Model B — each skill is self-contained; s
 Path convention (see CLAUDE.md):
   - `references/x.md` (incl. the vendored `references/core/x.md`) resolves relative to the
     SKILL's own root.
-  - core/*.md is the single source; scripts/sync_core.py copies it into skills/*/references/core/.
+  - src/core/*.md is the single source; scripts/build.py vendors it into each shipped skill.
     A bare `core/x.md` pointer under skills/ is drift (a copy was not vendored).
 
-Run in CI: `python scripts/check_consistency.py` (exit 1 on drift); pair with sync_core.py --check.
+Run in CI: `python scripts/check_consistency.py` (exit 1 on drift); pair with build.py --check.
 """
 import json, re, sys
 from pathlib import Path
@@ -21,10 +21,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # skill name -> its root, relative to the repo root
 # Auto-discover every skill: a dir under skills/ that has a SKILL.md.
 SKILLS = {
-    p.name: f"skills/{p.name}"
-    for p in sorted((ROOT / "skills").iterdir())
+    p.name: f"src/skills/{p.name}"
+    for p in sorted((ROOT / "src" / "skills").iterdir())
     if p.is_dir() and (p / "SKILL.md").exists()
-} if (ROOT / "skills").is_dir() else {}
+} if (ROOT / "src" / "skills").is_dir() else {}
 
 errors, warnings = [], []
 
@@ -32,11 +32,27 @@ REF_RE = re.compile(r"`(references/[\w\-./]+\.md)`")   # skill-relative
 CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 
 
+SRC_CORE = ROOT / "src" / "core"
+
+
 def read(p: Path) -> str:
     try:
         return p.read_text(encoding="utf-8")
     except OSError:
         return ""
+
+
+def ref_resolves(ref: str, sroot: Path) -> bool:
+    """A skill-relative `references/x.md` pointer.
+
+    `references/core/x.md` is the SHIPPED form and deliberately absent from the source tree:
+    build.py vendors `src/core/x.md` to that path inside each plugin. Checking it against the
+    authoring source by rule is the trade for having ONE generation instead of two — the source
+    carries a pointer that only resolves post-build, and this rule is what keeps that honest.
+    """
+    if ref.startswith("references/core/"):
+        return (SRC_CORE / Path(ref).name).exists()
+    return (sroot / ref).exists()
 
 
 # every .md / .json in the repo (excluding VCS + generated dirs) — used for orphan scans
@@ -66,7 +82,7 @@ for skill, rel in SKILLS.items():
             ref = m.get("reference")
             if not ref:
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' has no reference")
-            elif not (sroot / ref).exists():
+            elif not ref_resolves(ref, sroot):
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' -> missing reference '{ref}'")
 
     if not skill_path.exists():
@@ -74,21 +90,21 @@ for skill, rel in SKILLS.items():
         continue
     text = read(skill_path)
     for ref in sorted(set(REF_RE.findall(text))):
-        if not (sroot / ref).exists():
+        if not ref_resolves(ref, sroot):
             errors.append(f"[{skill}] SKILL.md points to missing '{ref}'")
 
     if (sroot / "references").is_dir():
         reference_dirs.append((skill, sroot))
 
 # 1b. Model-B invariant: no skill file may point at the shared source directly — it must vendor
-#     a copy (references/core/x.md) via scripts/sync_core.py. A bare `core/x.md` under skills/ is
+#     a copy (references/core/x.md) via scripts/build.py. A bare `core/x.md` under skills/ is
 #     drift. CORE_RE requires the backtick immediately before "core/", so it never matches the
 #     vendored `references/core/x.md` form.
-if (ROOT / "skills").is_dir():
-    for p in sorted((ROOT / "skills").rglob("*.md")):
+if (ROOT / "src" / "skills").is_dir():
+    for p in sorted((ROOT / "src" / "skills").rglob("*.md")):
         for hit in sorted(set(CORE_RE.findall(read(p)))):
             errors.append(
-                f"[{p.relative_to(ROOT)}] un-vendored core pointer `{hit}` — run scripts/sync_core.py"
+                f"[{p.relative_to(ROOT)}] un-vendored core pointer `{hit}` — run scripts/build.py"
             )
 
 # 2. Per-skill orphan check: every references/*.md is pointed at from this skill (warn only)
@@ -102,15 +118,12 @@ for skill, sroot in reference_dirs:
             warnings.append(f"[{skill}] orphan reference (not linked anywhere): {rel_ref}")
 
 # 3. Core source usage: each core/*.md is the authoring source and should be vendored into at
-#    least one skill (scripts/sync_core.py). A source no skill vendors is unused (warn only).
-core_dir = ROOT / "core"
+#    least one skill (scripts/build.py). A source no skill vendors is unused (warn only).
+core_dir = ROOT / "src" / "core"
 core_files = list(core_dir.glob("*.md")) if core_dir.is_dir() else []
-vendored_names = set()
-if (ROOT / "skills").is_dir():
-    for s in sorted((ROOT / "skills").iterdir()):
-        vd = s / "references" / "core"
-        if vd.is_dir():
-            vendored_names |= {g.name for g in vd.glob("*.md")}
+# A core doc earns its place by being vendored into at least one SHIPPED skill. The copies live
+# in plugins/ (build output) — the source tree holds none by design.
+vendored_names = {g.name for g in (ROOT / "plugins").rglob("references/core/*.md")}     if (ROOT / "plugins").is_dir() else set()
 for f in core_files:
     if f.name not in vendored_names:
         warnings.append(f"unused core source (never vendored into any skill): core/{f.name}")
@@ -128,37 +141,27 @@ for f in content_md:
     if "STUB — scaffold only" in read(f):
         errors.append(f"unfilled stub remains: {f.relative_to(ROOT)}")
 
-# 5. Packaging manifests are valid JSON, and the agent roster matches across adapters
-#    (Claude agents/*.md  ↔  opencode.json "agent" block).
-opencode_agents = None
-for m in (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "opencode.json", ".mcp.json"):
+# 5. Packaging manifests are valid JSON.
+#    NOTE what is deliberately NOT here any more: roster name-parity and permission-parity across
+#    adapters. Those were ~45 lines guarding two hand-written copies of the same six roles — and
+#    they were losing: the copies had already drifted in PROSE, which name-and-verb parity cannot
+#    see. A parity linter is a smell; it says two things should be one thing, generated. So the
+#    write verb now lives once (the roster table in src/core/agents.md), build.py derives each
+#    host's mechanism from it (`disallowedTools` for Claude, `permission.edit` for opencode), and
+#    build.py --check is the guarantee. The residual it cannot close is unchanged: `Bash` is a
+#    write vector Claude Code cannot restrict — the ledger gate closes that at runtime.
+for m in (".claude-plugin/marketplace.json", "opencode.json", ".mcp.json"):
     p = ROOT / m
     if not p.exists():
         warnings.append(f"packaging manifest missing: {m}")
         continue
     try:
-        data = json.loads(read(p))
+        json.loads(read(p))
     except json.JSONDecodeError as e:
         errors.append(f"{m} is invalid JSON: {e}")
-        continue
-    if m == "opencode.json":
-        opencode_agents = set((data.get("agent") or {}).keys())
 
-roster = sorted(f.stem for f in (ROOT / "agents").glob("*.md")) if (ROOT / "agents").is_dir() else []
-if opencode_agents is not None and roster and set(roster) != opencode_agents:
-    errors.append(
-        f"agent roster mismatch: Claude agents/={roster} vs opencode.json agent={sorted(opencode_agents)}"
-    )
-
-# 6. Command parity across adapters: commands/*.md (Claude) ↔ .opencode/command/*.md (opencode).
-#    Same rule as the agent roster — adapters mirror one source, the linter enforces it.
-claude_cmds = sorted(f.stem for f in (ROOT / "commands").glob("*.md")) if (ROOT / "commands").is_dir() else []
-opencode_cmds = sorted(f.stem for f in (ROOT / ".opencode" / "command").glob("*.md")) \
-    if (ROOT / ".opencode" / "command").is_dir() else []
-if set(claude_cmds) != set(opencode_cmds):
-    errors.append(
-        f"command parity mismatch: commands/={claude_cmds} vs .opencode/command/={opencode_cmds}"
-    )
+roster = sorted(f.stem for f in (ROOT / "src" / "agents").glob("*.md")) if (ROOT / "src" / "agents").is_dir() else []
+claude_cmds = sorted(f.stem for f in (ROOT / "src" / "commands").glob("*.md")) if (ROOT / "src" / "commands").is_dir() else []
 
 for w in warnings:
     print(f"WARN  {w}")
@@ -168,8 +171,8 @@ for e in errors:
 ref_total = sum(len(list((s / 'references').glob('*.md'))) for _, s in reference_dirs)
 vendored_total = sum(
     len(list((s / 'references' / 'core').glob('*.md')))
-    for s in (ROOT / 'skills').iterdir() if (s / 'references' / 'core').is_dir()
-) if (ROOT / 'skills').is_dir() else 0
+    for s in (ROOT / 'src' / 'skills').iterdir() if (s / 'references' / 'core').is_dir()
+) if (ROOT / 'src' / 'skills').is_dir() else 0
 print(
     f"\n{len(SKILLS)} skills, {module_count} modules, {len(core_files)} core sources "
     f"({vendored_total} vendored copies), {ref_total} references, {len(roster)} agents, "
