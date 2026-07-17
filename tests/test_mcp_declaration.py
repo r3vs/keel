@@ -1,13 +1,28 @@
-"""If the doctrine orders a server, the product must ship it.
+"""If the doctrine orders a server, the **install** must deliver it.
 
-The bug this locks shut: `core/knowledge-sources.md` is vendored into five skills and *orders* the
-agent to ground claims via Context7 and DeepWiki — while those servers were declared only in this
-repo's own root `.mcp.json`, which no user ever receives. So the package commanded a capability it
-never provided. That is worse than the runtime nothing invoked: there the tool existed and went
-unused; here the prose demanded a tool that was simply absent.
+`core/knowledge-sources.md` is vendored into five skills and *orders* the agent to ground claims via
+Context7 and DeepWiki. Those servers were declared in this repo's own root `.mcp.json`,
+`opencode.json` and `.codex/config.toml` — and the fix that "shipped" them only covered Claude Code.
 
-These assert the invariant against the doctrine's own table, not against a hardcoded list — a new
-required server fails here until it is declared, which is the point.
+The root files were the whole bug, in two layers:
+
+1. **A user installing a plugin never works in this repo — they work in their own.** So root host
+   config reaches nobody. The docs papered over that by telling users to *"open the repo (or add it
+   to your workspace root)"* and copy servers out of `.mcp.json`. That is not installing a plugin;
+   it is cloning a demo. `scripts/install.sh` said the same thing out loud, in a heredoc: *copy the
+   mcpServers block into your opencode.json*.
+2. **Three hand-written copies of one fact drift, and had already drifted**: deepwiki was in
+   `.mcp.json` but missing from Codex; `opencode.json` and `.codex/config.toml` both declared cognee
+   `enabled: true`, which the doctrine forbids precisely because it cannot connect without a
+   container; Codex pulled context7 over `npx` while the others used http.
+
+Delivery is now the install itself, generated from the doctrine's one table, on every host that can
+take it — verified in each host's source, not assumed: Claude Code reads the plugin's own
+`.mcp.json`; Codex's manifest points at the same file (`PluginManifestMcpServers::Path`); opencode
+has no manifest slot but a plugin's `config(cfg)` hook may mutate the live merged config.
+
+These assert against the doctrine's table, never a hardcoded list — a new required server fails here
+until every host's delivery carries it, which is the point.
 """
 import json
 import re
@@ -85,6 +100,84 @@ class TestTheProductShipsWhatItOrders(unittest.TestCase):
                 self.assertIn("alignment-core", m.get("dependencies", []),
                               "this plugin's skills cite the doctrine's servers but nothing "
                               "guarantees the plugin that declares them is installed")
+
+
+class TestTheRootDeclaresNoHostConfig(unittest.TestCase):
+    """The root is for developing this repo. Delivery is the install, or it does not exist."""
+
+    # Each of these was a real file, and each looked like product because the docs used it as
+    # product. Re-adding one is how the bug comes back: it works here, on the one machine where
+    # nothing is installed, and reaches no user anywhere.
+    FORBIDDEN = (".mcp.json", "opencode.json", ".codex/config.toml")
+
+    def test_no_root_file_declares_mcp_servers(self):
+        for f in self.FORBIDDEN:
+            with self.subTest(file=f):
+                self.assertFalse(
+                    (ROOT / f).exists(),
+                    f"{f} is host config for THIS repo; a user installing a plugin works in their "
+                    "own project and never sees it. Declare servers where the install delivers "
+                    "them: plugins/*/.mcp.json (Claude + Codex) and the opencode plugin's config() "
+                    "hook — both generated from src/core/knowledge-sources.md",
+                )
+
+    # NOT here, deliberately: a check that no doc still says "open the repo" / "point it at the
+    # repo" — the sentences that made root config look like a delivery mechanism for two whole
+    # hosts. It was written, and it failed on the very prose that RETIRES those sentences by
+    # quoting them. Prose-matching cannot tell use from mention, so it can only false-positive or
+    # be watered down until it proves nothing. That is a heuristic, and this package does not
+    # guess. The deterministic carrier is above: the files are gone, so no doc can send a user to
+    # them and be right.
+
+
+class TestEveryHostGetsThemFromItsInstall(unittest.TestCase):
+    """Same table, three hosts, zero user action. The shapes differ; the fact does not."""
+
+    def opencode_plugin(self) -> str:
+        p = PLUGINS / "alignment-core" / "adapters" / "opencode" / "plugin" / "mcp.ts"
+        self.assertTrue(p.is_file(), "opencode's MCP delivery is a generated plugin file")
+        return p.read_text(encoding="utf-8")
+
+    def test_the_opencode_plugin_carries_every_mandated_server(self):
+        ts = self.opencode_plugin()
+        for name, url in sorted(mandated().items()):
+            with self.subTest(server=name):
+                self.assertIn(url, ts, "the doctrine mandates this server but opencode never gets it")
+
+    def test_the_opencode_plugin_speaks_opencodes_schema_not_claudes(self):
+        # Verified in sst/opencode, and not guessable from Claude's shape: the discriminator is
+        # `remote`/`local`, and a local server's `command` is an ARRAY. Emitting Claude's `http`
+        # would typecheck as JSON and silently declare nothing.
+        ts = self.opencode_plugin()
+        self.assertIn('"type": "remote"', ts)
+        self.assertNotIn('"type": "http"', ts)
+        self.assertIn("cfg.mcp", ts, "config(cfg) mutating cfg.mcp is the delivery mechanism")
+
+    def test_the_opencode_plugin_resolves_our_server_at_runtime(self):
+        # `${CLAUDE_PLUGIN_ROOT}` is expanded by Claude Code and by nothing else; left in an
+        # opencode config it is a literal path that cannot resolve. So the path is computed from
+        # the plugin's own location instead.
+        #
+        # This asserts that mechanism POSITIVELY rather than asserting the variable's absence,
+        # and the difference is not cosmetic: the absence check was written first and failed on
+        # the comment that explains why the variable is not used. A string-match cannot tell use
+        # from mention. An identifier that must appear for the code to work can only be there on
+        # purpose.
+        self.assertIn("fileURLToPath(import.meta.url)", self.opencode_plugin())
+
+    def test_the_users_own_config_wins(self):
+        # An installer that overwrites a user's explicit choice is a worse bug than the one fixed.
+        self.assertRegex(self.opencode_plugin(), r"\.\.\.ours,\s*\.\.\.\(cfg\.mcp")
+
+    def test_codex_reaches_the_same_file_claude_does(self):
+        # Verified in openai/codex: `mcpServers` may be a path to a .mcp.json. One file, two hosts.
+        with open(PLUGINS / "alignment-core" / ".codex-plugin" / "plugin.json", encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh).get("mcpServers"), ".mcp.json")
+
+    def test_install_sh_does_not_ask_the_user_to_copy_servers(self):
+        text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+        self.assertNotIn("copy the mcpServers block", text,
+                         "opencode plugins can declare servers themselves — install, don't instruct")
 
 
 class TestDeclarationsResolveAfterInstall(unittest.TestCase):

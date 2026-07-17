@@ -5,6 +5,39 @@ spine has started; versions track design + packaging + runtime together.
 
 ## [0.1.0] — unreleased
 
+### Removed
+- **The root's host config — `.mcp.json`, `opencode.json`, `.codex/config.toml` — is gone**, and
+  with it the assumption underneath it: that a user might be working *here*. They install into their
+  own project, so root config reached nobody. The docs sold it as the install path anyway (`README`
+  told Cursor and Codex users to *"open the repo (or add it to your workspace root)"*; `install.sh`
+  printed *"copy the mcpServers block into your opencode.json"*), which meant two of four hosts had
+  no install path at all — only an invitation to clone a demo. And the three copies of that one fact
+  had already drifted: deepwiki declared for Claude but missing for Codex, cognee `enabled: true` in
+  two of them (which the doctrine forbids *because* it cannot connect without a container), context7
+  over `npx` in one and http in the others.
+
+### Added
+- **MCP delivery is now the install itself, on every host that can take it** — generated from the
+  one table in `src/core/knowledge-sources.md`, so a server cannot be ordered in prose and absent
+  from the product:
+  - **Claude Code** reads the plugin's own `.mcp.json`; **Codex** reaches the same file through its
+    manifest's `mcpServers: ".mcp.json"` (verified in `openai/codex`: `PluginManifestMcpServers::Path`).
+  - **opencode** has no manifest slot for servers, but a plugin's `config(cfg)` hook receives the
+    live merged config and may mutate it (verified in `sst/opencode`) — so the generated
+    `adapters/opencode/plugin/mcp.ts` declares them, and `scripts/install.sh` places it. Two shape
+    facts there are verified rather than inferred, and neither follows from Claude's: opencode's
+    discriminator is `local`/`remote`, not `stdio`/`http`, and a local `command` is an **array**.
+    Emitting Claude's shape would be valid JSON that silently declares nothing. `${CLAUDE_PLUGIN_ROOT}`
+    is likewise a Claude-ism no other host expands, so the plugin resolves our server from its own
+    location and degrades gracefully when it cannot.
+  - The user's own config wins on every key — this fills gaps, it never overwrites a choice.
+- **`scripts/install.sh` places the opencode plugin and the Pi extension** instead of printing them
+  as homework, and `tests/test_mcp_declaration.py` grew the gate that keeps the root clean.
+- **`README`, `docs/packaging.md`, `AGENTS.md`, `CONTRIBUTING.md` and `MEMORY.md` rewritten** — all
+  predated the `src/`↔`plugins/` split and still described `scripts/sync_core.py` and
+  `scripts/install-opencode.sh` (both deleted), `skills/`+`core/` at the root, and — in the very
+  "try it" section — `python runtime/ledger.py`, this repo's signature bug, still on its front page.
+
 ### Added
 - **Runtime** — the executable layer both skills bind to (core stdlib-only, tested in CI;
   **~170 tests** across `tests/`):

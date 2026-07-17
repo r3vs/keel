@@ -15,16 +15,21 @@ the directory**) and `description` (≥ 20 chars, saying what it does AND when t
 (repo-root-relative).
 
 ## Keep the invariants green (they run in CI)
-- `python scripts/check_consistency.py` — modules ↔ references ↔ SKILL, valid packaging manifests,
-  agent roster parity.
+- `python scripts/build.py --check` — every generated file still equals its `src/` source.
+- `python scripts/check_consistency.py` — modules ↔ references ↔ SKILL, valid packaging manifests.
 - `python scripts/verify_pointers.py` — every `*.md` pointer resolves.
+- `python scripts/verify_commands.py` — every command a shipped file names resolves **after
+  install**, not merely here. The other gates anchor on `__file__` and cannot see that class.
 - Three-way sync: a new or renamed module updates its `modules.json`, its playbook, AND any
   `SKILL.md` pointer together.
 
 ## Stay agent-agnostic
-Author to the spec once; never hard-code a platform. A new agent role goes in `references/core/agents.md`
-first (the source of truth), then mirrors into `agents/*.md` (Claude) and `opencode.json`'s `agent`
-block — the linter enforces that parity.
+Author to the spec once; never hard-code a platform. And when a fact has to exist in several hosts'
+shapes, **give it one source and let the build derive them** — do not mirror it by hand and add a
+parity linter, which is a smell: it says two things should be one thing, generated. A new agent role
+goes in the roster table in `references/core/agents.md` and nowhere else; the build emits Claude's
+`disallowedTools` and opencode's `permission: {edit: …}` from it. Same for the MCP servers the
+doctrine mandates. Parse those tables — never grep the prose around them for names.
 
 ## Discipline (the ponytail ladder, applied to the package itself)
 Read the relevant reference before editing — don't work from memory. Prefer reuse over a new skill:

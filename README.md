@@ -2,12 +2,14 @@
 
 A complete, installable package for keeping a codebase aligned across its whole lifecycle, built
 around two deep, differentiated skills — one **curative**, one **preventive** — on a single
-decisions-ledger spine. Runs on **Claude Code, opencode, and Codex** (any AGENTS.md-aware agent).
+decisions-ledger spine. Installs as a plugin on **Claude Code, Codex, opencode and Pi** — you point
+it at *your* project; nothing here needs to be cloned or copied by hand except for the two hosts
+that have no plugin manifest.
 
 - **`codebase-rescue`** — rescue a large, misaligned, often AI-generated ("vibecoded") codebase,
   reconciling backend, frontend, and database into an aligned, state-of-the-art state. Works on
   unfinished codebases and treats "not built yet" as a work item, not a defect.
-- **`greenfield-forge`** (`skills/greenfield-forge/`) — build a NEW project aligned from the first commit,
+- **`greenfield-forge`** — build a NEW project aligned from the first commit,
   so it never needs rescuing. Elects the design in a compressed decision interview *before* any
   code exists, defines the cross-layer contract once and generates aligned layers from it, then
   builds thin vertical slices test-first.
@@ -29,37 +31,60 @@ operate & evolve, the last two feeding production back into the ledger (`flip_cr
 to close the loop.
 
 ## Layout
-- `skills/codebase-rescue/` — the curative skill (`SKILL.md` + `references/` + `modules.json` + `evals/`).
-- `skills/greenfield-forge/` — the preventive skill (same layout).
-- `skills/{using-the-ledger,grounded-research,static-first-analysis,project-memory,learning-layer,writing-skills}/`
-  — composable helper skills (`learning-layer` closes the **operator** gap: senior-grade output while
-  the user learns). Generic skills (TDD, debug, planning, review) are **composed** from
-  [`superpowers`](https://github.com/obra/superpowers), not reinvented.
-- `core/` — the shared spine, and the single **authoring source** for it: `decisions-ledger-spec.md`
-  (schema, v0.6), `ledger.md` (English pointer summary), `interview-funnel.md`, `brainstorm.md`,
-  `shape-engine.md`, `contract-testing.md`, `feedback-loop.md`, `static-analysis.md`,
-  `knowledge-sources.md`, `assumptions.md`, `agents.md`. Each skill is **self-contained**: `scripts/sync_core.py`
-  vendors the doctrine it needs into `skills/<skill>/references/core/`, so no skill points outside
-  its own tree (CI's `sync_core.py --check` keeps the copies identical to the source).
-- **Packaging**: `AGENTS.md`, `.claude-plugin/`, `opencode.json`, `.codex/config.toml`, `agents/`,
-  `hooks/`, `commands/`, `.mcp.json`, `MEMORY.md` — see `docs/packaging.md`.
-- each skill's `TODO.md` — its build checklist. **Do step 0 (the gating experiment) first.**
-- `scripts/{bootstrap.sh,check_consistency.py,sync_core.py,verify_pointers.py,install-opencode.sh}` —
-  toolchain, drift-linter, core-vendoring sync, pointer verifier, opencode installer (checks run in CI).
+
+One rule covers the whole tree: **`src/` you write by hand. `plugins/` `build.py` writes. Nothing
+else exists.**
+
+- **`src/`** — everything authored, and it never ships: `skills/` (the two methodology skills plus
+  the composable helpers), `core/` (the shared spine — ledger spec v0.6, interview funnel,
+  brainstorm, shape engine, contract testing, feedback loop, static-analysis and knowledge-sources
+  doctrine, the agent roster), `runtime/` (the deterministic engine, stdlib-only), `mcp/` (the
+  FastMCP adapter that serves it), `agents/`, `commands/`, `hooks/`, `adapters/`, `tools/`.
+- **`plugins/`** — **generated build output, and the only thing that ships.** Four plugins, each
+  carrying both a `.claude-plugin/` and a `.codex-plugin/` manifest. Committed because a marketplace
+  installs from the repo; `python scripts/build.py --check` is what stops it drifting from `src/`.
+- **`tests/` `scripts/` `docs/`** and the root `.md` files develop the repo and never ship.
+
+Generic engineering skills (TDD, debugging, planning, review, worktrees) are **composed** from
+[`superpowers`](https://github.com/obra/superpowers), not reinvented.
+
+Each skill is **self-contained**: the build vendors the doctrine and runtime a skill needs *inside*
+it, because neither opencode nor Pi resolves a skill's relative paths against the skill directory —
+both resolve against the user's own project. See `docs/packaging.md`.
 
 ## Install
 
-> **Naming note:** the GitHub repo is `codebase-rescue` (the historical name of the flagship
-> skill); the installable package/plugin is **`codebase-alignment`**. The commands below are
-> consistent with that split.
+> **Naming note:** the GitHub repo and the flagship plugin are both `codebase-rescue`; the
+> **marketplace** is `codebase-alignment`. Hence `codebase-rescue@codebase-alignment` below.
 
-- **Claude Code**: `/plugin marketplace add r3vs/codebase-rescue` → `/plugin install codebase-alignment@codebase-alignment`
-- **opencode**: `opencode.json` already has `"plugin": ["opencode-skills"]`; run `bash scripts/install-opencode.sh`
-- **Cursor**: open the repo (or add it to your workspace root) — Cursor reads `AGENTS.md` natively;
-  add the MCP servers from `.mcp.json` in *Cursor Settings → MCP* if you want live docs + memory.
-- **Codex / any AGENTS.md agent**: point it at the repo — it reads `AGENTS.md` (MCP in `.codex/config.toml`).
+**Claude Code**
+```
+/plugin marketplace add r3vs/codebase-rescue
+/plugin install codebase-rescue@codebase-alignment     # or greenfield-forge@…, alignment-helpers@…
+```
+`alignment-core` comes along automatically (`dependencies`), bringing the MCP server, the roster,
+the hooks and the `/rescue` · `/forge` commands.
 
-See `docs/packaging.md` for MCP, memory, and the compose model.
+**Codex**
+```
+codex plugin marketplace add r3vs/codebase-rescue
+codex plugin install codebase-rescue                   # Codex has no dependencies — add alignment-core too
+```
+
+**opencode / Pi** — neither has a plugin manifest, so a script places their pieces:
+```
+git clone https://github.com/r3vs/codebase-rescue && cd codebase-rescue
+python scripts/build.py && bash scripts/install.sh
+```
+Keep the clone: everything is symlinked into it, so a rebuild needs no reinstall.
+
+**MCP is part of the install on every host that can take it** — you never copy a server block by
+hand. Claude Code and Codex read the plugin's own `.mcp.json`; opencode gets the same servers from a
+`config()` hook in the plugin file the script places. Pi has no native MCP; its extension bridges.
+The servers are generated from `src/core/knowledge-sources.md` — the doctrine that *orders* the agent
+to use them is the thing entitled to name them.
+
+See `docs/packaging.md` for the per-host shapes, memory, and the compose model.
 
 ## Try it in 5 minutes
 
@@ -79,11 +104,13 @@ invocations that communicate only through on-disk artifacts:
 3. **Roadmap → TDD remediation → validate** — the gap between elected to-be and as-is is closed
    item by item, each decision carrying its `flip_criteria` (the condition to reopen it).
 
-Watch the state at any point — the ledger is the single source of truth all surfaces project:
+Watch the state at any point — the ledger is the single source of truth all surfaces project. Just
+ask; the plugin's MCP server exposes it as typed tools (`ledger_summary`, `interview_next`,
+`contract_diff`, `blast_radius`, `build_waves`, `render_map`, …), so the agent discovers them rather
+than being told a path:
 
-```bash
-python runtime/ledger.py summary   <target>/.audit/ledger.json   # counts by state
-python runtime/ledger.py interview <target>/.audit/ledger.json   # open questions, best first
+```text
+> summarise the ledger, then show me the open questions best-first
 ```
 
 **Forge a new project** the same way: `> new project: <brief> — forge it`, and the interview
@@ -92,28 +119,31 @@ aligned by construction, guarded for life by a CI drift-check.
 
 ## Status
 Design-complete across two methodology skills + six composable helpers, packaged
-agent-agnostically, with the **runtime largely implemented** (~170 tests in CI). Executable today:
+agent-agnostically, with the **runtime largely implemented** (~240 tests in CI). Authored under
+`src/runtime/`; reaching the agent as MCP tools, and vendored into each skill that runs it as the
+portable floor:
 
-| Piece | Module |
-|---|---|
-| Decisions-ledger runtime (spec v0.6) | `runtime/ledger.py` |
-| Field-shape engine + CI drift-check (8 stacks incl. Drizzle/Prisma/Django/GraphQL) | `runtime/shapes.py` |
-| Contract generators (round-trip to zero drift) | `runtime/generate.py` |
-| Findings + false-positive gate (SARIF/OSV) | `runtime/findings.py` |
-| Decision catalog + interview funnel | `runtime/interview.py` + `assets/decision-catalog.json` |
-| Oracle challenger (deterministic classes) | `runtime/challenger.py` |
-| Phase-4 wave scheduler | `runtime/buildloop.py` |
-| Visual map (self-contained HTML) | `runtime/map.py` |
-| Graph anchoring + blast-radius (deterministic, by `file:line`) | `runtime/graph.py` |
-| Tree-sitter backend (optional; generic engine + declarative per-grammar data) | `runtime/treesitter_extract.py` |
-| Eval harness + ast-grep rule pack + fixtures | `scripts/run_evals.py`, `assets/ast-grep/`, `tests/fixtures/` |
+| Piece | Source | MCP tool |
+|---|---|---|
+| Decisions-ledger runtime (spec v0.6) | `src/runtime/ledger.py` | `ledger_summary` |
+| Field-shape engine + CI drift-check (8 stacks incl. Drizzle/Prisma/Django/GraphQL) | `src/runtime/shapes.py` | `contract_diff` · `reconcile_layers` |
+| Contract generators (round-trip to zero drift) | `src/runtime/generate.py` | `generate_layers` |
+| Findings + false-positive gate (SARIF/OSV) | `src/runtime/findings.py` | `findings_gate` |
+| Decision catalog + interview funnel | `src/runtime/interview.py` + `assets/decision-catalog.json` | `interview_next` |
+| Oracle challenger (deterministic classes) | `src/runtime/challenger.py` | `challenge_oracle` |
+| Phase-4 wave scheduler | `src/runtime/buildloop.py` | `build_waves` |
+| Visual map (self-contained HTML) | `src/runtime/map.py` | `render_map` |
+| Graph anchoring + blast-radius (deterministic, by `file:line`) | `src/runtime/graph.py` | `blast_radius` |
+| Tree-sitter backend (primary; generic engine + declarative per-grammar data) | `src/runtime/treesitter_extract.py` | — |
+| Eval harness + ast-grep rule pack + fixtures | `scripts/run_evals.py`, `assets/ast-grep/`, `tests/fixtures/` | — |
 
 **Step-0 verdicts recorded** (both now on trustworthy data): greenfield (FastAPI+SQLAlchemy+TS)
 STRONG → full generation is Plan A; rescue **re-run on a fresh VibraFlow graph** (2026-07-14, after
 the stale-graph challenge) → WEAK cross-layer correspondence → standalone extraction is Plan A,
-confirmed by `runtime/shapes.py` pulling 113 tables / 1290 fields from VibraFlow's real Drizzle
-schema. What remains is agent-orchestrated at runtime (the per-item TDD loop), full tree-sitter
-extractor generalization, and executing the evals against a live agent runner. See each `TODO.md`.
+confirmed by the shape engine pulling 113 tables / 1290 fields from VibraFlow's real Drizzle
+schema. What remains is agent-orchestrated at runtime (the per-item TDD loop), the Go/Java/Rust/C#
+stacks graduating from fixtures to real repos, and executing the evals against a live agent runner.
+See each `TODO.md`.
 
 ## License
 MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm

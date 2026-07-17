@@ -78,6 +78,8 @@ CORE_BANNER = ("<!-- GENERATED FILE - do not edit. Source: src/core/{name} at th
                "regenerate with: python scripts/build.py -->\n\n")
 PY_BANNER = ("# GENERATED FILE - do not edit. Source: src/runtime/{name} at the repo root;\n"
              "# regenerate with: python scripts/build.py\n")
+TS_BANNER = ("/**\n * GENERATED FILE - do not edit. Source: the MCP table in "
+             "src/core/knowledge-sources.md;\n * regenerate with: python scripts/build.py\n *")
 
 # --- the agent roster, generated per host -----------------------------------------------------
 # The write verb lives in exactly ONE place: the roster table in src/core/agents.md. It used to
@@ -352,7 +354,12 @@ def plugin_payload(name: str, spec: dict) -> dict:
             out[f"mcp/{m.name}"] = read(m)
         for r in sorted(RUNTIME.glob("*.py")):
             out[f"mcp/runtime/{r.name}"] = read(r)
+        # Claude Code reads this at the plugin root; Codex's manifest points at it. Two hosts, one
+        # file, zero user action.
         out[".mcp.json"] = mcp_json()
+        # opencode has no manifest slot for servers, so its plugin declares them in a `config()`
+        # hook. Third host, same table, still zero user action.
+        out["adapters/opencode/plugin/mcp.ts"] = opencode_mcp_plugin()
     if spec.get("hooks"):
         for h in sorted((SRC / "hooks").iterdir()):
             if h.is_file():
@@ -404,20 +411,39 @@ def codex_manifest(name: str, spec: dict) -> str:
     return json.dumps(m, indent=2) + "\n"
 
 
+def required_servers() -> dict:
+    """The MCP servers the doctrine mandates, **parsed from the table in
+    src/core/knowledge-sources.md** — the same way the write verb is parsed from the roster table.
+    That doc orders the agent to ground claims via those servers, so it is the thing entitled to say
+    which they are. Nothing here hardcodes them.
+
+    Why parsed and not grepped: "GitHub" appears in that doc twice as ordinary English (DeepWiki
+    indexes *public GitHub repos*; *GitHub Advisory* is a registry). A word-match would "find" a
+    server nobody declared — a heuristic, and this package does not guess. Correspondence comes from
+    a declared fact or not at all.
+
+    opt-in servers are named in the same table and deliberately NOT returned: each needs external
+    setup (cognee a container + key, github a token), and a declared-but-unreachable server is a
+    broken entry in every user's session.
+    """
+    servers = dict(MCP_REQUIRED.findall(read(CORE / "knowledge-sources.md")))
+    if not servers:
+        problems.append(
+            "src/core/knowledge-sources.md declares no required MCP servers — the doctrine orders "
+            "the agent to ground claims somewhere; if that changed, say so there, not here"
+        )
+    return servers
+
+
 def mcp_json() -> str:
-    """Every MCP server the package needs at runtime — ours, plus the ones its doctrine mandates.
+    """Claude Code + Codex both eat this shape, and both load it **from the installed plugin** —
+    Claude via `.mcp.json` at the plugin root, Codex via its manifest's `mcpServers: ".mcp.json"`
+    (verified in openai/codex: `PluginManifestMcpServers::Path`). So for those two hosts, installing
+    the plugin IS the MCP delivery; there is nothing for the user to copy.
 
-    The required list is **parsed from the table in src/core/knowledge-sources.md**, the same way the
-    write verb is parsed from the roster table: that doc orders the agent to ground claims via those
-    servers, so it is the thing entitled to say which they are. Nothing here hardcodes them.
-
-    Why it is parsed and not grepped: "GitHub" appears in that doc twice as ordinary English
-    (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a registry). A word-match would
-    "find" a server nobody declared — a heuristic, and this package does not guess. Correspondence
-    comes from a declared fact or not at all.
-
-    The bug this closes: those servers used to be declared only in this repo's own root `.mcp.json`,
-    which no user ever receives — so the product commanded a capability it never shipped.
+    The bug this closes: these servers used to be declared only in this repo's own root config files,
+    which no user ever receives — and the docs told users to *clone the repo and work inside it*,
+    which is not installing a plugin. The delivery is the install, or it does not exist.
     """
     servers = {
         "codebase-alignment": {
@@ -427,18 +453,63 @@ def mcp_json() -> str:
             "args": ["run", "--script", "${CLAUDE_PLUGIN_ROOT}/mcp/server.py"],
         }
     }
-    doc = read(CORE / "knowledge-sources.md")
-    for name, url in MCP_REQUIRED.findall(doc):
+    for name, url in required_servers().items():
         servers[name] = {"type": "http", "url": url}
-    if len(servers) == 1:
-        problems.append(
-            "src/core/knowledge-sources.md declares no required MCP servers — the doctrine orders "
-            "the agent to ground claims somewhere; if that changed, say so there, not here"
-        )
-    # opt-in servers are named in the same table and deliberately NOT declared: each needs external
-    # setup (cognee a container + key, github a token), and a declared-but-unreachable server is a
-    # broken entry in every user's session.
     return json.dumps({"mcpServers": servers}, indent=2) + "\n"
+
+
+def opencode_mcp_plugin() -> str:
+    """opencode's MCP delivery: a plugin `config(cfg)` hook, generated from the same table.
+
+    opencode has no manifest to declare servers in — but a plugin CAN contribute them (verified in
+    sst/opencode: `config(cfg)` receives the live merged config and may mutate it). We already ship
+    an opencode plugin for the ledger gate, so the user gets the servers by installing, exactly like
+    Claude Code and Codex. What stood here before was a heredoc in install.sh telling the user to
+    hand-copy a JSON block — unnecessary, and one hand-copy away from drift.
+
+    Two shape differences from Claude's `.mcp.json`, both verified, neither guessable:
+      - opencode's discriminator is `local`/`remote`, not `stdio`/`http`;
+      - a local server's `command` is an ARRAY, not command+args.
+    And `${CLAUDE_PLUGIN_ROOT}` is a Claude-ism: opencode never expands it, so the path to our own
+    server is resolved from the plugin's own location instead.
+    """
+    remote = {n: {"type": "remote", "url": u} for n, u in required_servers().items()}
+    return f'''\
+{TS_BANNER}
+ * opencode's MCP delivery — the servers `core/knowledge-sources.md` orders the agent to use.
+ *
+ * opencode has no plugin manifest to declare servers in, but `config(cfg)` hands a plugin the live
+ * merged config to mutate. So installing this plugin delivers the servers, the same way installing
+ * the Claude/Codex plugin does. The alternative — which this replaced — was telling the user to
+ * hand-copy a JSON block out of our repo.
+ *
+ * The user's own config wins on every key: this fills gaps, it does not overwrite choices.
+ */
+import type {{ Plugin }} from "@opencode-ai/plugin"
+import {{ existsSync }} from "node:fs"
+import {{ dirname, resolve }} from "node:path"
+import {{ fileURLToPath }} from "node:url"
+
+// opencode's discriminator is `remote`/`local` — NOT Claude's `http`/`stdio`.
+const REMOTE = {json.dumps(remote, indent=2)}
+
+// `${{CLAUDE_PLUGIN_ROOT}}` is a Claude-ism opencode never expands, so resolve from this file.
+// A local `command` is an array here, not command + args.
+const SERVER = resolve(dirname(fileURLToPath(import.meta.url)), "../../../mcp/server.py")
+
+export const McpServers: Plugin = async () => ({{
+  config: (cfg: any) => {{
+    const ours: Record<string, unknown> = {{ ...REMOTE }}
+    // Degrade gracefully, never hard-fail: if this plugin was copied out of the built tree rather
+    // than linked into it, our server is unreachable — declaring it anyway would hand the user a
+    // broken entry. The doctrine's remote servers still land.
+    if (existsSync(SERVER)) {{
+      ours["codebase-alignment"] = {{ type: "local", command: ["uv", "run", "--script", SERVER] }}
+    }}
+    cfg.mcp = {{ ...ours, ...(cfg.mcp ?? {{}}) }}
+  }},
+}})
+'''
 
 
 def marketplace() -> str:

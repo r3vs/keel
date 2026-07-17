@@ -106,9 +106,10 @@ cross-layer edges were usable (they weren't — extractors standalone won). Gree
 ## 7. Package & ship — DONE at repo level
 - [x] `README.md` section for humans (SKILL.md is for the model). → repo-root `README.md`.
 - [x] Same license as rescue. → MIT (`LICENSE`).
-- [x] Shared `core/` bundling decision. → **resolved: Model B** — `scripts/sync_core.py` vendors
-      `core/*.md` into each skill's `references/core/` (CI `--check` keeps the copies identical),
-      so every skill ships self-contained.
+- [x] Shared core bundling decision. → **resolved: Model B** — `scripts/build.py` vendors
+      `src/core/*.md` into each shipped skill's `references/core/` (CI `--check` keeps the copies
+      identical), so every skill ships self-contained. Later verified as *necessary*, not merely
+      tidy: neither opencode nor Pi resolves a skill's relative paths against the skill directory.
 
 ---
 

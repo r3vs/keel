@@ -17,23 +17,29 @@ Loaded as always-on context by AGENTS.md-aware agents (opencode, Codex, Pi). **C
 - **`core/decisions-ledger-spec.md` is the authoritative ledger schema** (English); `core/ledger.md`
   is the short English pointer summary. (Historical note: the spec was authored in Italian and
   translated to English on 2026-07-14.)
-- Skills live under `skills/<name>/` (Agent Skills spec; `name` matches the directory) and are
-  **self-contained** (Model B): each keeps its own copy of the shared doctrine under
-  `references/core/`. `core/*.md` is the single **authoring source** — edit it there, then run
-  `python scripts/sync_core.py` to regenerate the vendored copies. A skill never points at `core/`
-  directly (the linter errors on a bare `core/x.md` under `skills/`).
+- **`src/` you write by hand. `plugins/` `build.py` writes. Nothing else exists.** Skills are
+  authored under `src/skills/<name>/` (Agent Skills spec; `name` matches the directory) and the
+  build makes each **self-contained** (Model B), vendoring the doctrine it needs into its own
+  `references/core/` *inside `plugins/`*. `src/core/*.md` is the single **authoring source** — edit
+  it there, then `python scripts/build.py`. A skill never points at `src/core/` directly (the linter
+  errors on a bare `core/x.md` under a skill).
 - **The gates protect the package *as installed*, not just the repo as a repo.** That distinction
   is the one this repo learned the hard way: every earlier gate anchored on `__file__` and was
   therefore blind to the only path class that is working-directory-sensitive — the strings a
   shipped file tells an agent to run. **Before committing**, all of these must be green (CI at
   `.github/workflows/ci.yml`):
-  `check_consistency.py` · `sync_core.py --check` · `verify_pointers.py` · `verify_commands.py` ·
+  `build.py --check` · `check_consistency.py` · `verify_pointers.py` · `verify_commands.py` ·
   `python -m unittest discover -s tests`
-- The agent roster's source of truth is `core/agents.md`. Adapters mirror it and the linter enforces
-  **both** name parity **and permission parity** — `agents/*.md` via `disallowedTools` (Claude Code
-  has no `permission` field, and an omitted `tools:` inherits *everything*), `opencode.json` via
-  `permission: {edit: …}`. Residual the linter cannot close: **`Bash` is a write vector Claude Code
-  cannot restrict** — the ledger-state hook is what closes it at runtime.
+- **A user installs into THEIR project and never works in this repo** — so the root carries no host
+  config, and delivery is the install: `.mcp.json` at the plugin root (Claude reads it; Codex's
+  manifest points at it) and a `config()` hook in the opencode plugin. Root `.mcp.json` /
+  `opencode.json` / `.codex/config.toml` were deleted 2026-07-17: they reached nobody, the docs
+  still sold them as the install path, and the three copies had already drifted.
+- **Give a fact one source and let the build derive every host's shape** — never hand-mirror, and
+  never grep prose for it. The roster's write verb lives in `src/core/agents.md`'s table
+  (→ `disallowedTools` for Claude, `permission: {edit: …}` for opencode); the required MCP servers
+  live in `src/core/knowledge-sources.md`'s table. Residual nothing closes: **`Bash` is a write
+  vector Claude Code cannot restrict** — the ledger-state hook closes it at runtime.
 - Generic engineering skills (TDD, debugging, planning, review) are **composed** from `superpowers`,
   not authored here — don't reinvent them.
 - MCP: Context7 + DeepWiki + **cognee** (graph memory; opt-in, needs the Docker container +

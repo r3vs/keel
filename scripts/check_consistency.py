@@ -150,7 +150,16 @@ for f in content_md:
 #    host's mechanism from it (`disallowedTools` for Claude, `permission.edit` for opencode), and
 #    build.py --check is the guarantee. The residual it cannot close is unchanged: `Bash` is a
 #    write vector Claude Code cannot restrict — the ledger gate closes that at runtime.
-for m in (".claude-plugin/marketplace.json", "opencode.json", ".mcp.json"):
+#
+#    NOTE what else is deliberately gone: the root `opencode.json` / `.mcp.json` / `.codex/config.toml`.
+#    They were host config for THIS repo, and a user installing a plugin never works in this repo —
+#    they work in their own. Yet the docs told them to "open the repo" and copy servers out of those
+#    files, so three hand-written copies of one fact existed and had already drifted (deepwiki missing
+#    from Codex; cognee `enabled: true` in two, which the doctrine forbids because it cannot connect).
+#    Delivery is now the install on every host that can take it, generated from the doctrine's table:
+#    `.mcp.json` in the plugin (Claude reads it at the plugin root, Codex's manifest points at it) and
+#    a `config()` hook in the opencode plugin. `tests/test_mcp_declaration.py` keeps the root clean.
+for m in (".claude-plugin/marketplace.json",):
     p = ROOT / m
     if not p.exists():
         warnings.append(f"packaging manifest missing: {m}")

@@ -22,6 +22,7 @@ core="$root/plugins/alignment-core/adapters"
 
 skills_dir="${1:-$HOME/.agents/skills}"     # opencode + Pi both auto-discover this
 oc_dir="${OPENCODE_DIR:-$HOME/.config/opencode}"
+pi_dir="${PI_DIR:-$HOME/.pi/agent}"
 
 if [ ! -d "$root/plugins" ]; then
   echo "! plugins/ not built — run: python scripts/build.py" >&2
@@ -60,16 +61,38 @@ if [ -d "$core/opencode" ]; then
   echo "✓ ${n} opencode agent(s)/command(s) placed in $oc_dir"
 fi
 
+# The opencode plugin: the ledger gate AND the MCP servers. Both are *installed*, not printed as
+# homework — this used to end with a heredoc telling the user to hand-copy a JSON block out of our
+# repo into their opencode.json, which is not an install, and is one copy away from drift.
+#
+# Linked file-by-file rather than as a directory, and that is load-bearing: both plugin files
+# resolve a sibling out of the BUILT tree (`mcp.ts` → ../../../mcp/server.py, `ledger-gate.ts` →
+# ./ledger-gate.py). Node resolves an ESM symlink to its realpath, so linking keeps those relations
+# intact; a copy would sever them. `mcp.ts` degrades gracefully when that happens.
+if [ -d "$core/opencode/plugin" ]; then
+  n=0
+  for f in "$core"/opencode/plugin/*; do
+    [ -f "$f" ] && place "$f" "$oc_dir/plugin/$(basename "$f")" >/dev/null && n=$((n + 1))
+  done
+  echo "✓ ${n} opencode plugin file(s) placed in $oc_dir/plugin — ledger gate + MCP servers"
+fi
+
+# Pi: same two concerns, its own shape (an extension, not a plugin).
+if [ -d "$core/pi/extensions" ]; then
+  n=0
+  for f in "$core"/pi/extensions/*; do
+    [ -f "$f" ] && place "$f" "$pi_dir/extensions/$(basename "$f")" >/dev/null && n=$((n + 1))
+  done
+  echo "✓ ${n} Pi extension file(s) placed in $pi_dir/extensions"
+fi
+
 cat <<MSG
 
-Two things this cannot do for you, because neither host takes them as config:
+MCP is wired for you on every host that can take it — the servers come from the plugin, not from a
+block you copy: Claude Code and Codex read the plugin's own .mcp.json, opencode gets them from the
+config() hook in the plugin file just placed. Pi has no native MCP; its extension is the bridge.
 
-  MCP     opencode: copy the mcpServers block from plugins/alignment-core/.mcp.json into your
-          opencode.json (swap \${CLAUDE_PLUGIN_ROOT} for the real path).
-          Pi: it has no native MCP — our extension is the bridge (see below).
-
-  hooks   No portable format exists: opencode's are a plugin module, Pi's an extension.
-          Copy plugins/alignment-core/adapters/{opencode/plugin,pi/extensions}/ into
-          .opencode/plugin/ and ~/.pi/agent/extensions/. Both are thin — they delegate to the same
-          ledger-gate.py every other host calls, so the rule exists once.
+Nothing needs to be copied out of this repo by hand. Keep the clone where it is: everything above
+is symlinked INTO it, so moving or deleting it breaks the install. Re-run this only if you move it;
+a plain rebuild needs no reinstall, which is why these are links.
 MSG

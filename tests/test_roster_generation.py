@@ -16,10 +16,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+PLUGINS = ROOT / "plugins"
 ROSTER = ROOT / "src" / "core" / "agents.md"
 AUTHORED = ROOT / "src" / "agents"
-CLAUDE = ROOT / "plugins" / "alignment-core" / "agents"
-OPENCODE = ROOT / "plugins" / "alignment-core" / "adapters" / "opencode" / "agent"
+CLAUDE = PLUGINS / "alignment-core" / "agents"
+OPENCODE = PLUGINS / "alignment-core" / "adapters" / "opencode" / "agent"
 
 PERM = re.compile(r"^- ((?:`[\w-]+`(?:, )?)+)\s*→\s*\*\*edit: (deny|allow)\*\*", re.M)
 ROLE = re.compile(r"`([\w-]+)`")
@@ -52,12 +53,14 @@ class TestTheRosterIsTheOnlySource(unittest.TestCase):
                 self.assertNotIn("disallowedTools:", p.read_text(encoding="utf-8"),
                                  "permissions are derived from the roster, not authored here")
 
-    def test_opencode_json_holds_no_agent_block(self):
-        # It used to hold six hand-written prompts that had already drifted from src/agents/.
-        import json
-        with open(ROOT / "opencode.json", encoding="utf-8") as fh:
-            self.assertNotIn("agent", json.load(fh),
-                             "the opencode roster is generated into plugins/*/adapters/opencode/")
+    def test_the_opencode_roster_ships_inside_the_plugin(self):
+        # This used to assert that the ROOT opencode.json held no `agent` block — that file once
+        # carried six hand-written prompts which had already drifted from src/agents/. The file is
+        # gone now (it was config for this repo, which no installing user works in), so the real
+        # claim is the positive one: the roster reaches the user through the built plugin.
+        placed = sorted(PLUGINS.glob("*/adapters/opencode/agent/*.md"))
+        self.assertTrue(placed, "the opencode roster must be generated into plugins/*/adapters/")
+        self.assertEqual({p.stem for p in placed}, set(roster()))
 
 
 class TestBothHostsAreDerived(unittest.TestCase):
