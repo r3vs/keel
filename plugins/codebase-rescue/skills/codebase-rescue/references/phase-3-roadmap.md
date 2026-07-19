@@ -15,10 +15,10 @@ dependency graph.
    shape `depends_on` that contract pin; an `align` item `depends_on` the "elect canonical
    source" decision that tells it which layer is truth.
 3. **Topologically sort.** Within a topological level, order by `severity`, then `effort`
-   (cheap wins first). **Blast-radius (`graph.py`) is the risk tie-breaker** — a fix that fans out
-   to more of the graph is sequenced and reviewed with more care, and its affected set can be
-   projected onto the map as an impact overlay (`{changedNodeIds, affectedNodeIds}`) so the user
-   sees the ripple before approving.
+   (cheap wins first). **Blast-radius is the risk tie-breaker** — a fix that fans out to more of the
+   graph is sequenced and reviewed with more care. `scripts/runtime/impact.py` computes the overlay
+   (`{changed_node_ids, affected_node_ids, affected_layers, unmapped_files, risk}`) from the changed
+   files; project its affected set onto the map so the user sees the ripple before approving.
 4. **Detect cycles.** Mutual `depends_on` = a knot (e.g. two contracts each assumed as the
    other's truth). Surface it as a blocker pin: the user must pick which to break first. Do not
    auto-resolve.

@@ -192,14 +192,19 @@ Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its b
 - [x] **E1** verified the roster emits **no** agent `model:` frontmatter on any host (the UA #167
       bug structurally cannot occur here) and **guarded it** with a regression test.
       `tests/test_roster_generation.py::...test_no_host_emits_a_model_frontmatter_line`.
+- [x] **C2** `runtime/impact.py` — diff/impact overlay: changed + affected (reverse-reachable) nodes,
+      affected layers, **unmapped files** (new/renamed → re-analyze), and a deterministic risk read;
+      wired into Phase 3 (roadmap risk tie-break) and Phase 5 (change-scope check). `tests/test_impact.py`.
+- [x] **C1** `runtime/docs_claims.py` — docs-as-claims floor: extract claims + their code references
+      from markdown, resolve against the graph, surface **dangling** references as *candidate* pins
+      (`inferred`, `doc_claim`, `to_be` null — never assertions). `tests/test_docs_claims.py`.
+- [x] **C3** `runtime/domain.py` — framework-agnostic entry-point detector (HTTP/CLI/task/event/cron
+      via `ast` decorators + `__main__`), the deterministic raw material an agent lifts into
+      Domain → Flow → Step. `tests/test_domain.py`.
 
 Still open (code — each its own PR; effort S/M/L per the study):
 - [ ] **A1 (tree-sitter)** per-language symbol extraction for non-Python (declarative query table
       mirroring `treesitter_extract.STACKS`), so JS/TS/Go/… get symbols, not just file nodes (M).
-- [ ] **C1** docs→claim extractor + claim-vs-code diff emitting pins (M).
-- [ ] **C2** diff/impact overlay sidecar (`{changedNodeIds, affectedNodeIds}`) in `runtime/map.py`
-      + "unmapped files → needs re-analysis" signal for Phase 3 / Phase 5 (S).
-- [ ] **C3** domain view module (Domain→Flow→Step + framework-agnostic entry-point detector) (M).
 - [ ] **D1–D4** layered-lens + container heuristic + type/layer colouring + hand-rolled SVG export
       in `runtime/map.py` (S–M).
 - [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
