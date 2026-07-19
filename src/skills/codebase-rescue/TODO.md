@@ -167,22 +167,35 @@ Applied now (design / prose; CI-green):
       Its affordances are powered by follow-ups C3 / C4 / D below, plus a heuristic tour generator and
       a graph query surface. → `SKILL.md`, `references/phase-1-comprehension.md` ("Comprehension as an end")
 
-Follow-up (code — each its own PR; effort S/M/L per the study):
-- [ ] **A1** tree-sitter structural builder + NetworkX exporter feeding `runtime/graph.py` (M).
+Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its backbone):
+- [x] **A1 (Python-complete)** `runtime/graph_build.py` — deterministic structural builder emitting
+      the exact node-link `graph.json` `runtime/graph.py` consumes: file/function/class/method nodes,
+      `contains`/`imports`/`calls` edges, per-file `layer`, `built_at_commit`. Python via stdlib
+      `ast` (imports resolved only when unambiguous — no fabrication). **Still open:** the tree-sitter
+      symbol extractor for other languages (a `STACKS`-style query table; today they get file nodes).
+      `tests/test_graph_build.py`.
+- [x] **B1** graph validate/repair — `graph_build.validate_repair`: drop no-id / duplicate nodes,
+      **drop dangling edges** (referential integrity), coerce confidence, lowercase edge types,
+      return a showable `GraphIssue[]`. `tests/test_graph_build.py::TestValidateRepair`.
+- [x] **C4** `runtime/explain.py` — explain-a-node drill-down (resolve id/path/path:symbol → graph
+      neighborhood + read real source, fixed 5-point checklist). `tests/test_explain.py`.
+- [x] **C5** `runtime/tours.py` — dependency-ordered guided tour (entry-point-first BFS, grouped by
+      layer, LLM-free). `tests/test_tours.py`.
+- [x] **C6** `runtime/query.py` — weighted graph query surface (name/summary/tag search → 1-hop
+      expansion). `tests/test_query.py`.
+- [x] **orchestrator** `runtime/understand.py` — the mode entrypoint: build → layered overview
+      (languages · layers · hotspots) → tour, persisted to disk; pure as-is (no `to_be`/interview).
+      `tests/test_understand.py`.
+
+Still open (code — each its own PR; effort S/M/L per the study):
+- [ ] **A1 (tree-sitter)** per-language symbol extraction for non-Python (declarative query table
+      mirroring `treesitter_extract.STACKS`), so JS/TS/Go/… get symbols, not just file nodes (M).
 - [ ] **A2** `runtime/fingerprint.py` — signature fingerprints + change classifier (SKIP / PARTIAL /
       ARCHITECTURE / FULL); copy the "baseline before meta" and LOAD-PATCH-SAVE store-wipeout guards (M).
-- [ ] **B1** graph validate/repair in `runtime/graph.py` (sanitize → normalize → autoFix →
-      drop-broken) returning a showable `GraphIssue[]` (M).
 - [ ] **C1** docs→claim extractor + claim-vs-code diff emitting pins (M).
 - [ ] **C2** diff/impact overlay sidecar (`{changedNodeIds, affectedNodeIds}`) in `runtime/map.py`
       + "unmapped files → needs re-analysis" signal for Phase 3 / Phase 5 (S).
 - [ ] **C3** domain view module (Domain→Flow→Step + framework-agnostic entry-point detector) (M).
-- [ ] **C4** explain-a-node drill-down (graph neighborhood + read real source, fixed checklist) —
-      powers the `understand` mode's deep-dive (S).
-- [ ] **C5** heuristic guided-tour generator (BFS/topo from the top entry point, grouped by layer) —
-      powers the `understand` mode's tours (S–M).
-- [ ] **C6** graph query surface (name/summary/tag search → 1-hop expansion, reason over the subgraph)
-      — powers the `understand` mode's query + pin Q&A (S).
 - [ ] **D1–D4** layered-lens + container heuristic + type/layer colouring + hand-rolled SVG export
       in `runtime/map.py` (S–M).
 - [ ] **E1** verify the adapters omit agent `model` frontmatter (opencode/pi reject `inherit` as a

@@ -9,12 +9,16 @@ problems, not codebase size.
 Build a local, multi-language **structural graph** — the spine every later step queries instead of
 re-reading files, which is what keeps a too-large codebase inside bounded context.
 
-**Build it from tree-sitter, the parser the runtime already loads** (`scripts/runtime/treesitter_extract.py`).
-The step-0 gating verdict (`references/contract-reconciliation.md`) settled what the graph is good
-for — the **structural spine** (files, symbols, tables as EXTRACTED nodes; `imports`/`calls`/
-`references` as EXTRACTED edges) — and what it is not (no field-level cross-layer correspondence). A
-tree-sitter-native builder produces exactly that spine, deterministically and offline, with no
-dependency whose output we then discard. **Graphify** (MIT, pip `graphifyy`) stays an *optional*
+**Build it yourself** with `scripts/runtime/graph_build.py` — a deterministic structural builder
+(Python via the stdlib `ast` today; the tree-sitter path in `scripts/runtime/treesitter_extract.py`
+generalizes it to other languages, the additive next step). It emits exactly the node-link
+`graph.json` that `scripts/runtime/graph.py` consumes, so anchoring, blast-radius, and the
+`understand`-mode tools read it with no adapter. The step-0 gating verdict
+(`references/contract-reconciliation.md`) settled what the graph is good for — the **structural
+spine** (files, symbols, tables as EXTRACTED nodes; `imports`/`calls`/`references` as EXTRACTED
+edges) — and what it is not (no field-level cross-layer correspondence). A tree-sitter-native builder
+produces exactly that spine, deterministically and offline, with no dependency whose output we then
+discard. **Graphify** (MIT, pip `graphifyy`) stays an *optional*
 source of a compatible `graph.json`, no longer required: its cross-layer edges are the INFERRED tier
 we already refuse to ride, and on a real repo it yielded ~0 usable semantic edges. GitNexus stays
 optional/secondary (noncommercial; code-structure only).
@@ -41,10 +45,10 @@ Requirements:
   `confidence`, which the severity threshold uses. This node/edge-level confidence is ours to keep: a
   graph that carries only an edge weight cannot feed the severity threshold.
 - **Validate/repair the graph on load**, before anything trusts it — the guardrail sibling of
-  fp-check for an LLM-authored graph: drop nodes that don't parse, **drop edges whose endpoints don't
-  resolve** (referential integrity), filter dangling ids out of any grouping, normalize aliased
-  type/edge names to the canonical set, and emit a showable issue list. A dangling edge trusted at
-  anchor time is a wrong blast-radius later.
+  fp-check for an LLM-authored graph (`validate_repair` in `scripts/runtime/graph_build.py`): drop
+  nodes that don't parse, **drop edges whose endpoints don't resolve** (referential integrity),
+  filter dangling ids out of any grouping, normalize aliased type/edge names to the canonical set,
+  and emit a showable issue list. A dangling edge trusted at anchor time is a wrong blast-radius later.
 
 **Incremental by fingerprint — the `resume` / re-audit path.** Store a signature-level fingerprint
 per file: a content hash for the fast "unchanged" path, plus a hash of *signatures* (function
@@ -162,26 +166,30 @@ same map, same disk-artifact discipline; what changes is that nothing downstream
 no roadmap, no remediation) and the surface is tuned for *navigation and teaching* rather than for
 feeding a fix.
 
-Add these comprehension affordances — all read-only projections over the graph/ledger, holding no
-state of their own (the same anti-divergence rule as the map):
+Run the mode with `scripts/runtime/understand.py <root>`: it builds the graph
+(`scripts/runtime/graph_build.py`), computes a layered overview (languages · layers · hotspots =
+most-depended-upon nodes), and generates the tour, writing the bundle to disk so every surface below
+reads one artifact. All of these are read-only projections over the graph, holding no state of their
+own (the same anti-divergence rule as the map):
 
-- **Guided tours, dependency-ordered.** A short walkthrough that starts at the top entry point and
-  follows imports/calls outward (a BFS / topological reading order), grouped by layer — the "learn it
-  in the right order" path. Heuristic generation needs no LLM; the semantic pass only names and
-  narrates the steps.
-- **Explain-a-node drill-down.** For any node (or pin), assemble its graph neighborhood — its
-  contains-children, its 1-hop callers/callees, its owning layer — **and then read the real source**
-  at its `source_location` for ground truth, against a fixed checklist (purpose · data flow ·
-  interactions · patterns · gotchas). The graph gives the map; the source gives the detail.
-- **A query surface over the graph.** Answer "which parts handle auth?" / "what depends on X?" by
-  retrieving a relevant subgraph (name/summary/tag search → 1-hop expansion) and reasoning over it,
-  instead of dumping files into context. It reads the same graph the map projects.
-- **Domain view (optional).** A framework-agnostic entry-point scan (HTTP routes, CLI, cron, events,
+- **Guided tours, dependency-ordered** (`scripts/runtime/tours.py`). A short walkthrough that starts
+  at the top entry point (what nothing imports) and follows imports outward (a BFS reading order),
+  grouped by layer — the "learn it in the right order" path. Heuristic and LLM-free; the semantic
+  pass only names and narrates the steps.
+- **Explain-a-node drill-down** (`scripts/runtime/explain.py`). For any node (or pin), assemble its
+  graph neighborhood — its contains-children, its 1-hop dependencies/dependents, its owning layer —
+  **and then read the real source** at its `source_location` for ground truth, against a fixed
+  checklist (purpose · data flow · interactions · patterns · gotchas). The graph gives the map; the
+  source gives the detail.
+- **A query surface over the graph** (`scripts/runtime/query.py`). Answer "which parts handle auth?"
+  / "what depends on X?" by retrieving a relevant subgraph (weighted name/summary/tag search → 1-hop
+  expansion) and reasoning over it, instead of dumping files into context.
+- **Domain view (follow-up).** A framework-agnostic entry-point scan (HTTP routes, CLI, cron, events,
   GraphQL/gRPC handlers) lifted into a Domain → Flow → Step business hierarchy, so a newcomer sees
   what the system *does* in business terms before touching a line.
-- **Persona-adaptive rendering.** One graph, several deterministic projections (a file-level
-  onboarding overview, an exec summary, a power-user full map) via pure templating over the ledger —
-  no second LLM pass.
+- **Persona-adaptive rendering (follow-up).** One graph, several deterministic projections (a
+  file-level onboarding overview, an exec summary, a power-user full map) via pure templating over
+  the graph — no second LLM pass.
 
 Discipline that keeps this on-thesis: `understand` is the **only** place comprehension is terminal,
 and it is terminal *because it stays descriptive* — it never invents a `to_be`, never asserts a fix,
