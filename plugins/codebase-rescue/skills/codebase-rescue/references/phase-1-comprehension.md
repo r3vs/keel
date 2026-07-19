@@ -50,14 +50,16 @@ Requirements:
   filter dangling ids out of any grouping, normalize aliased type/edge names to the canonical set,
   and emit a showable issue list. A dangling edge trusted at anchor time is a wrong blast-radius later.
 
-**Incremental by fingerprint — the `resume` / re-audit path.** Store a signature-level fingerprint
-per file: a content hash for the fast "unchanged" path, plus a hash of *signatures* (function
-params/returns/exports, class members, imports). A change that leaves signatures intact (formatting,
-internal logic) is COSMETIC and spends **zero** model tokens; only STRUCTURAL deltas re-run the
-semantic pass, and a large or architectural delta escalates to a fuller rebuild. This is what makes
-`resume` and repeated audits cheap instead of a full re-analysis each time. Guard two known failure
-modes: write the fingerprint baseline *before* the graph's `built_at_commit`, and never let a
-load-patch-save overwrite a non-empty store with an empty one.
+**Incremental by fingerprint — the `resume` / re-audit path** (`scripts/runtime/fingerprint.py`).
+Store a signature-level fingerprint per file: a content hash for the fast "unchanged" path, plus the
+*signature* (function params/returns/exports, class members, imports). A change that leaves the
+signature intact (formatting, internal logic) is **COSMETIC** and spends **zero** model tokens; only
+**STRUCTURAL** deltas re-run the semantic pass; the whole-tree verdict then classifies to
+**SKIP / PARTIAL / ARCHITECTURE / FULL** (`fingerprint.classify_update`). This is what makes `resume`
+and repeated audits cheap instead of a full re-analysis each time. Two guards are load-bearing (each
+encodes a real bug): write the fingerprint baseline *before* the graph's `built_at_commit` (the store
+stamps the same commit), and never let a load-patch-save overwrite a non-empty store with an empty one
+(`fingerprint.save_store` refuses).
 
 ## Step 2 — As-is map (visual-first, descriptive)
 

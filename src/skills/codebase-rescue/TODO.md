@@ -186,20 +186,22 @@ Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its b
 - [x] **orchestrator** `runtime/understand.py` — the mode entrypoint: build → layered overview
       (languages · layers · hotspots) → tour, persisted to disk; pure as-is (no `to_be`/interview).
       `tests/test_understand.py`.
+- [x] **A2** `runtime/fingerprint.py` — signature fingerprints (COSMETIC vs STRUCTURAL) + change
+      classifier (SKIP / PARTIAL / ARCHITECTURE / FULL); both guards implemented (commit stamped with
+      the store; `save_store` refuses to wipe a non-empty baseline). `tests/test_fingerprint.py`.
+- [x] **E1** verified the roster emits **no** agent `model:` frontmatter on any host (the UA #167
+      bug structurally cannot occur here) and **guarded it** with a regression test.
+      `tests/test_roster_generation.py::...test_no_host_emits_a_model_frontmatter_line`.
 
 Still open (code — each its own PR; effort S/M/L per the study):
 - [ ] **A1 (tree-sitter)** per-language symbol extraction for non-Python (declarative query table
       mirroring `treesitter_extract.STACKS`), so JS/TS/Go/… get symbols, not just file nodes (M).
-- [ ] **A2** `runtime/fingerprint.py` — signature fingerprints + change classifier (SKIP / PARTIAL /
-      ARCHITECTURE / FULL); copy the "baseline before meta" and LOAD-PATCH-SAVE store-wipeout guards (M).
 - [ ] **C1** docs→claim extractor + claim-vs-code diff emitting pins (M).
 - [ ] **C2** diff/impact overlay sidecar (`{changedNodeIds, affectedNodeIds}`) in `runtime/map.py`
       + "unmapped files → needs re-analysis" signal for Phase 3 / Phase 5 (S).
 - [ ] **C3** domain view module (Domain→Flow→Step + framework-agnostic entry-point detector) (M).
 - [ ] **D1–D4** layered-lens + container heuristic + type/layer colouring + hand-rolled SVG export
       in `runtime/map.py` (S–M).
-- [ ] **E1** verify the adapters omit agent `model` frontmatter (opencode/pi reject `inherit` as a
-      literal model id) (S).
 - [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
       design-system alignment becomes an explicit goal (L).
 
