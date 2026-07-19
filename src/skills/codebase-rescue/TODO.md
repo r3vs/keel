@@ -161,6 +161,11 @@ Applied now (design / prose; CI-green):
       `internal_contradiction` pin). → `references/phase-1-comprehension.md`
 - [x] Align Step 2 to the single-file map + **layered-lens** legibility patterns (also fixes the
       stale CodeWiki framing). → `references/phase-1-comprehension.md`
+- [x] **Added the `understand` mode** — comprehension as an *end* (navigable map + dependency-ordered
+      tours + explain-a-node + query surface, Phase 1 only, no interview/remediation): the
+      Understand-Anything finality, kept strictly descriptive so it never becomes a second product.
+      Its affordances are powered by follow-ups C3 / C4 / D below, plus a heuristic tour generator and
+      a graph query surface. → `SKILL.md`, `references/phase-1-comprehension.md` ("Comprehension as an end")
 
 Follow-up (code — each its own PR; effort S/M/L per the study):
 - [ ] **A1** tree-sitter structural builder + NetworkX exporter feeding `runtime/graph.py` (M).
@@ -172,6 +177,12 @@ Follow-up (code — each its own PR; effort S/M/L per the study):
 - [ ] **C2** diff/impact overlay sidecar (`{changedNodeIds, affectedNodeIds}`) in `runtime/map.py`
       + "unmapped files → needs re-analysis" signal for Phase 3 / Phase 5 (S).
 - [ ] **C3** domain view module (Domain→Flow→Step + framework-agnostic entry-point detector) (M).
+- [ ] **C4** explain-a-node drill-down (graph neighborhood + read real source, fixed checklist) —
+      powers the `understand` mode's deep-dive (S).
+- [ ] **C5** heuristic guided-tour generator (BFS/topo from the top entry point, grouped by layer) —
+      powers the `understand` mode's tours (S–M).
+- [ ] **C6** graph query surface (name/summary/tag search → 1-hop expansion, reason over the subgraph)
+      — powers the `understand` mode's query + pin Q&A (S).
 - [ ] **D1–D4** layered-lens + container heuristic + type/layer colouring + hand-rolled SVG export
       in `runtime/map.py` (S–M).
 - [ ] **E1** verify the adapters omit agent `model` frontmatter (opencode/pi reject `inherit` as a

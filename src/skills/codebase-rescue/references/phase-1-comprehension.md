@@ -152,3 +152,40 @@ The wiki's pin layer is rendered by `render_map` (`python scripts/runtime/map.py
 — one self-contained HTML file, no build step and no external fetch, holding **no state of its own**:
 it projects the ledger. Regenerate it rather than editing it; an edited map is a fourth source of
 truth, which is the divergence this whole phase exists to end.
+
+## Comprehension as an end — the `understand` mode
+
+Every other mode treats this phase as a **means**: build the as-is so Phase 2 can elect the to-be.
+The `understand` mode stops here and makes the **understanding itself** the deliverable — the "I just
+want to learn / onboard onto this codebase" use case (the Understand-Anything finality). Same graph,
+same map, same disk-artifact discipline; what changes is that nothing downstream runs (no interview,
+no roadmap, no remediation) and the surface is tuned for *navigation and teaching* rather than for
+feeding a fix.
+
+Add these comprehension affordances — all read-only projections over the graph/ledger, holding no
+state of their own (the same anti-divergence rule as the map):
+
+- **Guided tours, dependency-ordered.** A short walkthrough that starts at the top entry point and
+  follows imports/calls outward (a BFS / topological reading order), grouped by layer — the "learn it
+  in the right order" path. Heuristic generation needs no LLM; the semantic pass only names and
+  narrates the steps.
+- **Explain-a-node drill-down.** For any node (or pin), assemble its graph neighborhood — its
+  contains-children, its 1-hop callers/callees, its owning layer — **and then read the real source**
+  at its `source_location` for ground truth, against a fixed checklist (purpose · data flow ·
+  interactions · patterns · gotchas). The graph gives the map; the source gives the detail.
+- **A query surface over the graph.** Answer "which parts handle auth?" / "what depends on X?" by
+  retrieving a relevant subgraph (name/summary/tag search → 1-hop expansion) and reasoning over it,
+  instead of dumping files into context. It reads the same graph the map projects.
+- **Domain view (optional).** A framework-agnostic entry-point scan (HTTP routes, CLI, cron, events,
+  GraphQL/gRPC handlers) lifted into a Domain → Flow → Step business hierarchy, so a newcomer sees
+  what the system *does* in business terms before touching a line.
+- **Persona-adaptive rendering.** One graph, several deterministic projections (a file-level
+  onboarding overview, an exec summary, a power-user full map) via pure templating over the ledger —
+  no second LLM pass.
+
+Discipline that keeps this on-thesis: `understand` is the **only** place comprehension is terminal,
+and it is terminal *because it stays descriptive* — it never invents a `to_be`, never asserts a fix,
+never opens the interview. Findings, if run at all, render as neutral "here be dragons" annotations,
+not a backlog. The moment the user wants to *change* something they are in `rescue` / `align`, not
+here. That boundary is what lets the skill serve the "understand a codebase" finality without the
+comprehension engine quietly becoming the product.

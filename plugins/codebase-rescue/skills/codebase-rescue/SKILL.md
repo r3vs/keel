@@ -71,6 +71,13 @@ Select scope up front; when unsure, ask once with 2–3 options rather than assu
 - **`resume`** — like `rescue` but weighted toward `incompleteness`: what is stubbed vs
   missing vs done, and what to build next. Also the entry point for pins reopened by the shared
   feedback loop (`references/core/feedback-loop.md`) when a live system's `flip_criteria` fire.
+- **`understand`** — comprehension as the deliverable, not a step: **Phase 1 only**, but the output
+  is the navigable understanding itself — the layered as-is map + dependency-ordered guided tours +
+  an explain-a-node drill-down + a query surface over the graph — for **learning / onboarding** onto
+  an unfamiliar codebase. Stops at the **as-is**: no interview, no `to_be`, no roadmap, no
+  remediation — the one mode where understanding is the *end*, not the means (`audit` reports
+  problems; `understand` teaches how the system fits together). Findings, if run, are neutral map
+  annotations, never a backlog. See "Comprehension as an end" in `references/phase-1-comprehension.md`.
 
 ## The five phases
 

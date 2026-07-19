@@ -319,6 +319,15 @@ HTTP/token/allowlist server (only relevant if we ever *serve* rather than *embed
 study pass has no business editing it; C1 (docs-as-claims) already lands cleanly in Phase-1 Step 3,
 and F1 (design↔frontend) is greenfield future scope recorded in the TODO.
 
+**Update (follow-on decision).** Acting on the finality question in §2 — *does this repo also want
+comprehension as an end, the way UA does?* — an **`understand` mode** was added: comprehension as the
+deliverable (navigable map + dependency-ordered tours + explain-a-node + a query surface), **Phase 1
+only, no interview / no remediation**. It gives UA's own use case ("I just want to understand /
+onboard onto this codebase, not fix it") a first-class home while staying strictly *descriptive* — it
+never invents a `to_be` — so the comprehension engine serves the skill without becoming a second
+product. Spec: `SKILL.md` Modes + `references/phase-1-comprehension.md` ("Comprehension as an end");
+its affordances are powered by follow-ups C3–C6 + the D-series map work.
+
 **Deliberately not applied now (implementation, needs its own change):** the tree-sitter builder
 + NetworkX exporter (A1), `runtime/fingerprint.py` (A2), the validate/repair code (B1), the
 docs-as-claim extractor (C1), the diff-overlay sidecar in `map.py` (C2), and the domain module (C3).
