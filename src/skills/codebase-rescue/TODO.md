@@ -144,6 +144,41 @@ HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a
 - [x] Claude Code marketplace: `.claude-plugin/marketplace.json` + `plugin.json` (plus opencode,
       Codex, and AGENTS.md adapters — see `docs/packaging.md`).
 
+## 7. Adopt from Understand-Anything (MIT) — study `docs/studies/understand-anything.md` (2026-07-19)
+Understand-Anything is a shipping, MIT-licensed Phase-1 comprehension engine (tree-sitter graph +
+incremental fingerprints + shareable viewer). It has **no** to-be / ledger / interview, so everything
+here slots **under Phase 1** and must not pull the skill's center of gravity back to comprehension.
+Full rationale + the balanced comparison (incl. where our design already leads) are in the study.
+
+Applied now (design / prose; CI-green):
+- [x] Reframe the Phase-1 backbone to a **tree-sitter-native builder**; Graphify demoted to optional
+      (step-0 WEAK). → `references/phase-1-comprehension.md`, `references/toolchain.md`
+- [x] State the **deterministic-facts / LLM-semantics split** as a Phase-1 rule; add `importMap` +
+      1:1 edge self-check + deterministic recovery. → `references/phase-1-comprehension.md`
+- [x] Add the **graph validate/repair guardrail** (drop-broken + referential integrity) and
+      **incremental fingerprinting** for `resume`/re-audit. → `references/phase-1-comprehension.md`
+- [x] Add **docs-as-`claim`-nodes** as a finding source (doc claim vs code → `contract_mismatch` /
+      `internal_contradiction` pin). → `references/phase-1-comprehension.md`
+- [x] Align Step 2 to the single-file map + **layered-lens** legibility patterns (also fixes the
+      stale CodeWiki framing). → `references/phase-1-comprehension.md`
+
+Follow-up (code — each its own PR; effort S/M/L per the study):
+- [ ] **A1** tree-sitter structural builder + NetworkX exporter feeding `runtime/graph.py` (M).
+- [ ] **A2** `runtime/fingerprint.py` — signature fingerprints + change classifier (SKIP / PARTIAL /
+      ARCHITECTURE / FULL); copy the "baseline before meta" and LOAD-PATCH-SAVE store-wipeout guards (M).
+- [ ] **B1** graph validate/repair in `runtime/graph.py` (sanitize → normalize → autoFix →
+      drop-broken) returning a showable `GraphIssue[]` (M).
+- [ ] **C1** docs→claim extractor + claim-vs-code diff emitting pins (M).
+- [ ] **C2** diff/impact overlay sidecar (`{changedNodeIds, affectedNodeIds}`) in `runtime/map.py`
+      + "unmapped files → needs re-analysis" signal for Phase 3 / Phase 5 (S).
+- [ ] **C3** domain view module (Domain→Flow→Step + framework-agnostic entry-point detector) (M).
+- [ ] **D1–D4** layered-lens + container heuristic + type/layer colouring + hand-rolled SVG export
+      in `runtime/map.py` (S–M).
+- [ ] **E1** verify the adapters omit agent `model` frontmatter (opencode/pi reject `inherit` as a
+      literal model id) (S).
+- [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
+      design-system alignment becomes an explicit goal (L).
+
 ---
 
 ## Open decisions — resolved
@@ -165,7 +200,8 @@ HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a
 - [x] SKILL.md orchestrator: 5 phases, 4 modes, guardrails.
 - [x] 16 module/phase playbooks written (no stubs; drift-linter green).
 - [x] Graphify chosen as backbone; external constraint validated (node IDs ✓, cross-layer as
-      INFERRED hints, field-level diff computed by the skill).
+      INFERRED hints, field-level diff computed by the skill). → **reframed 2026-07-19: tree-sitter-native
+      builder now recommended, Graphify optional (see §7 + the study).**
 - [x] Two-track TDD + restartable per-item remediation loop with wave checkpoints.
 - [x] bootstrap.sh (toolchain) + check_consistency.py (drift-linter) + evals scaffold.
 - [x] Ledger v0.6: `ChallengeEvent` (upstream oracle red-team) + `agent_assumption` provenance; the
