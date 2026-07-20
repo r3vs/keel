@@ -1,8 +1,28 @@
 # Deterministic Toolchain
 
 Install with `scripts/bootstrap.sh` (Python + Node assumed). Every tool is best-effort: a
-missing tool degrades to model judgment, never a hard failure. Normalize all output to
-SARIF/JSON so fp-check and the interview see one format.
+missing tool degrades to model judgment, never a hard failure.
+
+**Normalization is a command, not an aspiration.** Every tool below emits SARIF or JSON; one
+runtime turns that into pins:
+
+```bash
+python scripts/runtime/findings.py .audit/*.sarif .audit/*.json
+```
+
+That is the single entry point for every finding module (security, maintainability,
+placeholder-stub, test-validity, type-check, architecture-fitness). It normalizes, gates through
+fp-check, clusters by root cause, and maps survivors to `defect` / `incompleteness` pins. The line
+that used to stand here — *"normalize all output to SARIF/JSON so fp-check and the interview see
+one format"* — described this and never said to run it, which is how a tested implementation and a
+playbook that reimplements it by judgment end up side by side.
+
+**Type-checker output is the exception worth knowing:** `findings.py` marks rule-ids prefixed
+`mypy` / `tsc` / `pyright` / `typecheck` / `compile` / `syntax` as **deterministic**, so they skip
+fp-check entirely and are never DROPPED as suspected false positives. A proven diagnostic needs no
+corroboration (`references/core/static-analysis.md`). That is also why it is worth authoring
+constraints so the strongest signal applies: a boundary expressed as an import-linter rule becomes
+a fact, where the same boundary expressed in prose stays an opinion.
 
 ## Always-on (multi-language, fast install)
 - **tokei / scc** — census: which languages exist → which gated tools to run; complexity estimate.

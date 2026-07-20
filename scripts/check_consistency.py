@@ -31,6 +31,13 @@ errors, warnings = [], []
 REF_RE = re.compile(r"`(references/[\w\-./]+\.md)`")   # skill-relative
 CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 
+# A module's playbook "names a runnable" when it cites the vendored runtime path an agent can
+# execute. Anchored on the SHIPPED form (`scripts/runtime/x.py`) for the same reason the build's
+# closure is: that is the only spelling that resolves once installed, and it is what
+# verify_commands.py already validates. Naming a tool (`semgrep`) is not naming a mechanism — the
+# tool emits SARIF, and SARIF that reaches no ingester reaches no pin.
+RUNNABLE_RE = re.compile(r"scripts/runtime/\w+\.py")
+
 
 SRC_CORE = ROOT / "src" / "core"
 
@@ -84,6 +91,14 @@ for skill, rel in SKILLS.items():
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' has no reference")
             elif not ref_resolves(ref, sroot):
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' -> missing reference '{ref}'")
+            elif m.get("type") == "deterministic" and not RUNNABLE_RE.search(
+                    read(sroot / ref)):
+                errors.append(
+                    f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but its "
+                    f"playbook '{ref}' names no runnable — a deterministic module the agent must "
+                    "execute by judgment is prose wearing a mechanism's label. Name the command "
+                    "(`scripts/runtime/x.py`), or declare type=judgment and mean it"
+                )
 
     if not skill_path.exists():
         errors.append(f"[{skill}] missing SKILL.md")

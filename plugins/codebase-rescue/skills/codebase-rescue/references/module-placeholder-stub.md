@@ -33,9 +33,24 @@ semantic patterns (they need AST context), ripgrep for the pure-text fast first 
 
 ## Output
 
+```bash
+ast-grep scan --config assets/ast-grep/sgconfig.yml --json > .audit/ast-grep.json
+# ast-grep also emits SARIF: --format sarif. Prefer it when available — findings.py reads SARIF
+# natively, and a native format needs no hand-translation to go wrong.
+
+python scripts/runtime/findings.py .audit/ast-grep.sarif
+```
+
 `defect` (reachable placeholder on a live path — e.g. fake auth) or `incompleteness`
-(unfinished stub), clustered by pattern. Everything then passes `fp-check` (reachability +
-framework suppression) before surfacing.
+(unfinished stub), clustered by pattern. `findings.py` performs that clustering and applies
+`fp-check` (reachability + framework suppression) — it is the same gate every other finding module
+feeds, which is exactly why a placeholder and an SQLi arrive at the ledger comparable.
+
+**The reachability oracle is injected, not faked.** `findings.py` takes a `reachable(file)`
+predicate from the graph and defaults unknown → keep, so a missing graph never silently drops a
+real bug. Run `graph-build` first when you can; when you cannot, findings surface conservatively
+rather than disappearing. Never substitute your own judgment of reachability for that predicate —
+step 3 below tells you what reachability *means* here, not that you should guess it.
 
 ## Relationship to completeness
 Placeholder-stub finds the shape; completeness + fp-check classify intent and reachability.

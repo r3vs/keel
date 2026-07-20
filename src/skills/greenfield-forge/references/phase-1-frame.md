@@ -64,6 +64,17 @@ completeness traffic-light starts **all-red by design** — nothing is built, an
 correct starting state, not an error (the exact inverse of rescue, where red means broken). As the
 build loop resolves items, these nodes flip ghost→solid and the map converges toward all-green.
 
+**Render it — do not draw it by hand:**
+
+```bash
+python scripts/runtime/map.py ledger.json -o map.html
+```
+
+The same renderer rescue uses, with a built-in as-is/to-be toggle: your `open_decision` and
+`acceptance_criterion` pins render their `to_be` (the design), where rescue's render their `as_is`
+(the extracted mess). The map holds **no state of its own** — it is a view over `ledger.json`, so
+re-running it after any pin changes is how it stays true. Nothing here is hand-maintained.
+
 ## Output
 
 `ledger.json` populated with `acceptance_criterion` pins (the DAG roots), `open_decision` pins

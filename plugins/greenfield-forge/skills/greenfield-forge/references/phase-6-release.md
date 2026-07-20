@@ -17,7 +17,17 @@ elected, that is an `open_decision` to resolve first — never release on an unm
    what makes the release zero-downtime *by construction*, not by luck.
 2. **Version & changelog from the ledger.** Cut a version (semver), and generate the changelog
    **from the ledger's `DecisionEvent`s and `BuildItem`s** — the ledger already records what
-   changed and why, so the changelog is a projection, not hand-written prose.
+   changed and why, so the changelog is a projection, not hand-written prose. Read it from the
+   carrier, never from memory of the session:
+
+   ```bash
+   python scripts/runtime/ledger.py summary ledger.json
+   ```
+
+   The `decision_log` is what a changelog entry *is*: each `DecisionEvent` carries the elected
+   option and its rationale. Writing the changelog from recollection instead is how a release note
+   and the decision it describes drift apart — the exact divergence this package exists to prevent,
+   committed at the moment it becomes public.
 3. **Feature-flag if not ready for all.** Ship behind a flag when the slice isn't ready for every
    user. The flag is code + a decision (with a `flip_criteria`: "remove the flag when adoption /
    error-rate crosses X").

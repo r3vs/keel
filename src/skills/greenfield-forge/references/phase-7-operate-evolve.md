@@ -20,6 +20,19 @@ From the observability decisions (a decided NFR in Phase 2), the code emits:
   `manual_checkpoint`). **This is the physical anchor of the feedback arc** — without it, the
   arc has no inputs, which is why this slice is a precondition of Evolve, not an extra.
 
+**Enumerate the signals from the carrier, not from the session:**
+
+```bash
+python scripts/runtime/ledger.py summary ledger.json
+```
+
+Every elected decision carries a `flip_criteria`, and `ledger.py` refuses a `decide()` without one
+(*"a decision without a reopen condition fossilizes"*) — so the ledger already holds the complete
+list of what must be watched. The manifest is the join between that list and real telemetry, and a
+decision whose `flip_signal` maps to nothing is an **unwatched** decision: it can never reopen, and
+the loop silently stops closing for it. Deriving the manifest from anywhere but the ledger is how
+that gap opens without anyone seeing it.
+
 ## Evolve — turn the loop (via the shared feedback loop)
 
 Run `references/core/feedback-loop.md`: evaluate the `flip_signal`s against the manifest's telemetry, and on
