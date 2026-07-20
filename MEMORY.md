@@ -38,10 +38,20 @@ Loaded as always-on context by AGENTS.md-aware agents (opencode, Codex, Pi). **C
 - **Give a fact one source and let the build derive every host's shape** — never hand-mirror, and
   never grep prose for it. The roster's write verb lives in `src/core/agents.md`'s table
   (→ `disallowedTools` for Claude, `permission: {edit: …}` for opencode); the required MCP servers
-  live in `src/core/knowledge-sources.md`'s table. Residual nothing closes: **`Bash` is a write
-  vector Claude Code cannot restrict** — the ledger-state hook closes it at runtime.
-- Generic engineering skills (TDD, debugging, planning, review) are **composed** from `superpowers`,
-  not authored here — don't reinvent them.
+  live in `src/core/knowledge-sources.md`'s table. Residual nothing closes, **stated precisely**
+  (2026-07-17: the old wording *"`Bash` is a write vector Claude Code cannot restrict"* is false —
+  `Bash(rm *)` matchers exist): **a plugin cannot ship a selective Bash rule nor scope one to one
+  agent** — agent frontmatter takes tool names only, `permissionMode` is ignored for plugin
+  subagents, and the manifest has no permissions property. Only the user's own `settings.json` can,
+  session-wide. The ledger-state hook closes it at runtime.
+- **Self-contained: the user installs no external plugin, ever.** Generic engineering skills (TDD,
+  debugging, review, worktrees) are authored HERE and bound to the ledger — reversed 2026-07-17.
+  The old *"composed from `superpowers`"* line was false twice: nothing declared it in
+  `dependencies` and no `src/` file named its skills (so it was never composed), and a dependency
+  installs all 16 of its skills — four of which are **stateless twins** of `core/brainstorm.md`,
+  `buildloop.py` and `core/agents.md` that cannot write to the ledger. Not a reinvention, a binding:
+  TDD's red step *is* an `acceptance_criterion` pin. Gate:
+  `test_codex_manifest.py::test_no_source_leaves_this_repo`.
 - MCP: Context7 + DeepWiki + **cognee** (graph memory; opt-in, needs the Docker container +
   `LLM_API_KEY`) are declared; GitHub is opt-in (needs a token). **Pi has no native MCP** — it is
   reached through our own extension, never a hard dependency on `pi-mcp-adapter`.

@@ -69,15 +69,35 @@ prose and missing from the product.
 | Host | How it arrives | Shape |
 |---|---|---|
 | **Claude Code** | `.mcp.json` at the plugin root, read on install | `type: stdio` / `http` |
-| **Codex** | the same file — its manifest's `mcpServers: ".mcp.json"` points at it | same |
-| **opencode** | a `config(cfg)` hook in the placed plugin mutates the live merged config | `type: local` / `remote`, `command` is an **array** |
+| **Codex** | the same file — its manifest's `mcpServers: "./.mcp.json"` points at it | same |
+| **opencode** | a `config(cfg)` hook in the placed plugin mutates the live merged config | `type: local` / `remote`, `command` is an **array**, `environment` (not `env`) |
 | **Pi** | no native MCP — its extension is the bridge | — |
 
-Two host facts there are verified in source, not inferred, and neither is guessable from the others:
-Codex's manifest genuinely accepts a path (`PluginManifestMcpServers::Path`), and opencode's
-discriminator is `local`/`remote` rather than Claude's `stdio`/`http`. Emitting Claude's shape into
-opencode would parse as valid JSON and silently declare nothing. `${CLAUDE_PLUGIN_ROOT}` is likewise
-a Claude-ism no other host expands, so the opencode plugin resolves our server from its own location.
+Host facts verified **at the function that consumes the value**, not inferred, and none guessable
+from the others:
+
+- **Codex needs the `./`.** `resolve_manifest_mcp_servers` → `resolve_manifest_path`, which does
+  `path.strip_prefix("./")` and returns `None` + a `tracing::warn` otherwise. This doc used to cite
+  `PluginManifestMcpServers::Path` as the verification — the type that *holds* the value, which
+  accepts any `String`. That citation is how `".mcp.json"` shipped for months. (Its severity was
+  low: `plugin_mcp_config_paths` falls back to `<root>/.mcp.json`, so the declaration was inert
+  rather than fatal. **`commands` has no such fallback** — declaring it without `./` is strictly
+  worse than omitting it.)
+- **opencode's discriminator is `local`/`remote`**, not Claude's `stdio`/`http` — and it is
+  *ternaried*, not switched (`mcp.type === "remote" ? connectRemote : connectLocal`), so `"stdio"`
+  is silently treated as **local**, then `const [cmd, ...args] = mcp.command` destructures the
+  string `"npx"` into `cmd="n"`, `args=["p","x"]` → ENOENT. Valid JSON, no error, no server.
+- **`enabled` defaults to ON** (`if (mcp.enabled === false)` — strict). Absence is not "off".
+- **Nothing validates what a plugin writes into `cfg.mcp`.** File-borne config hard-fails through
+  `ConfigParse.schema`; plugin-borne config bypasses it entirely and degrades to
+  `logWarning("server unavailable")`. If our emitted shape ever goes wrong, CI stays green and the
+  user gets a plugin that installs and declares nothing — the exact Codex signature, in a place no
+  gate of ours currently watches.
+- **`${CLAUDE_PLUGIN_ROOT}`** is a Claude-ism. opencode's `ConfigVariable.substitute` expands
+  exactly `{env:VAR}` and `{file:path}`; an unknown `${...}` passes through **literal**, producing a
+  nonexistent path rather than an error. So the opencode plugin resolves our server from
+  `import.meta.url` instead. On Claude Code it does expand inside `.mcp.json` — officially, in a
+  stdio server's `command`, `args` and `env`, which is exactly how we use it.
 
 **What ships**: `context7` (live library/framework docs) and `deepwiki` (public-repo exemplars) —
 the two servers `core/knowledge-sources.md` requires.
@@ -109,13 +129,38 @@ Durable, cross-session memory in three layers (the `project-memory` skill): the 
 and opencode `instructions`), and the optional **cognee MCP** (`cognee/cognee-mcp`) — a
 queryable, self-editing graph for associative recall at scale, opt-in per the setup above.
 
-## Composing generic skills
+## The generic skills are ours, because they must be ledger-aware
 
-Generic engineering skills (TDD, debugging, planning, code review, git worktrees) are **not**
-reinvented here — [`superpowers`](https://github.com/obra/superpowers) (Jesse Vincent, MIT) does
-them well and cross-platform. It is listed in `.claude-plugin/marketplace.json` as a composed entry,
-and recommended for opencode (`"plugin": ["superpowers"]`) and Codex. This package supplies the
-**differentiated methodology**; compose the generic from best-in-class rather than duplicating it.
+**The rule: a programmer and their coding agent get everything they need from our plugins. No
+external plugin, ever.** `tests/test_codex_manifest.py` enforces it — no marketplace source may
+leave this repo.
+
+This reverses a doctrine that stood here for months: *"generic engineering skills (TDD, debugging,
+planning, code review, git worktrees) are **composed** from [`superpowers`](https://github.com/obra/superpowers),
+not reinvented here."* Two things were wrong with it, and the second is the one that matters.
+
+**It was never composed.** No plugin declared superpowers in `dependencies`; no file in `src/` named
+one of its skills. The entry's `source` was `"github:obra/superpowers"` — a shorthand that does not
+exist — so it could not even be fetched. Four documents asserted a mechanism that was not there, on
+the shop window, for months. The house failure mode.
+
+**And composing it was the wrong goal.** A dependency installs the *whole* plugin: 16 skills, of
+which `brainstorming`, `writing-plans`/`executing-plans`, `dispatching-parallel-agents` and
+`subagent-driven-development` are **stateless twins** of `core/brainstorm.md`, `buildloop.py` and
+`core/agents.md`. None of them writes to the ledger; none ever will. Putting a forgetting twin
+beside the single source of truth is exactly the divergence this package exists to find in other
+people's codebases — we would have shipped our own anti-pattern, unpinned (the entry carried no
+`ref`/`sha`), with session-start hooks, through our own catalog.
+
+So: not a reinvention, a **binding**. superpowers' TDD cannot make its red step an
+`acceptance_criterion` pin. Ours is nothing but that. Same for the rest — a debugging loop that
+opens and closes a `defect` pin, a review that reopens rather than decides, a worktree discipline
+that makes the executor's "one scope at a time" enforceable instead of promised.
+
+The gap is smaller than 16 because the spine already owns the twins. What is genuinely missing:
+`test-driven-development`, `systematic-debugging`, `verification-before-completion`, `code-review`
+(their request/receive pair), and a branch/worktree lifecycle. superpowers is MIT, so where its
+prose is good the honest move is to adapt it with attribution — not to pretend we did not read it.
 
 ## Cursor & other AGENTS.md-only agents
 

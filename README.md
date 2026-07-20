@@ -45,8 +45,11 @@ else exists.**
   installs from the repo; `python scripts/build.py --check` is what stops it drifting from `src/`.
 - **`tests/` `scripts/` `docs/`** and the root `.md` files develop the repo and never ship.
 
-Generic engineering skills (TDD, debugging, planning, review, worktrees) are **composed** from
-[`superpowers`](https://github.com/obra/superpowers), not reinvented.
+**You install these plugins and you have everything.** No external plugin, ever — a gate enforces
+it. The generic engineering skills (TDD, debugging, review, worktrees) are authored here rather than
+pulled from elsewhere, because a generic skill that cannot write to the decisions ledger is a
+*stateless twin* standing beside the single source of truth — the exact drift these skills exist to
+find. Ours bind to it: TDD's red step **is** an acceptance-criterion pin.
 
 Each skill is **self-contained**: the build vendors the doctrine and runtime a skill needs *inside*
 it, because neither opencode nor Pi resolves a skill's relative paths against the skill directory —
@@ -118,7 +121,7 @@ elects the design *before* any code exists; one contract then generates DB/ORM/A
 aligned by construction, guarded for life by a CI drift-check.
 
 ## Status
-Design-complete across two methodology skills + six composable helpers, packaged
+Design-complete across two methodology skills + eleven composable skills, packaged
 agent-agnostically, with the **runtime largely implemented** (~240 tests in CI). Authored under
 `src/runtime/`; reaching the agent as MCP tools, and vendored into each skill that runs it as the
 portable floor:

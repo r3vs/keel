@@ -16,10 +16,21 @@ Two deep, differentiated workflows, authored under **`src/skills/`**:
 - **`codebase-rescue`** — rescue/align an existing, misaligned codebase.
 - **`greenfield-forge`** — build a new project aligned from the first commit.
 
+Plus the engineering loop, each bound to the ledger: **`test-driven-development`** (red step = an
+`acceptance_criterion` pin), **`systematic-debugging`** (root cause into the `defect` pin),
+**`code-review`** (reopens, never decides), **`verification-before-completion`** (resolved means
+observed), **`branch-lifecycle`** (a worktree per scope).
+
 Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`static-first-analysis`**,
 **`project-memory`**, **`learning-layer`** (senior-grade output while the operator learns), and
-**`writing-skills`** (meta, dev-only — it never ships). Generic engineering skills (TDD, debugging,
-planning, code review, git worktrees) are **composed** from `superpowers`, not reinvented here.
+**`writing-skills`** (meta, dev-only — it never ships).
+
+**Everything a programmer and their coding agent need is here. The user installs no external
+plugin, ever** — a gate enforces it (no marketplace source may leave this repo). So the generic
+engineering skills (TDD, debugging, code review, worktrees) are authored here rather than composed
+from elsewhere. Not because reinventing is good, but because a generic skill that cannot write to
+the ledger is a **stateless twin** standing beside the single source of truth — the exact divergence
+these skills exist to find. Ours bind: TDD's red step *is* an `acceptance_criterion` pin.
 
 They share one spine (the decisions ledger, interview funnel, brainstorm, field-shape engine,
 contract-testing, feedback loop, static-analysis / knowledge-sources doctrines, and the agent

@@ -43,17 +43,41 @@ deliverable is prose that a future Claude instance reads and executes:
   `.claude-plugin/` and a `.codex-plugin/` manifest. opencode and Pi link their skills straight out
   of here (`scripts/install.sh`) — a separate staging tree would just be a third copy of the same
   bytes.
+- **The engineering loop, authored here and bound to the ledger** — `test-driven-development` (the
+  red step IS an `acceptance_criterion` pin), `systematic-debugging` (root cause lands in the
+  `defect` pin, not the commit message), `code-review` (reopens, never decides — the reviewer is
+  read-only by design), `verification-before-completion` (a pin resolves when the behavior was
+  *observed*, not when the code was written), `branch-lifecycle` (a worktree per scope makes the
+  executor's "one scope at a time" enforceable instead of promised).
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
   `static-first-analysis`, `project-memory`, `learning-layer`), a memory subsystem (ledger +
-  `MEMORY.md` + cognee MCP), MCP servers (`context7`/`deepwiki`/`cognee`; `github` opt-in), and
-  `superpowers` **composed** (referenced in the marketplace) for the generic engineering skills.
+  `MEMORY.md` + cognee MCP), and MCP servers (`context7`/`deepwiki`/`cognee`; `github` opt-in).
   `writing-skills` is **dev-only** — it documents contributing to this repo and never ships.
+
+  **Self-contained is a hard rule: the user installs no external plugin, ever.** Everything a
+  programmer and their coding agent need ships from this repo, and
+  `tests/test_codex_manifest.py::test_no_source_leaves_this_repo` is the gate. This reversed the old
+  *"generic skills are **composed** from `superpowers`, not reinvented here"* doctrine, which failed
+  twice over: **it was never composed** (no plugin declared it in `dependencies`, no file in `src/`
+  named one of its skills, and its `source` shorthand could not even fetch — four documents
+  asserting a mechanism that did not exist); and **composing it was the wrong goal**, because a
+  dependency installs the *whole* plugin, and `brainstorming` / `writing-plans` / `executing-plans`
+  / `subagent-driven-development` are **stateless twins** of `core/brainstorm.md`, `buildloop.py` and
+  `core/agents.md` that cannot write to the ledger. A forgetting twin beside the single source of
+  truth is the exact divergence this package exists to find.
+
+  So the generic skills are authored here and **bound to the ledger** — not a reinvention, a
+  binding: superpowers' TDD cannot make its red step an `acceptance_criterion` pin; ours is nothing
+  but that. The gap is small because the spine already owns the twins — what is missing is
+  `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `code-review`
+  and a branch/worktree lifecycle. superpowers is MIT: where its prose is good, adapt it with
+  attribution rather than pretend we did not read it.
 
 Each skill is **design-complete with the runtime largely implemented**; its `TODO.md` is the build
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
 Plan A); rescue's VibraFlow verdict was **re-run on a fresh graph** (2026-07-14 — WEAK cross-layer
 correspondence, so standalone extraction is Plan A). The runtime lives under `src/runtime/`
-(core stdlib-only, ~170 tests in CI): `ledger.py` (spec v0.6), `shapes.py` (field-shape engine +
+(core stdlib-only, 262 tests in CI): `ledger.py` (spec v0.6), `shapes.py` (field-shape engine +
 drift-check, 8 stacks), `treesitter_extract.py` (the **primary** extraction backend — a real grammar per language, so
 real-world TS/GraphQL/SQL parse with no per-repo patches; declarative per-grammar data, degrades to
 the stdlib parsers when absent), `generate.py` (contract generators,
@@ -158,14 +182,32 @@ are all unified under this one principle — which is why there is deliberately 
   The source tree carries none: a `references/core/x.md` pointer in `src/skills/` resolves *by rule*
   to `src/core/x.md`, and the linters encode that rule.
 
-  **Why vendor at all — verified 2026-07-17 on the opencode and Pi sources, not assumed.** Neither
-  host resolves a skill's relative paths against the skill directory; **both resolve against the
-  user's project**. So a `../../core/x.md` in a skill body does not read our file — it reads, or
-  misses, something in *their* repo (opencode v2 rejects it outright: `relative_escape`). And on a
-  global install a sibling `~/.agents/core/` is outside the project, so `external_directory` prompts
-  the user on **every** read; vendoring inside the skill dir is what keeps that silent. Self-
-  containment is enforced by no host — our linter is the only thing between us and a bug both would
-  happily ship.
+  **Why vendor at all — distribution atomicity, and nothing else.** The rule is right; every earlier
+  reason given for it was wrong, and re-auditing them at the *consuming function* (2026-07-17) killed
+  all three. The honest argument: the Agent Skills spec's unit of distribution is the standalone
+  skill folder, and `scripts/install.sh` symlinks **each skill dir individually** into
+  `~/.agents/skills/`. A sibling `~/.agents/core/` is **not part of what travels**. Vendoring buys
+  guaranteed presence of the bytes inside the unit that ships — and buys nothing whatsoever about
+  path resolution or permission prompts.
+
+  What was refuted, so nobody rebuilds the argument out of it: `relative_escape` is opencode-**v2
+  only** and fires only for *relative* paths (an absolute path outside is promoted to
+  `external_directory`, not rejected); `external_directory` prompts **once per subtree per project**,
+  persists on "always", is pre-approvable by one config rule, and — decisively — **fires identically
+  for vendored files**, because our own default install target `~/.agents/skills` is itself outside
+  the user's project; and **Pi has no confinement at all**, though the sentence named both hosts.
+
+  The counterfactual that inverts it: **both hosts inject the skill's absolute base directory and
+  instruct the model to resolve against it** (opencode `core/src/tool/skill.ts`: *"Base directory for
+  this skill: …"*; Pi `harness/skills.js`: *"References are relative to …"*). Under that contract
+  `../` composes into an absolute path and behaves exactly like a vendored one. Our old mechanism
+  only bites when the model ignores the host's instruction — and there **vendoring fails worse**:
+  `references/core/x.md` is lexically *internal*, so it does not error, it silently reads the user's
+  own file at that path.
+
+  Worth naming under this repo's no-heuristics rule: **no host resolves skill-relative reads
+  deterministically.** Both delegate it to the model via injected prose. Self-containment is enforced
+  by no host either — our linter is the only thing between us and a bug both would ship happily.
 
   One rule keeps the surface lean: inside `src/core/*.md`, only **load-bearing** dependencies are
   backticked pointers (see-also mentions stay plain text), so the closure stays minimal. Watch for
@@ -200,10 +242,28 @@ Four facts that decide the design, each learned by being wrong first:
   rule **once** and every host calls it — the adapters carry no logic.
 
 `src/core/agents.md` is the roster source of truth; the build derives each host's mechanism from its
-table — `disallowedTools` for Claude (there is no `permission` field) and `permission: {edit: …}` for
-opencode — so neither is hand-kept and `build.py --check` is the guarantee. The residual it cannot
-close: **`Bash` is a write vector Claude Code cannot restrict** — the ledger gate is what closes that
-at runtime. Full details: `docs/packaging.md`.
+table — `tools:` + `disallowedTools` for Claude (agents have no `permission` field; `permissionMode`
+exists but is **ignored for plugin subagents**) and `permission: {edit: …}` for opencode — so neither
+is hand-kept and `build.py --check` is the guarantee. For the 5 read-only roles the `tools:`
+allowlist is the enforcement; `disallowedTools` is a backstop that survives someone adding `Write`
+to `tools:` later.
+
+The residual it cannot close, **stated precisely** (the old wording — *"`Bash` is a write vector
+Claude Code cannot restrict"* — is simply false, and was refuted by reading the docs it was never
+checked against): Claude Code restricts Bash fine. `Bash(rm *)`-style matchers exist, with
+`deny → ask → allow` precedence and first-match-wins. What is true is narrower and still sufficient:
+**a plugin cannot ship a selective Bash rule, nor scope one to a single agent.** Three facts, each
+verified: `disallowedTools`/`tools` take tool *names* (no documented `Bash(pattern)` support in an
+agent definition); `permissionMode` is ignored for plugin subagents; and the plugin manifest has no
+property for permission rules at all. Selective `Bash(...)` rules live only in the **user's own**
+`settings.json`, session-wide — which a plugin cannot write. And we deliberately grant `Bash` to the
+read-only roles (they need it for static analysis), so blunt denial is not available either. That is
+what the ledger gate closes at runtime. Full details: `docs/packaging.md`.
+
+> Loose thread, flagged rather than guessed: the manifest has a top-level `settings` — *"Only the
+> documented allowlisted keys are applied"* — and that allowlist is **not documented anywhere**.
+> Whether a plugin can ship `permissions.deny` through it is **UNVERIFIED**. Do not build on it
+> without an observed test; this is exactly the type-vs-parser trap.
 
 ## The user works in THEIR repo, never in this one
 
@@ -227,12 +287,18 @@ sit here, and they were indefensible three times over:
 table (`src/core/knowledge-sources.md`), because the doc that *orders* the agent to use a server is
 the thing entitled to name it:
 
-| Host | Mechanism | Verified in |
+| Host | Mechanism | Verified in — **name the function that CONSUMES the value** |
 |---|---|---|
-| Claude Code | `.mcp.json` at the plugin root | — |
-| Codex | its manifest's `mcpServers: ".mcp.json"` → the same file | `openai/codex`: `PluginManifestMcpServers::Path` |
-| opencode | a `config(cfg)` hook in the plugin mutates the live merged config | `sst/opencode` |
-| Pi | no native MCP; its extension bridges | — |
+| Claude Code | `.mcp.json` at the plugin root, auto-discovered | docs: *"Location: `.mcp.json` in plugin root"*; the manifest need not reference it, and ours correctly doesn't |
+| Codex | its manifest's `mcpServers: "./.mcp.json"` → the same file | `openai/codex`: `resolve_manifest_mcp_servers` → `resolve_manifest_path` (the `./` is load-bearing) → `plugin_mcp_config_paths` |
+| opencode | a `config(cfg)` hook in the plugin mutates the live merged config | `anomalyco/opencode`: `Plugin.state`'s hook loop (by reference; return value is `Effect.ignore`d), ordered before MCP by `project/bootstrap.ts` |
+| Pi | no native MCP; its extension bridges | `earendil-works/pi`: zero `\bmcp\b` matches across the published `dist/` |
+
+Citing a **type** here is how the Codex `./` bug shipped for months (`PluginManifestMcpServers::Path`
+accepts any `String`; `resolve_manifest_path` accepts only a `./`-prefixed one). Citing the
+**rejecter** is how I then got its severity wrong. Follow the value until something uses or replaces
+it. Also: `anomalyco/opencode` now redirects to `anomalyco/opencode` — the old name is a citation nobody
+re-checked.
 
 Two host facts there are **verified, not inferred**, and neither follows from the others: opencode's
 discriminator is `local`/`remote` (not Claude's `stdio`/`http`) and its local `command` is an array,
