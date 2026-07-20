@@ -1,0 +1,71 @@
+{
+  "skill_name": "codebase-rescue",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. To execute against a real agent + fixture: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture tests/fixtures/slop-repo --skill codebase-rescue` (the slop-repo fixture carries planted cross-layer drift + an intentional stub + a SQLi; tests/test_fixture_slop_repo.py asserts the runtime detects them).",
+  "fixture": "tests/fixtures/slop-repo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "This is a half-finished app I vibecoded — the React frontend, the FastAPI backend and the Postgres schema don't really agree with each other anymore and some things aren't finished. Help me pick it back up and get it into a proper state.",
+      "expected_output": "Runs rescue mode: builds the graph + as-is wiki, produces a pinned map, runs contract-reconciliation to surface where the three layers disagree, distinguishes unfinished-on-purpose from broken, and drives a compressed interview rather than dumping hundreds of questions.",
+      "assertions": [
+        "selects rescue mode",
+        "builds the as-is map/graph and pins problems before proposing any fix",
+        "runs contract-reconciliation and surfaces DB<->API<->frontend shape mismatches as contract_mismatch pins",
+        "marks intentional stubs as incompleteness work items, not defects",
+        "compresses the interview via clusters/policies (does not ask one question per finding)",
+        "does not edit code before the interview elects the to-be"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Just tell me where my backend and database contracts are out of sync in this repo.",
+      "expected_output": "Runs align mode: Phase 1 + contract-reconciliation only, interview limited to the resulting mismatches; no full remediation.",
+      "assertions": [
+        "selects align mode",
+        "runs Phase 1 + contract-reconciliation only",
+        "limits the interview to the resulting mismatches",
+        "does not run full remediation or unrelated finders"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Audit this finished service and give me a report of the real problems, no interview.",
+      "expected_output": "Runs audit mode: findings only through the fp-check gate, clustered, no to-be interview, no remediation.",
+      "assertions": [
+        "selects audit mode",
+        "produces findings only, passed through the fp-check gate and clustered",
+        "runs no to-be interview and no remediation",
+        "deterministic static findings (e.g. type errors) skip fp-check"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Just clean up the auth layer and make it right, then fix whatever else is broken.",
+      "expected_output": "Recognizes 'right' is under-specified and does NOT silently assume what correct auth means. Surfaces the load-bearing assumptions (session vs token model, expiry, who is source of truth) as vetoable pins rather than encoding them, compresses the rest via the funnel, and asks only the few that carry weight.",
+      "assertions": [
+        "does not silently encode what 'right' means; surfaces the load-bearing assumptions it is forced to make",
+        "materializes a forced assumption as a pin with confidence inferred/ambiguous and provenance source: agent_assumption",
+        "keeps blocker/high assumptions as asked (never a silent proposed_default); low-stakes ones may ride as a surfaced default",
+        "still compresses via the funnel — does not interrogate the user about everything",
+        "does not edit code before the elected to-be exists"
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Here's my decision: the role set is whatever the frontend currently checks — make the DB match that and ship it. Also the acceptance criterion is just 'auth should feel solid'.",
+      "expected_output": "Records the elected answers, then runs the challenger pass over them before remediation. Flags 'auth should feel solid' as unfalsifiable (no testable verify) and the 'frontend is the source of truth' choice as resting on an unstated assumption, emitting ChallengeEvents that reopen the pins (challenged) instead of building on an unsound oracle. Challenges, never decides.",
+      "assertions": [
+        "after recording the decision, runs the challenger over the elected to_be / acceptance_criterion",
+        "refutes 'auth should feel solid' as unfalsifiable and asks for a testable verify",
+        "flags the frontend-as-source-of-truth choice as an unstated_assumption / potential inconsistency with the DB",
+        "emits a ChallengeEvent and reopens the pin (challenged) rather than proceeding to remediation",
+        "the challenger only reopens — it never writes a DecisionEvent or edits code"
+      ],
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+id: ts-not-implemented
+language: typescript
+severity: warning
+message: throw new Error("not implemented"-like) — stub on a possibly-live path.
+note: >-
+  Completeness classifies intentional-stub vs broken; fp-check decides reachability.
+rule:
+  pattern: throw new Error($MSG)
+constraints:
+  MSG:
+    regex: '(?i)not.{0,3}implemented|todo|stub|placeholder'

@@ -1,0 +1,50 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "semgrep",
+          "rules": [
+            { "id": "python.sqli.raw", "properties": { "security-severity": "8.5" } },
+            { "id": "python.weak-hash", "properties": { "security-severity": "3.0" } }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "python.sqli.raw",
+          "level": "error",
+          "message": { "text": "SQL injection via string concatenation" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "app/users.py" }, "region": { "startLine": 42 } } }
+          ]
+        },
+        {
+          "ruleId": "python.sqli.raw",
+          "level": "error",
+          "message": { "text": "SQL injection via string concatenation" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "app/orders.py" }, "region": { "startLine": 88 } } }
+          ]
+        },
+        {
+          "ruleId": "python.sqli.raw",
+          "level": "error",
+          "message": { "text": "raw SQL in a migration" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "db/migrations/003.py" }, "region": { "startLine": 5 } } }
+          ]
+        },
+        {
+          "ruleId": "python.weak-hash",
+          "level": "warning",
+          "message": { "text": "MD5 used for hashing" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "app/legacy_unused.py" }, "region": { "startLine": 10 } } }
+          ]
+        }
+      ]
+    }
+  ]
+}

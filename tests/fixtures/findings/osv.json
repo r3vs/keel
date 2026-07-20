@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "source": { "path": "package-lock.json" },
+      "packages": [
+        {
+          "package": { "name": "lodash", "ecosystem": "npm" },
+          "vulnerabilities": [
+            { "id": "GHSA-xxxx-yyyy", "summary": "Prototype pollution in lodash",
+              "severity": [ { "type": "CVSS_V3", "score": "7.4" } ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

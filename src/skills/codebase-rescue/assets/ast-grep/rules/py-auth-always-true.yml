@@ -1,0 +1,20 @@
+id: py-auth-always-true
+language: python
+severity: error
+message: Auth-like function unconditionally returns True — placeholder guard (fake auth).
+note: >-
+  Candidate `defect` when the function guards a reachable path; route through fp-check
+  (reachability) before pinning. The two-statement variant tolerates a docstring, so a
+  one-liner real check may match — fp-check decides, this rule only flags.
+rule:
+  any:
+    - pattern: |
+        def $FUNC($$$ARGS):
+            return True
+    - pattern: |
+        def $FUNC($$$ARGS):
+            $DOC
+            return True
+constraints:
+  FUNC:
+    regex: '^(is_|can_|has_|verify_|check_|auth)'

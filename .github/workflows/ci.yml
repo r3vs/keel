@@ -1,0 +1,74 @@
+name: consistency
+
+# The repo's own CI gate — the skills preach "CI from commit one", so this repo runs one too.
+#
+# The split below encodes a lesson this repo learned on itself: every gate it had anchored on
+# `__file__` and validated the repo AS A REPO, while the artifact users receive is a directory
+# copied elsewhere and driven with the working directory set to THEIR project. Nothing checked
+# that, so a `python runtime/ledger.py` which could never resolve after install shipped for months
+# — green the whole time. The "as shipped" checks are first-class here, not an afterthought.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # uv drives the MCP server (PEP 723, zero-install). Its absence is the one failure that is
+      # SILENT at runtime — the host cannot spawn the server and the tools are simply not there —
+      # so CI exercises the path that proves it works rather than trusting it.
+      - uses: astral-sh/setup-uv@v5
+
+      # --- the source is internally consistent -------------------------------------------------
+      - name: Drift linter (modules ↔ references ↔ SKILL; roster names AND permissions)
+        run: python scripts/check_consistency.py
+      - name: Pointer verifier (every *.md cross-reference resolves)
+        run: python scripts/verify_pointers.py
+
+      # --- the source is correct AS SHIPPED ----------------------------------------------------
+      - name: Executable-pointer verifier (no path that dies once installed)
+        run: python scripts/verify_commands.py
+      # The ONE generation step. plugins/ is generated and committed (a marketplace installs from
+      # the repo), so --check is what stops it drifting from src/. It also does all the vendoring
+      # that sync_core.py and sync_runtime.py used to do in a second, redundant pass.
+      - name: Plugins built from src/ (generated, committed, must not drift)
+        run: python scripts/build.py --check
+
+      - name: Shell syntax (bootstrap + hooks + installer)
+        run: bash -n src/tools/bootstrap.sh && bash -n src/hooks/session-start.sh && bash -n scripts/install.sh
+
+      # --- behaviour ---------------------------------------------------------------------------
+      # Covers the ledger runtime (spec v0.6 as executable checks), the MCP tools, the MCP server
+      # over real stdio via uv, the PreToolUse ledger gate, and the package as installed.
+      - name: Tests
+        run: python -m unittest discover -s tests
+
+      - name: Eval-spec structural gate (prompts + assertions well-formed)
+        run: python scripts/run_evals.py --validate
+
+  plugin-validate:
+    # Claude Code's own validator, per plugin. --strict promotes manifest warnings to errors, which
+    # is what catches a typo'd field that would otherwise degrade silently at install time.
+    runs-on: ubuntu-latest
+    continue-on-error: true  # the CLI is not always installable in CI; never block a PR on that
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate every plugin manifest
+        run: |
+          for p in plugins/*/; do
+            echo "== $p"
+            claude plugin validate "$p" --strict
+          done

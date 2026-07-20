@@ -1,0 +1,19 @@
+{
+  "name": "greenfield-forge",
+  "version": "0.1.0",
+  "description": "Preventive: build a new project aligned from the first commit. Elects the design in a compressed interview before any code exists, then generates every layer from one contract so they cannot drift.",
+  "keywords": [
+    "skills",
+    "codebase",
+    "rescue",
+    "greenfield",
+    "architecture",
+    "cross-layer-contract",
+    "decisions-ledger",
+    "refactoring",
+    "tdd"
+  ],
+  "skills": [
+    "./skills/greenfield-forge"
+  ]
+}

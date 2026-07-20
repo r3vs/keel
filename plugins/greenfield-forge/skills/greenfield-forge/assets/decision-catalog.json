@@ -1,0 +1,151 @@
+{
+  "$comment": "Machine-usable form of references/decision-catalog.md. Phase 1 loads this, prunes by project_type, skips brief-decided forks, and materializes one open_decision (or acceptance_criterion) pin per surviving fork. A frame, not a script — domain forks are added via the ledger's open taxonomy. Authoring source: decision-catalog.md; keep them in step.",
+  "version": "1.0",
+  "clusters": [
+    {
+      "id": "outcomes", "order": 0, "kind": "acceptance_criterion", "severity": "high",
+      "title": "Outcomes / acceptance criteria — roots of the DAG",
+      "elicit": "the core use case as Given/When/Then statements with a verify hook",
+      "options": [],
+      "depends_on": [],
+      "default_policy": "smallest set of outcomes that delivers the core use case; the rest deferred",
+      "prune_for": []
+    },
+    {
+      "id": "domain", "order": 1, "kind": "open_decision", "severity": "blocker",
+      "title": "Product scope & domain model",
+      "options": [
+        { "id": "elicit_entities", "label": "Core entity set + v1 feature list (bounded)", "implication": "every unscoped entity is a deferred pin, not silent scaffolding" }
+      ],
+      "depends_on": ["outcomes"],
+      "default_policy": "smallest domain that delivers the core use case; everything else deferred",
+      "prune_for": []
+    },
+    {
+      "id": "persistence", "order": 2, "kind": "open_decision", "severity": "high",
+      "title": "Persistence & data",
+      "options": [
+        { "id": "relational", "label": "Relational (Postgres/SQLite)", "implication": "schema-first; the DB schema is a source the contract derives from" },
+        { "id": "document", "label": "Document store", "implication": "flexible schema; runtime validation" },
+        { "id": "kv", "label": "Key-value", "implication": "no relations; app-side joins" },
+        { "id": "none", "label": "None (stateless/static)", "implication": "no ORM, no migrations" }
+      ],
+      "depends_on": ["domain"],
+      "default_policy": "one relational datastore until a concrete need proves otherwise; schema-first",
+      "prune_for": ["library", "static-site"]
+    },
+    {
+      "id": "identity", "order": 3, "kind": "open_decision", "severity": "high",
+      "title": "Identity & access",
+      "options": [
+        { "id": "none", "label": "None", "implication": "no auth layer" },
+        { "id": "session", "label": "Session cookie", "implication": "server session store" },
+        { "id": "jwt", "label": "JWT", "implication": "stateless tokens; rotation policy needed" },
+        { "id": "third_party", "label": "Third-party (OAuth/OIDC)", "implication": "delegate identity; callback flow" }
+      ],
+      "sub_forks": [
+        { "id": "multitenancy", "options": ["single-tenant", "shared-schema", "schema-per-tenant"] }
+      ],
+      "depends_on": ["domain"],
+      "default_policy": "third-party identity unless there's a reason to own it; single-tenant until a second tenant is real",
+      "prune_for": ["cli", "library", "static-site"]
+    },
+    {
+      "id": "api_contract", "order": 4, "kind": "open_decision", "severity": "blocker",
+      "title": "API & contract (where the cross-layer contract lives)",
+      "options": [
+        { "id": "rest", "label": "REST", "implication": "resource routes; OpenAPI carrier fits" },
+        { "id": "rpc", "label": "RPC (tRPC/gRPC)", "implication": "typed calls; shared-types or protobuf carrier" },
+        { "id": "graphql", "label": "GraphQL", "implication": "SDL is the carrier; resolver layer" },
+        { "id": "none", "label": "None (server-rendered)", "implication": "no API layer to generate" }
+      ],
+      "sub_forks": [
+        { "id": "carrier", "options": ["shared-types", "openapi", "json-schema", "protobuf"] }
+      ],
+      "depends_on": ["domain", "persistence"],
+      "default_policy": "the lightest contract carrier that spans the languages in play; a shared-types package when the stack is TS end-to-end",
+      "prune_for": ["cli", "library"]
+    },
+    {
+      "id": "client", "order": 5, "kind": "open_decision", "severity": "medium",
+      "title": "Client & rendering",
+      "options": [
+        { "id": "ssr", "label": "Server-rendered (SSR/MPA)", "implication": "no client state layer" },
+        { "id": "spa", "label": "SPA", "implication": "client state management fork opens" },
+        { "id": "mobile", "label": "Mobile", "implication": "native/RN client slice" },
+        { "id": "none", "label": "None (headless/API-only)", "implication": "no client" }
+      ],
+      "depends_on": ["api_contract"],
+      "default_policy": "server-render unless interactivity genuinely demands a SPA — client-heavy by exception, not default",
+      "prune_for": ["cli", "library", "api-service"]
+    },
+    {
+      "id": "sync", "order": 6, "kind": "open_decision", "severity": "medium",
+      "title": "Sync & time",
+      "options": [
+        { "id": "reqresp", "label": "Pure request/response", "implication": "no background infra" },
+        { "id": "jobs", "label": "Background jobs/queue", "implication": "a queue + worker to run and observe" },
+        { "id": "events", "label": "Event-driven", "implication": "an event bus; eventual consistency" },
+        { "id": "realtime", "label": "Realtime (websockets/SSE)", "implication": "a push transport + connection state" }
+      ],
+      "depends_on": ["domain", "api_contract"],
+      "default_policy": "synchronous request/response until a concrete latency or decoupling need justifies a queue; no event bus in v1",
+      "prune_for": ["static-site"]
+    },
+    {
+      "id": "topology", "order": 7, "kind": "open_decision", "severity": "medium",
+      "title": "Boundaries & topology",
+      "options": [
+        { "id": "monolith", "label": "Single deployable (monolith)", "implication": "in-process contract transport" },
+        { "id": "modular_monolith", "label": "Modular monolith", "implication": "clear module boundaries, one deployable" },
+        { "id": "services", "label": "Services", "implication": "network transport; per-service CI + contract tests" }
+      ],
+      "depends_on": ["domain"],
+      "default_policy": "modular monolith; split to services only when a module has a proven independent scaling or ownership need",
+      "prune_for": ["cli", "library", "static-site"]
+    },
+    {
+      "id": "nfrs", "order": 8, "kind": "open_decision", "severity": "medium",
+      "title": "Cross-cutting NFRs (elected as policies)",
+      "options": [
+        { "id": "validation", "label": "Validation at the contract boundary", "implication": "one validation site" },
+        { "id": "errors", "label": "One error taxonomy", "implication": "structured errors everywhere" },
+        { "id": "observability", "label": "Observability baseline", "implication": "logs/metrics/traces" },
+        { "id": "authz_default_deny", "label": "Default-deny authz", "implication": "explicit allow per route" }
+      ],
+      "depends_on": ["api_contract"],
+      "default_policy": "validate at the contract boundary; structured errors from one taxonomy; Track-A tests on every decision-bearing slice; default-deny authz",
+      "prune_for": []
+    },
+    {
+      "id": "delivery", "order": 9, "kind": "open_decision", "severity": "medium",
+      "title": "Delivery & release",
+      "options": [
+        { "id": "serverless", "label": "Serverless", "implication": "cold-start + statelessness constraints" },
+        { "id": "container", "label": "Container", "implication": "an image + orchestration target" },
+        { "id": "vm", "label": "VM", "implication": "a provisioning path" },
+        { "id": "static_host", "label": "Static host", "implication": "build-time only" }
+      ],
+      "sub_forks": [
+        { "id": "deploy_strategy", "options": ["canary", "blue-green", "rolling"] },
+        { "id": "migration_strategy", "options": ["expand-contract", "zero-downtime"] }
+      ],
+      "depends_on": ["topology", "sync"],
+      "default_policy": "the platform's boring default for the chosen topology; migrations versioned and expand/contract from commit one; every release rollback-ready",
+      "prune_for": ["library"]
+    },
+    {
+      "id": "operability", "order": 10, "kind": "open_decision", "severity": "medium",
+      "title": "Operability (codebase-facing slice of operations)",
+      "options": [
+        { "id": "structured_logs", "label": "Structured logs", "implication": "a log schema" },
+        { "id": "metrics", "label": "Metrics", "implication": "a metrics sink the SLOs read" },
+        { "id": "traces", "label": "Traces", "implication": "trace propagation" },
+        { "id": "signal_manifest", "label": "Signal manifest", "implication": "the physical anchor of every flip_signal" }
+      ],
+      "depends_on": ["delivery"],
+      "default_policy": "structured logs + the few metrics the SLOs need; a signal manifest for every decision that carries a flip_signal",
+      "prune_for": ["library", "static-site"]
+    }
+  ]
+}

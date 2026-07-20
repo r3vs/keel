@@ -1,0 +1,56 @@
+{
+  "$comment": "Contract carrier — canonical entity shapes (shape-engine descriptor set). Single source of truth; every layer below is a projection of this file.",
+  "stack": {
+    "db": "postgres",
+    "orm": "sqlalchemy-2",
+    "api": "fastapi + pydantic-v2",
+    "client": "typescript (fetch)"
+  },
+  "entities": {
+    "User": {
+      "table": "users",
+      "fields": [
+        { "name": "id", "type": "uuid", "nullable": false, "constraints": { "primary_key": true, "default": "generated" } },
+        { "name": "email", "type": "string", "nullable": false, "constraints": { "unique": true, "max_length": 255 } },
+        { "name": "display_name", "type": "string", "nullable": false, "constraints": { "max_length": 80 } },
+        { "name": "role", "type": "enum", "nullable": false, "enum": ["admin", "member"], "constraints": { "default": "member" } },
+        { "name": "created_at", "type": "datetime", "nullable": false, "constraints": { "default": "now" } }
+      ]
+    },
+    "Project": {
+      "table": "projects",
+      "fields": [
+        { "name": "id", "type": "uuid", "nullable": false, "constraints": { "primary_key": true, "default": "generated" } },
+        { "name": "owner_id", "type": "uuid", "nullable": false, "constraints": { "foreign_key": "User.id", "on_delete": "cascade" } },
+        { "name": "name", "type": "string", "nullable": false, "constraints": { "max_length": 120 } },
+        { "name": "description", "type": "string", "nullable": true },
+        { "name": "is_archived", "type": "bool", "nullable": false, "constraints": { "default": false } },
+        { "name": "created_at", "type": "datetime", "nullable": false, "constraints": { "default": "now" } }
+      ]
+    },
+    "Task": {
+      "table": "tasks",
+      "fields": [
+        { "name": "id", "type": "uuid", "nullable": false, "constraints": { "primary_key": true, "default": "generated" } },
+        { "name": "project_id", "type": "uuid", "nullable": false, "constraints": { "foreign_key": "Project.id", "on_delete": "cascade", "index": true } },
+        { "name": "title", "type": "string", "nullable": false, "constraints": { "max_length": 200 } },
+        { "name": "status", "type": "enum", "nullable": false, "enum": ["todo", "in_progress", "done"], "constraints": { "default": "todo" } },
+        { "name": "priority", "type": "int", "nullable": false, "constraints": { "default": 0 } },
+        { "name": "due_date", "type": "datetime", "nullable": true },
+        { "name": "assignee_id", "type": "uuid", "nullable": true, "constraints": { "foreign_key": "User.id", "on_delete": "set_null", "index": true } },
+        { "name": "metadata", "type": "json", "nullable": true },
+        { "name": "created_at", "type": "datetime", "nullable": false, "constraints": { "default": "now" } }
+      ]
+    },
+    "Comment": {
+      "table": "comments",
+      "fields": [
+        { "name": "id", "type": "uuid", "nullable": false, "constraints": { "primary_key": true, "default": "generated" } },
+        { "name": "task_id", "type": "uuid", "nullable": false, "constraints": { "foreign_key": "Task.id", "on_delete": "cascade", "index": true } },
+        { "name": "author_id", "type": "uuid", "nullable": false, "constraints": { "foreign_key": "User.id", "on_delete": "cascade" } },
+        { "name": "body", "type": "string", "nullable": false },
+        { "name": "created_at", "type": "datetime", "nullable": false, "constraints": { "default": "now" } }
+      ]
+    }
+  }
+}

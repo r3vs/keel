@@ -1,0 +1,83 @@
+{
+  "skill_name": "greenfield-forge",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. Three real briefs are fixtures under tests/fixtures/briefs/ (crud-saas, cli-tool, api-service). To execute against a real agent: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture <a fresh temp dir> --skill greenfield-forge` (greenfield forges INTO an empty dir; feed a brief via the prompt).",
+  "briefs": "tests/fixtures/briefs",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to build a new SaaS app for scheduling — think a lightweight Calendly. React frontend, some backend, a database. Help me set it up properly from the start so it doesn't turn into a mess.",
+      "expected_output": "Runs forge mode: frames the brief into open_decision pins from the decision-catalog (pruned to a web SaaS), runs a compressed interview (policies first, domain/persistence before delivery) to elect the to-be, authors the cross-layer contract once and generates aligned layer scaffolds from it, sequences a vertical-slice backlog, then builds the first slice test-first. Does not dump a boilerplate template or invent decisions silently.",
+      "assertions": [
+        "selects forge mode",
+        "frames testable acceptance criteria and open_decision pins from the decision-catalog (pruned to a web SaaS) before scaffolding",
+        "runs a compressed interview, policies first, domain/persistence before delivery",
+        "authors the cross-layer contract once and generates aligned layer scaffolds from it",
+        "sequences a vertical-slice backlog and builds the first slice test-first (Track A)",
+        "does not dump a boilerplate template or invent decisions silently"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Before I write any code, I just want to nail down the architecture and data model for a new multi-tenant billing service. Give me the design and the plan, I'll build it.",
+      "expected_output": "Runs spec mode: Phases 1-3 only. Materializes and elects the open decisions (tenancy model, datastore, API style, contract location), defines the contract, and emits a dependency-sequenced BuildItem backlog with the waves — stops before the build loop.",
+      "assertions": [
+        "selects spec mode and runs Phases 1-3 only",
+        "elects tenancy model, datastore, API style, and contract location as open_decisions",
+        "emits a dependency-sequenced BuildItem backlog with waves",
+        "stops before the build loop (no code written)"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "This project already has its decisions ledger from when we set it up. Now add a notifications feature end-to-end.",
+      "expected_output": "Runs slice mode: reads the committed ledger, materializes the notifications open_decisions, elects them, extends the contract, and builds the one vertical slice through Phases 3-5 without re-running the whole interview.",
+      "assertions": [
+        "selects slice mode and reads the committed ledger",
+        "materializes and elects only the notifications open_decisions",
+        "extends the contract and builds one vertical slice through Phases 3-5",
+        "does not re-run the whole interview"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Help me decide, properly, whether this new app should be a modular monolith or services, and whether to use Postgres or a document store. Record the decisions so we don't relitigate them.",
+      "expected_output": "Runs decide mode: interview only on the named forks, with tradeoffs and (optionally) a brainstorm, committing each as a DecisionEvent with flip_criteria in the ledger. No scaffolding or build.",
+      "assertions": [
+        "selects decide mode and interviews only on the named forks",
+        "presents tradeoffs (optionally opens a brainstorm)",
+        "commits each choice as a DecisionEvent with a flip_criteria",
+        "does no scaffolding or build"
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Build me a new analytics service. The one acceptance criterion is that it should be scalable and fast. Design the architecture and start building to that.",
+      "expected_output": "Frames and interviews as usual, then runs the challenger over the elected decisions before Phase 3. Refutes 'scalable and fast' as unfalsifiable (no testable verify that could fail) and reopens it for a concrete outcome (e.g. p95 latency + throughput target) rather than generating the contract on a slogan. Challenges, never decides.",
+      "assertions": [
+        "runs the challenger over the acceptance_criterion / elected to_be before Phase 3 generates the contract",
+        "refutes 'scalable and fast' as unfalsifiable and asks for a testable verify (concrete SLO)",
+        "emits a ChallengeEvent and reopens the pin (challenged) instead of building the contract on it",
+        "does not generate the cross-layer contract on an unfalsifiable oracle",
+        "the challenger only reopens — never commits a decision or writes code"
+      ],
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Build me a marketplace app — you figure out the details.",
+      "expected_output": "Refuses to fill the unmade decisions silently. Frames the load-bearing forks (tenancy, payments, auth, catalog model) as open_decision pins and, where it must assume to proceed, surfaces the assumption as a vetoable pin (provenance agent_assumption) rather than encoding it. Runs the compressed interview; never invents product/architecture decisions silently.",
+      "assertions": [
+        "does not silently fill unmade decisions from a vague brief (no open 'tell me about your app' free-fill)",
+        "materializes the load-bearing forks as open_decision pins from the catalog",
+        "where forced to assume, surfaces it as a pin with provenance source: agent_assumption and confidence inferred/ambiguous",
+        "compresses via the funnel (policies first), keeping high-fan-out decisions asked",
+        "elects the to-be in the interview before any scaffolding"
+      ],
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "alignment-helpers",
+  "version": "0.1.0",
+  "description": "Composable helpers, each useful on its own and each bound to the decisions ledger: the engineering loop (test-driven-development, systematic-debugging, code-review, verification-before-completion, branch-lifecycle), plus grounded-research (cite current sources, never stale memory), static-first-analysis (strongest deterministic signal before judgment), project-memory (durable facts), and learning-layer (senior-grade output while the operator levels up).",
+  "keywords": [
+    "skills",
+    "codebase",
+    "rescue",
+    "greenfield",
+    "architecture",
+    "cross-layer-contract",
+    "decisions-ledger",
+    "refactoring",
+    "tdd"
+  ],
+  "skills": [
+    "./skills/test-driven-development",
+    "./skills/systematic-debugging",
+    "./skills/code-review",
+    "./skills/verification-before-completion",
+    "./skills/branch-lifecycle",
+    "./skills/grounded-research",
+    "./skills/static-first-analysis",
+    "./skills/project-memory",
+    "./skills/learning-layer"
+  ]
+}

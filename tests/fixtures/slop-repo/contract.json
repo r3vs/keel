@@ -1,0 +1,16 @@
+{
+  "$comment": "Canonical contract for the slop-repo fixture. The DB layer (schema.sql) drifts from this on purpose.",
+  "stack": { "db": "postgres", "api": "fastapi", "client": "typescript" },
+  "entities": {
+    "User": {
+      "table": "users",
+      "fields": [
+        { "name": "id", "type": "uuid", "nullable": false, "constraints": { "primary_key": true, "default": "generated" } },
+        { "name": "email", "type": "string", "nullable": false, "constraints": { "unique": true, "max_length": 255 } },
+        { "name": "display_name", "type": "string", "nullable": false, "constraints": { "max_length": 80 } },
+        { "name": "role", "type": "enum", "nullable": false, "enum": ["admin", "member"], "constraints": { "default": "member" } },
+        { "name": "created_at", "type": "datetime", "nullable": false, "constraints": { "default": "now" } }
+      ]
+    }
+  }
+}

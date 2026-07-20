@@ -1,0 +1,224 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["fastmcp==3.4.4"]
+# ///
+"""MCP adapter for the codebase-alignment runtime.
+
+Why an MCP server at all — two failures, and the second is the bigger one
+-------------------------------------------------------------------------
+1. **Paths.** A shipped skill runs with the agent's working directory set to the *user's project*,
+   so an agent-authored ``python runtime/ledger.py`` resolves against their tree: not found, or —
+   because ``runtime/`` is a common name — the *wrong script against their data*. A server's
+   location is declared once and resolved by the host, so the whole class disappears.
+2. **Discovery.** The runtime was ~3.5k tested lines that the twelve phase playbooks invoked
+   **zero** times: the prose described each activity in English while the code implemented it, and
+   nothing joined them. A server *advertises* its tools, so the agent sees ``contract_diff``
+   without any playbook naming it. A bundled CLI fixes paths; it cannot fix discovery.
+
+Why FastMCP and not hand-rolled JSON-RPC
+---------------------------------------
+The first cut of this file was 90 lines of stdlib JSON-RPC, to honour the runtime's stdlib-only
+rule. That was a category error twice over. The rule governs the *engine* — ``treesitter_extract``
+already establishes the pattern that an adapter may depend and degrade. And the protocol is moving:
+the **2026-07-28** revision removes the ``initialize``/``notifications/initialized`` handshake, adds
+a mandatory ``server/discover``, requires ``resultType`` on every result, and drops ``ping``. A
+hand-rolled server owns that migration forever; here it is a version bump. `tools.py` stays pure
+and stdlib-only, so the churn lands only on this file.
+
+Zero-install by design
+----------------------
+The PEP 723 block above lets ``uv run --script`` resolve and cache the dependency on first run
+(~7 s cold, ~0.2 s warm) with nothing for the user to install. The version is **pinned hard**: MCP
+2.0 goes stable inside this dependency tree on 2026-07-28, so an unpinned range would drift under
+us on someone else's machine.
+
+The one real failure mode: if ``uv`` is absent from PATH the host cannot spawn this, and the tools
+go **silently missing** — no error reaches the agent. That is why `bootstrap.sh` installs uv
+best-effort, and why the skill-bundled CLI under ``scripts/runtime/`` remains the floor: when the
+server is absent, the capability degrades to a documented command rather than vanishing.
+"""
+from fastmcp import FastMCP
+
+import tools
+
+mcp = FastMCP(
+    name="codebase-alignment",
+    instructions=(
+        "The deterministic spine of the codebase-alignment skills. The ledger is the single source "
+        "of truth; the map, interview, and brainstorm hold no state — they project it. Only the "
+        "human's committed interview answer elects a decision: these tools find, propose, and "
+        "verify, and never decide."
+    ),
+)
+
+_RO = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+_RW = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}
+
+
+@mcp.tool(annotations={"title": "Ledger Summary", **_RO})
+def ledger_summary(ledger: str) -> dict:
+    """Counts of ledger pins by state, kind and severity.
+
+    The ledger is the single source of truth all three surfaces project. Read it before acting on
+    any pin.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.ledger_summary(ledger)
+
+
+@mcp.tool(annotations={"title": "Interview — Next Questions", **_RO})
+def interview_next(ledger: str) -> dict:
+    """Open interview questions, best-first by information gain.
+
+    Returns the view *after* the compression funnel (cluster -> policy -> exception -> proposed
+    default). Never ask one question per finding — that is the failure mode this collapses. Blocker
+    and high pins never go to silent default. Only the human's answer elects a decision.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.interview_next(ledger)
+
+
+@mcp.tool(annotations={"title": "Contract Diff (cross-layer drift)", **_RO})
+def contract_diff(
+    contract: str,
+    ddl: str = "",
+    sqlalchemy: str = "",
+    pydantic: str = "",
+    typescript: str = "",
+    drizzle: str = "",
+    prisma: str = "",
+    django: str = "",
+    graphql: str = "",
+    backend: str = "auto",
+) -> dict:
+    """Field-shape drift of each layer against the contract carrier — the core cross-layer engine.
+
+    Deterministic and tech-stack agnostic: each layer is read only through its own type system,
+    never guessed from names or comments. Empty result means zero drift.
+
+    Args:
+        contract: Path to the contract carrier (the source of truth for correspondence).
+        ddl: Optional path to Postgres DDL / migration SQL.
+        sqlalchemy: Optional path to SQLAlchemy 2 models.
+        pydantic: Optional path to Pydantic v2 schemas.
+        typescript: Optional path to TypeScript interfaces.
+        drizzle: Optional path to a Drizzle schema.
+        prisma: Optional path to a Prisma schema.
+        django: Optional path to Django models.
+        graphql: Optional path to GraphQL SDL.
+        backend: Extraction backend — "auto" prefers a real grammar, degrading to stdlib parsers.
+    """
+    return tools.contract_diff(
+        contract, backend=backend, ddl=ddl, sqlalchemy=sqlalchemy, pydantic=pydantic,
+        typescript=typescript, drizzle=drizzle, prisma=prisma, django=django, graphql=graphql,
+    )
+
+
+@mcp.tool(annotations={"title": "Reconcile Two Layers (no carrier)", **_RO})
+def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> dict:
+    """Diff two layers directly against each other, with no contract in between.
+
+    Use on an existing codebase, where no carrier exists yet and cross-layer correspondence cannot
+    be trusted from an inferred graph. Extraction reads each stack's own types; correspondence comes
+    from the carrier or not at all.
+
+    Args:
+        layer_a: Layer kind — ddl | sqlalchemy | pydantic | typescript | drizzle | prisma | django | graphql.
+        path_a: Path to that layer's source file.
+        layer_b: The other layer kind.
+        path_b: Path to the other layer's source file.
+    """
+    return tools.reconcile_layers(layer_a, path_a, layer_b, path_b)
+
+
+@mcp.tool(annotations={"title": "Blast Radius", **_RO})
+def blast_radius(graph_path: str, node_id: str, head: str = "", depth: int = 2) -> dict:
+    """What breaks if this node changes — reverse reachability over EXTRACTED edges only.
+
+    Refuses to answer on a stale graph (built_at_commit must equal HEAD): a blast radius computed
+    against moved code is worse than none.
+
+    Args:
+        graph_path: Path to graph.json.
+        node_id: Stable node id to compute impact for.
+        head: HEAD sha for the staleness gate. Omit to resolve it from git automatically.
+        depth: Maximum reverse-reachability depth.
+    """
+    return tools.blast_radius(graph_path, node_id, head, depth)
+
+
+@mcp.tool(annotations={"title": "Generate Aligned Layers", **_RW})
+def generate_layers(contract: str, out: str, layers: list[str] | None = None) -> dict:
+    """Generate DB/ORM/API/client layers from one contract so they cannot drift. WRITES FILES.
+
+    Greenfield's forward direction; round-trips to zero drift against contract_diff.
+
+    Args:
+        contract: Path to the contract carrier.
+        out: Output directory.
+        layers: Subset of ddl | sqlalchemy | pydantic | typescript. Omit for all.
+    """
+    return tools.generate_layers(contract, out, layers)
+
+
+@mcp.tool(annotations={"title": "Findings + False-Positive Gate", **_RO})
+def findings_gate(reports: list[str]) -> dict:
+    """Normalize SARIF/OSV reports into one stream and run the false-positive gate.
+
+    Verdicts are CONFIRM / DOWNGRADE / DROP, clustered by root cause, with a showable audit trail
+    of what was dropped and why. Deterministic findings carry "extracted" confidence and skip the
+    gate — that budget is for judgment findings.
+
+    Args:
+        reports: Paths to SARIF and/or OSV JSON report files.
+    """
+    return tools.findings_gate(reports)
+
+
+@mcp.tool(annotations={"title": "Build Waves", **_RO})
+def build_waves(ledger: str) -> dict:
+    """Level the roadmap's depends_on DAG into execution waves and report what is actionable now.
+
+    Wave order is derived from the graph, never hardcoded — "align contracts before fixing logic"
+    falls out of it. Pause at each wave boundary for human review; never run end-to-end.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.build_waves(ledger)
+
+
+@mcp.tool(annotations={"title": "Challenge the Elected Oracle", **_RO})
+def challenge_oracle(ledger: str) -> dict:
+    """Red-team each elected to_be / acceptance_criterion / Policy before code rests on it.
+
+    Classes: unfalsifiable, inconsistent, unsatisfiable, unstated_assumption, ignored_fanout. An
+    unsound oracle is worse than none — it fossilizes. This proposes challenges and never decides.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.challenge_oracle(ledger)
+
+
+@mcp.tool(annotations={"title": "Render Visual Map", **_RW})
+def render_map(ledger: str, out: str) -> dict:
+    """Render the ledger as the self-contained visual HTML map. WRITES A FILE.
+
+    Clickable pins, three-column contract diff, as-is/to-be toggle. The map holds no state — it
+    projects the ledger.
+
+    Args:
+        ledger: Path to ledger.json.
+        out: Output .html path.
+    """
+    return tools.render_map(ledger, out)
+
+
+if __name__ == "__main__":
+    mcp.run()
