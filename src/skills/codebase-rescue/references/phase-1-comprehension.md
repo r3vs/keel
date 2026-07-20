@@ -174,9 +174,12 @@ feeding a fix.
 
 Run the mode with `scripts/runtime/understand.py <root>`: it builds the graph
 (`scripts/runtime/graph_build.py`), computes a layered overview (languages · layers · hotspots =
-most-depended-upon nodes), and generates the tour, writing the bundle to disk so every surface below
-reads one artifact. All of these are read-only projections over the graph, holding no state of their
-own (the same anti-divergence rule as the map):
+most-depended-upon nodes), generates the tour, and renders a **navigable, self-contained HTML map**
+(`scripts/runtime/graphmap.py` — the *layered lens*: an overview of colour-coded layer cards, drill
+into a layer's files, click a file for its neighbourhood, with search, tour playback, and SVG
+export), writing the whole bundle to disk so every surface below reads one artifact. All of these are
+read-only projections over the graph, holding no state of their own (the same anti-divergence rule as
+the map):
 
 - **Guided tours, dependency-ordered** (`scripts/runtime/tours.py`). A short walkthrough that starts
   at the top entry point (what nothing imports) and follows imports outward (a BFS reading order),

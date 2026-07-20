@@ -19,6 +19,7 @@ from typing import Optional
 
 import graph as graphmod
 import graph_build
+import graphmap
 import tours as toursmod
 
 
@@ -79,6 +80,11 @@ def write_bundle(bundle: dict, out_dir: str | pathlib.Path) -> dict:
         p.write_text(json.dumps(bundle[key], ensure_ascii=False, indent=2),
                      encoding="utf-8", newline="\n")
         paths[key] = str(p)
+    # the navigable, self-contained HTML map (layered lens) — the mode's visual deliverable
+    map_path = out / "graph-map.html"
+    map_path.write_text(graphmap.render(bundle["graph"], bundle["tour"], title="codebase map"),
+                        encoding="utf-8", newline="\n")
+    paths["map"] = str(map_path)
     return paths
 
 

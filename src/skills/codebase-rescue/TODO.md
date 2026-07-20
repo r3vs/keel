@@ -168,12 +168,17 @@ Applied now (design / prose; CI-green):
       a graph query surface. → `SKILL.md`, `references/phase-1-comprehension.md` ("Comprehension as an end")
 
 Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its backbone):
-- [x] **A1 (Python-complete)** `runtime/graph_build.py` — deterministic structural builder emitting
-      the exact node-link `graph.json` `runtime/graph.py` consumes: file/function/class/method nodes,
-      `contains`/`imports`/`calls` edges, per-file `layer`, `built_at_commit`. Python via stdlib
-      `ast` (imports resolved only when unambiguous — no fabrication). **Still open:** the tree-sitter
-      symbol extractor for other languages (a `STACKS`-style query table; today they get file nodes).
-      `tests/test_graph_build.py`.
+- [x] **A1** `runtime/graph_build.py` — deterministic structural builder emitting the exact node-link
+      `graph.json` `runtime/graph.py` consumes: file/function/class/method nodes, `contains`/`imports`/
+      `calls` edges, per-file `layer`, `built_at_commit`. **Python** via stdlib `ast`; **JS/TS/TSX**
+      via tree-sitter (declarative query set, methods qualified by their class, relative imports
+      resolved) when it is installed, degrading to file-only nodes when absent. Imports resolved only
+      when unambiguous — no fabrication. `tests/test_graph_build.py` (the tree-sitter class skips in a
+      stdlib-only CI). More languages = another query set (additive).
+- [x] **D1–D4** `runtime/graphmap.py` — the **layered-lens** self-contained HTML graph map: colour-
+      coded layer cards → drill into files → neighbourhood panel, client-side search, tour playback,
+      hand-rolled SVG export. Wired into `understand.py` (writes `graph-map.html`). Rendered + driven
+      in a real Chromium (no console errors); `tests/test_graphmap.py` guards self-containment.
 - [x] **B1** graph validate/repair — `graph_build.validate_repair`: drop no-id / duplicate nodes,
       **drop dangling edges** (referential integrity), coerce confidence, lowercase edge types,
       return a showable `GraphIssue[]`. `tests/test_graph_build.py::TestValidateRepair`.
@@ -203,10 +208,10 @@ Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its b
       Domain → Flow → Step. `tests/test_domain.py`.
 
 Still open (code — each its own PR; effort S/M/L per the study):
-- [ ] **A1 (tree-sitter)** per-language symbol extraction for non-Python (declarative query table
-      mirroring `treesitter_extract.STACKS`), so JS/TS/Go/… get symbols, not just file nodes (M).
-- [ ] **D1–D4** layered-lens + container heuristic + type/layer colouring + hand-rolled SVG export
-      in `runtime/map.py` (S–M).
+- [ ] **A1 (more languages)** additional tree-sitter query sets beyond JS/TS (Go, Rust, Java, …) —
+      each is one additive entry in `graph_build._TS_QUERIES`, no engine change (S each).
+- [ ] **D5** container sub-grouping *within* a layer (folder-LCP + Louvain fallback) for very large
+      layers — the map is legible now; this is a refinement for huge repos (M).
 - [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
       design-system alignment becomes an explicit goal (L).
 

@@ -135,6 +135,55 @@ class TestValidateRepair(unittest.TestCase):
             self.assertEqual(issues, [], f"a fresh build should be clean, got {issues}")
 
 
+@unittest.skipUnless(graph_build._treesitter_available(),
+                     "tree-sitter + a grammar not installed (stdlib-only CI skips this)")
+class TestTreeSitterJsTs(unittest.TestCase):
+    """The tree-sitter path for non-Python (JS/TS). Runs wherever tree-sitter is installed; skipped
+    in a stdlib-only CI. Degradation to file-only when absent is covered by the always-on tests."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name)
+        (self.root / "api").mkdir()
+        (self.root / "models.ts").write_text(
+            "export class User {\n  greet() { return this.name; }\n}\n"
+            "export function getUser(): User { return new User(); }\n", encoding="utf-8")
+        (self.root / "api" / "svc.ts").write_text(
+            "import { getUser } from '../models';\n"
+            "export const handler = () => getUser();\n"
+            "export class Service {\n  run() { return handler(); }\n}\n", encoding="utf-8")
+        (self.root / "app.js").write_text(
+            "import { Service } from './api/svc';\nfunction main() { return new Service(); }\n",
+            encoding="utf-8")
+        self.data = graph_build.build_graph(self.root, commit="ts1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _named(self, typ):
+        return {n["name"] for n in self.data["nodes"] if n["type"] == typ}
+
+    def test_symbols_across_js_and_ts(self):
+        self.assertIn("User", self._named("class"))
+        self.assertIn("Service", self._named("class"))
+        self.assertIn("getUser", self._named("function"))
+        self.assertIn("handler", self._named("function"))   # arrow-const function
+        self.assertIn("main", self._named("function"))       # from the .js file
+        self.assertIn("User.greet", self._named("method"))   # method qualified by its class
+        self.assertIn("Service.run", self._named("method"))
+
+    def test_relative_imports_resolve(self):
+        imports = {(e["source"], e["target"]) for e in self.data["links"] if e["type"] == "imports"}
+        self.assertIn(("file:api/svc.ts", "file:models.ts"), imports)
+        self.assertIn(("file:app.js", "file:api/svc.ts"), imports)
+
+    def test_deterministic_and_clean(self):
+        self.assertEqual(json.dumps(self.data),
+                         json.dumps(graph_build.build_graph(self.root, commit="ts1")))
+        _clean, issues = graph_build.validate_repair(self.data)
+        self.assertEqual(issues, [])
+
+
 class TestLayerOf(unittest.TestCase):
     def test_strips_generic_containers(self):
         self.assertEqual(graph_build.layer_of("src/api/users.py"), "api")

@@ -211,6 +211,155 @@ def _extract_python(rel: str, src: str, index: dict[str, list[str]]) -> tuple[li
 
 
 # ---------------------------------------------------------------------------
+# Tree-sitter extraction (other languages) — declarative per-grammar queries.
+# Reuses treesitter_extract's grammar loader + query runner (py-tree-sitter version handling lives in
+# one place). Guarded: absent tree-sitter, or a language with no query set, degrades to a file node —
+# never a regex that invents a symbol. Extends additively: a new language is a new query set here.
+# ---------------------------------------------------------------------------
+
+_TS_GRAMMAR_BY_EXT = {
+    ".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
+    ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+}
+_JS_EXTS = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
+_IMPORT_QUERY = "(import_statement source: (string) @src)"
+_TS_QUERIES = {
+    "typescript": {
+        "function": ["(function_declaration name: (identifier) @name) @node",
+                     "(variable_declarator name: (identifier) @name value: (arrow_function)) @node"],
+        "class": ["(class_declaration name: (type_identifier) @name) @node"],
+        "method": ["(method_definition name: (property_identifier) @name) @node"],
+    },
+    "javascript": {
+        "function": ["(function_declaration name: (identifier) @name) @node",
+                     "(variable_declarator name: (identifier) @name value: (arrow_function)) @node"],
+        "class": ["(class_declaration name: (identifier) @name) @node"],
+        "method": ["(method_definition name: (property_identifier) @name) @node"],
+    },
+}
+_TS_QUERIES["tsx"] = _TS_QUERIES["typescript"]  # tsx reuses the TS queries, on the tsx grammar
+
+
+def _treesitter_available() -> bool:
+    try:
+        import treesitter_extract as tse
+        return tse.available()
+    except Exception:
+        return False
+
+
+def _resolve_js_import(spec: str, importer_rel: str, fileset: set) -> Optional[str]:
+    """Resolve a **relative** JS/TS import specifier to exactly one internal file, or None. A bare
+    (package) specifier is dropped; a relative one resolves against the importer's dir, trying the
+    known extensions and an `/index` file. No fabrication — unresolved ⇒ None."""
+    spec = spec.strip().strip("\"'")
+    if not spec.startswith("."):
+        return None
+    base = "/".join(importer_rel.split("/")[:-1])
+    combined = f"{base}/{spec}" if base else spec
+    parts: list[str] = []
+    for seg in combined.split("/"):
+        if seg in ("", "."):
+            continue
+        parts = parts[:-1] if seg == ".." and parts else (parts if seg == ".." else parts + [seg])
+    stem = "/".join(parts)
+    candidates = []
+    if pathlib.PurePosixPath(stem).suffix.lower() in _JS_EXTS:
+        candidates.append(stem)
+    candidates += [stem + ext for ext in _JS_EXTS] + [stem + "/index" + ext for ext in _JS_EXTS]
+    return next((c for c in candidates if c in fileset), None)
+
+
+def _extract_treesitter(rel: str, src: str, ext: str, fileset: set) -> tuple[list[dict], list[dict]]:
+    """Symbol nodes (function/class/method) + contains/imports edges for one non-Python file via
+    tree-sitter. Methods are qualified with their enclosing class (tightest containing class range)
+    and linked to it; imports resolve only when the relative specifier lands on an internal file."""
+    grammar = _TS_GRAMMAR_BY_EXT.get(ext)
+    queries = _TS_QUERIES.get(grammar)
+    if grammar is None or queries is None:
+        return [], []
+    try:
+        import treesitter_extract as tse
+        root_node = tse.parse(src, grammar)
+    except Exception:
+        return [], []  # unloadable grammar / parse error → file-only, never a guess
+
+    lang = _LANG_BY_EXT.get(ext, "text")
+    file_id = f"file:{rel}"
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    classes: list[tuple[int, int, str, str]] = []  # (start, end, class_node_id, class_name)
+
+    def _add(kind: str, name: str, node, parent_id: str) -> tuple[str, int, int]:
+        start, end = node.start_point[0] + 1, node.end_point[0] + 1
+        nid = f"sym:{rel}:{name}:{start}"
+        nodes.append({"id": nid, "type": kind, "name": name, "source_file": rel,
+                      "start_line": start, "end_line": end, "confidence": "extracted",
+                      "language": lang, "layer": layer_of(rel)})
+        edges.append({"source": parent_id, "target": nid, "type": "contains",
+                      "confidence": "extracted"})
+        return nid, start, end
+
+    def _cap(caps):
+        return tse._cap1(caps, "node"), tse._cap1(caps, "name")
+
+    try:
+        for q in queries.get("class", []):
+            for _i, caps in tse._matches(grammar, q, root_node):
+                nnode, nm = _cap(caps)
+                if nnode is not None and nm is not None:
+                    cname = tse._txt(nm)
+                    cid, s, e = _add("class", cname, nnode, file_id)
+                    classes.append((s, e, cid, cname))
+        for q in queries.get("function", []):
+            for _i, caps in tse._matches(grammar, q, root_node):
+                nnode, nm = _cap(caps)
+                if nnode is not None and nm is not None:
+                    _add("function", tse._txt(nm), nnode, file_id)
+        for q in queries.get("method", []):
+            for _i, caps in tse._matches(grammar, q, root_node):
+                nnode, nm = _cap(caps)
+                if nnode is None or nm is None:
+                    continue
+                mstart = nnode.start_point[0] + 1
+                owner_id, owner_name, best = file_id, None, None
+                for s, e, cid, cname in classes:
+                    if s <= mstart <= e and (best is None or (e - s) < best):
+                        best, owner_id, owner_name = (e - s), cid, cname
+                mname = f"{owner_name}.{tse._txt(nm)}" if owner_name else tse._txt(nm)
+                _add("method", mname, nnode, owner_id)
+        seen_imp = set()
+        for _i, caps in tse._matches(grammar, _IMPORT_QUERY, root_node):
+            snode = tse._cap1(caps, "src")
+            if snode is None:
+                continue
+            tgt = _resolve_js_import(tse._txt(snode), rel, fileset)
+            if tgt and tgt != rel and tgt not in seen_imp:
+                seen_imp.add(tgt)
+                edges.append({"source": file_id, "target": f"file:{tgt}", "type": "imports",
+                              "confidence": "extracted"})
+    except Exception:
+        return [], []  # any grammar/query mismatch degrades to file-only rather than half-data
+
+    # dedupe overlapping captures (arrow vs declaration) deterministically
+    seen, uniq_nodes = set(), []
+    for n in nodes:
+        if n["id"] not in seen:
+            seen.add(n["id"])
+            uniq_nodes.append(n)
+    eseen, uniq_edges = set(), []
+    for e in edges:
+        k = (e["source"], e["target"], e["type"])
+        # keep every edge except a `contains` whose symbol target was deduped away; import edges
+        # (file -> file) must survive — their target is another file node, not in this file's symbols
+        if k in eseen or (e["type"] == "contains" and e["target"] not in seen):
+            continue
+        eseen.add(k)
+        uniq_edges.append(e)
+    return uniq_nodes, uniq_edges
+
+
+# ---------------------------------------------------------------------------
 # Repo walk + assembly
 # ---------------------------------------------------------------------------
 
@@ -237,12 +386,15 @@ def build_graph(root: str | pathlib.Path, *, commit: Optional[str] = None) -> di
     """
     root = pathlib.Path(root).resolve()
     files = _iter_source_files(root)
+    fileset = set(files)
     py_index = _py_module_index(files)
+    ts_ok = _treesitter_available()
 
     nodes: list[dict] = []
     links: list[dict] = []
     for rel in files:
-        lang = _LANG_BY_EXT.get(pathlib.Path(rel).suffix.lower(), "text")
+        ext = pathlib.Path(rel).suffix.lower()
+        lang = _LANG_BY_EXT.get(ext, "text")
         nodes.append({
             "id": f"file:{rel}", "type": "file", "name": _posix(rel).split("/")[-1],
             "source_file": rel, "start_line": 1, "end_line": None,
@@ -256,11 +408,17 @@ def build_graph(root: str | pathlib.Path, *, commit: Optional[str] = None) -> di
             sn, se = _extract_python(rel, src, py_index)
             nodes.extend(sn)
             links.extend(se)
-        # Non-Python files contribute their file node (with language + layer) only. Symbol-level
-        # extraction for other languages is the additive next step — a declarative per-grammar
-        # tree-sitter query table mirroring `treesitter_extract.STACKS`, guarded by `available()`
-        # and degrading here to exactly this file-only behaviour. We do NOT regex-guess symbols:
-        # a file node is a fact; an invented function node would not be.
+        elif ts_ok and ext in _TS_GRAMMAR_BY_EXT:
+            # JS/TS/… via tree-sitter when it is installed. Absent it (e.g. a stdlib-only CI),
+            # these files fall through to their file node only — honest degradation, never a
+            # regex that invents a symbol.
+            try:
+                src = (root / rel).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            sn, se = _extract_treesitter(rel, src, ext, fileset)
+            nodes.extend(sn)
+            links.extend(se)
 
     data = {
         "graph": {
