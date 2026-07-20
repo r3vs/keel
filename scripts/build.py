@@ -15,14 +15,32 @@ That is the whole structure. It replaced three overlapping answers to "is this s
 Both sync scripts are folded in here. They were a workaround for having no build step — once this
 file existed, their copies in the source tree were vestigial. The vendoring itself stays: see below.
 
-Why vendor at all (verified 2026-07-17, not assumed)
-----------------------------------------------------
-A skill must be **self-contained**, because neither opencode nor Pi resolves a skill's relative
-paths against the skill directory — both resolve against **the user's project**. So a
-`../../core/ledger.md` in a skill body does not read our file; it reads (or misses) something in
-*their* repo. opencode v2 rejects it outright (`relative_escape`). And on a global install, a
-sibling `~/.agents/core/` sits outside the project, so `external_directory` prompts the user on
-every single read — vendoring inside the skill dir is what keeps that silent.
+Why vendor at all — distribution atomicity, and nothing else
+------------------------------------------------------------
+The Agent Skills spec's unit of distribution is the standalone skill folder, and `scripts/install.sh`
+symlinks **each skill dir individually** into `~/.agents/skills/`. A sibling `~/.agents/core/` is not
+part of what travels. Vendoring buys guaranteed presence of the bytes **inside the unit that ships**.
+That is the whole argument.
+
+What used to stand here — and is refuted, so nobody rebuilds it (re-audited 2026-07-17 at the
+consuming functions, `anomalyco/opencode` + `earendil-works/pi`): `relative_escape` is opencode-**v2
+only** and fires only for *relative* paths, an absolute path outside being promoted to
+`external_directory` rather than rejected; `external_directory` prompts **once per subtree per
+project**, persists on "always", is pre-approvable by one config rule — and fires **identically for
+vendored files**, because our own default install target `~/.agents/skills` is itself outside the
+user's project, so vendoring takes the external-subtree count 2 → 1, never 1 → 0; and **Pi has no
+read confinement at all**, though the old sentence named both hosts.
+
+The counterfactual that inverts the old reasoning: **both hosts inject the skill's absolute base
+directory and instruct the model to resolve against it** (opencode `core/src/tool/skill.ts`: "Base
+directory for this skill: …"; Pi `harness/skills.js`: "References are relative to …"). Under that
+contract a `../` composes to an absolute path and behaves exactly like a vendored one. The old
+mechanism only bites when the model ignores the host's instruction — and there vendoring fails
+*worse*: `references/core/x.md` is lexically internal, so it does not error, it silently reads the
+user's own file at that path.
+
+Worth naming under this repo's no-heuristics rule: no host resolves skill-relative reads
+deterministically. Both delegate it to the model via injected prose.
 
 Why the duplication that remains is irreducible
 ------------------------------------------------
@@ -133,12 +151,22 @@ PLUGINS = {
     },
     "alignment-helpers": {
         "description": (
-            "Composable helpers, each useful on its own: grounded-research (cite current sources, "
-            "never stale memory), static-first-analysis (strongest deterministic signal before "
-            "judgment), project-memory (durable facts), and learning-layer (senior-grade output "
-            "while the operator levels up)."
+            "Composable helpers, each useful on its own and each bound to the decisions ledger: the "
+            "engineering loop (test-driven-development, systematic-debugging, code-review, "
+            "verification-before-completion, branch-lifecycle), plus grounded-research (cite current "
+            "sources, never stale memory), static-first-analysis (strongest deterministic signal "
+            "before judgment), project-memory (durable facts), and learning-layer (senior-grade "
+            "output while the operator levels up)."
         ),
-        "skills": ["grounded-research", "static-first-analysis", "project-memory", "learning-layer"],
+        # The five engineering skills are authored here rather than composed from an external
+        # marketplace, and the reason is not NIH — it is that a generic TDD skill cannot make its
+        # red step an `acceptance_criterion` pin. A skill that runs beside the ledger without
+        # writing to it is a stateless twin of the single source of truth, which is the exact
+        # divergence this package exists to find. Binding is the whole point; the prose is the
+        # cheap part.
+        "skills": ["test-driven-development", "systematic-debugging", "code-review",
+                   "verification-before-completion", "branch-lifecycle",
+                   "grounded-research", "static-first-analysis", "project-memory", "learning-layer"],
         # It depends on the core, and the honest reason is the MCP servers, not the ledger:
         # `grounded-research` IS the Context7/DeepWiki doctrine as a skill, and core is where those
         # servers are declared. This used to say `dependencies: []` and "no runtime dependency" —
@@ -398,16 +426,34 @@ def manifest(name: str, spec: dict) -> str:
 
 
 def codex_manifest(name: str, spec: dict) -> str:
-    """Codex's manifest is near-identical to Claude Code's, so one generator emits both. Two real
-    differences: the directory is `.codex-plugin/`, and Codex has **no `dependencies`** — a Codex
-    user installs each plugin explicitly."""
+    """Codex's manifest is near-identical to Claude Code's, so one generator emits both. Three real
+    differences: the directory is `.codex-plugin/`; Codex has **no `dependencies`** (a Codex user
+    installs each plugin explicitly); and **every path is `./`-prefixed or it is silently dropped**.
+
+    That third one shipped broken for months. `codex-rs/core-plugins/src/manifest.rs`:
+
+        let Some(relative_path) = path.strip_prefix("./") else {
+            tracing::warn!("ignoring {field}: path must start with `./` relative to plugin root");
+            return None; };
+
+    `resolve_manifest_paths`, `resolve_manifest_mcp_servers` and `resolve_manifest_hooks` all route
+    through that one function, and the array variants `filter_map` each element through it
+    INDIVIDUALLY. So a bare `skills/foo` is not an error — it is a `None` and a log line. The
+    manifest parses, validates, installs, and declares nothing.
+
+    Why it survived every gate: this file used to cite `PluginManifestMcpServers::Path` as proof
+    Codex ate our shape. That citation was true and worthless — it named the **type that holds the
+    value**, not the **function that consumes it**. The type accepts any `String`; the resolver
+    accepts a `./`-prefixed one. Cite consumers, never types: `tests/test_codex_manifest.py` holds
+    the invariant, because a rule without a gate rots.
+    """
     m = {"name": name, "version": VERSION, "description": spec["description"], "keywords": KEYWORDS}
     if spec["skills"]:
-        m["skills"] = [f"skills/{s}" for s in spec["skills"]]
+        m["skills"] = [f"./skills/{s}" for s in spec["skills"]]
     if spec.get("mcp"):
-        m["mcpServers"] = ".mcp.json"
+        m["mcpServers"] = "./.mcp.json"
     if spec.get("hooks"):
-        m["hooks"] = "hooks/hooks.json"
+        m["hooks"] = "./hooks/hooks.json"
     return json.dumps(m, indent=2) + "\n"
 
 
@@ -437,9 +483,11 @@ def required_servers() -> dict:
 
 def mcp_json() -> str:
     """Claude Code + Codex both eat this shape, and both load it **from the installed plugin** —
-    Claude via `.mcp.json` at the plugin root, Codex via its manifest's `mcpServers: ".mcp.json"`
-    (verified in openai/codex: `PluginManifestMcpServers::Path`). So for those two hosts, installing
-    the plugin IS the MCP delivery; there is nothing for the user to copy.
+    Claude via `.mcp.json` at the plugin root, Codex via its manifest's `mcpServers: "./.mcp.json"`
+    (verified in openai/codex: `resolve_manifest_mcp_servers` -> `resolve_manifest_path`, i.e. the
+    function that CONSUMES the value — an earlier version of this line cited the type that holds it,
+    `PluginManifestMcpServers::Path`, and that is exactly how the missing `./` shipped). So for those
+    two hosts, installing the plugin IS the MCP delivery; there is nothing for the user to copy.
 
     The bug this closes: these servers used to be declared only in this repo's own root config files,
     which no user ever receives — and the docs told users to *clone the repo and work inside it*,
@@ -462,7 +510,7 @@ def opencode_mcp_plugin() -> str:
     """opencode's MCP delivery: a plugin `config(cfg)` hook, generated from the same table.
 
     opencode has no manifest to declare servers in — but a plugin CAN contribute them (verified in
-    sst/opencode: `config(cfg)` receives the live merged config and may mutate it). We already ship
+    anomalyco/opencode: `config(cfg)` receives the live merged config and may mutate it). We already ship
     an opencode plugin for the ledger gate, so the user gets the servers by installing, exactly like
     Claude Code and Codex. What stood here before was a heredoc in install.sh telling the user to
     hand-copy a JSON block — unnecessary, and one hand-copy away from drift.
@@ -517,14 +565,28 @@ def marketplace() -> str:
         "name": "codebase-alignment", "version": VERSION,
         "description": "Curative + preventive codebase-alignment plugins on a shared decisions-ledger core.",
         "owner": AUTHOR,
+        # Every entry is OURS, and `tests/test_codex_manifest.py` holds that shut. The catalog used
+        # to carry a `superpowers` entry under the banner "generic engineering skills are COMPOSED,
+        # not reinvented here". It is gone, for two reasons that compound:
+        #
+        # 1. **It was never composed.** No plugin declared it in `dependencies`; no file in `src/`
+        #    named one of its skills. Four documents asserted a mechanism that did not exist — the
+        #    house failure mode, in the one place that advertises us. (Its `source` was also
+        #    `"github:obra/superpowers"`, a shorthand that is not a thing, so the entry could not
+        #    even be fetched. Nobody noticed, because nobody needed it.)
+        # 2. **Composing it was the wrong goal anyway.** A dependency installs the WHOLE plugin —
+        #    16 skills, of which `brainstorming`, `writing-plans`/`executing-plans` and
+        #    `subagent-driven-development` are stateless twins of `core/brainstorm.md`,
+        #    `buildloop.py` and `core/agents.md`. None of them can write to the ledger, and none
+        #    ever will. Putting a forgetting twin beside the single source of truth is the exact
+        #    divergence this package exists to prevent — we would have shipped our own anti-pattern.
+        #
+        # So the generic skills are authored here, ledger-aware. That is not reinventing TDD; it is
+        # writing the TDD whose red step is an `acceptance_criterion` pin. The doctrine is now
+        # "self-contained": a user installs our plugins and needs no external plugin, ever.
         "plugins": [{"name": n, "description": s["description"], "version": VERSION,
                      "source": f"./plugins/{n}", "category": "development", "author": AUTHOR}
-                    for n, s in PLUGINS.items()]
-        + [{"name": "superpowers",
-            "description": ("Composed, not authored here: Jesse Vincent's generic engineering skills "
-                            "(TDD, systematic debugging, planning, code review, git worktrees)."),
-            "source": "github:obra/superpowers", "category": "development",
-            "author": {"name": "Jesse Vincent"}}],
+                    for n, s in PLUGINS.items()],
     }, indent=2) + "\n"
 
 

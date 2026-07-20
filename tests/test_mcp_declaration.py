@@ -18,8 +18,14 @@ The root files were the whole bug, in two layers:
 
 Delivery is now the install itself, generated from the doctrine's one table, on every host that can
 take it — verified in each host's source, not assumed: Claude Code reads the plugin's own
-`.mcp.json`; Codex's manifest points at the same file (`PluginManifestMcpServers::Path`); opencode
-has no manifest slot but a plugin's `config(cfg)` hook may mutate the live merged config.
+`.mcp.json`; Codex's manifest points at the same file (`resolve_manifest_mcp_servers`); opencode has
+no manifest slot but a plugin's `config(cfg)` hook may mutate the live merged config.
+
+That Codex citation used to read `PluginManifestMcpServers::Path` — the type that HOLDS the value
+rather than the function that CONSUMES it. The type accepts any `String`; the resolver accepts only
+a `./`-prefixed one, and drops the rest with a `tracing::warn`. So this suite asserted, for months,
+that Codex reached a file Codex never opened. `test_codex_manifest.py` holds that shut now; the
+lesson it carries is the general one: **cite consumers, never types.**
 
 These assert against the doctrine's table, never a hardcoded list — a new required server fails here
 until every host's delivery carries it, which is the point.
@@ -145,7 +151,7 @@ class TestEveryHostGetsThemFromItsInstall(unittest.TestCase):
                 self.assertIn(url, ts, "the doctrine mandates this server but opencode never gets it")
 
     def test_the_opencode_plugin_speaks_opencodes_schema_not_claudes(self):
-        # Verified in sst/opencode, and not guessable from Claude's shape: the discriminator is
+        # Verified in anomalyco/opencode, and not guessable from Claude's shape: the discriminator is
         # `remote`/`local`, and a local server's `command` is an ARRAY. Emitting Claude's `http`
         # would typecheck as JSON and silently declare nothing.
         ts = self.opencode_plugin()
@@ -170,9 +176,13 @@ class TestEveryHostGetsThemFromItsInstall(unittest.TestCase):
         self.assertRegex(self.opencode_plugin(), r"\.\.\.ours,\s*\.\.\.\(cfg\.mcp")
 
     def test_codex_reaches_the_same_file_claude_does(self):
-        # Verified in openai/codex: `mcpServers` may be a path to a .mcp.json. One file, two hosts.
+        # One file, two hosts — but only because the path is `./`-prefixed. This assertion read
+        # `".mcp.json"` for months, which is the value Codex silently drops: the test did not merely
+        # miss the bug, it pinned it as correct. The syntax rule and the invariant that enforces it
+        # across every path-valued field live in test_codex_manifest.py; this one asserts only the
+        # fact this suite is about — that Codex is pointed at the same declaration Claude reads.
         with open(PLUGINS / "alignment-core" / ".codex-plugin" / "plugin.json", encoding="utf-8") as fh:
-            self.assertEqual(json.load(fh).get("mcpServers"), ".mcp.json")
+            self.assertEqual(json.load(fh).get("mcpServers"), "./.mcp.json")
 
     def test_install_sh_does_not_ask_the_user_to_copy_servers(self):
         text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")

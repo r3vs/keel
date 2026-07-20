@@ -14,8 +14,8 @@
     "tdd"
   ],
   "skills": [
-    "skills/using-the-ledger"
+    "./skills/using-the-ledger"
   ],
-  "mcpServers": ".mcp.json",
-  "hooks": "hooks/hooks.json"
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json"
 }
