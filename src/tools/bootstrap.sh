@@ -15,6 +15,11 @@ have() { command -v "$1" >/dev/null 2>&1; }
 : "${SEMGREP_VER:=}";  : "${LIZARD_VER:=}";   : "${JSCPD_VER:=}";        : "${ASTGREP_VER:=}"
 : "${GRAPHIFY_VER:=}"; : "${CODEWIKI_VER:=}"; : "${IMPORTLINTER_VER:=}"; : "${DEPCRUISER_VER:=}"
 pipspec() { [ -n "${2:-}" ] && printf '%s==%s' "$1" "$2" || printf '%s' "$1"; }
+# Grammars are fetched at runtime keyed by the pack's version, so pinning it pins the extraction —
+# leave empty for latest, per the convention above. 1.12.5 (2026-07-07) is what this repo is tested
+# against: MIT, abi3 wheels incl. win_amd64/win_arm64, no compiler at install, `tree-sitter>=0.23`.
+TREE_SITTER_VER=""
+TS_LANG_PACK_VER=""
 npmspec() { [ -n "${2:-}" ] && printf '%s@%s'  "$1" "$2" || printf '%s' "$1"; }
 
 echo "== Codebase Rescue toolchain =="
@@ -110,12 +115,45 @@ fi
 # runtime/treesitter_extract.py uses it when present for more robust TS/GraphQL/arbitrary-stack
 # extraction (a stack = a query, not a new parser). The runtime stays stdlib-only and degrades to
 # the regex/ast parsers when it is absent — so this is genuinely optional.
+#
+# INSTALLING IT IS NO LONGER ENOUGH, and that is the whole reason for the prefetch below.
+# tree-sitter-language-pack used to compile ~165 grammars INTO the wheel; import implied presence.
+# It now ships a ~2 MB wheel and DOWNLOADS each grammar from GitHub releases **on first use**,
+# cached under ~/.cache/tree-sitter-language-pack/. So a machine can import the library and still
+# have zero usable grammars — on this repo's own dev box, 11 of 306 are present.
+#
+# That turns the network into a mid-run dependency: without a warm cache a rescue fetches while it
+# analyses, and an offline/air-gapped/proxied box degrades per-grammar at the worst moment. Same
+# problem, same answer as the uv cache warm-up above: pull them now, while failing is free.
+# `available(lang)` in treesitter_extract.py probes per-grammar and falls back to the stdlib
+# parsers, so every line here is best-effort and none of it can hard-fail.
 if have pip3 || have pip; then
   python3 -c "import tree_sitter, tree_sitter_language_pack" >/dev/null 2>&1 \
     && ok "tree-sitter (present, optional shape-engine backend)" \
-    || { python3 -m pip install --user tree-sitter tree-sitter-language-pack >/dev/null 2>&1 \
+    || { python3 -m pip install --user \
+           "$(pipspec tree-sitter "$TREE_SITTER_VER")" \
+           "$(pipspec tree-sitter-language-pack "$TS_LANG_PACK_VER")" >/dev/null 2>&1 \
          && ok "tree-sitter (pip, optional shape-engine backend)"; } \
     || warn "tree-sitter not installed — shape engine uses the stdlib parsers (fine)"
+
+  # Warm the grammar cache for the stacks shapes.py supports, so extraction never fetches mid-run.
+  # The list is READ FROM THE RUNTIME, not restated here: treesitter_extract.STACKS is the one
+  # declaration of which grammars exist, and a second copy in a shell script is a copy that drifts.
+  python3 - <<'PY' 2>/dev/null || warn "grammar prefetch skipped — grammars fetch on first use (needs network then)"
+import sys, pathlib
+for p in ("scripts/runtime", "src/runtime"):
+    d = pathlib.Path(__file__).resolve().parent.parent / p
+    if d.is_dir():
+        sys.path.insert(0, str(d))
+import treesitter_extract as ts                      # noqa: E402
+from tree_sitter_language_pack import prefetch, downloaded_languages  # noqa: E402
+want = sorted({s["grammar"] for s in ts.STACKS.values()} | set(ts._CUSTOM))
+# downloaded_languages() reports the name as REQUESTED and available_languages() the canonical one
+# ("csharp" vs "c_sharp" for the same grammar), so a set-difference across the two silently
+# re-fetches forever. prefetch() is already idempotent — let it do the diffing.
+prefetch(want)
+print(f"  prefetched {len(want)} grammars: {', '.join(want)}")
+PY
 fi
 
 # --- Static analysis: architecture-fitness (best-effort; type-checkers are per-language) --

@@ -58,6 +58,99 @@ class TestAlwaysOn(unittest.TestCase):
 
 
 @skip_no_ts
+class TestOneGrammarFailingIsNotTheBackendFailing(unittest.TestCase):
+    """`available()` answered a question that stopped implying the one callers actually ask.
+
+    It used to be that "tree-sitter imports" meant "every grammar is here": the language pack
+    compiled all ~165 into the wheel. It now ships a ~2 MB wheel and downloads each grammar from
+    GitHub releases on first use. So the import survives offline, air-gapped, behind a proxy, or on
+    a checksum mismatch — and the grammar does not arrive.
+
+    The gap predates that change. The no-arg probe returns True on the mere presence of
+    `tree_sitter_typescript`, after which extracting **Go** raised straight out of `backend="auto"`
+    — the mode whose docstring promises to "transparently fall back to the stdlib parser". A
+    promise the code does not keep is the exact bug this package exists to find, so it does not get
+    to live in this package.
+
+    These run with or without tree-sitter installed: the failure is injected, never depended on.
+    """
+
+    def setUp(self):
+        self._real = tse._language
+        tse._LANG_CACHE.clear()
+
+    def tearDown(self):
+        tse._language = self._real
+        tse._LANG_CACHE.clear()
+
+    def _break(self, exc=None):
+        def boom(grammar):
+            raise exc or tse.TreeSitterUnavailable("download failed: connection refused")
+        tse._language = boom
+
+    def test_probing_a_language_loads_that_language(self):
+        # The only honest way to know a grammar is usable is to use it. A probe that just checks
+        # for the library is the thing that lied.
+        self._break()
+        self.assertFalse(tse.available("go"))
+
+    def test_auto_degrades_when_one_grammar_cannot_load(self):
+        self._break()
+        self.assertIsNone(shapes._try_treesitter("go", "type U struct { ID string }", "auto"))
+
+    def test_explicit_treesitter_backend_still_fails_loudly(self):
+        # Degrading is right for `auto` and wrong here: this caller asked for tree-sitter by name,
+        # and silently handing back stdlib output would answer a question they did not ask.
+        self._break()
+        with self.assertRaises(RuntimeError):
+            shapes._try_treesitter("go", "type U struct { ID string }", "treesitter")
+
+    def test_a_failure_is_attempted_once_not_once_per_file(self):
+        # Not an optimization. A rescue walks thousands of files; re-attempting a network fetch per
+        # file turns a clean fallback into what looks like a hang.
+        attempts = []
+
+        def counting(grammar):
+            attempts.append(grammar)
+            raise RuntimeError("download failed: connection refused")
+
+        tse._LANG_CACHE.clear()
+        tse._language = self._real
+        orig = tse.__dict__.get("_grammar_for")
+        try:
+            import tree_sitter_language_pack as pack
+        except Exception:
+            self.skipTest("language pack not installed; the negative cache needs a real load path")
+        real_get = pack.get_language
+        pack.get_language = counting
+        try:
+            for _ in range(5):
+                tse.available("go")
+            self.assertEqual(len(attempts), 1, "the failure must be cached, not re-attempted")
+        finally:
+            pack.get_language = real_get
+            self.assertIs(orig, tse.__dict__.get("_grammar_for"))
+
+    def test_the_error_names_the_real_cause_not_the_last_one(self):
+        # Collapsing to the fallback's error prints "No module named tree_sitter_go" when the truth
+        # was a failed download — a misleading diagnosis on the very failure mode this survives.
+        try:
+            import tree_sitter_language_pack as pack
+        except Exception:
+            self.skipTest("language pack not installed")
+        real_get = pack.get_language
+        pack.get_language = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("download failed: connection refused"))
+        try:
+            tse._LANG_CACHE.clear()
+            tse._language = self._real
+            with self.assertRaises(tse.TreeSitterUnavailable) as caught:
+                tse._language("go")
+            self.assertIn("connection refused", str(caught.exception))
+        finally:
+            pack.get_language = real_get
+
+
 class TestTypeScriptAdapter(unittest.TestCase):
     def test_matches_regex_extractor(self):
         src = (FIXTURES / "step0" / "types.ts").read_text(encoding="utf-8")

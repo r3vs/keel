@@ -71,12 +71,27 @@ def _try_treesitter(lang: str, text: str, backend: str):
         import treesitter_extract as _ts
     except Exception:
         _ts = None
-    if _ts is None or not _ts.available():
+    # Probe THIS grammar, not the library. `available()` with no argument answers "is tree-sitter
+    # installed", which stopped implying "can it parse Go" the day the language pack started
+    # downloading grammars on first use — and never implied it for someone carrying individual
+    # `tree_sitter_<lang>` modules. See treesitter_extract.available().
+    if _ts is None or not _ts.available(lang):
         if backend == "treesitter":
-            raise RuntimeError("backend='treesitter' requested but tree-sitter is not installed "
-                               "(pip install tree-sitter tree-sitter-language-pack)")
+            raise RuntimeError(f"backend='treesitter' requested but no usable {lang!r} grammar "
+                               "(pip install tree-sitter tree-sitter-language-pack; grammars are "
+                               "fetched on first use, so this also fails with no network)")
         return None
-    return _ts.extract(text, lang)
+    try:
+        return _ts.extract(text, lang)
+    except _ts.TreeSitterUnavailable:
+        # `auto` promises to "transparently fall back", and a promise the code does not keep is the
+        # bug this package exists to find. The probe above makes this nearly unreachable — nearly is
+        # not never: the grammar can load and the download can still fail on a second grammar, and
+        # `available()` is a probe, not a lock. An explicit backend='treesitter' still fails loudly,
+        # because that caller asked for tree-sitter and silence would be the wrong answer.
+        if backend == "treesitter":
+            raise
+        return None
 
 
 # ---------------------------------------------------------------------------

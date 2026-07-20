@@ -37,12 +37,38 @@ _LANG_CACHE: dict = {}
 _PARSER_CACHE: dict = {}
 
 
-def available() -> bool:
-    """True if tree-sitter and at least one grammar source are importable."""
+def available(lang: Optional[str] = None) -> bool:
+    """Is the backend usable — for `lang` specifically, or at all?
+
+    **Those two stopped being the same question, and the difference is the whole point of this
+    signature.** `tree-sitter-language-pack` used to compile every grammar into the wheel, so "the
+    library imports" really did imply "all ~165 grammars are here" — one probe answered both. It now
+    ships a ~2 MB wheel and **downloads each grammar from GitHub releases on first use**, cached
+    under `~/.cache/tree-sitter-language-pack/`. So the import proves nothing about any individual
+    grammar: offline, air-gapped, behind a proxy, mid-outage, or on a checksum mismatch, the import
+    succeeds and the grammar never arrives.
+
+    The gap is not hypothetical and it is not new. The no-arg probe below returns True on the mere
+    presence of `tree_sitter_typescript` — after which extracting **Go** raises. The bundled pack
+    hid that for as long as it was bundled.
+
+    Passing `lang` answers the question that decides anything, and the only honest way to answer it
+    is to load the grammar — which is what this does. `_language` caches both outcomes, so a probe
+    costs one attempt per grammar per process, not one per file.
+
+    The no-arg form is kept for `backend="treesitter"`'s error message, which is genuinely asking
+    the process-level question: is this environment set up at all?
+    """
     try:
         import tree_sitter  # noqa: F401
     except Exception:
         return False
+    if lang is not None:
+        try:
+            _language(_grammar_for(lang))
+            return True
+        except Exception:
+            return False
     try:
         import tree_sitter_language_pack  # noqa: F401
         return True
@@ -202,15 +228,36 @@ STACKS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 
+def _grammar_for(lang: str) -> str:
+    """The grammar a stack parses. Data for the spec-driven stacks; for the custom walks it is the
+    stack's own name, which `_extract_sql`'s `parse(source, "sql")` states outright."""
+    if lang in STACKS:
+        return STACKS[lang]["grammar"]
+    if lang in _CUSTOM:
+        return lang
+    raise KeyError(f"no stack spec for {lang!r}; known: {sorted(set(STACKS) | set(_CUSTOM))}")
+
+
 def _language(grammar: str):
-    if grammar in _LANG_CACHE:
-        return _LANG_CACHE[grammar]
+    """Load a grammar, caching **both** outcomes.
+
+    The negative cache is not an optimization — it is what keeps a failure cheap. A rescue walks
+    thousands of files, and `tree-sitter-language-pack` now fetches grammars over the network on
+    first use. Without a negative cache an undownloadable grammar is retried, network timeout and
+    all, **once per file** — turning a clean fall-back-to-stdlib into a run that looks like a hang.
+    Fail once, remember it, move on.
+    """
+    cached = _LANG_CACHE.get(grammar)
+    if isinstance(cached, TreeSitterUnavailable):
+        raise cached
+    if cached is not None:
+        return cached
     from tree_sitter import Language
     obj = None
     try:
         from tree_sitter_language_pack import get_language
         obj = get_language(grammar)
-    except Exception:
+    except Exception as pack_exc:
         modname = "tree_sitter_" + grammar.replace("-", "_")
         try:
             mod = __import__(modname)
@@ -219,7 +266,13 @@ def _language(grammar: str):
             else:
                 obj = Language(mod.language())
         except Exception as exc:  # pragma: no cover - depends on installed grammars
-            raise TreeSitterUnavailable(f"no grammar for {grammar!r}: {exc}") from exc
+            # Report BOTH causes. Collapsing to the second one prints "No module named
+            # tree_sitter_go" when the truth was "download failed: connection refused" — a
+            # misleading diagnosis on precisely the failure mode this path exists to survive.
+            err = TreeSitterUnavailable(
+                f"no grammar for {grammar!r}: language-pack: {pack_exc}; module {modname}: {exc}")
+            _LANG_CACHE[grammar] = err
+            raise err from exc
     _LANG_CACHE[grammar] = obj
     return obj
 
