@@ -3,165 +3,152 @@
   "note": "Source of truth for the module catalog. A CI drift-linter should verify every module here has a matching reference playbook and that SKILL.md phase pointers stay consistent. 'deterministic' modules run a tool and emit SARIF/JSON; 'judgment' modules require model reasoning over the graph + findings.",
   "modules": [
     {
-      "id": "graph-build",
+      "id": "architecture-fitness",
       "phase": 1,
-      "kind": "infrastructure",
+      "kind": "maintainability",
       "type": "deterministic",
-      "tools": ["graphify"],
-      "tools_optional": ["gitnexus"],
-      "produces": "knowledge_graph",
-      "notes": "Backbone = Graphify (MIT license; models DB schema as nodes; spans DB<->API<->frontend; exports plain NetworkX graph.json with stable node ids + source_location + EXTRACTED/INFERRED/AMBIGUOUS confidence). Cross-layer edges are the INFERRED tier (LLM semantic pass, unbenchmarked) -> use as hints, compute field-level shapes yourself. Semantic pass can run fully local via Ollama (privacy). GitNexus is OPTIONAL secondary for deterministic blast-radius in remediation ONLY; it is PolyForm Noncommercial (no commercial use) and does not model DB schema or link separate frontend/backend trees, so it cannot be the backbone.",
-      "reference": "references/phase-1-comprehension.md"
-    },
-    {
-      "id": "wiki-asis",
-      "phase": 1,
-      "kind": "infrastructure",
-      "type": "deterministic",
-      "tools": ["codewiki"],
-      "produces": "wiki_asis",
-      "notes": "Visual-first, descriptive. Documents the mess as it is. Never the to-be.",
-      "reference": "references/phase-1-comprehension.md"
-    },
-    {
-      "id": "contract-reconciliation",
-      "phase": 1,
-      "kind": "core",
-      "type": "deterministic",
-      "tools": ["graph", "ast-grep"],
-      "produces": ["contract_mismatch", "internal_contradiction", "ambiguity"],
-      "notes": "THE core module. Extracts the implied contract at each boundary (DB<->ORM<->API<->frontend) and diffs the shapes. Verifiable. Read the full playbook.",
-      "reference": "references/contract-reconciliation.md"
+      "tools": [
+        "import-linter",
+        "dependency-cruiser",
+        "ts-arch",
+        "archunit"
+      ],
+      "produces": [
+        "design_concern"
+      ],
+      "notes": "Encodes the elected boundaries (layer rules, allowed deps) as executable constraints; a violation is a design_concern against the to-be. Language-gated. Pairs with LSP/SCIP for precise navigation. See core/static-analysis.md.",
+      "reference": "references/toolchain.md"
     },
     {
       "id": "completeness",
       "phase": 1,
       "kind": "core",
       "type": "judgment",
-      "tools": ["ast-grep", "ripgrep", "graph"],
-      "produces": ["incompleteness"],
+      "tools": [
+        "ast-grep",
+        "ripgrep",
+        "graph"
+      ],
+      "produces": [
+        "incompleteness"
+      ],
       "notes": "Distinguishes intentional stub / not-yet-built / gap-toward-to-be from defect. Sets is_intentional_stub. Critical for unfinished codebases.",
       "reference": "references/module-completeness.md"
-    },
-    {
-      "id": "placeholder-stub",
-      "phase": 1,
-      "kind": "security-adjacent",
-      "type": "deterministic",
-      "tools": ["ast-grep", "ripgrep"],
-      "produces": ["defect", "incompleteness"],
-      "notes": "Vibecode signature: auth returning true, empty catch, NotImplemented on prod paths, TODO in live code. Semantic + text pass.",
-      "reference": "references/module-placeholder-stub.md"
-    },
-    {
-      "id": "security-sast",
-      "phase": 1,
-      "kind": "defect",
-      "type": "deterministic",
-      "tools": ["semgrep"],
-      "produces": ["defect"],
-      "notes": "Commoditized. Usually question:null (goes straight to remediation, still plan-gated). Promote to needs_input only on scope ambiguity.",
-      "reference": "references/module-security.md"
-    },
-    {
-      "id": "secrets",
-      "phase": 1,
-      "kind": "defect",
-      "type": "deterministic",
-      "tools": ["gitleaks"],
-      "produces": ["defect"],
-      "notes": "Scans working tree AND full git history (secrets committed then 'removed').",
-      "reference": "references/module-security.md"
-    },
-    {
-      "id": "dependencies",
-      "phase": 1,
-      "kind": "defect",
-      "type": "deterministic",
-      "tools": ["osv-scanner", "trivy"],
-      "produces": ["defect"],
-      "notes": "SCA + IaC misconfig + license via Trivy; OSV for lockfile vulns.",
-      "reference": "references/module-security.md"
-    },
-    {
-      "id": "duplication",
-      "phase": 1,
-      "kind": "maintainability",
-      "type": "deterministic",
-      "tools": ["jscpd"],
-      "produces": ["defect", "design_concern"],
-      "notes": "The vibecode duplication symptom. Feeds consolidate remediation (canonical copy).",
-      "reference": "references/module-maintainability.md"
     },
     {
       "id": "complexity",
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
-      "tools": ["lizard", "scc"],
-      "produces": ["design_concern"],
+      "tools": [
+        "lizard",
+        "scc"
+      ],
+      "produces": [
+        "design_concern"
+      ],
       "notes": "Cyclomatic complexity, function length. Feeds hotspot heatmap with git churn.",
       "reference": "references/module-maintainability.md"
+    },
+    {
+      "id": "contract-reconciliation",
+      "phase": 1,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [
+        "graph",
+        "ast-grep"
+      ],
+      "produces": [
+        "contract_mismatch",
+        "internal_contradiction",
+        "ambiguity"
+      ],
+      "notes": "THE core module. Extracts the implied contract at each boundary (DB<->ORM<->API<->frontend) and diffs the shapes. Verifiable. Read the full playbook.",
+      "reference": "references/contract-reconciliation.md"
     },
     {
       "id": "dead-code",
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
-      "tools": ["vulture", "knip", "deadcode", "cargo-udeps"],
-      "produces": ["defect", "incompleteness"],
+      "tools": [
+        "vulture",
+        "knip",
+        "deadcode",
+        "cargo-udeps"
+      ],
+      "produces": [
+        "defect",
+        "incompleteness"
+      ],
       "notes": "Language-gated (run per language tokei detected). On slop, dead code may be a half-built feature: may promote to a scope question.",
       "reference": "references/module-maintainability.md"
     },
     {
-      "id": "hotspots-coupling",
+      "id": "dependencies",
+      "phase": 1,
+      "kind": "defect",
+      "type": "deterministic",
+      "tools": [
+        "osv-scanner",
+        "trivy"
+      ],
+      "produces": [
+        "defect"
+      ],
+      "notes": "SCA + IaC misconfig + license via Trivy; OSV for lockfile vulns.",
+      "reference": "references/module-security.md"
+    },
+    {
+      "id": "docs-claims",
+      "phase": 1,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [],
+      "produces": [
+        "contract_mismatch",
+        "incompleteness"
+      ],
+      "notes": "C1. Treats documentation as a set of CLAIMS about the code and checks each against the graph. A README that documents an endpoint the code does not expose is a contract_mismatch whose as_is side is prose — the same gap = diff(to_be, as_is) engine, applied to the docs layer.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
+      "id": "domain-entrypoints",
+      "phase": 1,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [],
+      "produces": [
+        "design_concern"
+      ],
+      "notes": "C3. Framework-agnostic entry-point scan (HTTP routes, CLI commands, jobs, handlers) → the Domain→Flow→Step view. Entry points are also the reachability roots fp-check needs, which is why this is not merely a navigation aid.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
+      "id": "duplication",
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
-      "tools": ["git", "code-maat"],
-      "produces": ["design_concern"],
-      "notes": "churn x complexity hotspots; co-change coupling (hidden coupling); bus factor. Mostly a git-log script.",
+      "tools": [
+        "jscpd"
+      ],
+      "produces": [
+        "defect",
+        "design_concern"
+      ],
+      "notes": "The vibecode duplication symptom. Feeds consolidate remediation (canonical copy).",
       "reference": "references/module-maintainability.md"
     },
     {
-      "id": "test-validity",
+      "id": "explain-node",
       "phase": 1,
-      "kind": "correctness",
+      "kind": "core",
       "type": "deterministic",
-      "tools": ["mutmut", "stryker", "pit", "cargo-mutants"],
-      "produces": ["defect", "design_concern"],
-      "notes": "Anti coverage-theater. Language-gated, slow: run only on critical modules. Green tests that survive mutation test nothing.",
-      "reference": "references/module-test-validity.md"
-    },
-    {
-      "id": "logic-correctness",
-      "phase": 1,
-      "kind": "correctness",
-      "type": "judgment",
-      "tools": ["graph"],
-      "produces": ["defect", "design_concern", "ambiguity"],
-      "notes": "Silent-failure logic, wrong business logic, unhandled states. Model reasoning over graph + to-be. Highest false-positive risk: gate hard via fp-check.",
-      "reference": "references/module-logic.md"
-    },
-    {
-      "id": "type-check",
-      "phase": 1,
-      "kind": "correctness",
-      "type": "deterministic",
-      "tools": ["tsc", "mypy", "pyright", "cargo-check", "go-vet"],
-      "produces": ["defect", "design_concern"],
-      "notes": "The highest-value static signal, run per language tokei detects. Type errors are facts (extracted confidence), tied directly to contract/logic pins; they skip the heavy fp-check. Also the in-loop signal during Phase-4 remediation. See core/static-analysis.md.",
-      "reference": "references/toolchain.md"
-    },
-    {
-      "id": "architecture-fitness",
-      "phase": 1,
-      "kind": "maintainability",
-      "type": "deterministic",
-      "tools": ["import-linter", "dependency-cruiser", "ts-arch", "archunit"],
-      "produces": ["design_concern"],
-      "notes": "Encodes the elected boundaries (layer rules, allowed deps) as executable constraints; a violation is a design_concern against the to-be. Language-gated. Pairs with LSP/SCIP for precise navigation. See core/static-analysis.md.",
-      "reference": "references/toolchain.md"
+      "tools": [],
+      "produces": "explanation",
+      "notes": "Drill-down for one node (or pin): its neighbourhood, inbound/outbound edges, source anchors and any pins attached. The read path a human uses to check the map's claim against the code.",
+      "reference": "references/phase-1-comprehension.md"
     },
     {
       "id": "fp-check",
@@ -174,14 +161,205 @@
       "reference": "references/module-fp-check.md"
     },
     {
+      "id": "graph-build",
+      "phase": 1,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": [],
+      "tools_optional": [
+        "graphify",
+        "gitnexus"
+      ],
+      "produces": "knowledge_graph",
+      "notes": "Backbone = the tree-sitter-native structural builder (`scripts/runtime/graph_build.py`): files/symbols/tables as EXTRACTED nodes, imports/calls as EXTRACTED edges, from the same grammars treesitter_extract.py already loads — so it adds no dependency, runs offline, and is deterministic and incremental (signature fingerprints). It emits exactly the NetworkX graph.json shape scripts/runtime/graph.py consumes. OPTIONAL alternatives, neither required: graphify (MIT, 31+ languages, models DB schema, but DEMOTED from primary — the step-0 gating verdict rated its cross-layer edges the INFERRED tier we refuse to ride, ~0 usable semantic edges on a real repo, so only its structural spine was ever used and the native builder produces that without the external dep); gitnexus (PolyForm Noncommercial — no commercial use; code-structure only, no DB schema, does not link separate frontend/backend trees). Cross-layer correspondence is computed by the field-shape engine, never taken from an inferred edge.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
+      "id": "graph-query",
+      "phase": 1,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [],
+      "produces": "query_result",
+      "notes": "The question surface over the graph — 'which parts handle auth?' answered from EXTRACTED edges, not from a semantic guess. Deterministic by construction: it returns what the carrier says, or nothing.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
+      "id": "guided-tours",
+      "phase": 1,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [],
+      "produces": "tour",
+      "notes": "Dependency-ordered walkthroughs: start at an entry point and follow the graph in the order a reader must understand it. The `understand` mode's main deliverable — comprehension as the END, not a step toward remediation.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
+      "id": "hotspots-coupling",
+      "phase": 1,
+      "kind": "maintainability",
+      "type": "deterministic",
+      "tools": [
+        "git",
+        "code-maat"
+      ],
+      "produces": [
+        "design_concern"
+      ],
+      "notes": "churn x complexity hotspots; co-change coupling (hidden coupling); bus factor. Mostly a git-log script.",
+      "reference": "references/module-maintainability.md"
+    },
+    {
+      "id": "incremental-fingerprint",
+      "phase": 1,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": [],
+      "produces": "graph_delta",
+      "notes": "A2. Signature-level fingerprints per symbol, so a re-run reparses only what changed and classifies each change (added / removed / signature-changed / body-only). What makes `resume` and re-audit cheap instead of a full rebuild, and what lets the staleness gate say WHICH part went stale rather than just that the graph did.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
+      "id": "layered-map",
+      "phase": 1,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": [],
+      "produces": "map_layered",
+      "notes": "D. The layered lens over the graph: colour-coded layer cards (DB / API / client / infra), drill-down per layer, hotspots. A view, holding no state of its own — same rule as the pin map: it projects graph.json + ledger.json and is re-rendered, never hand-edited.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
+      "id": "logic-correctness",
+      "phase": 1,
+      "kind": "correctness",
+      "type": "judgment",
+      "tools": [
+        "graph"
+      ],
+      "produces": [
+        "defect",
+        "design_concern",
+        "ambiguity"
+      ],
+      "notes": "Silent-failure logic, wrong business logic, unhandled states. Model reasoning over graph + to-be. Highest false-positive risk: gate hard via fp-check.",
+      "reference": "references/module-logic.md"
+    },
+    {
+      "id": "placeholder-stub",
+      "phase": 1,
+      "kind": "security-adjacent",
+      "type": "deterministic",
+      "tools": [
+        "ast-grep",
+        "ripgrep"
+      ],
+      "produces": [
+        "defect",
+        "incompleteness"
+      ],
+      "notes": "Vibecode signature: auth returning true, empty catch, NotImplemented on prod paths, TODO in live code. Semantic + text pass.",
+      "reference": "references/module-placeholder-stub.md"
+    },
+    {
+      "id": "secrets",
+      "phase": 1,
+      "kind": "defect",
+      "type": "deterministic",
+      "tools": [
+        "gitleaks"
+      ],
+      "produces": [
+        "defect"
+      ],
+      "notes": "Scans working tree AND full git history (secrets committed then 'removed').",
+      "reference": "references/module-security.md"
+    },
+    {
+      "id": "security-sast",
+      "phase": 1,
+      "kind": "defect",
+      "type": "deterministic",
+      "tools": [
+        "semgrep"
+      ],
+      "produces": [
+        "defect"
+      ],
+      "notes": "Commoditized. Usually question:null (goes straight to remediation, still plan-gated). Promote to needs_input only on scope ambiguity.",
+      "reference": "references/module-security.md"
+    },
+    {
+      "id": "test-validity",
+      "phase": 1,
+      "kind": "correctness",
+      "type": "deterministic",
+      "tools": [
+        "mutmut",
+        "stryker",
+        "pit",
+        "cargo-mutants"
+      ],
+      "produces": [
+        "defect",
+        "design_concern"
+      ],
+      "notes": "Anti coverage-theater. Language-gated, slow: run only on critical modules. Green tests that survive mutation test nothing.",
+      "reference": "references/module-test-validity.md"
+    },
+    {
+      "id": "type-check",
+      "phase": 1,
+      "kind": "correctness",
+      "type": "deterministic",
+      "tools": [
+        "tsc",
+        "mypy",
+        "pyright",
+        "cargo-check",
+        "go-vet"
+      ],
+      "produces": [
+        "defect",
+        "design_concern"
+      ],
+      "notes": "The highest-value static signal, run per language tokei detects. Type errors are facts (extracted confidence), tied directly to contract/logic pins; they skip the heavy fp-check. Also the in-loop signal during Phase-4 remediation. See core/static-analysis.md.",
+      "reference": "references/toolchain.md"
+    },
+    {
+      "id": "wiki-asis",
+      "phase": 1,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "tools": [
+        "codewiki"
+      ],
+      "produces": "wiki_asis",
+      "notes": "Visual-first, descriptive. Documents the mess as it is. Never the to-be.",
+      "reference": "references/phase-1-comprehension.md"
+    },
+    {
       "id": "interview-generator",
       "phase": 2,
       "kind": "core",
       "type": "judgment",
       "tools": [],
-      "produces": ["question", "policy"],
+      "produces": [
+        "question",
+        "policy"
+      ],
       "notes": "Materializes Question objects from needs_input pins. Runs the compression funnel (cluster -> policy -> exception -> proposed default) with the severity threshold.",
       "reference": "references/phase-2-interview.md"
+    },
+    {
+      "id": "diff-impact",
+      "phase": 3,
+      "kind": "core",
+      "type": "deterministic",
+      "tools": [],
+      "produces": "impact_overlay",
+      "notes": "C2. Blast radius for a concrete diff: which nodes the touched files reach, and which touched files the graph does not know about ('unmapped'). Feeds Phase-3 sequencing and Phase-5 validation, where the unmapped set is the honest admission that the graph is not total.",
+      "reference": "references/phase-3-roadmap.md"
     }
   ]
 }

@@ -80,6 +80,18 @@ class TestBothHostsAreDerived(unittest.TestCase):
             with self.subTest(role=role, host="opencode"):
                 self.assertRegex(text, rf"permission:\s*\n\s*edit:\s*{verb}")
 
+    def test_no_host_emits_a_model_frontmatter_line(self):
+        # Understand-Anything's issue #167: `model: inherit` is a Claude-Code-only keyword that
+        # opencode/Pi reject as a literal model id (ProviderModelNotFoundError). We ship those
+        # adapters, so guard the invariant the study flagged (E1): no generated agent frontmatter
+        # declares a `model:` on ANY host — the model is left to each host's own default.
+        for role in sorted(roster()):
+            for host, base in (("claude", CLAUDE), ("opencode", OPENCODE)):
+                frontmatter = (base / f"{role}.md").read_text(encoding="utf-8").split("---\n", 2)[1]
+                with self.subTest(role=role, host=host):
+                    self.assertNotRegex(frontmatter, r"(?mi)^\s*model\s*:",
+                                        "no host may emit an agent `model:` frontmatter (UA #167)")
+
     def test_both_hosts_get_the_identical_body(self):
         # The failure the old linter could not see: same role, two hand-written prompts, drifted.
         for role in sorted(roster()):

@@ -144,6 +144,77 @@ HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a
 - [x] Claude Code marketplace: `.claude-plugin/marketplace.json` + `plugin.json` (plus opencode,
       Codex, and AGENTS.md adapters — see `docs/packaging.md`).
 
+## 7. Adopt from Understand-Anything (MIT) — study `docs/studies/understand-anything.md` (2026-07-19)
+Understand-Anything is a shipping, MIT-licensed Phase-1 comprehension engine (tree-sitter graph +
+incremental fingerprints + shareable viewer). It has **no** to-be / ledger / interview, so everything
+here slots **under Phase 1** and must not pull the skill's center of gravity back to comprehension.
+Full rationale + the balanced comparison (incl. where our design already leads) are in the study.
+
+Applied now (design / prose; CI-green):
+- [x] Reframe the Phase-1 backbone to a **tree-sitter-native builder**; Graphify demoted to optional
+      (step-0 WEAK). → `references/phase-1-comprehension.md`, `references/toolchain.md`
+- [x] State the **deterministic-facts / LLM-semantics split** as a Phase-1 rule; add `importMap` +
+      1:1 edge self-check + deterministic recovery. → `references/phase-1-comprehension.md`
+- [x] Add the **graph validate/repair guardrail** (drop-broken + referential integrity) and
+      **incremental fingerprinting** for `resume`/re-audit. → `references/phase-1-comprehension.md`
+- [x] Add **docs-as-`claim`-nodes** as a finding source (doc claim vs code → `contract_mismatch` /
+      `internal_contradiction` pin). → `references/phase-1-comprehension.md`
+- [x] Align Step 2 to the single-file map + **layered-lens** legibility patterns (also fixes the
+      stale CodeWiki framing). → `references/phase-1-comprehension.md`
+- [x] **Added the `understand` mode** — comprehension as an *end* (navigable map + dependency-ordered
+      tours + explain-a-node + query surface, Phase 1 only, no interview/remediation): the
+      Understand-Anything finality, kept strictly descriptive so it never becomes a second product.
+      Its affordances are powered by follow-ups C3 / C4 / D below, plus a heuristic tour generator and
+      a graph query surface. → `SKILL.md`, `references/phase-1-comprehension.md` ("Comprehension as an end")
+
+Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its backbone):
+- [x] **A1** `runtime/graph_build.py` — deterministic structural builder emitting the exact node-link
+      `graph.json` `runtime/graph.py` consumes: file/function/class/method nodes, `contains`/`imports`/
+      `calls` edges, per-file `layer`, `built_at_commit`. **Python** via stdlib `ast`; **JS/TS/TSX**
+      via tree-sitter (declarative query set, methods qualified by their class, relative imports
+      resolved) when it is installed, degrading to file-only nodes when absent. Imports resolved only
+      when unambiguous — no fabrication. `tests/test_graph_build.py` (the tree-sitter class skips in a
+      stdlib-only CI). More languages = another query set (additive).
+- [x] **D1–D4** `runtime/graphmap.py` — the **layered-lens** self-contained HTML graph map: colour-
+      coded layer cards → drill into files → neighbourhood panel, client-side search, tour playback,
+      hand-rolled SVG export. Wired into `understand.py` (writes `graph-map.html`). Rendered + driven
+      in a real Chromium (no console errors); `tests/test_graphmap.py` guards self-containment.
+- [x] **B1** graph validate/repair — `graph_build.validate_repair`: drop no-id / duplicate nodes,
+      **drop dangling edges** (referential integrity), coerce confidence, lowercase edge types,
+      return a showable `GraphIssue[]`. `tests/test_graph_build.py::TestValidateRepair`.
+- [x] **C4** `runtime/explain.py` — explain-a-node drill-down (resolve id/path/path:symbol → graph
+      neighborhood + read real source, fixed 5-point checklist). `tests/test_explain.py`.
+- [x] **C5** `runtime/tours.py` — dependency-ordered guided tour (entry-point-first BFS, grouped by
+      layer, LLM-free). `tests/test_tours.py`.
+- [x] **C6** `runtime/query.py` — weighted graph query surface (name/summary/tag search → 1-hop
+      expansion). `tests/test_query.py`.
+- [x] **orchestrator** `runtime/understand.py` — the mode entrypoint: build → layered overview
+      (languages · layers · hotspots) → tour, persisted to disk; pure as-is (no `to_be`/interview).
+      `tests/test_understand.py`.
+- [x] **A2** `runtime/fingerprint.py` — signature fingerprints (COSMETIC vs STRUCTURAL) + change
+      classifier (SKIP / PARTIAL / ARCHITECTURE / FULL); both guards implemented (commit stamped with
+      the store; `save_store` refuses to wipe a non-empty baseline). `tests/test_fingerprint.py`.
+- [x] **E1** verified the roster emits **no** agent `model:` frontmatter on any host (the UA #167
+      bug structurally cannot occur here) and **guarded it** with a regression test.
+      `tests/test_roster_generation.py::...test_no_host_emits_a_model_frontmatter_line`.
+- [x] **C2** `runtime/impact.py` — diff/impact overlay: changed + affected (reverse-reachable) nodes,
+      affected layers, **unmapped files** (new/renamed → re-analyze), and a deterministic risk read;
+      wired into Phase 3 (roadmap risk tie-break) and Phase 5 (change-scope check). `tests/test_impact.py`.
+- [x] **C1** `runtime/docs_claims.py` — docs-as-claims floor: extract claims + their code references
+      from markdown, resolve against the graph, surface **dangling** references as *candidate* pins
+      (`inferred`, `doc_claim`, `to_be` null — never assertions). `tests/test_docs_claims.py`.
+- [x] **C3** `runtime/domain.py` — framework-agnostic entry-point detector (HTTP/CLI/task/event/cron
+      via `ast` decorators + `__main__`), the deterministic raw material an agent lifts into
+      Domain → Flow → Step. `tests/test_domain.py`.
+
+Still open (code — each its own PR; effort S/M/L per the study):
+- [ ] **A1 (more languages)** additional tree-sitter query sets beyond JS/TS (Go, Rust, Java, …) —
+      each is one additive entry in `graph_build._TS_QUERIES`, no engine change (S each).
+- [ ] **D5** container sub-grouping *within* a layer (folder-LCP + Louvain fallback) for very large
+      layers — the map is legible now; this is a refinement for huge repos (M).
+- [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
+      design-system alignment becomes an explicit goal (L).
+
 ---
 
 ## Open decisions — resolved
@@ -165,7 +236,8 @@ HEAD e0d00d6 — the unstated-assumption challenge was correct). Now re-run on a
 - [x] SKILL.md orchestrator: 5 phases, 4 modes, guardrails.
 - [x] 16 module/phase playbooks written (no stubs; drift-linter green).
 - [x] Graphify chosen as backbone; external constraint validated (node IDs ✓, cross-layer as
-      INFERRED hints, field-level diff computed by the skill).
+      INFERRED hints, field-level diff computed by the skill). → **reframed 2026-07-19: tree-sitter-native
+      builder now recommended, Graphify optional (see §7 + the study).**
 - [x] Two-track TDD + restartable per-item remediation loop with wave checkpoints.
 - [x] bootstrap.sh (toolchain) + check_consistency.py (drift-linter) + evals scaffold.
 - [x] Ledger v0.6: `ChallengeEvent` (upstream oracle red-team) + `agent_assumption` provenance; the
