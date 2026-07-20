@@ -42,11 +42,19 @@ states a write permission anywhere.
 - `researcher`, `brainstorm`, `reviewer`, `challenger`, `measurer` → **edit: deny** (read-only; may read, search, run read-only tools, fetch grounded sources). The `challenger` additionally writes **only** `ChallengeEvent`s and may set a challenged pin back to `needs_input` — never a `DecisionEvent`, never code.
 - `executor` → **edit: allow** (the single writer; still gated by the reviewer and the Phase-5 evidence gate).
 
-**The residual no adapter can close: `Bash`.** Claude Code cannot restrict it — a subagent with
-`Bash` can `echo > file` whatever its `disallowedTools` says, and there is no permission field to
-stop it. So `edit: deny` is enforced *statically* as far as the platform allows (the write tools are
-denied) and the rest is closed at **runtime** by the ledger gate. A read-only role's `Bash` is a
-read channel by discipline, not by mechanism — which is why each role's prompt says so out loud.
+**The residual no adapter can close: `Bash`.** A subagent with `Bash` can `echo > file` whatever its
+`disallowedTools` says, so `edit: deny` is enforced *statically* only as far as the write **tools**
+go, and the rest is closed at **runtime** by the ledger gate. A read-only role's `Bash` is a read
+channel by discipline, not by mechanism — which is why each role's prompt says so out loud.
+
+State the platform limit precisely, because the obvious phrasing is false: **Claude Code restricts
+`Bash` fine** — `Bash(rm *)`-style matchers exist, with `deny → ask → allow` precedence. What no
+adapter can do is narrower: **a plugin cannot ship a selective `Bash` rule, nor scope one to a single
+agent.** Agent frontmatter takes tool *names* only, `permissionMode` is ignored for plugin subagents,
+and the plugin manifest has no property for permission rules — selective matchers live only in the
+user's own `settings.json`, session-wide, which a plugin cannot write. And blunt denial is not
+available either, because the read-only roles genuinely need `Bash` for static analysis. That is the
+gap the ledger gate exists to close, and it is smaller than "cannot restrict" implied.
 
 ## Mapping notes
 
