@@ -94,6 +94,10 @@ This layer adds nothing to the workflow but a "you-first" beat before each revea
 | **Test-first** (Track-A tests) | predict-which-fail before running | "which of these tests will be red, and why?" |
 | **Review** (`references/core/agents.md`) | name the class before showing the flag | "what class of bug would you look for here?" |
 
+Every hook reads the `intensity` dial from `learner.json` before it fires (`references/learner-model.md`):
+one choice sets both how verbose the why-trace is and how many misses are taught, across all four
+surfaces and every phase of a rescue — one dial, whole workflow.
+
 Prototype on the **interview surface first** (capture the spec attempt → diff vs derived `to_be` →
 teach the top 1–2 misses → record in the learner-model); the other three hooks clone the same shape
 once it proves out.
@@ -118,11 +122,20 @@ once it proves out.
 
 - **Never block delivery to teach.** The deliverable ships regardless; the micro-retrieval is
   skippable with one key. If teaching and shipping conflict, shipping wins — always.
-- **Never dump the full delta.** Rank to 1–2 at the edge of ability; the rest ship untaught.
+- **Never dump the full delta — unless the operator dials `deep` for it.** By default rank to 1–2 at
+  the edge of ability; the rest ship untaught. `deep` (`references/learner-model.md`) lifts the cap as
+  an explicit decision-support / transparency choice, honest that it trades retention for coverage; it
+  is never the default.
 - **Never teach the instance alone.** Name the class and the recognition cue, or it doesn't transfer.
 - **Never let felt-mastery outrun measured mastery.** The learner-model is the check on false
   confidence; surface when the user is operating *outside* what the layer can verify.
-- **Never make it a mode.** Default-on, opt-out, per-artifact — not a session toggle.
+- **Never make *learning itself* a mode.** The why-trace is default-on and the micro-retrieval is
+  opt-out per-artifact — there is no on/off switch that deskills by getting left on "off". What *is* a
+  session choice is the **`intensity` dial** (`references/learner-model.md`): a volume on the
+  always-present explanation, not an on/off. Even its floor (`essential`) still surfaces the decisions
+  the agent judges load-bearing — a volume is safer than a toggle because no setting goes fully
+  silent. (That floor rests on the agent's own judgment of "load-bearing," not a gated guarantee —
+  stated so the limit is honest.)
 - **Surface, don't assume.** When under-specification forces a guess, it is a vetoable pin
   (`references/core/assumptions.md`), and the guess itself is teachable material.
 - **Ground the "why" in real sources, not vibes** (`references/core/knowledge-sources.md`); cite,
