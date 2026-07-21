@@ -132,9 +132,10 @@ once it proves out.
 - **Never make *learning itself* a mode.** The why-trace is default-on and the micro-retrieval is
   opt-out per-artifact — there is no on/off switch that deskills by getting left on "off". What *is* a
   session choice is the **`intensity` dial** (`references/learner-model.md`): a volume on the
-  always-present explanation, not an on/off. Its floor (`essential`) still shows every load-bearing
-  decision, so even the quietest setting cannot silently drop the operator — which is exactly why a
-  volume is safe where a toggle is not.
+  always-present explanation, not an on/off. Even its floor (`essential`) still surfaces the decisions
+  the agent judges load-bearing — a volume is safer than a toggle because no setting goes fully
+  silent. (That floor rests on the agent's own judgment of "load-bearing," not a gated guarantee —
+  stated so the limit is honest.)
 - **Surface, don't assume.** When under-specification forces a guess, it is a vetoable pin
   (`references/core/assumptions.md`), and the guess itself is teachable material.
 - **Ground the "why" in real sources, not vibes** (`references/core/knowledge-sources.md`); cite,

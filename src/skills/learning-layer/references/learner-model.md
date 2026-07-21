@@ -59,9 +59,9 @@ one-off fix). Categories are open-ended and accrue as work surfaces them; seed e
 
 ## The intensity dial (one setting, three presets)
 
-`intensity` is a session-level dial the operator picks up front (e.g. `rescue learn:deep`). It is
-**not** an on/off — the why-trace is *always* emitted — it only sets the **volume**, by presetting the
-parameters above. One choice moves both axes together: how much of the always-present explanation is
+`intensity` is a session-level dial (e.g. `rescue learn:deep`); **it defaults to `guided` when unset**,
+never off. It is **not** an on/off — the why-trace is *always* emitted — it only sets the **volume**,
+by presetting the parameters above. One choice moves both axes together: how much of the always-present explanation is
 shown, and how much active teaching happens, across every hook and every phase.
 
 | `intensity` | `why_trace` | `max_taught_per_cycle` | `fade_threshold` | who it is for |

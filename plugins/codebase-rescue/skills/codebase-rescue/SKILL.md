@@ -81,13 +81,15 @@ Select scope up front; when unsure, ask once with 2–3 options rather than assu
 
 ## Learning layer (optional, orthogonal to the mode)
 
-Any mode can run with the **learning-layer** composed over it — pass `learn:<level>` on the command
-(`essential` · `guided` · `deep`). It is not a mode but a *layer*: it wraps the interview, roadmap,
-test-first and review so each **explains the *why*** behind a choice, making the elected `to_be`
-better-informed. The chosen level is written to `learner.json` on activation and read by every phase,
-so one dial governs the whole workflow; absent the flag, rescue runs without it. The explanations
-*accompany* delivery and never replace or delay it — coaching, never a substitute for the fix. Full
-mechanism and the three presets live in the `learning-layer` skill and its `learner-model` reference.
+Where the **learning-layer** is available, any mode runs with it composed over it — it wraps the
+interview, roadmap, test-first and review so each **explains the *why*** behind a choice, making the
+elected `to_be` better-informed. It runs at `guided` by default; `learn:<level>` on the command sets
+only the **intensity** (`essential` · `guided` · `deep`) — a volume, not an on/off, so no setting
+silently drops the coaching. The level is written to `learner.json` and read by every phase, so one
+dial governs the whole workflow. The explanations *accompany* delivery and never replace or delay it —
+coaching, never a substitute for the fix. If the learning-layer isn't installed, rescue degrades and
+runs without it. Full mechanism and the three presets: the `learning-layer` skill and its
+`learner-model` reference.
 
 ## The five phases
 
