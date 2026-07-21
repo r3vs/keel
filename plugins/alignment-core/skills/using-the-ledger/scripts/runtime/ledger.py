@@ -52,10 +52,11 @@ CHALLENGE_TARGETS = ("acceptance_criterion", "to_be", "policy", "decision")
 REMEDIATION_ACTIONS = ("consolidate", "implement", "refactor", "delete", "align")
 BUILD_ACTIONS = ("scaffold", "implement", "wire", "configure", "instrument")  # v0.5 adds instrument
 EFFORTS = ("S", "M", "L")
-# The agent's own effort/ability appraisal of a finding — distinct from `confidence` (which tags the
-# finding's provenance) and from a Proposal's `effort` (which sizes the work S/M/L). Context for the
-# measurer, never a substitute for observed behavior. `at_limit` flags a finding the agent judged at
-# the ceiling of its capability — a candidate for extra held-out verification, not a resolved pin.
+# The executor's own effort/ability appraisal of a remediation/build ITEM, recorded in Phase 4 as the
+# work is finished — distinct from `confidence` (which tags a finding's provenance) and from a
+# Proposal's `effort` (which sizes the work S/M/L). Context the measurer reads in Phase 5, never a
+# substitute for observed behavior. `at_limit` flags work the executor judged at the ceiling of its
+# capability — a signal for the measurer to verify harder, not a resolved pin.
 SELF_ASSESSMENTS = ("routine", "stretch", "at_limit")
 FLIP_SIGNAL_SOURCES = ("metrics", "logs", "traces", "manual_checkpoint", "incident")
 
@@ -145,15 +146,12 @@ class Ledger:
         depends_on: Optional[list[str]] = None,
         cluster_id: Optional[str] = None,
         kind_detail: Optional[str] = None,
-        self_assessment: Optional[str] = None,
     ) -> dict:
         _require(kind in KINDS, f"unknown kind {kind!r}")
         _require(kind != "other" or bool(kind_detail),
                  "kind 'other' requires kind_detail (the open escape hatch is named, not blank)")
         _require(severity in SEVERITIES, f"severity must be one of {SEVERITIES}")
         _require(confidence in CONFIDENCES, f"confidence must be one of {CONFIDENCES}")
-        _require(self_assessment is None or self_assessment in SELF_ASSESSMENTS,
-                 f"self_assessment, if set, must be one of {SELF_ASSESSMENTS}")
         _require(isinstance(provenance, list) and len(provenance) > 0,
                  "provenance is required (who found this, how)")
         _validate_question(question)
@@ -186,8 +184,6 @@ class Ledger:
             pin["cluster_id"] = cluster_id
         if kind_detail:
             pin["kind_detail"] = kind_detail
-        if self_assessment:
-            pin["self_assessment"] = self_assessment
         self.data["pins"].append(pin)
         return pin
 
@@ -486,12 +482,17 @@ class Ledger:
         pin["remediation"].append(item)
         return item
 
-    def set_remediation_status(self, pin_id: str, item_id: str, status: str) -> dict:
+    def set_remediation_status(self, pin_id: str, item_id: str, status: str,
+                               self_assessment: Optional[str] = None) -> dict:
         _require(status in ("todo", "in_progress", "done"), "bad remediation status")
+        _require(self_assessment is None or self_assessment in SELF_ASSESSMENTS,
+                 f"self_assessment, if set, must be one of {SELF_ASSESSMENTS}")
         pin = self.pin(pin_id)
         for item in pin["remediation"]:
             if item["id"] == item_id:
                 item["status"] = status
+                if self_assessment:
+                    item["self_assessment"] = self_assessment
                 return item
         raise LedgerError(f"no remediation item {item_id} on {pin_id}")
 

@@ -60,9 +60,11 @@ gap the ledger gate exists to close, and it is smaller than "cannot restrict" im
 
 And it closes that gap by *observing*, not by becoming a target. The ledger gate — like the
 `reviewer`, `challenger` and `measurer` — blocks an unelected edit or an unverified claim, never a
-suspect *thought*; the reasoning stays legible so the shortcut is visible in it. Put optimization
-pressure on a monitor and a model learns to hide the intent rather than drop it, so none of these
-read-only gates is a score the agent is pushed to beat. A monitor you optimize against stops seeing.
+suspect *thought*; the reasoning stays legible so the shortcut is visible in it. This is a **design
+principle for whoever extends these gates**, not a runtime instruction — there is no optimizer here to
+obey it: put optimization pressure on a monitor and a model learns to hide the intent rather than drop
+it, so a read-only gate must never be turned into a score to beat. A monitor you optimize against
+stops seeing.
 
 ## Mapping notes
 
@@ -75,8 +77,9 @@ read-only gates is a score the agent is pushed to beat. A monitor you optimize a
   DeepWiki / registry / web), cited and confidence-tagged, treated as untrusted input.
 - Every role inherits the self-model / effort-calibration doctrine (self-model.md): execute rather
   than defer or advise, and size work in steps/tool-calls, never in human wall-clock. The `executor`
-  carries it most sharply (it is the one writer, the one tempted to hand back a plan); the `measurer`
-  reads the self-assessment signal but never treats it as evidence — observed behavior is the evidence.
+  carries it most sharply (it is the one writer, the one tempted to hand back a plan) and records its
+  appraisal on the remediation item as it finishes; the `measurer` reads that item signal in Phase 5
+  to calibrate scrutiny but never treats it as evidence — observed behavior is the evidence.
 - The `challenger` is the **upstream** twin of the feedback loop (the feedback-loop doctrine): the
   feedback loop reopens a decision when *production* falsifies it (downstream), the challenger
   reopens it when the *oracle itself* is unsound (upstream, before build). Both **reopen and never

@@ -62,9 +62,8 @@ probably a multi-week effort, you should do it" is the miscalibration this file 
 
 ## Relationship to the rest of the spine
 
-The twin of assumptions.md: surface the gap *and* do the work — over-confidence and under-action are
-the two ways the register beats the task, and the spine now closes both. Every role inherits it, the
-`executor` most sharply (it is the one writer, and the one most tempted to hand back a plan). The
+Every role inherits it, the `executor` most sharply (it is the one writer, and the one most tempted
+to hand back a plan). The
 `measurer`'s verdict reads the effort/ability signal but never treats it as evidence — evidence is the
 observed behavior. The `challenger` may refute a **self-limiting** assumption exactly as it refutes an
 over-reaching one: "this cannot be done here" is an oracle claim, and an unfounded one is challengeable

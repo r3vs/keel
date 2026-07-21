@@ -43,7 +43,6 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "title": "string",             // short, for the panel
   "severity": "blocker",         // blocker | high | medium | low
   "confidence": "extracted",     // extracted | inferred | ambiguous
-  "self_assessment": null,       // optional: routine | stretch | at_limit — the agent's effort/ability appraisal; context for the measurer, never evidence
   "provenance": [{ "source": "contract_recon", "detail": "db↔api shape diff" }],
   "anchors": [                   // DECISION 1 — cross-layer list
     { "node_id": "n_412", "layer": "db", "role": "db_source", "loc": "migrations/003.sql:12" }
@@ -183,7 +182,8 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "action": "align",             // consolidate | implement | refactor | delete | align
   "ladder_rung": 2,
   "canonical_target": "db",      // for consolidate/align: which copy is the truth
-  "status": "todo" }             // todo | in_progress | done
+  "status": "todo",              // todo | in_progress | done
+  "self_assessment": null }      // optional, set by the executor in Phase 4: routine | stretch | at_limit — effort/ability appraisal the measurer reads in Phase 5, never evidence
 ```
 
 ---

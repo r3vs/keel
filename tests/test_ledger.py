@@ -57,16 +57,6 @@ class TestEnvelope(unittest.TestCase):
         with self.assertRaises(LedgerError):
             add_simple_pin(led, confidence="vibes")
 
-    def test_self_assessment_optional_and_validated(self):
-        """The agent's effort/ability appraisal: absent by default (so existing pins are unchanged),
-        typed when present, and never conflated with a Proposal's S/M/L effort."""
-        led = make_ledger()
-        self.assertNotIn("self_assessment", add_simple_pin(led))       # opt-in, pins stay identical
-        pin = add_simple_pin(led, self_assessment="at_limit")
-        self.assertEqual(pin["self_assessment"], "at_limit")
-        with self.assertRaises(LedgerError):                           # context, but a typed one
-            add_simple_pin(led, self_assessment="exhausted")
-
     def test_provenance_required(self):
         led = make_ledger()
         with self.assertRaises(LedgerError):
@@ -343,6 +333,19 @@ class TestRemediation(unittest.TestCase):
             led.resolve(pin["id"])
         led.set_remediation_status(pin["id"], item["id"], "done")
         self.assertEqual(led.resolve(pin["id"])["state"], "resolved")
+
+    def test_self_assessment_rides_on_the_remediation_item(self):
+        """The executor's effort/ability appraisal is recorded on the item it worked (Phase 4),
+        not on the pin at detection — optional, typed, readable by the measurer in Phase 5."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.decide(pin["id"], "opt_a", "r", "flip")
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2, canonical_target="db")
+        self.assertNotIn("self_assessment", item)
+        led.set_remediation_status(pin["id"], item["id"], "done", self_assessment="at_limit")
+        self.assertEqual(item["self_assessment"], "at_limit")
+        with self.assertRaises(LedgerError):
+            led.set_remediation_status(pin["id"], item["id"], "done", self_assessment="exhausted")
 
 
 class TestViewsAndPersistence(unittest.TestCase):
