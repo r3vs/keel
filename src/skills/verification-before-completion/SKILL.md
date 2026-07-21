@@ -21,8 +21,9 @@ can pass while the feature is unreachable, unwired, or wired to the wrong thing.
 
 On AI-generated code the inversion is sharper: a suite that is *fully* green is a reason to **look**,
 not to stop. The tests were usually generated with the code and encode the same misunderstanding, so
-a 100% pass is a **suspect** signal until you have observed the behavior yourself — treat the green as
-a question, not an answer.
+a 100% pass is a **suspect** signal until you have exercised the real path yourself — once you have
+observed the behavior, the green is discharged and you stop. It is a question observation answers, not
+a permanent doubt.
 
 ## What counts as verification
 
@@ -73,10 +74,11 @@ exercise in step 2 is exactly what the criterion states. That is why the criteri
 observable when it is written — an untestable criterion produces an unverifiable completion, and the
 gap opens back in the interview, not here.
 
-**The oracle is not the executor's to hold in full.** An `acceptance_criterion` the executor both
-writes and codes against is a target it will build *to* — a passing suite then proves the code matches
-the test, not that it matches the intent. So the verifying roles keep part of the oracle **held
-out**: the `measurer` (and the wave `reviewer`) exercise the behavior against a criterion the executor
-did not author, and **never accept the executor's self-report** in place of that observation. The
-executor's "it passes" is a claim to check, exactly like green CI — evidence about the change, not
-evidence of the outcome.
+**Green is the executor's claim, not the measurer's evidence.** An `acceptance_criterion` the
+executor both writes and codes against is a target it can build *to* — a passing suite proves the code
+matches the test, not that it matches the intent. So the `measurer` (and the wave `reviewer`)
+**independently re-exercise the behavior** against the elected criterion and **never accept the
+executor's self-report** in its place: "it passes" is a claim to check, exactly like green CI —
+evidence about the change, not of the outcome. This is independent re-execution, *not* a hidden
+criterion: the ledger is one shared source of truth, so it is the same elected oracle, run by a role
+that did not write the code.

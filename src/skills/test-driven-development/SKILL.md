@@ -50,9 +50,10 @@ python scripts/runtime/ledger.py summary ledger.json
   and let the human elect it.
 - **The test you write is necessary, not sufficient.** A test the executor both authors and codes
   against proves the code matches *that test*, not the intent — building to the test. So the final
-  proof is held elsewhere: the `measurer` verifies against part of the oracle the executor never saw
-  (`references/core/self-model.md` forbids mistaking the green for done; `verification-before-completion`
-  holds the oracle out). Write the red step; do not treat its green as the verdict.
+  proof is not the executor's green: the `measurer` **independently re-exercises** the elected
+  criterion and observes the behavior, not the self-report (`references/core/self-model.md` forbids
+  mistaking the green for done; `verification-before-completion` has the detail). Write the red step;
+  do not treat its green as the verdict.
 
 ## Mutation is the honest coverage metric
 

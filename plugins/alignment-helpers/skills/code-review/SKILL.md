@@ -23,9 +23,9 @@ most useful thing you can pass on and the easiest thing to omit.
 
 Withholding the conclusion is half of it; the other half is on the reviewer. Re-running the tests the
 author already passed proves nothing an author building *to* those tests could not have staged — so
-where the stakes justify it, the reviewer exercises the behavior against the criterion **itself**,
-including a check the author did not author. Withholding your conclusion keeps the review honest;
-verifying from the criterion, not from the author's own artifact, keeps it real.
+where the stakes justify it, the reviewer **exercises the behavior itself** against the elected
+criterion, rather than trusting the author's own run. Withholding your conclusion keeps the review
+honest; verifying the behavior, not the artifact built to pass, keeps it real.
 
 ## Giving a review — precedence, first match wins
 
