@@ -87,7 +87,7 @@ elected `to_be` better-informed. It runs at `guided` by default; `learn:<level>`
 only the **intensity** (`essential` · `guided` · `deep`) — a volume, not an on/off, so no setting
 silently drops the coaching. The level is written to `learner.json` and read by every phase, so one
 dial governs the whole workflow. The explanations *accompany* delivery and never replace or delay it —
-coaching, never a substitute for the fix. If the learning-layer isn't installed, rescue degrades and
+coaching, never a substitute for the fix (`references/core/self-model.md`: execute, don't advise). If the learning-layer isn't installed, rescue degrades and
 runs without it. Full mechanism and the three presets: the `learning-layer` skill and its
 `learner-model` reference.
 
