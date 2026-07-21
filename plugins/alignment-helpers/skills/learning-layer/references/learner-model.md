@@ -31,7 +31,13 @@ one-off fix). Categories are open-ended and accrue as work surfaces them; seed e
       "exposure_only": 1               // times seen as a passive delta with NO prediction (weak signal)
     }
   },
-  "settings": { "micro_retrieval": "on", "max_taught_per_cycle": 2 }
+  "settings": {
+    "intensity": "guided",         // essential | guided | deep — the session dial (below); presets the rest
+    "micro_retrieval": "on",       // per-artifact predict-first, default-on, one-key skip
+    "max_taught_per_cycle": 2,     // hard cap on taught misses per reveal (preset by intensity)
+    "fade_threshold": 3,           // consecutive matches before a category fades (∞ under deep)
+    "why_trace": "standard"        // terse | standard | full — verbosity of the always-present why-trace
+  }
 }
 ```
 
@@ -50,6 +56,26 @@ one-off fix). Categories are open-ended and accrue as work surfaces them; seed e
    climbs. That is rote execution, not learning — set `cargo_cult_watch` and escalate from passive
    deltas to an **active interrogation** ("why does this gate fire?") and a low-stakes forced
    prediction. Good output is not evidence of learning; only improving predictions are.
+
+## The intensity dial (one setting, three presets)
+
+`intensity` is a session-level dial the operator picks up front (e.g. `rescue learn:deep`). It is
+**not** an on/off — the why-trace is *always* emitted — it only sets the **volume**, by presetting the
+parameters above. One choice moves both axes together: how much of the always-present explanation is
+shown, and how much active teaching happens, across every hook and every phase.
+
+| `intensity` | `why_trace` | `max_taught_per_cycle` | `fade_threshold` | who it is for |
+|---|---|---|---|---|
+| `essential` | terse — load-bearing decisions only, one line of *why* | 1 | 2 (fades fast) | the expert who wants to decide quickly with minimal context |
+| `guided` *(default)* | standard — this doc as written | 2 | 3 | the calibrated middle: targeted, fading |
+| `deep` | full — every decision, its tradeoffs, blast-radius and cited sources, including the low-interest ones | 5 | ∞ (no fade) | onboarding / maximum transparency; the operator wants the whole picture |
+
+**`deep` is a deliberate override, and this doc is honest about the cost.** Lifting the cap and never
+fading runs *against* the retention rule above — a firehose teaches worse than a ranked 1–2. `deep`
+optimizes for a different goal than mastery-per-token: **decision-support and transparency in the
+moment** — a better-informed choice now, the whole picture on the table — which the operator has
+explicitly asked for. It is never the default (`guided` is), and the teaching cap is raised, not
+removed, so even at full volume it stays coaching rather than a lecture.
 
 ## How the hooks use it
 

@@ -79,6 +79,16 @@ Select scope up front; when unsure, ask once with 2–3 options rather than assu
   problems; `understand` teaches how the system fits together). Findings, if run, are neutral map
   annotations, never a backlog. See "Comprehension as an end" in `references/phase-1-comprehension.md`.
 
+## Learning layer (optional, orthogonal to the mode)
+
+Any mode can run with the **learning-layer** composed over it — pass `learn:<level>` on the command
+(`essential` · `guided` · `deep`). It is not a mode but a *layer*: it wraps the interview, roadmap,
+test-first and review so each **explains the *why*** behind a choice, making the elected `to_be`
+better-informed. The chosen level is written to `learner.json` on activation and read by every phase,
+so one dial governs the whole workflow; absent the flag, rescue runs without it. The explanations
+*accompany* delivery and never replace or delay it — coaching, never a substitute for the fix. Full
+mechanism and the three presets live in the `learning-layer` skill and its `learner-model` reference.
+
 ## The five phases
 
 Each phase is a **separate invocation** with a fresh context. Phases communicate ONLY
