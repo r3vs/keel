@@ -52,12 +52,6 @@ CHALLENGE_TARGETS = ("acceptance_criterion", "to_be", "policy", "decision")
 REMEDIATION_ACTIONS = ("consolidate", "implement", "refactor", "delete", "align")
 BUILD_ACTIONS = ("scaffold", "implement", "wire", "configure", "instrument")  # v0.5 adds instrument
 EFFORTS = ("S", "M", "L")
-# The executor's own effort/ability appraisal of a remediation/build ITEM, recorded in Phase 4 as the
-# work is finished — distinct from `confidence` (which tags a finding's provenance) and from a
-# Proposal's `effort` (which sizes the work S/M/L). Context the measurer reads in Phase 5, never a
-# substitute for observed behavior. `at_limit` flags work the executor judged at the ceiling of its
-# capability — a signal for the measurer to verify harder, not a resolved pin.
-SELF_ASSESSMENTS = ("routine", "stretch", "at_limit")
 FLIP_SIGNAL_SOURCES = ("metrics", "logs", "traces", "manual_checkpoint", "incident")
 
 # severities that must never be silently defaulted (the threshold rule, v0.3)
@@ -482,17 +476,12 @@ class Ledger:
         pin["remediation"].append(item)
         return item
 
-    def set_remediation_status(self, pin_id: str, item_id: str, status: str,
-                               self_assessment: Optional[str] = None) -> dict:
+    def set_remediation_status(self, pin_id: str, item_id: str, status: str) -> dict:
         _require(status in ("todo", "in_progress", "done"), "bad remediation status")
-        _require(self_assessment is None or self_assessment in SELF_ASSESSMENTS,
-                 f"self_assessment, if set, must be one of {SELF_ASSESSMENTS}")
         pin = self.pin(pin_id)
         for item in pin["remediation"]:
             if item["id"] == item_id:
                 item["status"] = status
-                if self_assessment:
-                    item["self_assessment"] = self_assessment
                 return item
         raise LedgerError(f"no remediation item {item_id} on {pin_id}")
 

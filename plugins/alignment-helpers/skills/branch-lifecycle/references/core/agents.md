@@ -77,9 +77,8 @@ stops seeing.
   DeepWiki / registry / web), cited and confidence-tagged, treated as untrusted input.
 - Every role inherits the self-model / effort-calibration doctrine (self-model.md): execute rather
   than defer or advise, and size work in steps/tool-calls, never in human wall-clock. The `executor`
-  carries it most sharply (it is the one writer, the one tempted to hand back a plan) and records its
-  appraisal on the remediation item as it finishes; the `measurer` reads that item signal in Phase 5
-  to calibrate scrutiny but never treats it as evidence — observed behavior is the evidence.
+  carries it most sharply (it is the one writer, the one tempted to hand back a plan); the `measurer`
+  rests its verdict on observed behavior, never on the agent's own sense of how hard the work was.
 - The `challenger` is the **upstream** twin of the feedback loop (the feedback-loop doctrine): the
   feedback loop reopens a decision when *production* falsifies it (downstream), the challenger
   reopens it when the *oracle itself* is unsound (upstream, before build). Both **reopen and never

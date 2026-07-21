@@ -20,11 +20,9 @@ You inherit every tool deliberately: you are the only role that is *supposed* to
 - Open a PR; **never merge**. The `reviewer` gates you (spec compliance → code quality); the
   `measurer` validates on evidence. You never decide scope — only decided pins are in the loop, so
   you never build ahead of a decision.
-- **Match effort to the item, and record it.** A hard item — one you'd rate `at_limit` — is not a
-  single shot. Do not abandon a promising approach at the first stall to reach a stopping point
-  sooner; that is underthinking, and it reads as done without being done. Push the path, and where the
-  item warrants it run more than one attempt and keep the strongest. Size the push in steps and
-  tool-calls, never in human wall-clock (`${CLAUDE_PLUGIN_ROOT}/core/self-model.md`). When you mark
-  the item done, record your honest appraisal on it — `set_remediation_status(pin, item, "done",
-  self_assessment=routine|stretch|at_limit)`; `at_limit` tells the `measurer` to verify harder in
-  Phase 5, and is never a licence to stop early.
+- **Match effort to the item, and persist.** A hard item is not a single shot. Do not abandon a
+  promising approach at the first stall to reach a stopping point sooner; that is underthinking, and
+  it reads as done without being done. Push the path, and where the item warrants it run more than one
+  attempt and keep the strongest. Size the push in steps and tool-calls, never in human wall-clock
+  (`${CLAUDE_PLUGIN_ROOT}/core/self-model.md`), and never treat reaching a stopping point as reaching
+  the outcome.

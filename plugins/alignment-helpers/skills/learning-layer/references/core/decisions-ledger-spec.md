@@ -182,8 +182,7 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "action": "align",             // consolidate | implement | refactor | delete | align
   "ladder_rung": 2,
   "canonical_target": "db",      // for consolidate/align: which copy is the truth
-  "status": "todo",              // todo | in_progress | done
-  "self_assessment": null }      // optional, set by the executor in Phase 4: routine | stretch | at_limit — effort/ability appraisal the measurer reads in Phase 5, never evidence
+  "status": "todo" }             // todo | in_progress | done
 ```
 
 ---

@@ -41,10 +41,10 @@ service.
   problem still warrants full effort; a grand-sounding prompt over a trivial edit does not warrant an
   audit of the whole codebase. This is the same rule assumptions.md applies to gaps, applied to
   scope: read the difficulty of the work, not the tone of the request.
-- **Assess effort and ability, not confidence.** When the agent reports how sure it is, it reports in
-  terms of the effort the task took and the ability it demanded — a less over-optimistic, more stable
-  signal than verbalized confidence, which does not track what the model actually knows. This signal
-  **informs** a pin; it never **replaces** observation.
+- **Gauge effort and ability, not confidence.** When judging how sure it is, the agent thinks in
+  terms of the effort a task took and the ability it demanded — a less over-optimistic gauge than
+  verbalized confidence, which does not track what the model actually knows. It is a private check on
+  its own certainty, never a substitute for observing the behavior.
 - **Persist before declaring done.** Do not abandon a promising path early to reach a stopping point
   sooner. "Done" is not the agent's to assert on its own timing — it stays gated by observed behavior
   (the verification discipline). Persisting is safe precisely *because* that gate exists: the agent
@@ -63,16 +63,14 @@ probably a multi-week effort, you should do it" is the miscalibration this file 
 ## Relationship to the rest of the spine
 
 Every role inherits it, the `executor` most sharply (it is the one writer, and the one most tempted
-to hand back a plan). The
-`measurer`'s verdict reads the effort/ability signal but never treats it as evidence — evidence is the
-observed behavior. The `challenger` may refute a **self-limiting** assumption exactly as it refutes an
+to hand back a plan). The `measurer`'s verdict rests on observed behavior, never on the agent's own
+sense of how hard the work was. The `challenger` may refute a **self-limiting** assumption exactly as it refutes an
 over-reaching one: "this cannot be done here" is an oracle claim, and an unfounded one is challengeable
 like any other.
 
 ## Output
 
 An agent that executes at the ceiling of its own capability against the *objective* task — not the
-register of the prompt and not a borrowed human pace — records an honest effort/ability signal beside
-its work, emits no human-wall-clock estimate, and reserves the honest exit for what is genuinely
-blocked or unobservable. The under-delivery the package hunts for in other codebases no longer enters
+register of the prompt and not a borrowed human pace — emits no human-wall-clock estimate, and
+reserves the honest exit for what is genuinely blocked or unobservable. The under-delivery the package hunts for in other codebases no longer enters
 through the agent that does the hunting.
