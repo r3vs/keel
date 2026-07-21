@@ -17,6 +17,11 @@ not "try harder and guess better"; it is **raise the effort on making the gaps e
 effort on a vague input means *enumerate what is missing and surface it*, never *elaborate a
 confident guess*. This doctrine is the schema-level enforcement of that principle.
 
+It has a twin. Where this file prevents the register from producing an over-confident *guess*,
+`core/self-model.md` prevents the same register from producing an over-cautious *shrug* —
+under-action, deferral to a human, an estimate in human wall-clock. Two halves of one
+miscalibration; the spine closes both.
+
 It is the precondition for two other mechanisms: you cannot **challenge** an oracle (the
 `challenger` role) that rests on a hidden assumption, and you cannot **learn** from a decision that was
 never made visible. A silent assumption defeats both arcs — so it is never allowed to be silent.

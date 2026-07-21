@@ -19,6 +19,11 @@ Everything else — green CI, a clean typecheck, a passing suite — is evidence
 evidence *of* the outcome. They are necessary and they are not sufficient, because every one of them
 can pass while the feature is unreachable, unwired, or wired to the wrong thing.
 
+On AI-generated code the inversion is sharper: a suite that is *fully* green is a reason to **look**,
+not to stop. The tests were usually generated with the code and encode the same misunderstanding, so
+a 100% pass is a **suspect** signal until you have observed the behavior yourself — treat the green as
+a question, not an answer.
+
 ## What counts as verification
 
 | claim | insufficient | sufficient |
@@ -50,8 +55,12 @@ location — and fails for everyone. **Verify from the user's position, not your
 - A step was skipped → say which, and why.
 - Verified → say it plainly, without hedging. Earned confidence is information; reflexive hedging
   destroys it.
-- **Partially verified is a real state.** "The API returns correctly; I could not exercise the
-  frontend" is a useful, honest report. "Done" is not.
+- **Partially verified is a real state, and it has a ledger form.** "The API returns correctly; I
+  could not exercise the frontend" is a useful, honest report; "Done" is not. Record it as what it
+  is — the pin stays `needs_input` (or carries a `blocked` note), never silently `resolved`. This is
+  the **honest exit** every gate must leave open: when the agent cannot satisfy the verification, it
+  says so *in the ledger* rather than fabricating an observation or quietly stopping. A gate that
+  blocks without leaving this exit does not prevent the shortcut — it forces it.
 
 ## Binding to the ledger
 
@@ -63,3 +72,11 @@ An `acceptance_criterion` is the testable outcome, so it is also the verificatio
 exercise in step 2 is exactly what the criterion states. That is why the criterion has to be
 observable when it is written — an untestable criterion produces an unverifiable completion, and the
 gap opens back in the interview, not here.
+
+**The oracle is not the executor's to hold in full.** An `acceptance_criterion` the executor both
+writes and codes against is a target it will build *to* — a passing suite then proves the code matches
+the test, not that it matches the intent. So the verifying roles keep part of the oracle **held
+out**: the `measurer` (and the wave `reviewer`) exercise the behavior against a criterion the executor
+did not author, and **never accept the executor's self-report** in place of that observation. The
+executor's "it passes" is a claim to check, exactly like green CI — evidence about the change, not
+evidence of the outcome.

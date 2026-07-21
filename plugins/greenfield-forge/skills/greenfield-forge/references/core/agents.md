@@ -33,7 +33,7 @@ person decides.
 | **brainstorm** | no (proposals only) | Proposes 2–3 options with tradeoffs to `pin.brainstorm.proposals[]`, grounded and cited; never decides. | on-demand · greenfield P2 hard forks |
 | **executor** | **yes (the one writer)** | Implements ONE closed scope (a `RemediationItem`/`BuildItem`) via two-track TDD in fresh context; opens a PR; **never merges**. Serialized. | rescue P4 · greenfield P4 build, P6 release |
 | **reviewer** | no (read-only) | Adversarial pre-merge gate. Two stages: spec-compliance vs `to_be` → code quality. Verdict `MERGE`/`ADJUST`/`REJECT`; ADJUST/REJECT restart the item. Also the wave-checkpoint reviewer. A rejection **teaches** (see below). | rescue P4 · greenfield P4 |
-| **challenger** | no (challenges only) | Adversarial red-team of the elected **oracle** — the reviewer's upstream twin. The reviewer enforces the `to_be`; the challenger doubts it. Refutes `acceptance_criterion`/`to_be`/`Policy` as unfalsifiable / inconsistent / unsatisfiable / resting on an unstated assumption / ignoring fan-out; emits a `ChallengeEvent` that reopens the pin (`challenged`). Neutral: challenges, never decides. | rescue P2→P4 · greenfield P2→P4 |
+| **challenger** | no (challenges only) | Adversarial red-team of the elected **oracle** — the reviewer's upstream twin. The reviewer enforces the `to_be`; the challenger doubts it. Refutes `acceptance_criterion`/`to_be`/`Policy` as unfalsifiable / inconsistent / unsatisfiable / falsely infeasible / resting on an unstated assumption / ignoring fan-out; emits a `ChallengeEvent` that reopens the pin (`challenged`). Neutral: challenges, never decides. | rescue P2→P4 · greenfield P2→P4 |
 | **measurer** | no (read-only) | Data/evidence verdict: Phase-5 validation, and evaluating `flip_signal`s in the feedback loop. Never guesses, never writes. | rescue P5 · greenfield P5, P7 evolve |
 
 ## Permissions — **the source of truth; the build reads this table**
@@ -58,6 +58,12 @@ user's own `settings.json`, session-wide, which a plugin cannot write. And blunt
 available either, because the read-only roles genuinely need `Bash` for static analysis. That is the
 gap the ledger gate exists to close, and it is smaller than "cannot restrict" implied.
 
+And it closes that gap by *observing*, not by becoming a target. The ledger gate — like the
+`reviewer`, `challenger` and `measurer` — blocks an unelected edit or an unverified claim, never a
+suspect *thought*; the reasoning stays legible so the shortcut is visible in it. Put optimization
+pressure on a monitor and a model learns to hide the intent rather than drop it, so none of these
+read-only gates is a score the agent is pushed to beat. A monitor you optimize against stops seeing.
+
 ## Mapping notes
 
 - The two-stage review the phase playbooks describe **is** the `reviewer`; the "data decides"
@@ -67,13 +73,23 @@ gap the ledger gate exists to close, and it is smaller than "cannot restrict" im
   single-writer/parallel-reader orchestration.
 - Grounding for `researcher` and `brainstorm` follows the knowledge-sources doctrine (Context7 /
   DeepWiki / registry / web), cited and confidence-tagged, treated as untrusted input.
+- Every role inherits the self-model / effort-calibration doctrine (self-model.md): execute rather
+  than defer or advise, and size work in steps/tool-calls, never in human wall-clock. The `executor`
+  carries it most sharply (it is the one writer, the one tempted to hand back a plan); the `measurer`
+  reads the self-assessment signal but never treats it as evidence — observed behavior is the evidence.
 - The `challenger` is the **upstream** twin of the feedback loop (the feedback-loop doctrine): the
   feedback loop reopens a decision when *production* falsifies it (downstream), the challenger
   reopens it when the *oracle itself* is unsound (upstream, before build). Both **reopen and never
   decide** — same schema-enforced neutrality as the brainstorm. Its `ChallengeEvent` schema and the
   `unstated_assumption` precondition live in the ledger spec (decisions-ledger-spec, v0.6) and the
   assumptions doctrine. It runs right after the interview commits (Phase 2) and again at each wave
-  checkpoint (Phase 4), so an unsound oracle is caught before, not after, code rests on it.
+  checkpoint (Phase 4), so an unsound oracle is caught before, not after, code rests on it. This is
+also the package's runtime guard against **evasive fabrication**: an agent handed an oracle it
+*cannot* satisfy — mutually exclusive criteria, an unreachable `to_be` — tends not to down tools but
+to invent a plausible external reason it is blocked and present it as fact. Refuting an
+`unsatisfiable` oracle before build is the joint-satisfiability check that keeps the agent out of that
+corner, and running it early is essential: once fabrication starts it self-reinforces, and later
+evidence no longer dislodges it.
 
 ## Teach on rejection (a gate that blocks must also teach)
 

@@ -43,13 +43,18 @@ CONFIDENCES = ("extracted", "inferred", "ambiguous")
 STATES = ("detected", "needs_input", "brainstorming", "decided", "deferred", "resolved", "accepted")
 RESOLUTION_MODES = ("asked", "policy_default", "proposed_default")
 CHALLENGE_CLASSES = (
-    "unfalsifiable", "inconsistent", "unsatisfiable",
+    "unfalsifiable", "inconsistent", "unsatisfiable", "unfounded_infeasibility",
     "unstated_assumption", "ignored_fanout", "other",
 )
 CHALLENGE_TARGETS = ("acceptance_criterion", "to_be", "policy", "decision")
 REMEDIATION_ACTIONS = ("consolidate", "implement", "refactor", "delete", "align")
 BUILD_ACTIONS = ("scaffold", "implement", "wire", "configure", "instrument")  # v0.5 adds instrument
 EFFORTS = ("S", "M", "L")
+# The agent's own effort/ability appraisal of a finding — distinct from `confidence` (which tags the
+# finding's provenance) and from a Proposal's `effort` (which sizes the work S/M/L). Context for the
+# measurer, never a substitute for observed behavior. `at_limit` flags a finding the agent judged at
+# the ceiling of its capability — a candidate for extra held-out verification, not a resolved pin.
+SELF_ASSESSMENTS = ("routine", "stretch", "at_limit")
 FLIP_SIGNAL_SOURCES = ("metrics", "logs", "traces", "manual_checkpoint", "incident")
 
 # severities that must never be silently defaulted (the threshold rule, v0.3)
@@ -138,12 +143,15 @@ class Ledger:
         depends_on: Optional[list[str]] = None,
         cluster_id: Optional[str] = None,
         kind_detail: Optional[str] = None,
+        self_assessment: Optional[str] = None,
     ) -> dict:
         _require(kind in KINDS, f"unknown kind {kind!r}")
         _require(kind != "other" or bool(kind_detail),
                  "kind 'other' requires kind_detail (the open escape hatch is named, not blank)")
         _require(severity in SEVERITIES, f"severity must be one of {SEVERITIES}")
         _require(confidence in CONFIDENCES, f"confidence must be one of {CONFIDENCES}")
+        _require(self_assessment is None or self_assessment in SELF_ASSESSMENTS,
+                 f"self_assessment, if set, must be one of {SELF_ASSESSMENTS}")
         _require(isinstance(provenance, list) and len(provenance) > 0,
                  "provenance is required (who found this, how)")
         _validate_question(question)
@@ -176,6 +184,8 @@ class Ledger:
             pin["cluster_id"] = cluster_id
         if kind_detail:
             pin["kind_detail"] = kind_detail
+        if self_assessment:
+            pin["self_assessment"] = self_assessment
         self.data["pins"].append(pin)
         return pin
 

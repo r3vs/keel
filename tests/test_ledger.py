@@ -57,6 +57,16 @@ class TestEnvelope(unittest.TestCase):
         with self.assertRaises(LedgerError):
             add_simple_pin(led, confidence="vibes")
 
+    def test_self_assessment_optional_and_validated(self):
+        """The agent's effort/ability appraisal: absent by default (so existing pins are unchanged),
+        typed when present, and never conflated with a Proposal's S/M/L effort."""
+        led = make_ledger()
+        self.assertNotIn("self_assessment", add_simple_pin(led))       # opt-in, pins stay identical
+        pin = add_simple_pin(led, self_assessment="at_limit")
+        self.assertEqual(pin["self_assessment"], "at_limit")
+        with self.assertRaises(LedgerError):                           # context, but a typed one
+            add_simple_pin(led, self_assessment="exhausted")
+
     def test_provenance_required(self):
         led = make_ledger()
         with self.assertRaises(LedgerError):
@@ -278,6 +288,18 @@ class TestReopenArcs(unittest.TestCase):
         with self.assertRaises(LedgerError):
             led.challenge(pin["id"], target="to_be", challenge_class="i_disagree",
                           argument="x", severity="high", upheld=False)
+
+    def test_unfounded_infeasibility_reopens_like_any_challenge(self):
+        """v0.6+: the mirror of `unsatisfiable` — an oracle that gives up a reachable outcome as
+        falsely impossible is challengeable, and an upheld challenge reopens the pin."""
+        led = make_ledger()
+        root, mid, leaf, unrelated = self._decided_chain(led)
+        led.challenge(root["id"], target="to_be", challenge_class="unfounded_infeasibility",
+                      argument="'SSO cannot be done here' — but the elected library supports it",
+                      severity="high", upheld=True)
+        self.assertEqual(root["state"], "needs_input")
+        self.assertEqual(root["substate"], "challenged")
+        self.assertEqual(unrelated["state"], "decided")               # still minimal reopen
 
 
 class TestRemediation(unittest.TestCase):

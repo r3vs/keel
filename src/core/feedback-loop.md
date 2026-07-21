@@ -44,7 +44,10 @@ a periodic "did X happen?" asked at a wave boundary or on a schedule. Never a ha
   on the falsified truth (via `depends_on`) — never the whole ledger. A loop that reopens
   everything regenerates churn, the same failure mode the skills cure.
 - **Degrade, don't fabricate.** No telemetry for a signal → manual checkpoint. Never invent a
-  reading or infer a firing the data doesn't support.
+  reading or infer a firing the data doesn't support. This is the loop's face of the honest exit
+  every gate must leave open: an observer boxed between "report a firing" and "have no data" will
+  invent one unless saying "no reading" is a sanctioned move — so it is. A manual checkpoint or a
+  held-open pin is the truthful answer; a fabricated reading is the failure the whole package hunts.
 - **Cadence is a mode, not a daemon in-context.** `evolve` runs on a schedule or on an incident;
   each run is a fresh invocation reading the ledger + manifest from disk (same context-reset
   discipline as every other phase).
