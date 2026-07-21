@@ -23,6 +23,16 @@ Tests (Track A writes the failing test *first* — blocking that would break the
 enforces), the ledger and its artifacts, and prose. The gate exists to stop premature *product*
 code, not to stop work.
 
+Not a target, only an observation
+---------------------------------
+The gate observes one fact — is the to-be for this area elected yet — and blocks an edit that
+presumes "yes" when the ledger says "no". It is deliberately not a score to optimize against. Put
+optimization pressure on a monitor and a model does not stop the behavior, it learns to *hide* it;
+here that would mean reclassifying product code as prose or dropping it under a `tests/` marker to
+slip past ``_is_exempt``. Those exemptions are load-bearing trust, not a checklist to route around.
+The honest response to a block is the honest exit the deny message names — elect the to-be, or record
+the impasse in the ledger — never a relabeled file that satisfies the gate's letter and defeats it.
+
 Fails open, always. A crash here must never wedge a user's session — the cost of a missed block is
 one bad edit the reviewer catches; the cost of a false block is an agent that cannot work at all.
 
@@ -113,7 +123,8 @@ def main() -> None:
         f"(the `interview_next` tool, or `python scripts/runtime/interview.py "
         f"{ledger_path}`) and let the user elect the truth — only their committed answer decides.\n"
         f"Tests, prose, and the ledger itself are never blocked; write the failing Track-A test if "
-        f"you have an elected `to_be` to encode."
+        f"you have an elected `to_be` to encode. If you cannot proceed honestly, record the impasse "
+        f"in the ledger — never relabel this file to slip past the gate."
     )
 
 

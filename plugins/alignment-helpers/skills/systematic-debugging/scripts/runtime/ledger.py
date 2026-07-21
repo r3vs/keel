@@ -45,7 +45,7 @@ CONFIDENCES = ("extracted", "inferred", "ambiguous")
 STATES = ("detected", "needs_input", "brainstorming", "decided", "deferred", "resolved", "accepted")
 RESOLUTION_MODES = ("asked", "policy_default", "proposed_default")
 CHALLENGE_CLASSES = (
-    "unfalsifiable", "inconsistent", "unsatisfiable",
+    "unfalsifiable", "inconsistent", "unsatisfiable", "unfounded_infeasibility",
     "unstated_assumption", "ignored_fanout", "other",
 )
 CHALLENGE_TARGETS = ("acceptance_criterion", "to_be", "policy", "decision")

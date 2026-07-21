@@ -158,7 +158,7 @@ are all unified under this one principle — which is why there is deliberately 
   (Frame → Interview → Contract → Build → Validate → Release → Operate & Evolve), the last two
   closing the loop back to the interview via `flip_criteria`. Persisting between phases is what
   makes the context reset possible — never design a phase that relies on another's in-memory session.
-- **Modes select scope up front.** Rescue: `rescue` (default) · `align` · `audit` · `resume`.
+- **Modes select scope up front.** Rescue: `rescue` (default) · `align` · `audit` · `resume` · `understand`.
   Greenfield: `forge` (default) · `spec` · `slice` · `decide` · `evolve`.
 - **Each skill has a core cross-layer module** built on the shared field-shape engine
   (`src/core/shape-engine.md`): rescue's `contract-reconciliation` **diffs** field shapes across

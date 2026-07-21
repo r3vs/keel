@@ -393,7 +393,7 @@ A read-only `challenger` (role defined in the agents doctrine, the adversarial t
 // ChallengeEvent (inside decision_log[]) — immutable, neutral
 { "id": "chl_0002", "pin_id": "pin_0007", "timestamp": "ISO-8601",
   "target": "acceptance_criterion",  // acceptance_criterion | to_be | policy | decision
-  "class": "unfalsifiable",          // unfalsifiable | inconsistent | unsatisfiable | unstated_assumption | ignored_fanout | other
+  "class": "unfalsifiable",          // unfalsifiable | inconsistent | unsatisfiable | unfounded_infeasibility | unstated_assumption | ignored_fanout | other
   "argument": "the criterion 'the app is fast' has no testable verify: no test can fail it",
   "severity": "high",                // same threshold as pins: high/blocker → always re-asked, never a default
   "upheld": true,                    // outcome of the threshold review; true → reopens
@@ -404,6 +404,7 @@ The **challenge classes** (the `class`) are the typical ways an oracle is wrong 
 - `unfalsifiable` — the `to_be`/criterion has no `verify` that could fail (no test can refute it) → it is not an oracle, it is a slogan.
 - `inconsistent` — two mutually incoherent criteria/decisions (satisfying one violates the other).
 - `unsatisfiable` — the `to_be` is not realizable from the known `givens`/constraints (an impossible commitment).
+- `unfounded_infeasibility` — the mirror of `unsatisfiable`, and the oracle-form of under-reaching: the `to_be` gives up a *reachable* outcome because it is **assumed** impossible ("this cannot be done here") without that infeasibility ever being shown. Reopen so the human re-decides with the real feasibility in view — the self-limiting twin of the over-reaching assumption (`core/self-model.md`).
 - `unstated_assumption` — the decision rests on an assumption never declared (see `provenance: agent_assumption` below): reopen it by making it explicit.
 - `ignored_fanout` — a high-fan-out `open_decision`/criterion resolved as if it were not one (a silent default where `asked` was needed).
 

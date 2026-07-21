@@ -21,6 +21,12 @@ primed. State the claim as a question, or state nothing.
 Include: the pins in scope, how you verified it, and what you are unsure about. Uncertainty is the
 most useful thing you can pass on and the easiest thing to omit.
 
+Withholding the conclusion is half of it; the other half is on the reviewer. Re-running the tests the
+author already passed proves nothing an author building *to* those tests could not have staged — so
+where the stakes justify it, the reviewer **exercises the behavior itself** against the elected
+criterion, rather than trusting the author's own run. Withholding your conclusion keeps the review
+honest; verifying the behavior, not the artifact built to pass, keeps it real.
+
 ## Giving a review — precedence, first match wins
 
 Work in this order and stop at the first that applies:

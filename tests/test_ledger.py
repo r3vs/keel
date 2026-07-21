@@ -279,6 +279,18 @@ class TestReopenArcs(unittest.TestCase):
             led.challenge(pin["id"], target="to_be", challenge_class="i_disagree",
                           argument="x", severity="high", upheld=False)
 
+    def test_unfounded_infeasibility_reopens_like_any_challenge(self):
+        """v0.6+: the mirror of `unsatisfiable` — an oracle that gives up a reachable outcome as
+        falsely impossible is challengeable, and an upheld challenge reopens the pin."""
+        led = make_ledger()
+        root, mid, leaf, unrelated = self._decided_chain(led)
+        led.challenge(root["id"], target="to_be", challenge_class="unfounded_infeasibility",
+                      argument="'SSO cannot be done here' — but the elected library supports it",
+                      severity="high", upheld=True)
+        self.assertEqual(root["state"], "needs_input")
+        self.assertEqual(root["substate"], "challenged")
+        self.assertEqual(unrelated["state"], "decided")               # still minimal reopen
+
 
 class TestRemediation(unittest.TestCase):
     def test_remediation_requires_decision(self):
