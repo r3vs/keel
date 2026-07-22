@@ -81,14 +81,14 @@
     },
     {
       "id": "design_system", "order": 5.5, "kind": "open_decision", "severity": "medium",
-      "title": "Design system (DESIGN.md)",
+      "title": "Design system (DTCG tokens)",
       "options": [
-        { "id": "author_designmd", "label": "Author a DESIGN.md (palette + type ramp + radii tokens)", "implication": "impeccable detect enforces token-membership in CI; drift is a build failure, not a matter of taste" },
-        { "id": "adopt_library_tokens", "label": "Mirror a component library's tokens into DESIGN.md", "implication": "the library's palette/type scale becomes the enforced contract" },
+        { "id": "capture_dtcg", "label": "Capture a DTCG token set from an approved visual direction", "implication": "generate CSS/Tailwind/DESIGN.md from it; tokens_diff + impeccable detect enforce membership in CI — drift is a build failure, not taste" },
+        { "id": "import_tokens", "label": "Import tokens (existing brand / Figma variables / component library)", "implication": "the imported DTCG set becomes the enforced contract; every layer generated from it" },
         { "id": "none_v1", "label": "No formal design system in v1", "implication": "only universal a11y/slop checks run; design drift is unchecked by any contract" }
       ],
       "depends_on": ["client"],
-      "default_policy": "author a minimal DESIGN.md from day one so design drift is a contract breach a CI check catches, not taste; skip only for headless/API-only",
+      "default_policy": "elect a minimal DTCG token set from day one so design drift is a contract breach a CI check catches, not taste; skip only for headless/API-only",
       "prune_for": ["cli", "library", "api-service"]
     },
     {

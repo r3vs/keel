@@ -75,15 +75,19 @@ lives** — the thing contract-propagation generates from.
 - **Default policy:** "server-render unless interactivity genuinely demands a SPA — reach for the
   client-heavy option by exception, not default."
 
-### 5b. Design system (DESIGN.md)  ·  depends_on: client
+### 5b. Design system (DTCG tokens)  ·  depends_on: client
 Applies wherever a UI is rendered (pruned for CLI / library / API-only, but a **static site has a
 UI** and keeps it). This is the presentation-layer contract — the thing greenfield's
-`design-propagation` authors and rescue's `design-alignment` diffs against.
-- **Options:** author a **DESIGN.md** (palette + type ramp + radii tokens) · mirror a component
-  library's tokens into a DESIGN.md · no formal system in v1 (only universal a11y/slop checks run).
-- **Downstream:** the `DESIGN.md` carrier + a CI drift-check (`impeccable detect`), Wave 1;
-  every UI slice's styling.
-- **Default policy:** "author a minimal DESIGN.md from day one, so design drift is a build failure
+`design-propagation` generates from and rescue's `design-alignment` diffs against. The machine
+contract is a **W3C DTCG** token set (the stable, multi-vendor standard); `DESIGN.md` and the CSS /
+Tailwind layers are *generated* from it, never hand-authored (an agent that only reads text cannot
+invent a tasteful palette — the tokens are **captured or imported**, not invented).
+- **Options:** capture a **DTCG token set** from an approved visual direction (a visual tool, opt-in)
+  · import tokens (an existing brand · a Figma Variables export, DTCG-native · a component library) ·
+  no formal system in v1 (only universal a11y/slop checks run).
+- **Downstream:** the DTCG carrier → generated CSS / Tailwind / DESIGN.md, the CI drift-check
+  (`tokens_diff` + `impeccable detect`), Wave 1; every UI slice's styling.
+- **Default policy:** "elect a minimal DTCG token set from day one, so design drift is a build failure
   a CI check catches — not a matter of taste discovered in review." A token set is an `enum`; the
   same shape engine that guards the data contract guards the design one (`references/core/shape-engine.md`).
 
