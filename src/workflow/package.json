@@ -1,0 +1,16 @@
+{
+  "name": "@alignment/workflow-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ceiling: deterministic cross-host workflow engine (TS). Floor stays src/runtime/buildloop.py. See docs/design/dynamic-workflows.md.",
+  "scripts": {
+    "test": "node --experimental-strip-types __tests__/run.ts && node --experimental-strip-types __tests__/slice2.ts && node --experimental-strip-types __tests__/slice3.ts && node --experimental-strip-types __tests__/slice4.ts && node --experimental-strip-types __tests__/slice5.ts && node --experimental-strip-types __tests__/slice6.ts && node --experimental-strip-types __tests__/slice7.ts"
+  },
+  "comment": "optionalDependencies document the OPT-IN warm adapters; the default CLI adapters need none. They are NOT installed by the plugin — a user who wants a warm host runs `npm i` themselves.",
+  "optionalDependencies": {
+    "@anthropic-ai/claude-agent-sdk": ">=0.3",
+    "@openai/codex-sdk": ">=0.145",
+    "@earendil-works/pi-coding-agent": ">=0.81"
+  }
+}

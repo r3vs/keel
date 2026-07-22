@@ -82,6 +82,12 @@ SKILL_EXCLUDE = {"TODO.md", "evals"}
 # CLAUDE.md). It is our contributor guide in a skill's clothes and must never ship.
 DEV_ONLY_SKILLS = {"writing-skills"}
 
+# Skills that carry the TS workflow engine (src/workflow/) inside themselves, so it is reachable at a
+# SKILL-RELATIVE path the host injects for the skill — the only portable way to ship a RUNNABLE script.
+# A plugin-root copy would need ${CLAUDE_PLUGIN_ROOT} (Claude-only) or a `../` escape out of the skill
+# (which is exactly what does not travel). __tests__/ (unit + live-smoke) develop the engine, never ship.
+ENGINE_SKILLS = {"run-workflow"}
+
 # --- vendoring rules (absorbed from the former sync_core.py / sync_runtime.py) ----------------
 # A skill needs a core doc / runtime module / tool if its own authored prose names the vendored
 # path. Anchored on the vendored form: a bare `core/x.md` or `runtime/x.py` is drift by definition
@@ -149,7 +155,7 @@ PLUGINS = {
             "challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. "
             "Installed automatically as a dependency of codebase-rescue and greenfield-forge."
         ),
-        "skills": ["using-the-ledger"],
+        "skills": ["using-the-ledger", "run-workflow"],
         "agents": True, "hooks": True, "mcp": True, "core_docs": True,
         "dependencies": [],
     },
@@ -310,6 +316,18 @@ def skill_payload(skill: str) -> dict:
         out[f"skills/{skill}/scripts/runtime/{mod}.py"] = PY_BANNER.format(name=f"{mod}.py") + read(RUNTIME / f"{mod}.py")
     for t in sorted(tool_closure(skill)):
         out[f"skills/{skill}/scripts/{t}.sh"] = read(TOOLS / f"{t}.sh")
+    if skill in ENGINE_SKILLS:
+        # The TS engine rides inside the skill, at engine/, reachable skill-relative. Source stays the
+        # single src/workflow/ (never duplicated in the source tree); the copy exists only in plugins/.
+        # Exclude __tests__ (dev), node_modules (opt-in SDK deps, gitignored), and dotfiles (.gitignore).
+        for f in sorted((SRC / "workflow").rglob("*")):
+            rel = f.relative_to(SRC / "workflow")
+            parts = rel.parts
+            if not f.is_file():
+                continue
+            if "__tests__" in parts or "node_modules" in parts or any(p.startswith(".") for p in parts):
+                continue
+            out[f"skills/{skill}/engine/{rel.as_posix()}"] = read(f)
     return out
 
 
