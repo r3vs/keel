@@ -23,7 +23,7 @@ build failure the moment it lands.
 
 ## What the DESIGN.md declares (the contract carrier)
 
-A `DESIGN.md` (Google Stitch convention, Impeccable's) carries the design system as YAML frontmatter;
+A `DESIGN.md` (Google's **Stitch** format — `google-labs-code/design.md`, Apache-2.0) carries the design system as YAML frontmatter;
 an optional `.impeccable/design.json` sidecar extends it with tonal ramps. The parts `detect`
 enforces — i.e. the tokens worth deciding:
 
@@ -100,6 +100,8 @@ contract, so it comes first — it falls out of the DAG, not a hardcoded order).
 
 ## Attribution
 
-The detector, its rule catalog, the `design-system-*` DESIGN.md checks, and the `DESIGN.md` (Google
-Stitch) convention are **Impeccable's** (Paul Bakaus, Apache-2.0). We author the DESIGN.md from
-decided pins and consume `detect` as a CI scanner; we ship none of its code.
+The `DESIGN.md` format is **Google's** (the Stitch spec, `google-labs-code/design.md`, Apache-2.0,
+`version: alpha`). The detector and its `design-system-*` membership checks are **Impeccable's** (Paul
+Bakaus, Apache-2.0). We generate the DESIGN.md from the decided design contract and consume `detect`
+as a CI scanner; we ship none of their code. (This playbook is being reworked so the machine contract
+is **W3C DTCG** tokens, with DESIGN.md generated from them — see the design-layer plan.)

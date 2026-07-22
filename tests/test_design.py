@@ -65,16 +65,21 @@ class TestNormalize(unittest.TestCase):
         self.assertEqual(by_ap["impeccable/low-contrast"]["kind"], "design_concern")
         self.assertEqual(by_ap["impeccable/overused-font"]["kind"], "design_concern")
 
-    def test_advisory_severity_floors_low_and_is_flagged(self):
+    def test_severity_advisory_string_is_low_priority_but_not_floored(self):
+        # design-system-color carries severity:"advisory" (STRING) but NOT the boolean `advisory`
+        # field. Impeccable's own CLI still fails on it, so it is a low-PRIORITY real finding — low
+        # severity, and crucially NOT flagged non-blocking, or we'd silently demote a real DESIGN.md
+        # contract violation out of the blocker path (the exact bug this asserts against).
         by_ap = {f["check_id"]: f for f in design.normalize(SAMPLE)}
         adv = by_ap["impeccable/design-system-color"]
-        self.assertEqual(adv["severity"], "low")            # advisory → low
-        self.assertTrue(adv.get("advisory"))                # flagged so the threshold keeps it non-blocking
-        # a non-advisory finding carries no advisory flag
+        self.assertEqual(adv["severity"], "low")
+        self.assertNotIn("advisory", adv)                   # the STRING is not the boolean floor
+        self.assertEqual(adv["kind"], "contract_mismatch")  # still a real contract violation
         self.assertNotIn("advisory", by_ap["impeccable/low-contrast"])
 
-    def test_advisory_boolean_flag_is_honored(self):
-        # some rules carry `advisory: true` rather than severity 'advisory' — both mean advisory
+    def test_advisory_boolean_flag_is_the_only_floor(self):
+        # ONLY the boolean `advisory: true` (today: em-dash-overuse) is a genuine non-blocking floor —
+        # surfaced, floored to low, flagged. The severity string alone never sets the flag.
         out = design.normalize([{"antipattern": "em-dash-overuse", "category": "slop",
                                  "severity": "warning", "advisory": True, "file": "x.md", "line": 1}])
         self.assertTrue(out[0].get("advisory"))

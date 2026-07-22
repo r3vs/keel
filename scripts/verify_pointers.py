@@ -22,13 +22,15 @@ SRC_CORE = ROOT / "src" / "core"      # the authoring source for the shared doct
 SKILLS = ROOT / "src" / "skills"      # authored skill prose (the vendored copies live in plugins/)
 PTR = re.compile(r"`([\w\-./]+\.md)`")
 
-# Backticked *.md names that are NOT repo playbooks but **external-project conventions** — a file that
-# lives in the USER's analyzed/generated project, never in this repo. `DESIGN.md` is the design
-# contract a rescued/forged project carries; it is the .md sibling of `ledger.json` / `graph.json`
-# (which this regex skips only because they are not .md). Mentioning one is not a cross-reference to a
-# playbook, so resolving it against this repo is a category error — same spirit as check_consistency's
-# BUILD_POLICY_CORE exception. Keep this set tiny and justified; it is not a place to silence real drift.
-ARTIFACT_MD = {"DESIGN.md"}
+# Backticked *.md tokens that are NOT repo playbooks but **external `.md`-named things** the prose
+# legitimately names: (1) an external-project convention — a file that lives in the USER's analyzed/
+# generated project, never here (`DESIGN.md`, the design contract, the .md sibling of `ledger.json` /
+# `graph.json`, which this regex skips only because they are not .md); (2) an external GitHub repo slug
+# that happens to end in .md (`google-labs-code/design.md` — Google's Stitch DESIGN.md spec repo).
+# Mentioning either is not a cross-reference to a playbook, so resolving it against this repo is a
+# category error — same spirit as check_consistency's BUILD_POLICY_CORE exception. Keep this set tiny
+# and justified; it is not a place to silence real drift.
+ARTIFACT_MD = {"DESIGN.md", "google-labs-code/design.md"}
 
 
 def skill_root(f: Path) -> Path:

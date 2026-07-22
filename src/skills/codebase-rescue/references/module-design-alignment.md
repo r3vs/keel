@@ -36,8 +36,9 @@ and "adopt a DESIGN.md" becomes a legitimate interview outcome (a remediation), 
 
 ## The DESIGN.md contract — what it declares
 
-A `DESIGN.md` (Google Stitch convention, Impeccable's) carries the design system as YAML frontmatter;
-an optional `.impeccable/design.json` sidecar extends it. The parts the detector enforces:
+A `DESIGN.md` (Google's **Stitch** format — `google-labs-code/design.md`, Apache-2.0, which Impeccable
+reads) carries the design system as YAML frontmatter; an optional `.impeccable/design.json` sidecar
+extends it. The parts the detector enforces:
 
 - **`typography`** — named roles with `fontFamily` and `fontSize` (plus an enumerated `scale`); the
   allowed fonts and the type ramp.
@@ -48,6 +49,16 @@ an optional `.impeccable/design.json` sidecar extends it. The parts the detector
 This is the **field-shape engine applied to design tokens**: each token set is an `enum` of allowed
 values, and membership is the check (`references/core/shape-engine.md` — "enum-membership", "never
 fabricate"). Reading these as a contract is why a token drift is a *fact*, not an opinion.
+
+**Only an *extracted-and-confirmed* DESIGN.md is a `contract_mismatch` source.** A well-formed
+`DESIGN.md` is normally **captured from the code that actually renders** (Impeccable's own `/document`
+extracts tokens from CSS vars / Tailwind / component source / the computed styles of the rendered
+page, then refreshes to "the values the code actually uses"). A DESIGN.md **hand-authored and never
+reconciled** with the code is *aspirational* — the code being off it may mean the doc is stale, not
+that the code drifted. So treat an un-confirmed DESIGN.md as an `open_decision` (its tokens are a
+proposed `to_be` to elect in the interview), and only after it has been confirmed against the real
+tokens once does a `design-system-*` hit become a true `contract_mismatch`. The detector still runs;
+what changes is the *kind* of pin the un-confirmed case produces.
 
 ## Method
 
@@ -103,6 +114,8 @@ is a visible gap in the ledger, not a silent clean bill.
 
 ## Attribution
 
-The detector, its rule catalog, the `design-system-*` DESIGN.md checks, and the `DESIGN.md` (Google
-Stitch) convention are **Impeccable's** (Paul Bakaus, Apache-2.0). We consume `detect --json` and add
-the ledger binding; we ship none of its code, and the taste-lens adaptation credits its catalog.
+The `DESIGN.md` format is **Google's** — the Stitch design spec, open-sourced as
+`google-labs-code/design.md` (Apache-2.0, `version: alpha`). The detector, its rule catalog, and the
+`design-system-*` membership checks that read a DESIGN.md are **Impeccable's** (Paul Bakaus,
+Apache-2.0). We consume `detect --json`, add the ledger binding, and adapt the rule catalog for the
+taste lens with attribution; we ship none of their code.

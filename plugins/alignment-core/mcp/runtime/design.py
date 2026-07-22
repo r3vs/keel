@@ -29,19 +29,24 @@ off-palette color is a set-membership fact against the DESIGN.md — so its hits
 deliberately NOT run here; it belongs to the reviewer / challenger lens, adapted with attribution, as
 judgment pins that DO pass fp-check.
 
-**Advisory findings are carried, never dropped, but flagged.** Impeccable marks some rules
-`advisory` (e.g. off-palette color, em-dash overuse): detected, but never counted as a failure and
-never changing its exit code. We surface them as low-severity pins with `advisory: true` so the
-interview can see the whole design picture, while the severity threshold keeps them out of the
-blocker path — the coverage doctrine (surface everything) without letting a soft signal block.
+**Advisory is ONE field, not two — bind on the boolean.** Impeccable carries two independent things:
+a `severity` string (which can read `"advisory"`, on ~12 rules) and a separate boolean `advisory`
+(on 1 rule today, `em-dash-overuse`). Its own CLI floors — excludes from the failure count and from
+`--no-advisory` — **only the boolean**; the `severity:"advisory"` STRING rules (including
+`design-system-color` / `-radius` / `-font-size`) still count as failures and still exit non-zero.
+So a `severity:"advisory"` string is a *low-priority real finding*, NOT a soft/non-blocking one —
+we map it to `severity: low` but do **not** flag it. Only the boolean `advisory: true` is a genuine
+non-blocking floor (surfaced, low, `advisory: true`). Getting this backwards silently demotes real
+DESIGN.md contract violations out of the blocker path — which is the bug this comment exists to prevent.
 
 **Degrades, never hard-fails.** If `impeccable` (Node ≥ 22.12) is not runnable, the module reports
 `unchecked` rather than a clean bill — a design finder that could not run is not "no slop", it is "not
 looked at" (the coverage-gap doctrine). This is how the toolchain already treats semgrep or knip.
 
-**Attribution.** The detector, its rule catalog, the `design-system-*` DESIGN.md checks, and the
-`DESIGN.md` (Google Stitch) convention are Impeccable's (Paul Bakaus, Apache-2.0). We consume its
-`detect --json` like any toolchain scanner and add the ledger binding; we ship none of its code.
+**Attribution.** The `DESIGN.md` format is **Google's** — the Stitch design spec, open-sourced as
+`google-labs-code/design.md` (Apache-2.0). The detector, its rule catalog, and the `design-system-*`
+membership checks that read a DESIGN.md are **Impeccable's** (Paul Bakaus, Apache-2.0). We consume
+`detect --json` like any toolchain scanner and add the ledger binding; we ship none of their code.
 """
 from __future__ import annotations
 
@@ -51,9 +56,9 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-# Impeccable severity → our severity ladder. Its detector emits error / warning / info / advisory
-# (and stamps an `advisory: true` flag on some rules); advisory is a real-but-soft signal, so it
-# floors at low and is flagged, never dropped.
+# Impeccable severity string → our severity ladder. Its detector emits error / warning / info /
+# advisory. NOTE the `advisory` STRING here is a low-PRIORITY real finding (its CLI still fails on it),
+# distinct from the boolean `advisory` field (`_is_advisory`) which is the actual non-blocking floor.
 _SEV = {"error": "high", "warning": "medium", "info": "low", "advisory": "low"}
 # Impeccable category → pin kind for the NON-contract hits. 'slop' = an AI-slop tell, 'quality' =
 # general design / a11y. Both are deterministic facts here (the split we enforce — fact vs taste — is
@@ -89,7 +94,13 @@ def available() -> bool:
 
 
 def _is_advisory(r: dict) -> bool:
-    return r.get("advisory") is True or r.get("severity") == "advisory"
+    """A genuinely non-blocking finding — Impeccable's boolean `advisory` field ONLY.
+
+    The `severity:"advisory"` STRING is deliberately NOT treated as a floor here: Impeccable's own CLI
+    still counts those as failures (exit non-zero), so demoting them to non-blocking would silently
+    drop real findings — including the `design-system-*` DESIGN.md contract violations, which carry the
+    advisory *string* but not the boolean. Bind on the boolean; the string maps to low via `_SEV`."""
+    return r.get("advisory") is True
 
 
 def _kind_for(r: dict) -> str:
