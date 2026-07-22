@@ -66,7 +66,7 @@ hard-fail on a missing binary.
 
 Select scope up front; when unsure, ask once with 2–3 options rather than assuming.
 
-- **`forge`** (default) — all five phases: idea → aligned scaffold + first vertical slice.
+- **`forge`** (default) — Phases 1–6: idea → aligned scaffold + first vertical slice → first release.
 - **`spec`** — Phases 1–3 only: produce the design, the contract, and the sequenced backlog;
   stop before building. For users who will build it themselves or hand it to another agent.
 - **`slice`** — take an already-committed ledger and build/extend ONE vertical feature (Phases

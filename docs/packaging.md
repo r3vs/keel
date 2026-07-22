@@ -241,6 +241,6 @@ The ledger gate closes that residual at runtime.
 
 This repo's code and prose are MIT (`LICENSE`). The deterministic toolchain it *invokes* keeps its
 own licenses — notably **GitNexus is PolyForm Noncommercial** (optional secondary graph engine; not
-installed unless `RESCUE_INSTALL_GITNEXUS=1`). Graphify (primary backbone) is MIT.
+installed unless `RESCUE_INSTALL_GITNEXUS=1`). Graphify (optional graph source) is MIT.
 
 [Anthropic Agent Skills specification]: https://code.claude.com/docs

@@ -12,7 +12,8 @@ Summary of what matters here:
   their own — they project a view over it. This is the exact anti-divergence property both
   skills enforce on the codebases they touch.
 - `Pin` is a discriminated union on `kind` (contract_mismatch | internal_contradiction |
-  ambiguity | incompleteness | design_concern | defect | **open_decision** | other), with an
+  ambiguity | incompleteness | design_concern | defect | **open_decision** |
+  **acceptance_criterion** | other), with an
   `other` escape hatch so the taxonomy stays open. `open_decision` (v0.4) is the greenfield
   fork: nothing is built yet, so `as_is` is null and `to_be` is elected before any code exists.
 - `to_be` is DERIVED from user decisions, never authored from code. `gap = diff(to_be, as_is)`.

@@ -106,8 +106,9 @@ fi
 
 # --- Wiki backbone (CodeWiki, runs on the Claude login in subscription mode) -----------
 if have pip3 || have pip; then
-  # Graphify = PRIMARY graph backbone (MIT). PyPI package name is graphifyy (double y).
-  have graphify || { python3 -m pip install --user "$(pipspec graphifyy "$GRAPHIFY_VER")" >/dev/null 2>&1 && ok "graphify (pip, primary backbone)"; } || warn "graphify not installed — GRAPH BACKBONE MISSING, core module degrades to heuristics"
+  # Graphify = OPTIONAL alternative graph source (MIT). The backbone is the stdlib + tree-sitter
+  # builder scripts/runtime/graph_build.py, which needs no install. PyPI package is graphifyy (double y).
+  have graphify || { python3 -m pip install --user "$(pipspec graphifyy "$GRAPHIFY_VER")" >/dev/null 2>&1 && ok "graphify (pip, optional graph source)"; } || warn "graphify not installed — optional; the tree-sitter builder graph_build.py is the backbone"
   have codewiki || { python3 -m pip install --user "$(pipspec codewiki "$CODEWIKI_VER")" >/dev/null 2>&1 && ok "codewiki (pip)"; } || warn "codewiki not installed — as-is wiki degraded"
 fi
 

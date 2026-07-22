@@ -104,12 +104,13 @@ Goal: a navigable, **visual-first** map of what the code is now, with problems p
 it. The user reviews *pins*, never the whole wiki; attention scales with the number of
 problems, not the size of the codebase.
 
-1. Build the knowledge graph (local, multi-language) with Graphify (MIT-licensed backbone;
-   models DB schema as nodes and spans DB<->API<->frontend; exports plain NetworkX
-   `graph.json` with stable node ids + source locations + EXTRACTED/INFERRED/AMBIGUOUS
-   confidence tags; semantic pass can run local via Ollama). This backbone lets later phases
-   stay in bounded context. Cross-layer edges are INFERRED hints — the contract module
-   computes field-level shape diffs itself. See `references/phase-1-comprehension.md`.
+1. Build the knowledge graph (local, multi-language) yourself with the tree-sitter-native builder
+   `scripts/runtime/graph_build.py` (the backbone — it needs no external install; models DB schema
+   as nodes and spans DB<->API<->frontend; exports plain NetworkX `graph.json` with stable node ids
+   + source locations + EXTRACTED/INFERRED/AMBIGUOUS confidence tags). Graphify (MIT, pip `graphifyy`)
+   is an **optional** alternative source of a compatible `graph.json`, no longer required. The graph
+   lets later phases stay in bounded context. Cross-layer edges are INFERRED hints — the contract
+   module computes field-level shape diffs itself. See `references/phase-1-comprehension.md`.
 2. Generate the as-is wiki (visual-first: architecture map, ER diagram, contract-diff
    panels, sequence diagrams, hotspot heatmap). Text is minimal and on-demand behind each
    pin. Do NOT produce a wiki that reads as prose to be read start-to-finish.
