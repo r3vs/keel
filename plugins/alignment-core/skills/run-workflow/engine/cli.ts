@@ -20,6 +20,9 @@ import { ClaudeCliAdapter } from './adapter.ts';
 import { CodexCliAdapter } from './adapters/codex.ts';
 import { OpencodeCliAdapter } from './adapters/opencode.ts';
 import { WorktreeAdapter } from './worktree.ts';
+import { ClaudeSdkAdapter } from './adapters/claude-sdk.ts';
+import { CodexSdkAdapter } from './adapters/codex-sdk.ts';
+import { PiAdapter } from './adapters/pi.ts';
 import type { WorkflowCtx } from './engine.ts';
 import { phase1Finding } from './topologies/phase1-finding.ts';
 import { challengerVerify } from './topologies/challenger-verify.ts';
@@ -31,12 +34,19 @@ export type CliOpts = {
   model?: string;
   ledger?: string;
   argsFile?: string;
+  argsStdin: boolean;
   worktree: boolean;
   json: boolean;
 };
 
 export function parseArgs(argv: string[]): CliOpts {
-  const o: CliOpts = { host: 'claude', topology: 'phase1-finding', worktree: false, json: true };
+  const o: CliOpts = {
+    host: 'claude',
+    topology: 'phase1-finding',
+    argsStdin: false,
+    worktree: false,
+    json: true,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--host') o.host = argv[++i];
@@ -44,17 +54,27 @@ export function parseArgs(argv: string[]): CliOpts {
     else if (a === '--model') o.model = argv[++i];
     else if (a === '--ledger') o.ledger = argv[++i];
     else if (a === '--args-file') o.argsFile = argv[++i];
+    else if (a === '--args-stdin') o.argsStdin = true;
     else if (a === '--worktree') o.worktree = true;
     else if (a === '--text') o.json = false;
+  }
+  // `--args-file -` is shorthand for stdin (pipe `build_waves` straight in, no temp file).
+  if (o.argsFile === '-') {
+    o.argsFile = undefined;
+    o.argsStdin = true;
   }
   return o;
 }
 
-// CLI-adapter hosts only — no npm dep needed (the warm SDK adapters are opt-in extras).
+// Default hosts are the dependency-free CLI adapters (Node + the host cli). The `*-sdk` / `pi` hosts
+// are opt-in WARM adapters: they need the provider SDK installed and fail loud if it is absent.
 export const ADAPTERS: Record<string, (model?: string) => SpawnAdapter> = {
   claude: (model) => new ClaudeCliAdapter({ model }),
   codex: (model) => new CodexCliAdapter({ model }),
   opencode: (model) => new OpencodeCliAdapter({ model }),
+  'claude-sdk': (model) => new ClaudeSdkAdapter({ model }),
+  'codex-sdk': (model) => new CodexSdkAdapter({ model }),
+  pi: (model) => new PiAdapter({ model }),
 };
 
 export type Topology = (wf: WorkflowCtx, args?: any) => Promise<unknown>;
@@ -87,7 +107,14 @@ export async function runCli(
   if (!topo) {
     throw new Error(`unknown --topology "${opts.topology}" (have: ${Object.keys(topologies).join(', ')})`);
   }
-  const args = deps?.args ?? (opts.argsFile ? JSON.parse(readFileSync(opts.argsFile, 'utf8')) : {});
+  // Topology args: injected (tests) > stdin (agent pipes `build_waves` straight in) > file > none.
+  const args =
+    deps?.args ??
+    (opts.argsStdin
+      ? JSON.parse(readFileSync(0, 'utf8') || '{}')
+      : opts.argsFile
+        ? JSON.parse(readFileSync(opts.argsFile, 'utf8'))
+        : {});
 
   let adapter = makeAdapter(opts.model);
   if (opts.worktree || WRITE_TOPOLOGIES.has(opts.topology)) {

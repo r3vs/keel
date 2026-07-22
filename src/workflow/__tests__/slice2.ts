@@ -12,8 +12,6 @@ import { writeFile } from 'node:fs/promises';
 import type { ExecFn } from '../exec.ts';
 import { CodexCliAdapter } from '../adapters/codex.ts';
 import { OpencodeCliAdapter, parseOpencodeJson } from '../adapters/opencode.ts';
-import { ClaudeSdkAdapter } from '../adapters/claude-sdk.ts';
-import { PiAdapter } from '../adapters/pi.ts';
 import { MockAdapter } from '../adapter.ts';
 import { MockPinSink, pinToAddArgs } from '../ports.ts';
 import { launchFinding } from '../launch.ts';
@@ -117,15 +115,7 @@ await test('parseOpencodeJson: real JSONL schema → text + cost + tokens', () =
   assert.deepEqual(r2.result, { real: true });
 });
 
-// 4 — Claude SDK adapter fails loud with an install hint when the dep is absent.
-await test('ClaudeSdkAdapter: clear error when SDK missing', async () => {
-  await assert.rejects(() => new ClaudeSdkAdapter().run('hi'), /claude-agent-sdk/);
-});
-
-// 5 — Pi adapter fails loud (skeleton / missing peer) — never silent.
-await test('PiAdapter: fails loud (skeleton / missing peer)', async () => {
-  await assert.rejects(() => new PiAdapter().run('hi'), /pi-coding-agent|not implemented/);
-});
+// (warm SDK adapters — claude-sdk / codex-sdk / pi — are tested in slice6 via injected mock SDKs.)
 
 // 6 — launchFinding lands survivors as pins via the PinSink (the one serialized write).
 await test('launchFinding: survivors → PinSink, kind passthrough, provenance set', async () => {

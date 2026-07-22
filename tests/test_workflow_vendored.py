@@ -19,10 +19,16 @@ class TestWorkflowVendored(unittest.TestCase):
         self.assertFalse((OUT / "__tests__").exists(), "__tests__/ must never ship")
         self.assertEqual(list(OUT.rglob("*live-smoke*")), [], "live-smoke must never ship")
 
+    def test_no_node_modules_shipped(self):
+        self.assertEqual(list(OUT.rglob("node_modules")), [], "node_modules must never ship")
+
     def test_vendored_matches_source_byte_for_byte(self):
         for f in SRC.rglob("*"):
             rel = f.relative_to(SRC)
-            if not f.is_file() or "__tests__" in rel.parts:
+            parts = rel.parts
+            if not f.is_file() or "__tests__" in parts or "node_modules" in parts:
+                continue
+            if any(p.startswith(".") for p in parts):
                 continue
             shipped = OUT / rel
             self.assertTrue(shipped.exists(), f"missing shipped {rel}")

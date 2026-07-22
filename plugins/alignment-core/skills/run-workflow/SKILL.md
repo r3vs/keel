@@ -32,10 +32,16 @@ them with the `ledger_add_pin` MCP tool, one at a time. Fan-out is read; the wri
   (unfalsifiable / inconsistent / unsatisfiable / unstated-assumption / ignores-fan-out). Needs
   `--args-file` with `{"oracles":[{"id","statement"}]}`. Returns **ChallengeEvents** `{reopen,
   refutations}` → reopen/surface each pin so the human re-elects. It challenges, never decides.
-- **`build-waves`** (WRITE) — drives the DAG's waves (`--args-file` with `{"waves":[{"index",
-  "items":[{"id","title"}]}]}`, e.g. from `build_waves`); each wave fans out **executor** sub-agents,
+- **`build-waves`** (WRITE) — drives the DAG's waves; each wave fans out **executor** sub-agents,
   one per item, each in its own git **worktree** (isolated automatically), with a checkpoint between
-  waves. Executors write test-first and open PRs; they never merge.
+  waves. Executors write test-first and open PRs; they never merge. Shape: `{"waves":[{"index",
+  "items":[{"id","title"}]}]}`.
+
+**Live data — the engine never calls MCP; YOU do.** Resolve a topology's args by calling the MCP
+tools you already hold and piping the JSON in with `--args-stdin` (or `--args-file`), e.g.
+`<call build_waves> | node … cli.ts --topology build-waves --host <self> --args-stdin`. Note:
+`build_waves` returns a `plan` (titles for display) — map its ready items to their pin **ids** for
+the `{id}` the executor needs.
 
 ## How to run it
 

@@ -33,9 +33,9 @@ await test('parseArgs: defaults and overrides', () => {
   assert.equal(o.json, false);
 });
 
-// 2 — the shipped hosts are the dependency-free CLI adapters.
+// 2 — the dependency-free CLI hosts are registered (the warm *-sdk/pi hosts are added in slice6).
 await test('ADAPTERS: claude/codex/opencode registered (no npm dep)', () => {
-  assert.deepEqual(Object.keys(ADAPTERS).sort(), ['claude', 'codex', 'opencode']);
+  for (const h of ['claude', 'codex', 'opencode']) assert.ok(h in ADAPTERS, `${h} should be registered`);
   assert.ok(TOPOLOGIES['phase1-finding']);
 });
 

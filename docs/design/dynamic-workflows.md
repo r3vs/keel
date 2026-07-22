@@ -222,10 +222,10 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
   **argv/flag verificati e testati** via seam `ExecFn` iniettabile; Claude Agent SDK + Pi: skeleton
   *guarded* che falliscono forte se manca la dep). Ports `ledger_add_pin`/`build_waves` in `ports.ts`
   **tipizzati sulle firme MCP reali** (`src/mcp/server.py`). `launch.ts` esegue la topologia e scrive
-  i sopravvissuti via `PinSink` (scrittura **serializzata**, fuori dal motore). Manca (serve host
-  reale): opencode **verificato end-to-end live**; codex **envelope + fail-loud verificati**, ma la
-  forma dell'item di successo + usage resta da vedere (quota ChatGPT esaurita); path SDK caldo
-  eseguito; wiring nativo Pi (`createAgentSession`); bind live di `build_waves` via MCP.
+  i sopravvissuti via `PinSink` (scrittura **serializzata**, fuori dal motore). opencode **verificato
+  end-to-end live**; codex **envelope + fail-loud verificati** (item di successo non visto: quota/auth).
+  **Adapter SDK caldi (`claude-sdk`/`codex-sdk`) + Pi-native FATTI** (Slice 7): scritti contro le API
+  reali dei `.d.ts` installati, mock-testati via `loadSdk` iniettabile, **opt-in** (`npm i`, non spediti).
 - **Slice 3 — ✅ FATTO (verificato, 7/7 test)** — sandbox `vm` + determinism guard in `sandbox.ts`:
   `runWorkflowSource` (script come sorgente, primitive iniettate come global), blocklist parse-time +
   `DETERMINISM_PRELUDE` runtime (blocca `Date.now`/`Math.random`/`Date()` argless, lascia `new Date(arg)`),
@@ -237,7 +237,13 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
   `build.py` copia `src/workflow/`→`skills/run-workflow/engine/` (`__tests__` esclusi), gated da
   `build --check` + `tests/test_workflow_vendored.py`. La `SKILL.md` dà il protocollo: esegui
   `engine/cli.ts` (Node + CLI host, **zero dep npm**) → pin JSON → **l'agente** li scrive via
-  `ledger_add_pin`. Manca: bind live di `build_waves`; path SDK caldo + Pi native; item-successo codex.
+  `ledger_add_pin`.
+- **Slice 7 — ✅ FATTO** — adapter SDK caldi (`claude-sdk`/`codex-sdk`) + Pi-native, verificati contro
+  le API reali (SDK installati, `node_modules` gitignorato/non spedito), guarded + `loadSdk` iniettabile,
+  mock-testati (35/36 → 41 test totali), opt-in in `optionalDependencies`. **build_waves live risolto
+  SENZA client MCP** (obiezione giusta dell'utente): l'agente — che ha già il client MCP — chiama
+  `build_waves` e fa da ponte via `--args-stdin` (`--args-file -`); il motore resta puro e zero-dep.
+  Resta solo l'esecuzione **live** degli SDK (serve auth provider) e la forma item-successo codex (quota).
 
 ## 10. Riconciliazione con decisioni recenti (⚠️ da integrare prima delle slice 2+)
 

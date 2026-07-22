@@ -319,10 +319,15 @@ def skill_payload(skill: str) -> dict:
     if skill in ENGINE_SKILLS:
         # The TS engine rides inside the skill, at engine/, reachable skill-relative. Source stays the
         # single src/workflow/ (never duplicated in the source tree); the copy exists only in plugins/.
+        # Exclude __tests__ (dev), node_modules (opt-in SDK deps, gitignored), and dotfiles (.gitignore).
         for f in sorted((SRC / "workflow").rglob("*")):
             rel = f.relative_to(SRC / "workflow")
-            if f.is_file() and "__tests__" not in rel.parts:
-                out[f"skills/{skill}/engine/{rel.as_posix()}"] = read(f)
+            parts = rel.parts
+            if not f.is_file():
+                continue
+            if "__tests__" in parts or "node_modules" in parts or any(p.startswith(".") for p in parts):
+                continue
+            out[f"skills/{skill}/engine/{rel.as_posix()}"] = read(f)
     return out
 
 
