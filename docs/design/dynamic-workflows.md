@@ -28,35 +28,54 @@ mappa, l'interview e il brainstorm. Fan-out read-only; scrittura del ledger semp
 eseguirlo": un **runner** (concorrenza + journal + resume) dietro un **seam di spawn**, più i
 **4 adapter**. pi-dw è la referenza completa di quella metà, e il suo seam è esattamente il nostro.
 
-## 2. Architettura — floor / ceiling (lo stesso pattern di MCP-ceiling / CLI-floor)
+## 2. Architettura — floor / ceiling (post-"Totale": il floor è un MCP tool, non un CLI)
+
+> ✅ **Riconciliato** (vedi §10). Il framing originale "CLI-floor" era stale dopo la decisione
+> "Totale" (PR #5): non esiste più un CLI del runtime. Il floor è ora lo scheduler **esposto come MCP
+> tool `build_waves`**; `buildloop.py` resta una *library* stdlib invocata dal server MCP.
 
 ```
-                 SKILL.md  (unico universale: "usa il motore se il runtime c'è; se no, buildloop.py")
+        run-workflow SKILL.md  (binder: invoca il motore; se manca Node → degrada a sequenziale)
                     │
-        ┌───────────┴────────────┐
-   FLOOR (parità garantita)   CEILING (parallelo, journal, resume)
-   buildloop.py sequenziale    Motore workflow  ──seam──►  spawn(prompt,{model,schema,isolation})
-   stdlib, zero deps,                                         │
-   degrada senza parallelo                    ┌───────┬───────┼────────┬────────┐
-                                            Claude   Codex  opencode   Pi     (4 adapter)
+        ┌───────────┴─────────────┐
+   FLOOR (parità garantita)         CEILING (parallelo, journal, resume)
+   scheduler `build_waves` (MCP)    Motore workflow ──seam──► spawn(prompt,{model,schema,isolation,agentType})
+   buildloop.py = library via MCP                               │
+   uv soltanto, nessun Node         Node richiesto  ┌───────┬───┼────┬────────┐
+                                                  Claude  Codex opencode Pi   (4 adapter)
 ```
 
-- **FLOOR** = `buildloop.py` in modalità sequenziale. Gira ovunque, zero dipendenze, nessun Node.
-  È la parità *letterale*: stessa topologia, esecuzione seriale. Già esiste.
-- **CEILING** = **un solo motore** con il seam `spawn(...)`. Il determinismo (journal) vive nel
-  motore → replay riproducibile **anche** sugli host model-driven (opencode/Codex), perché l'host è
-  colto solo come primitiva di spawn.
-- **BINDER** = `SKILL.md`. Nomina topologia + gate e dice: *"usa il primitivo di orchestrazione che
-  questo host espone; se nessuno, esegui `buildloop.py`"*.
+- **FLOOR** = lo scheduler DAG **esposto come MCP tool `build_waves`** (`buildloop.py` resta una
+  *library* stdlib, invocata dal server MCP — dopo il "Totale" non c'è più alcun CLI del runtime da
+  eseguire). Serve **solo uv**, nessun Node. È la parità *letterale*: stessa topologia, ordine dal
+  DAG; l'esecuzione la fa l'agente item-per-item chiamando i tool MCP.
+- **CEILING** = **un solo motore** TS con il seam `spawn(...)`, invocato **dall'agente dentro la
+  sessione host** (`engine/cli.ts`). Prende DAG e fatti (`build_waves`, `contract_diff`,
+  `blast_radius`) **via MCP tool** — l'agente li chiama e fa da ponte (`--args-stdin`); il motore non
+  parla MCP. Il determinismo (journal) vive nel motore → replay riproducibile **anche** sugli host
+  model-driven (opencode/Codex), perché l'host è colto solo come primitiva di spawn.
+- **BINDER** = la `run-workflow` `SKILL.md`. Invoca `engine/cli.ts` (Node + il CLI dell'host); se Node
+  manca, **degrada**: esegui i passi della topologia in sequenza / a mano — **non** "esegui
+  `buildloop.py`", che non è più un eseguibile.
+- **Prerequisito Node (deciso, §10):** il ceiling richiede Node; il floor MCP no. Node è quindi un
+  prerequisito **scoped alla skill `run-workflow`**, non dell'intero package (che gira su uv+MCP).
 
 ### Il seam di spawn (dal `WorkflowAgentRunner.run` reale di pi-dw)
 
 ```
 interface SpawnAdapter {
-  run(prompt: string, opts: { model?, tier?, schema?, isolation?, timeoutMs?, agentType? })
+  run(prompt: string, opts: { model?, schema?, isolation?, timeoutMs?, agentType? })
     : Promise<{ result: string | object, cost?: number, tokens?: number }>
 }
 ```
+
+**Policy modello (riusa `src/core/model-tiers.md`, non la reinventa):** il modello si lega al **ruolo**
+(`agentType`), risolto **per-host all'install** nel config nativo per-agente (Profile A–D). Il motore
+**non** risolve modelli. Dove il CLI headless dell'host sa selezionare un ruolo installato (opencode
+`--agent`), il modello del ruolo si applica da solo; dove non sa (Claude `-p`, `codex exec` non hanno
+un selettore di ruolo installato), si **degrada al modello di sessione** — la stessa degradazione che
+model-tiers già prevede per una riga mancante e per Pi. `model` è un **override esplicito** (es. il
+target di escalation dell'executor), mai un tier risolto. Perciò `tier` **non** è più un campo del seam.
 
 Firme per-host **verificate** (§ricerca 2026-07-22):
 
@@ -201,8 +220,10 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
 
 ## 8. Assumptions (`agent_assumption`, vetoabili)
 
-- **A-1**: il ceiling TS richiede Node sulla macchina dell'utente; il **floor Python resta senza
-  Node**. (Tutti e 4 gli host sono ecosistemi Node/TS-SDK → assunzione debole ma esplicita.)
+- **A-1 → DECISO (§10):** il ceiling TS richiede **Node** sulla macchina dell'utente; il **floor MCP
+  (`build_waves`, via uv) resta senza Node**. Non più un'assunzione tacita: Node è un prerequisito
+  **hard ma scoped alla skill `run-workflow`** (l'intero package gira su uv+MCP senza di esso).
+  Difendibile — i 4 host sono ecosistemi Node/TS-SDK — e ora esplicito, con degrado a sequenziale.
 - **A-2**: token-count non è disponibile uniformemente → tracking **cost-first**, degrada a token o a
   n/d. Nessun gate dipende dal token-count.
 - **A-3**: il fork di pi-dw resta API-compatibile col peer `@earendil-works/pi-coding-agent >=0.80.8`;
@@ -245,25 +266,31 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
   `build_waves` e fa da ponte via `--args-stdin` (`--args-file -`); il motore resta puro e zero-dep.
   Resta solo l'esecuzione **live** degli SDK (serve auth provider) e la forma item-successo codex (quota).
 
-## 10. Riconciliazione con decisioni recenti (⚠️ da integrare prima delle slice 2+)
+## 10. Riconciliazione con decisioni recenti — ✅ FATTA
 
-Due elezioni recenti intersecano questo design e ne correggono la cornice — il framing "CLI-floor" in
-§1-§2 è **stale**:
+Due elezioni recenti intersecavano questo design e ne correggevano la cornice; ora sono **integrate**
+(il framing "CLI-floor" in §1-§2 era stale ed è stato riscritto):
 
-- **Il "CLI floor" non esiste più** (decisione "Totale", 2026-07-22, PR #5). MCP è l'**unico** canale
-  runtime su tutti e 4 gli host (Pi via `mcp-bridge.ts`), uv è prerequisito **hard**. Quindi il floor
-  qui **non** è "eseguire `buildloop.py` come CLI": è lo **scheduler esposto come MCP tool
-  `build_waves`** (buildloop.py resta library, invocato via MCP). Il ceiling TS prende il DAG e i fatti
-  (`contract_diff`, `blast_radius`) **via MCP tool**, non shellando `.py`. Riscrivere §2 di conseguenza.
-- **Conseguenza da eleggere esplicitamente:** il ceiling TS aggiunge **Node come SECONDO prerequisito
-  hard** accanto a uv. Difendibile (i 4 host sono ecosistemi Node/TS-SDK), ma va deciso con la stessa
-  cognizione con cui è stato rimosso il CLI. Nota: gli adapter host (`claude -p`, `codex exec`) sono i
-  CLI dei *coding agent*, non il vecchio CLI runtime del repo — lì nessun conflitto.
-- **`tier` deve riusare** il lavoro `model-orchestration-profiles` (tier→profilo→host, branch
-  `feat/model-orchestration-profiles`), non reinventare la risoluzione modello.
+- ✅ **Il "CLI floor" non esiste più** (decisione "Totale", 2026-07-22, PR #5). MCP è l'**unico** canale
+  runtime su tutti e 4 gli host (Pi via `mcp-bridge.ts`), uv è prerequisito **hard**. Il floor qui
+  **non** è "eseguire `buildloop.py` come CLI": è lo **scheduler esposto come MCP tool `build_waves`**
+  (buildloop.py resta library, invocato via MCP). Il ceiling TS prende DAG e fatti (`build_waves`,
+  `contract_diff`, `blast_radius`) **via MCP tool** — l'agente li chiama e fa da ponte (`--args-stdin`),
+  il motore non parla MCP. **§2 riscritto di conseguenza.**
+- ✅ **Node eletto come prerequisito, scoped.** Il ceiling TS aggiunge **Node**; il floor MCP no.
+  Deciso esplicitamente (non più assunzione tacita — vedi §8 A-1): Node è **hard ma scoped alla skill
+  `run-workflow`**, non un secondo prerequisito globale accanto a uv — il resto del package gira su
+  uv+MCP senza Node, e la skill degrada a sequenziale se Node manca. Nota: gli adapter host
+  (`claude -p`, `codex exec`) sono i CLI dei *coding agent*, non il vecchio CLI runtime — lì nessun
+  conflitto.
+- ✅ **`tier` riusa `model-orchestration-profiles`, non lo reinventa.** Rimosso il dial `tier` dal seam
+  (era `task→model`, l'euristica vietata). Il carrier è ora il **ruolo** (`agentType`): finder→
+  `researcher`, verify→`reviewer`, challenger→`challenger`, executor→`executor`. Il modello si risolve
+  **per-host all'install** dal config nativo per-agente (`model-tiers.md` Profile A–D); opencode lo
+  applica via `--agent`, gli altri degradano al modello di sessione. Il motore non risolve modelli.
 
-Slice 0 non è toccata da nulla di questo (il motore è agnostico su come arrivano DAG/tier/fatti —
-sono slice successive). Ma le slice 2-4 devono partire da questa cornice, non da §1-§2 originali.
+Slice 0 non era toccata da nulla di questo (il motore è agnostico su come arrivano DAG/ruolo/fatti);
+le slice successive ora partono da questa cornice riconciliata, non da §1-§2 originali.
 
 **Risoluzione (Slice 4), senza fork controverso:** il motore **non parla MCP**. Una skill/command dentro
 la sessione host invoca `workflow/cli.ts` (Node + il CLI dello *stesso* host, zero dep npm); il motore

@@ -74,6 +74,12 @@ ADAPTER_TREES = ("src/agents", "src/commands", "src/hooks")
 DEV_ARTIFACTS = ("TODO.md",)
 DEV_TREES = ("evals", "writing-skills")
 
+# Third-party dependency trees: gitignored AND excluded from the build (scripts/build.py drops
+# node_modules when vendoring the workflow engine), so they never ship. They exist on disk only when a
+# developer has run `npm i` to inspect the opt-in warm-adapter SDKs — absent in a CI checkout. Scanning
+# them would flag runnable paths inside packages we neither wrote nor deliver (glob, lru-cache, …).
+VENDOR_DIRS = ("node_modules",)
+
 PLUGIN_ROOT = "${CLAUDE_PLUGIN_ROOT}"
 
 # An HTML comment is metadata for whoever opens the file, not an instruction to the agent
@@ -117,6 +123,11 @@ def tree_of(f: Path) -> str:
 def is_dev(f: Path) -> bool:
     parts = f.relative_to(ROOT).parts
     return f.name in DEV_ARTIFACTS or any(p in DEV_TREES for p in parts)
+
+
+def is_vendored(f: Path) -> bool:
+    """A third-party dep tree (node_modules): gitignored, build-excluded, never shipped."""
+    return any(p in VENDOR_DIRS for p in f.relative_to(ROOT).parts)
 
 
 def resolves(path: str, f: Path) -> bool:
@@ -176,7 +187,7 @@ for tree in SHIPPED_TREES:
         continue
     targets += [p for p in sorted(d.rglob("*")) if p.suffix in (".md", ".sh", ".json")]
 
-targets = [f for f in targets if not is_dev(f)]
+targets = [f for f in targets if not is_dev(f) and not is_vendored(f)]
 for f in targets:
     scan(f)
 

@@ -18,15 +18,26 @@ import { promisify } from 'node:util';
 
 const pExecFile = promisify(execFile);
 
-/** Options for a single spawned agent. `tier` maps to a host model via the tier table (later slice). */
+/**
+ * Options for a single spawned agent.
+ *
+ * Model policy — reuses `src/core/model-tiers.md`, it does NOT reinvent it. The MODEL binds to the
+ * ROLE, resolved per-host at install time into that host's own per-agent config (Profile A–D). So the
+ * engine carries `agentType` (the role) and never resolves a model itself. Where a host's headless CLI
+ * can select an installed role (opencode `--agent`), the role's model applies automatically; where it
+ * cannot (Claude `-p`, `codex exec` have no installed-role selector), it degrades to the host's
+ * session/default model — the same graceful degradation model-tiers.md already specifies for a missing
+ * row and for Pi. `model` is an explicit OVERRIDE (e.g. the executor's escalation target), never a
+ * resolved tier: the engine must not carry a `task → model` table, which would be the exact heuristic
+ * both the roster and this package forbid.
+ */
 export type SpawnOpts = {
-  model?: string;
-  tier?: string;
+  model?: string; // explicit override ONLY; the steady-state model comes from the host's per-role config
   schema?: object;
   isolation?: 'worktree';
   cwd?: string; // working directory for this agent (set by WorktreeAdapter when isolation is on)
   timeoutMs?: number | null;
-  agentType?: string;
+  agentType?: string; // the roster role (researcher/reviewer/challenger/executor/…) — the model carrier
   label?: string;
   phase?: string;
 };

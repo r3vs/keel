@@ -43,7 +43,7 @@ export async function phase1Finding(
         lenses.map((lens) => () =>
           wf.agent(
             `Round ${i}. Trova pin via lente "${lens}". Usa i tool deterministici (contract_diff, blast_radius) per i FATTI; ritorna solo il giudizio come pin.`,
-            { tier: 'medium', schema: PIN_SCHEMA, label: `find:${lens}` },
+            { agentType: 'researcher', schema: PIN_SCHEMA, label: `find:${lens}` },
           ),
         ),
       ),
@@ -61,6 +61,7 @@ export async function phase1Finding(
           reviewers: 3,
           lens: ['correttezza', 'fan-out/blast-radius', 'riproducibilità'],
           threshold: 0.5,
+          agentType: 'reviewer',
         })
         .then((v) => (v.real ? pin : null)),
     ),

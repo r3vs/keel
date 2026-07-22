@@ -47,8 +47,10 @@ the `{id}` the executor needs.
 
 The engine ships **inside this skill**, in `engine/`. Invoke `engine/cli.ts` with the absolute path
 your host injects for this skill (on Claude Code: `${CLAUDE_PLUGIN_ROOT}/skills/run-workflow/engine`).
-It needs **Node** and the host's own CLI on PATH — **no npm install** (the default adapters shell the
-host cli). If Node is unavailable, degrade: run the topology's steps by hand, or the sequential floor.
+It needs **Node** — a prerequisite **scoped to this skill** (the rest of the package runs on uv + MCP
+with no Node) — and the host's own CLI on PATH; **no npm install** (the default adapters shell the host
+cli). If Node is unavailable, **degrade**: run the topology's steps sequentially by hand — the MCP
+floor (`build_waves` to order the work, `ledger_add_pin` to record it) needs no Node.
 
 1. **Run the engine** — it prints JSON to stdout, logs to stderr:
 
@@ -94,6 +96,10 @@ Run only scripts YOU authored for the task at hand.
 
 - The engine calls no MCP and writes nothing — if you find yourself wanting it to, stop: that write
   is yours, via `ledger_add_pin`, so it stays serialized and auditable.
+- **Models bind to the role, not the task.** A spawn carries `agentType` (researcher / reviewer /
+  challenger / executor) and the host applies that role's model from `model-tiers` — opencode via
+  `--agent`, the others degrade to the session model. The engine never resolves a model; pass
+  `--model` only as an explicit override. Do not add a `task → model` heuristic.
 - Sub-agents (the fan-out) may call the deterministic tools (`contract_diff`, `blast_radius`) for
   FACTS; never spawn an agent to approximate what a deterministic tool gives exactly.
 - Scale to the task: do not fan out a fleet for something one context holds. A workflow is expensive.

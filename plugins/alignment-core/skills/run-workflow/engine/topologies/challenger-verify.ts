@@ -52,7 +52,7 @@ export async function challengerVerify(
               `Red-team dell'oracolo eletto sotto la lente "${lens}". Oracolo: ${JSON.stringify(o)}. ` +
                 `Cerca un difetto FATALE di tipo "${lens}"; se non ne trovi, fatal=false. Usa i tool ` +
                 `deterministici per i FATTI, non indovinare.`,
-              { schema: REFUTATION_SCHEMA, label: `challenge:${(o as Oracle).id}:${lens}` },
+              { schema: REFUTATION_SCHEMA, label: `challenge:${(o as Oracle).id}:${lens}`, agentType: 'challenger' },
             )
             .then((r) => ({ lens, ...(r as Record<string, unknown>) })),
         ),

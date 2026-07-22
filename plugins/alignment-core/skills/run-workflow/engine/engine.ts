@@ -20,7 +20,13 @@ import type { SpawnAdapter, SpawnOpts } from './adapter.ts';
 import { Journal, callHash } from './journal.ts';
 import type { JournalEntry } from './journal.ts';
 
-export type VerifyOpts = { reviewers?: number; lens?: string | string[]; threshold?: number };
+export type VerifyOpts = {
+  reviewers?: number;
+  lens?: string | string[];
+  threshold?: number;
+  /** Roster role the reviewers run as (model-tiers picks their model per host). Defaults to host default. */
+  agentType?: string;
+};
 export type VerifyResult = { real: boolean; realCount: number; total: number; votes: unknown[] };
 
 export type LoopOpts = {
@@ -125,7 +131,6 @@ export function createWorkflowContext(opts: RunOpts): { ctx: WorkflowCtx; journa
       const hash = callHash('agent', {
         prompt,
         model: aopts?.model ?? null,
-        tier: aopts?.tier ?? null,
         phase,
         agentType: aopts?.agentType ?? null,
         schema: aopts?.schema ?? null,
@@ -184,6 +189,7 @@ export function createWorkflowContext(opts: RunOpts): { ctx: WorkflowCtx; journa
             {
               schema: { type: 'object', properties: { real: { type: 'boolean' } }, required: ['real'] },
               label: `verify:${i}`,
+              agentType: vopts?.agentType,
             },
           );
         }),

@@ -20,6 +20,8 @@ export type WaveResult = { wave: number; items: string[]; checkpoint: unknown };
 
 export async function buildWaves(
   wf: WorkflowCtx,
+  // `model` is an OPTIONAL override (e.g. the executor's escalation target); by default the executor's
+  // model comes from the host's per-role config (model-tiers.md), carried by `agentType: 'executor'`.
   args?: { waves?: Wave[]; model?: string },
 ): Promise<WaveResult[]> {
   const waves = args?.waves ?? [];
