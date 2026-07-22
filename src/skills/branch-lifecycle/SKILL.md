@@ -56,9 +56,14 @@ git branch -d <scope>
 
 ## Binding to the ledger
 
+The branch is a **reader** here: before finishing, confirm no pin the scope claimed is still open.
+
 ```bash
-python scripts/runtime/ledger.py summary ledger.json
+python scripts/runtime/ledger.py summary ledger.json   # a needs_input or decided-not-resolved pin blocks the finish
 ```
+
+Pins are closed **during** the work with `resolve … --evidence` (see `verification-before-completion`),
+not batched at the end.
 
 The branch exists to close pins. If you cannot name which pins a branch closes, the work was never
 scoped — go back and scope it. And if the work reveals the *decision* was wrong rather than the code,

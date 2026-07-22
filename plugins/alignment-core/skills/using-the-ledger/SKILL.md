@@ -35,14 +35,20 @@ Every rule above is enforced in code. A hand-written pin in `ledger.json` bypass
 `agent_assumption` confidence rule. There is no error — just a ledger that quietly stopped meaning
 what the spec says it means.
 
-| you want | tool | without the MCP server |
+| you want | tool | runtime command (the portable floor) |
 |---|---|---|
 | the state, before acting | `ledger_summary` | `python scripts/runtime/ledger.py summary <ledger>` |
 | the next real questions | `interview_next` | `python scripts/runtime/ledger.py interview <ledger>` |
+| add a finding / defect / `open_decision` | — | `python scripts/runtime/ledger.py add-pin <ledger> --kind … --title … --severity … --confidence … --provenance …` |
+| plan & close the gap | — | `python scripts/runtime/ledger.py add-remediation <ledger> …`, then `set-remediation-status … --status done`, then `resolve <ledger> --pin … --evidence …` |
+| surface a forced assumption | — | `python scripts/runtime/ledger.py surface-assumption <ledger> --title … --detail …` |
 
-Both are **read-only**, and that is the point: the reads are automatable, the write is not. Only the
-human's committed interview answer elects a decision — so there is deliberately no `decide` tool for
-an agent to reach for.
+The reads are automatable **and so is every non-electing write** — add a finding, plan its
+remediation, mark an item done, resolve a pin. `resolve` demands `--evidence` (what you *observed*
+closed the gap, not that code was written): the command itself enforces `resolved = observed`. What
+stays off-limits to every agent is the one **electing** write — only the human's committed interview
+answer sets `state: decided` and appends a `DecisionEvent`, so there is deliberately no `decide`
+command. (The MCP surface exposes the reads as typed tools today; the writes run through this floor CLI.)
 
 **Reading a ledger that isn't there is not an empty ledger.** The tools refuse a missing path rather
 than answering "no pins", because that answer reads as "nothing to do" and is the most expensive

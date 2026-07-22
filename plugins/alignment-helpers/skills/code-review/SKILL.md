@@ -56,15 +56,19 @@ validating, not reviewing. Say that out loud rather than manufacturing findings.
 
 ## Binding to the ledger
 
+The reviewer is **read-only** (`edit: deny`) — it reads the ledger, it does not write it:
+
 ```bash
 python scripts/runtime/ledger.py summary ledger.json
 ```
 
-- A finding becomes a pin: `defect` (it is wrong), `design_concern` (it is a trade-off worth
-  electing), or `incompleteness` (it is unfinished).
-- **A reviewer never sets `state: decided`.** It moves a pin to `needs_input` and stops. Same
-  neutrality the `brainstorm` and the `challenger` hold — three read-only roles that can reopen a
-  decision and none that can make one.
-- If review reveals the *elected decision* was wrong rather than the code, reopen the decision
-  (`references/core/feedback-loop.md`). Patching code to satisfy an unsound decision hides the finding
-  that actually mattered.
+- A finding is surfaced as a pin — `defect` (it is wrong), `design_concern` (a trade-off worth
+  electing), or `incompleteness` (it is unfinished) — but the pin is **written by the executor
+  acting on the verdict** (`add-pin`), never by the read-only reviewer itself.
+- **A reviewer never sets `state: decided`.** It returns a verdict — `MERGE` / `ADJUST` / `REJECT` —
+  that restarts the item; the same neutrality the `brainstorm` and `challenger` hold: it surfaces, it
+  never elects. (The roles that *reopen* an elected decision are the `challenger` upstream and the
+  feedback loop downstream — not the reviewer.)
+- If review reveals the *elected decision* was wrong rather than the code, that reopen runs through
+  the feedback loop (`references/core/feedback-loop.md`). Patching code to satisfy an unsound decision
+  hides the finding that actually mattered.

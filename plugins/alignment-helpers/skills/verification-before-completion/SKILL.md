@@ -58,7 +58,8 @@ location — and fails for everyone. **Verify from the user's position, not your
   destroys it.
 - **Partially verified is a real state, and it has a ledger form.** "The API returns correctly; I
   could not exercise the frontend" is a useful, honest report; "Done" is not. Record it as what it
-  is — the pin stays `needs_input` (or carries a `blocked` note), never silently `resolved`. This is
+  is — the pin stays `needs_input` and the unverified remainder is surfaced as an `incompleteness`
+  pin, never silently `resolved`. This is
   the **honest exit** every gate must leave open: when the agent cannot satisfy the verification, it
   says so *in the ledger* rather than fabricating an observation or quietly stopping. A gate that
   blocks without leaving this exit does not prevent the shortcut — it forces it.
@@ -66,6 +67,8 @@ location — and fails for everyone. **Verify from the user's position, not your
 ## Binding to the ledger
 
 ```bash
+# resolve ONLY after observing — the command itself demands the evidence:
+python scripts/runtime/ledger.py resolve ledger.json --pin <pin_id> --evidence "<what you observed>"
 python scripts/runtime/ledger.py summary ledger.json
 ```
 

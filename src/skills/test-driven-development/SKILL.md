@@ -38,7 +38,12 @@ catch it. That restores the only property that made the red step worth anything.
 ## Binding to the ledger
 
 ```bash
+# the acceptance_criterion pin pre-exists (from the interview, or the defect you're closing):
 python scripts/runtime/ledger.py summary ledger.json
+# tempted to invent a criterion for code already written? surface it, never self-elect:
+python scripts/runtime/ledger.py add-pin ledger.json --kind open_decision --severity high \
+  --title "<the undecided outcome>" --confidence inferred \
+  --provenance '[{"source":"test-driven-development","detail":"no elected criterion for existing code"}]'
 ```
 
 - The pin's `to_be` is the assertion, in words. If you cannot state it as an observable outcome, the

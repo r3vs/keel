@@ -36,11 +36,19 @@ A bug is a `defect` pin, and the pin holds what a commit message loses:
 
 - `as_is` = the observed wrong behavior, with the reproduction.
 - `to_be` = the correct behavior — the same object the test asserts.
-- The **root cause** goes in the pin. Six months later the code shows *what* changed; only the pin
+- The **root cause** goes in the pin's `as_is` (or `kind_detail`). Six months later the code shows *what* changed; only the pin
   says *why it was wrong in the first place*, which is what stops the class recurring.
 
 ```bash
-python scripts/runtime/ledger.py summary ledger.json
+# open the defect pin (root cause -> --as-is):
+python scripts/runtime/ledger.py add-pin ledger.json --kind defect --severity high \
+  --title "<the bug>" --confidence extracted \
+  --provenance '[{"source":"systematic-debugging","detail":"repro at <test>"}]' \
+  --as-is '{"summary":"<root cause>"}'
+# plan the fix, mark it done, then close against the OBSERVED reproduction:
+python scripts/runtime/ledger.py add-remediation ledger.json --pin <pin_id> --action implement --ladder-rung 1
+python scripts/runtime/ledger.py set-remediation-status ledger.json --pin <pin_id> --item <rem_id> --status done
+python scripts/runtime/ledger.py resolve ledger.json --pin <pin_id> --evidence "<repro no longer reproduces>"
 ```
 
 If the cause turns out to be a decision that was wrong rather than code that was wrong, **do not
