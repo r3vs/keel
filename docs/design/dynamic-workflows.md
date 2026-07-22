@@ -63,14 +63,28 @@ Firme per-host **verificate** (§ricerca 2026-07-22):
 | Host | Adapter caldo (SDK) | Adapter freddo (CLI headless) | model | schema | cost | token |
 |---|---|---|---|---|---|---|
 | **Claude Code** | `@anthropic-ai/claude-agent-sdk` `query({prompt, options:{model, allowedTools, systemPrompt, maxTurns}})` → itera fino a `ResultMessage` (`.result`, `.total_cost_usd`) | `claude -p "…" --output-format json --model X --json-schema '…' --max-budget-usd` | ✓ | ✓ | ✓ (solo SDK) | ✗ |
-| **Codex** | TS/Python SDK `Codex().run(…, {model, outputSchema, sandboxMode})` (`runStreamed` per eventi); app-server JSON-RPC | `codex exec --model X --output-schema f.json --json` (prompt da stdin) | ✓ | ✓ (`--output-schema`) | ✓ (eventi JSONL) | ✓ (usage negli eventi) |
+| **Codex** | TS/Python SDK `Codex().run(…, {model, outputSchema, sandboxMode})`; app-server JSON-RPC | `codex exec --json --skip-git-repo-check --model X --output-schema f --output-last-message m` (prompt da stdin; **rc=0 anche in errore** → fail-loud sull'envelope) | ✓ | ✓ (`--output-schema`) | best-effort² | best-effort² |
 | **opencode** | `@opencode-ai/sdk` `client.session.create()` + `client.session.prompt({agent, model, parts})`; `serve --attach` = caldo | `opencode run "…" --model X --agent A --format json` | ✓ | valida in-engine | ✓ **verif.** (`step_finish.part.cost`) | ✓ **verif.** (`part.tokens.total`) |
 | **Pi** | `createAgentSession(...)` da `@earendil-works/pi-coding-agent` (il `WorkflowAgent` di pi-dw) | — | ✓ | ✓ (`structured_output` tool) | ✓ | ✓ (`getSessionStats`) |
 
 Nota onesta: **token count non è esposto uniformemente** — Claude SDK dà solo cost; **opencode dà
-entrambi** (verificato con una probe reale in WSL: JSONL, `type:"text"`→`part.text`,
-`type:"step_finish"`→`part.cost`/`part.tokens.total`). Il cost-tracking del motore keya su cost dove
-c'è, token dove c'è, e **degrada** — mai hard-fail.
+entrambi** (verificato con probe reale, opencode **v1.18.4**, WSL: JSONL, `type:"text"`→`part.text`,
+`type:"step_finish"`→`part.cost`/`part.tokens.total`; riconfermato dopo un update). Il cost-tracking
+del motore keya su cost dove c'è, token dove c'è, e **degrada** — mai hard-fail.
+
+² **Codex** (probe reale, codex-cli **0.137.0**, WSL): envelope JSONL verificato — `thread.started` →
+`turn.started` → `item.completed{item}` → `turn.completed` | `error{message}` | `turn.failed{error}`.
+Due fatti fondati: (a) codex **esce 0 anche quando il turn fallisce** (visto: usage-limit ChatGPT con
+rc=0) → l'adapter rileva `error`/`turn.failed` e **fallisce forte**, non ritorna `''` in silenzio (gli
+`item.completed` con `item.type:"error"` sono warning non-fatali, es. lo skills-budget notice); (b) il
+risultato si legge da `--output-last-message <file>` (flag verificato), non dallo schema-item — che la
+quota esaurita mi ha impedito di osservare in caso di successo. Perciò `cost`/`tokens` codex restano
+best-effort finché non vedo un turn riuscito.
+
+**Verifica end-to-end LIVE (2026-07-22, opencode v1.18.4 via WSL):** il motore reale ha pilotato
+opencode reale — topologia a-funzione → `"4"`; **replay dal journal → 0 chiamate all'host** (replay
+deterministico contro host reale); path vm-sorgente → `"4"`. Harness opt-in in
+`src/workflow/__tests__/live-smoke.ts` (fuori da `npm test`: costa token, richiede WSL).
 
 ## 3. Topologia = proiezione del DAG del ledger
 
@@ -204,8 +218,9 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
   *guarded* che falliscono forte se manca la dep). Ports `ledger_add_pin`/`build_waves` in `ports.ts`
   **tipizzati sulle firme MCP reali** (`src/mcp/server.py`). `launch.ts` esegue la topologia e scrive
   i sopravvissuti via `PinSink` (scrittura **serializzata**, fuori dal motore). Manca (serve host
-  reale): schema-evento JSONL di `codex exec` (opencode **verificato** con probe reale); path SDK
-  caldo eseguito; wiring nativo Pi (`createAgentSession`); bind live di `build_waves` via MCP.
+  reale): opencode **verificato end-to-end live**; codex **envelope + fail-loud verificati**, ma la
+  forma dell'item di successo + usage resta da vedere (quota ChatGPT esaurita); path SDK caldo
+  eseguito; wiring nativo Pi (`createAgentSession`); bind live di `build_waves` via MCP.
 - **Slice 3 — ✅ FATTO (verificato, 7/7 test)** — sandbox `vm` + determinism guard in `sandbox.ts`:
   `runWorkflowSource` (script come sorgente, primitive iniettate come global), blocklist parse-time +
   `DETERMINISM_PRELUDE` runtime (blocca `Date.now`/`Math.random`/`Date()` argless, lascia `new Date(arg)`),

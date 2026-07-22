@@ -8,9 +8,9 @@
  * exact JSONL/JSON event schema of `codex exec`/`opencode run` output, and live SDK execution.
  */
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import type { ExecFn } from '../exec.ts';
-import { CodexCliAdapter, parseCodexJsonl } from '../adapters/codex.ts';
+import { CodexCliAdapter } from '../adapters/codex.ts';
 import { OpencodeCliAdapter, parseOpencodeJson } from '../adapters/opencode.ts';
 import { ClaudeSdkAdapter } from '../adapters/claude-sdk.ts';
 import { PiAdapter } from '../adapters/pi.ts';
@@ -33,34 +33,53 @@ async function test(name: string, fn: () => Promise<void> | void): Promise<void>
   }
 }
 
-// 1 — Codex: verified argv, prompt via stdin, schema written to a file passed as --output-schema.
-await test('CodexCliAdapter: verified argv + stdin prompt + schema file', async () => {
+// 1 — Codex: verified argv, prompt via stdin, result read from --output-last-message.
+await test('CodexCliAdapter: verified argv, stdin prompt, result from --output-last-message', async () => {
   let seen: { cmd: string; args: string[]; input?: string } | null = null;
-  let schemaOnDisk: string | null = null;
   const fake: ExecFn = async (cmd, args, input) => {
     seen = { cmd, args, input };
-    const i = args.indexOf('--output-schema');
-    if (i >= 0) schemaOnDisk = await readFile(args[i + 1], 'utf8');
-    return { stdout: '', stderr: '', code: 0 };
+    const i = args.indexOf('--output-last-message');
+    if (i >= 0) await writeFile(args[i + 1], '{"real":true}', 'utf8'); // codex writes the final message here
+    return {
+      stdout: `${JSON.stringify({ type: 'thread.started' })}\n${JSON.stringify({ type: 'turn.completed' })}`,
+      stderr: '',
+      code: 0,
+    };
   };
   const ad = new CodexCliAdapter({ exec: fake });
-  await ad.run('audit routes', { model: 'gpt-5.5', schema: { type: 'object', properties: {} } });
+  const res = await ad.run('audit routes', { model: 'gpt-5.5', schema: { type: 'object' } });
   assert.equal(seen!.cmd, 'codex');
-  assert.deepEqual(seen!.args.slice(0, 4), ['exec', '--json', '--model', 'gpt-5.5']);
-  assert.equal(seen!.args[4], '--output-schema');
-  assert.equal(seen!.input, 'audit routes');
-  assert.ok(schemaOnDisk && JSON.parse(schemaOnDisk).type === 'object');
+  assert.deepEqual(seen!.args.slice(0, 5), ['exec', '--json', '--skip-git-repo-check', '--model', 'gpt-5.5']);
+  assert.ok(seen!.args.includes('--output-schema'));
+  assert.ok(seen!.args.includes('--output-last-message'));
+  assert.equal(seen!.input, 'audit routes'); // prompt via stdin
+  assert.deepEqual(res.result, { real: true }); // from last-message, JSON-parsed under schema
 });
 
-// 2 — Codex parse (ASSUMED event schema — must be re-verified against a real sample).
-await test('parseCodexJsonl: final structured + usage (ASSUMED schema)', () => {
-  const jsonl = [
-    JSON.stringify({ msg: { text: 'thinking...' } }),
-    JSON.stringify({ msg: { text: '{"real":true}' }, usage: { total_tokens: 42, cost_usd: 0.001 } }),
+// 2 — Codex fails LOUD on a turn-level error even though the process exits 0 (REAL usage-limit
+//     envelope captured from codex 0.137 in WSL). Item-level errors are non-fatal warnings.
+await test('CodexCliAdapter: fail-loud on turn error at rc=0; item-error is non-fatal', async () => {
+  const realErrJsonl = [
+    JSON.stringify({ type: 'thread.started', thread_id: 'x' }),
+    JSON.stringify({ type: 'turn.started' }),
+    JSON.stringify({ type: 'item.completed', item: { id: 'item_0', type: 'error', message: 'skills budget notice' } }),
+    JSON.stringify({ type: 'error', message: "You've hit your usage limit." }),
+    JSON.stringify({ type: 'turn.failed', error: { message: "You've hit your usage limit." } }),
   ].join('\n');
-  const r = parseCodexJsonl(jsonl, { schema: { type: 'object' } });
-  assert.deepEqual(r.result, { real: true });
-  assert.equal(r.tokens, 42);
+  await assert.rejects(
+    () => new CodexCliAdapter({ exec: async () => ({ stdout: realErrJsonl, stderr: '', code: 0 }) }).run('hi'),
+    /usage limit/,
+  );
+
+  // an item-level error alone is a warning, not fatal → result still comes from last-message
+  const warnOnly = `${JSON.stringify({ type: 'item.completed', item: { type: 'error', message: 'skills budget' } })}\n${JSON.stringify({ type: 'turn.completed' })}`;
+  const fake2: ExecFn = async (_c, a) => {
+    const i = a.indexOf('--output-last-message');
+    if (i >= 0) await writeFile(a[i + 1], 'OK', 'utf8');
+    return { stdout: warnOnly, stderr: '', code: 0 };
+  };
+  const r = await new CodexCliAdapter({ exec: fake2 }).run('hi');
+  assert.equal(r.result, 'OK');
 });
 
 // 3 — opencode: verified argv, prompt as an argv arg (not stdin).
