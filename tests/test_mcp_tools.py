@@ -135,6 +135,31 @@ class TestLedgerWrites(unittest.TestCase):
         self.assertFalse(hasattr(tools, "ledger_accept"))
 
 
+class TestUnderstandFamily(unittest.TestCase):
+    """The understand-mode graph tools, exposed over MCP now that the CLI is being removed. The
+    graph is the foundational disk artifact; the rest read it."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        with open(os.path.join(self.tmp, "app.py"), "w", encoding="utf-8") as fh:
+            fh.write("import os\ndef handler():\n    return os.getpid()\n")
+        self.graph = os.path.join(self.tmp, "graph.json")
+
+    def test_build_graph_writes_and_query_reads_it(self):
+        out = tools.build_graph(self.tmp, self.graph)
+        self.assertEqual(out["written"], self.graph)
+        self.assertTrue(os.path.exists(self.graph))
+        self.assertGreaterEqual(out["nodes"], 1)
+        self.assertIn("results", tools.graph_query(self.graph, "handler"))
+        self.assertIn("entry_points", tools.domain_view(self.tmp))
+        self.assertIn("steps", tools.guided_tour(self.graph))
+
+    def test_impact_refuses_without_a_change_set(self):
+        tools.build_graph(self.tmp, self.graph)
+        with self.assertRaises(ValueError):
+            tools.impact_overlay(self.graph)   # neither `changed` nor `git_base` — refuse, don't guess
+
+
 class TestBlastRadiusStalenessGate(unittest.TestCase):
     """The gate is the whole reason a graph answer is trustworthy: impact computed against code
     that has since moved is worse than no answer. So these assert it REFUSES, not that it copes."""
