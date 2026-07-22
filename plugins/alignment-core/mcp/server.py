@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["fastmcp==3.4.4"]
+# dependencies = ["fastmcp==3.4.4", "tree-sitter>=0.23", "tree-sitter-language-pack==1.12.5"]
 # ///
 """MCP adapter for the codebase-alignment runtime.
 
@@ -28,19 +28,58 @@ and stdlib-only, so the churn lands only on this file.
 
 Zero-install by design
 ----------------------
-The PEP 723 block above lets ``uv run --script`` resolve and cache the dependency on first run
-(~7 s cold, ~0.2 s warm) with nothing for the user to install. The version is **pinned hard**: MCP
+The PEP 723 block above lets ``uv run --script`` resolve and cache the dependencies on first run
+(~7 s cold, ~0.2 s warm) with nothing for the user to install. ``fastmcp`` is **pinned hard**: MCP
 2.0 goes stable inside this dependency tree on 2026-07-28, so an unpinned range would drift under
 us on someone else's machine.
+
+The deps also carry ``tree-sitter`` + ``tree-sitter-language-pack`` — the shape engine's **primary**
+extraction backend. This is a correctness fix, not bloat: the runtime degrades to stdlib parsers
+without them, but the removed CLI floor ran in the system python that ``bootstrap.sh`` populated,
+which is where the real grammars used to be reachable; deleting it left the server — whose isolated
+``uv`` env sees no system packages — stuck on the fallback for real-world TS/GraphQL/SQL. So the
+backend now travels with the server, and ``_warm_grammars_async`` best-effort pre-warms the grammar
+cache in a **detached subprocess** on startup (never touching stdout, which is the wire); on failure
+the per-grammar lazy fetch stands.
 
 The one real failure mode: if ``uv`` is absent from PATH the host cannot spawn this, and the tools
 go **silently missing** — no error reaches the agent. There is no CLI floor to fall back to (the
 bundled CLI was removed), so ``uv`` is a hard prerequisite: `bootstrap.sh` installs it and **aborts
 loudly** if it cannot, turning a silent absence into a fail-fast the operator can act on.
 """
+import sys
+
 from fastmcp import FastMCP
 
 import tools
+
+
+def _warm_grammars_async() -> None:
+    """Best-effort: pre-download the tree-sitter grammars the shape engine uses, so the first
+    contract_diff on a real repo does not fetch mid-call. Runs in a DETACHED subprocess — never this
+    process — because stdout here is the MCP wire and the language pack may print. Fully guarded: any
+    failure (no network, pack missing) leaves the lazy per-grammar fetch intact."""
+    import os
+    import subprocess
+    # Tests set this so the background grammar download cannot race the suite's own availability
+    # probes (test_treesitter reads `available()` while this would be mid-fetch).
+    if os.environ.get("CODEBASE_ALIGNMENT_SKIP_WARM"):
+        return
+    # `import tools` above put the runtime dir on sys.path; find the entry that holds the extractor.
+    rt = next((p for p in sys.path if p and os.path.isfile(os.path.join(p, "treesitter_extract.py"))), None)
+    if rt is None:
+        return
+    code = (
+        "import sys; sys.path.insert(0, sys.argv[1]);"
+        "import treesitter_extract as ts;"
+        "from tree_sitter_language_pack import prefetch;"
+        "prefetch(sorted({s['grammar'] for s in ts.STACKS.values()} | set(ts._CUSTOM)))"
+    )
+    try:
+        subprocess.Popen([sys.executable, "-c", code, rt],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    except Exception:
+        pass  # warming is best-effort; the backend still works, fetching each grammar lazily
 
 mcp = FastMCP(
     name="codebase-alignment",
@@ -480,4 +519,5 @@ def docs_claims(graph_path: str, docs: list[str]) -> dict:
 
 
 if __name__ == "__main__":
+    _warm_grammars_async()
     mcp.run()

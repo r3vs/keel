@@ -54,6 +54,9 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
             ["uv", "run", "--script", SERVER],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", bufsize=1,
+            # Don't let the server's best-effort grammar warm-up fetch in the background here — it
+            # would race test_treesitter's `available()` probes and flake the suite. Prod still warms.
+            env={**os.environ, "CODEBASE_ALIGNMENT_SKIP_WARM": "1"},
         )
         cls._id = 0
         try:

@@ -151,6 +151,7 @@ class TestOneGrammarFailingIsNotTheBackendFailing(unittest.TestCase):
             pack.get_language = real_get
 
 
+@skip_no_ts
 class TestTypeScriptAdapter(unittest.TestCase):
     def test_matches_regex_extractor(self):
         src = (FIXTURES / "step0" / "types.ts").read_text(encoding="utf-8")
