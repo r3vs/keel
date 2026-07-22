@@ -132,7 +132,10 @@ Two jobs:
    scaffolds for every layer from it — DB schema, ORM model, API DTO/route stubs, client types.
    Drift is impossible by construction. This is contract-reconciliation run forward, and it
    installs the same shape-diff as a CI check so no future hand-edit can break alignment. See
-   `references/contract-propagation.md`.
+   `references/contract-propagation.md`. Where a UI is rendered, the **design contract** rides the
+   same rails: author a `DESIGN.md` of tokens from the decided design-system pin and wire
+   `impeccable detect` as a CI drift-check, so design drift is a build failure, not taste
+   (`references/design-propagation.md`).
 2. **Sequence the backlog.** Emit `BuildItem`s from decided pins, ordered by `depends_on`. The
    waves fall out of the DAG (contract & data model → paved road → core slices → secondary
    features → polish), not hardcoded — same as rescue. Build thin **vertical slices** (one
@@ -248,6 +251,8 @@ Greenfield-specific:
 - `references/threat-model.md` — STRIDE → security `open_decision`s (design-time security).
 - `references/phase-2-interview.md` — the funnel applied to design forks.
 - `references/contract-propagation.md` — define the contract once, generate aligned layers (core).
+- `references/design-propagation.md` — the design contract: author a DESIGN.md from the decided
+  design-system pin + wire `impeccable detect` as a CI drift-check (preventive twin of rescue's design-alignment).
 - `references/phase-3-contract-roadmap.md` — contract propagation + backlog sequencing.
 - `references/phase-4-build.md` — two-track TDD build loop, ladder, wave checkpoints.
 - `references/phase-5-validate.md` — evidence-based resolution + convergence check.

@@ -80,6 +80,18 @@
       "prune_for": ["cli", "library", "api-service"]
     },
     {
+      "id": "design_system", "order": 5.5, "kind": "open_decision", "severity": "medium",
+      "title": "Design system (DESIGN.md)",
+      "options": [
+        { "id": "author_designmd", "label": "Author a DESIGN.md (palette + type ramp + radii tokens)", "implication": "impeccable detect enforces token-membership in CI; drift is a build failure, not a matter of taste" },
+        { "id": "adopt_library_tokens", "label": "Mirror a component library's tokens into DESIGN.md", "implication": "the library's palette/type scale becomes the enforced contract" },
+        { "id": "none_v1", "label": "No formal design system in v1", "implication": "only universal a11y/slop checks run; design drift is unchecked by any contract" }
+      ],
+      "depends_on": ["client"],
+      "default_policy": "author a minimal DESIGN.md from day one so design drift is a contract breach a CI check catches, not taste; skip only for headless/API-only",
+      "prune_for": ["cli", "library", "api-service"]
+    },
+    {
       "id": "sync", "order": 6, "kind": "open_decision", "severity": "medium",
       "title": "Sync & time",
       "options": [

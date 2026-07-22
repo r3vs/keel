@@ -284,9 +284,9 @@ def spend_report(project: str = "", session: str = "", pricing: str = "",
         "this host's session store)")
 
 
-def design_scan(paths: list) -> dict:
+def design_scan(paths: list, scope: str = "", viewport: str = "", no_advisory: bool = False) -> dict:
     import design
-    return design.scan(paths)
+    return design.scan(paths, scope=scope or None, viewport=viewport, no_advisory=no_advisory)
 
 
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------

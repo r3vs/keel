@@ -408,22 +408,27 @@ def spend_report(project: str = "", session: str = "", pricing: str = "",
 
 
 @mcp.tool(annotations={"title": "Design Scan (frontend slop / a11y → ledger findings)", **_RO})
-def design_scan(paths: list) -> dict:
-    """Scan the frontend for AI-slop tells and design-quality / accessibility issues, as ledger-ready
-    findings. WRITES NO FILE.
+def design_scan(paths: list, scope: str = "", viewport: str = "", no_advisory: bool = False) -> dict:
+    """Scan the frontend for AI-slop tells, design-quality / accessibility issues, and drift from an
+    elected DESIGN.md, as ledger-ready findings. WRITES NO FILE.
 
     Deterministic: it shells the Impeccable detector (pbakaus/impeccable, Apache-2.0) — no model, no
     API key — so every hit is a fact (`confidence: extracted`) that skips fp-check, like a type error.
-    Each finding maps to a design_concern pin (or a contract_mismatch once a DESIGN.md is elected). The
-    taste half (LLM critique) is NOT run here — that is the reviewer / challenger lens.
+    A universal a11y/slop tell → a `design_concern` pin; a `design-system-*` hit (a font/color/radius/
+    size outside the project's DESIGN.md) → a `contract_mismatch`, emitted only when a DESIGN.md
+    actually governs the files, so it is never fabricated. The taste half (LLM critique) is NOT run
+    here — that is the reviewer / challenger lens.
 
     Degrades, never hard-fails: if the detector cannot run (no Node / impeccable), returns
     {"unchecked": True, ...} rather than a false clean bill (coverage-gap doctrine).
 
     Args:
-        paths: Frontend files or dirs to scan (HTML / CSS / JSX / TSX / Vue / Svelte).
+        paths: Frontend files, dirs, OR URLs (a URL renders in a real browser — rendered checks).
+        scope: restrict to design domains, comma-separated ("type,layout"); empty = all.
+        viewport: "WxH" browser viewport for a URL scan (e.g. "390x844" for a mobile-width pass).
+        no_advisory: drop soft advisory rules; default keeps them (flagged low, never blocking).
     """
-    return tools.design_scan(paths)
+    return tools.design_scan(paths, scope=scope, viewport=viewport, no_advisory=no_advisory)
 
 
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------

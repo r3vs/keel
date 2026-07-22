@@ -75,6 +75,18 @@ lives** — the thing contract-propagation generates from.
 - **Default policy:** "server-render unless interactivity genuinely demands a SPA — reach for the
   client-heavy option by exception, not default."
 
+### 5b. Design system (DESIGN.md)  ·  depends_on: client
+Applies wherever a UI is rendered (pruned for CLI / library / API-only, but a **static site has a
+UI** and keeps it). This is the presentation-layer contract — the thing greenfield's
+`design-propagation` authors and rescue's `design-alignment` diffs against.
+- **Options:** author a **DESIGN.md** (palette + type ramp + radii tokens) · mirror a component
+  library's tokens into a DESIGN.md · no formal system in v1 (only universal a11y/slop checks run).
+- **Downstream:** the `DESIGN.md` carrier + a CI drift-check (`impeccable detect`), Wave 1;
+  every UI slice's styling.
+- **Default policy:** "author a minimal DESIGN.md from day one, so design drift is a build failure
+  a CI check catches — not a matter of taste discovered in review." A token set is an `enum`; the
+  same shape engine that guards the data contract guards the design one (`references/core/shape-engine.md`).
+
 ### 6. Sync & time  ·  depends_on: domain, API
 - **Options:** pure request/response · background jobs/queue · event-driven · realtime
   (websockets/SSE).

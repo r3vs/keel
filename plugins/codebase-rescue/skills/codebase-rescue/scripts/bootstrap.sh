@@ -14,6 +14,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # (convenient, NOT reproducible). This is the mechanism — fill in the pins you want to freeze.
 : "${SEMGREP_VER:=}";  : "${LIZARD_VER:=}";   : "${JSCPD_VER:=}";        : "${ASTGREP_VER:=}"
 : "${GRAPHIFY_VER:=}"; : "${CODEWIKI_VER:=}"; : "${IMPORTLINTER_VER:=}"; : "${DEPCRUISER_VER:=}"
+: "${IMPECCABLE_VER:=}"
 pipspec() { [ -n "${2:-}" ] && printf '%s==%s' "$1" "$2" || printf '%s' "$1"; }
 # Grammars are fetched at runtime keyed by the pack's version, so pinning it pins the extraction —
 # leave empty for latest, per the convention above. 1.12.5 (2026-07-07) is what this repo is tested
@@ -93,7 +94,9 @@ fi
 
 # --- Node-based tools ------------------------------------------------------------------
 if have npm; then
-  for spec in "jscpd:jscpd:$JSCPD_VER" "ast-grep:@ast-grep/cli:$ASTGREP_VER"; do
+  # impeccable = the design-alignment detector (Paul Bakaus, Apache-2.0; no-LLM). Needs Node >=22.12.
+  # Absent → design-alignment reports 'unchecked', never a clean bill (coverage-gap doctrine).
+  for spec in "jscpd:jscpd:$JSCPD_VER" "ast-grep:@ast-grep/cli:$ASTGREP_VER" "impeccable:impeccable:$IMPECCABLE_VER"; do
     bin="${spec%%:*}"; rest="${spec#*:}"; pkg="${rest%%:*}"; ver="${rest##*:}"
     if have "$bin" || { [ "$bin" = "ast-grep" ] && have sg; }; then ok "$bin (present)"; else
       npm i -g "$(npmspec "$pkg" "$ver")" >/dev/null 2>&1 && ok "$bin (npm)" || warn "$bin not installed"

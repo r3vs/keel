@@ -121,7 +121,9 @@ problems, not the size of the codebase.
 
 Full procedure: `references/phase-1-comprehension.md`.
 Core module: `references/contract-reconciliation.md` (the cross-layer engine — the most
-valuable and most verifiable part; read it in full).
+valuable and most verifiable part; read it in full). Its presentation-layer face is
+`references/module-design-alignment.md` — the same contract diff on the rendered UI (fonts,
+colors, radii, a11y) against an elected `DESIGN.md`, deterministic (Impeccable, no-LLM).
 
 ### Phase 2 — Interview (elect the to-be)
 
@@ -256,6 +258,8 @@ Rescue-specific:
 - `references/toolchain.md` — deterministic tools, install, SARIF normalization.
 - `references/phase-1-comprehension.md` — graph, wiki, finding, pin materialization.
 - `references/contract-reconciliation.md` — the cross-layer engine (core module).
+- `references/module-design-alignment.md` — the presentation-layer contract: Impeccable's no-LLM
+  detector bound to the ledger (design_concern; contract_mismatch vs an elected DESIGN.md).
 - `references/phase-2-interview.md` — how rescue sources the shared funnel (pins = findings).
 - `references/phase-3-roadmap.md` — diff + dependency sequencing.
 - `references/phase-4-remediation.md` — the ponytail ladder in practice.
