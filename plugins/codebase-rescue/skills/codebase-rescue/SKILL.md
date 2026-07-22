@@ -104,8 +104,8 @@ Goal: a navigable, **visual-first** map of what the code is now, with problems p
 it. The user reviews *pins*, never the whole wiki; attention scales with the number of
 problems, not the size of the codebase.
 
-1. Build the knowledge graph (local, multi-language) yourself with the tree-sitter-native builder
-   `scripts/runtime/graph_build.py` (the backbone — it needs no external install; models DB schema
+1. Build the knowledge graph (local, multi-language) with the tree-sitter-native `build_graph` tool
+   (the backbone — it needs no external install; models DB schema
    as nodes and spans DB<->API<->frontend; exports plain NetworkX `graph.json` with stable node ids
    + source locations + EXTRACTED/INFERRED/AMBIGUOUS confidence tags). Graphify (MIT, pip `graphifyy`)
    is an **optional** alternative source of a compatible `graph.json`, no longer required. The graph

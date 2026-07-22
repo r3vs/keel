@@ -34,9 +34,9 @@ The PEP 723 block above lets ``uv run --script`` resolve and cache the dependenc
 us on someone else's machine.
 
 The one real failure mode: if ``uv`` is absent from PATH the host cannot spawn this, and the tools
-go **silently missing** — no error reaches the agent. That is why `bootstrap.sh` installs uv
-best-effort, and why the skill-bundled CLI under ``scripts/runtime/`` remains the floor: when the
-server is absent, the capability degrades to a documented command rather than vanishing.
+go **silently missing** — no error reaches the agent. There is no CLI floor to fall back to (the
+bundled CLI was removed), so ``uv`` is a hard prerequisite: `bootstrap.sh` installs it and **aborts
+loudly** if it cannot, turning a silent absence into a fail-fast the operator can act on.
 """
 from fastmcp import FastMCP
 

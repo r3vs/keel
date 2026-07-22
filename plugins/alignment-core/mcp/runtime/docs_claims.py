@@ -158,30 +158,3 @@ def analyze(doc_paths: list[str], data: dict) -> dict:
 
 def load(path: str | pathlib.Path) -> dict:
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Extract claims from docs and diff their code references against a graph.json. "
-                    "Dangling references (code the doc names but the graph lacks) become CANDIDATE "
-                    "pins — never assertions; the interview decides doc-stale vs code-missing.")
-    parser.add_argument("graph", help="path to graph.json")
-    parser.add_argument("docs", nargs="+", help="markdown docs (README, ADRs, /docs/*.md)")
-    parser.add_argument("--json", action="store_true", help="emit JSON (default: text)")
-    args = parser.parse_args(argv)
-
-    res = analyze(args.docs, load(args.graph))
-    if args.json:
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-    else:
-        print(f"{res['stats']['claims']} checkable claim(s), "
-              f"{res['stats']['candidates']} candidate pin(s):")
-        for p in res["candidates"]:
-            print(f"  [{p['confidence']}] {p['source']['doc']}:{p['source']['line']} — {p['as_is']}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

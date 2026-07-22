@@ -19,8 +19,7 @@ not re-decide order.
 
 > **Ask for the order — never reconstruct it.** `build_waves` levels the `depends_on` DAG and
 > returns the waves plus what is actionable right now. Eyeballing the backlog is how a slice gets
-> built before the contract it consumes. Without the MCP server:
-> `python scripts/runtime/buildloop.py <ledger>`.
+> built before the contract it consumes.
 
 ## Context management: reset, don't accumulate
 

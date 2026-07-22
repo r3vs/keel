@@ -122,29 +122,3 @@ def scan_entry_points(root: str | pathlib.Path) -> dict:
 
 def load_root(p: str) -> str:
     return p
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Detect business entry points (HTTP routes, CLI, tasks, events, cron) in a repo "
-                    "— the deterministic raw material for the Domain -> Flow -> Step view.")
-    parser.add_argument("root", nargs="?", default=".", help="repo root (default: .)")
-    parser.add_argument("--json", action="store_true", help="emit JSON (default: text)")
-    args = parser.parse_args(argv)
-
-    result = scan_entry_points(args.root)
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(f"Entry points: {result['stats']['count']} across {result['stats']['kinds']} kind(s) "
-              f"— {result['by_kind']}")
-        for e in result["entry_points"]:
-            route = f"  {e['route']}" if e.get("route") else ""
-            print(f"  [{e['kind']}] {e['file']}:{e['line']}  {e['handler']}  ({e['signal']}){route}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -90,26 +90,3 @@ def run(ledger, apply: bool = True) -> list[dict]:
             ledger.challenge(c["pin_id"], target=c["target"], challenge_class=c["class"],
                              argument=c["argument"], severity=c["severity"], upheld=True)
     return proposals
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-    parser = argparse.ArgumentParser(description="Run the deterministic challenger over a ledger")
-    parser.add_argument("ledger", help="path to ledger.json")
-    parser.add_argument("--dry-run", action="store_true", help="report, do not reopen")
-    args = parser.parse_args(argv)
-
-    from ledger import Ledger
-    led = Ledger(args.ledger)
-    proposals = run(led, apply=not args.dry_run)
-    if not args.dry_run:
-        led.save()
-    print(f"challenger: {len(proposals)} challenge(s) "
-          f"{'proposed' if args.dry_run else 'upheld (pins reopened)'}")
-    for c in proposals:
-        print(f"  [{c['class']}] {c['pin_id']} — {c['argument']}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

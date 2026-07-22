@@ -41,17 +41,11 @@ A bug is a `defect` pin, and the pin holds what a commit message loses:
 - The **root cause** goes in the pin's `as_is` (or `kind_detail`). Six months later the code shows *what* changed; only the pin
   says *why it was wrong in the first place*, which is what stops the class recurring.
 
-```bash
-# open the defect pin (root cause -> --as-is):
-python scripts/runtime/ledger.py add-pin ledger.json --kind defect --severity high \
-  --title "<the bug>" --confidence extracted \
-  --provenance '[{"source":"systematic-debugging","detail":"repro at <test>"}]' \
-  --as-is '{"summary":"<root cause>"}'
-# plan the fix, mark it done, then close against the OBSERVED reproduction:
-python scripts/runtime/ledger.py add-remediation ledger.json --pin <pin_id> --action implement --ladder-rung 1
-python scripts/runtime/ledger.py set-remediation-status ledger.json --pin <pin_id> --item <rem_id> --status done
-python scripts/runtime/ledger.py resolve ledger.json --pin <pin_id> --evidence "<repro no longer reproduces>"
-```
+Record it through the ledger's MCP tools: `ledger_add_pin` opens the `defect` (root cause in
+`as_is`, provenance the reproduction at the test); `ledger_add_remediation` plans the fix and
+`ledger_set_remediation_status` marks it done; then `ledger_resolve` closes it against the OBSERVED
+reproduction — the tool demands `evidence`, so the pin cannot close until the repro no longer
+reproduces.
 
 If the cause turns out to be a decision that was wrong rather than code that was wrong, **do not
 fix it here** — reopen the decision. Fixing code to work around an unsound elected decision buries

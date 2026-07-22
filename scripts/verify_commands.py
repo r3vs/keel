@@ -21,9 +21,10 @@ In any shipped, agent-facing file, a path into this package must **exist inside 
 so a caller that knows the path can find it. It does NOT verify cwd-resolution, because **no host
 resolves a skill-relative command against the skill directory deterministically**: opencode and Pi
 resolve relative paths against the *user's* project, and Claude Code's cwd is the user's project too.
-That is exactly why the MCP server is the preferred channel — its location is host-resolved, so the
-whole path class disappears — and the bundled CLI is the floor. So this gate validates **presence in
-the package**, in two forms:
+That is exactly why the MCP server is the only channel — its location is host-resolved, so the whole
+path class disappears. The CLI that used to be the floor has been removed, so this gate now also
+**forbids** any shipped file naming `scripts/runtime/…` as a runnable command. Otherwise it validates
+**presence in the package**, in two forms:
 
 * under ``skills/`` -> the path is **skill-root-relative** and exists under that skill: the bytes are
   vendored into the unit that ships, and the agent reaches them either through the MCP tool or by
@@ -130,8 +131,6 @@ def resolves(path: str, f: Path) -> bool:
     # the skill dir, so the model must be handed a path that is inside the skill. `../` is not an
     # option: it reads (or misses) something in their repo.
     if skill_root(f) is not None or f.is_relative_to(ROOT / "src" / "core"):
-        if path.startswith("scripts/runtime/"):
-            return (ROOT / "src" / "runtime" / Path(path).name).exists()
         if path.startswith("scripts/") and path.endswith(".sh"):
             return (ROOT / "src" / "tools" / Path(path).name).exists()
         sroot = skill_root(f)
@@ -147,7 +146,12 @@ def scan(f: Path) -> None:
     # 1. Commands the agent will execute.
     for m in CMD_RE.finditer(text):
         path = m.group(1) or m.group(2)
-        if path.startswith(REPO_DIRS) or path.startswith("skills/"):
+        if path.startswith("scripts/runtime/"):
+            errors.append(
+                f"[{rel}] names the removed runtime CLI `{path}` — the CLI no longer exists; the "
+                "runtime is reached only through the MCP server, so name the tool, not a command"
+            )
+        elif path.startswith(REPO_DIRS) or path.startswith("skills/"):
             if not resolves(path, f):
                 errors.append(f"[{rel}] runnable path does not resolve after install: `{path}`")
 

@@ -375,31 +375,3 @@ def choose_carrier(stack: dict) -> str:
 
 def generate_all(contract: Contract, layers=LAYERS) -> dict[str, str]:
     return {layer: _GENERATORS[layer](contract) for layer in layers}
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-    parser = argparse.ArgumentParser(description="Generate aligned layers from one contract")
-    parser.add_argument("--contract", required=True)
-    parser.add_argument("--out", default="", help="write files to this dir (else stdout)")
-    parser.add_argument("--layer", choices=LAYERS, action="append",
-                        help="restrict to these layers (default: all)")
-    args = parser.parse_args(argv)
-
-    contract = Contract.load(args.contract)
-    layers = tuple(args.layer) if args.layer else LAYERS
-    outputs = generate_all(contract, layers)
-    if args.out:
-        out = pathlib.Path(args.out)
-        out.mkdir(parents=True, exist_ok=True)
-        for layer, text in outputs.items():
-            (out / _FILENAMES[layer]).write_text(text, encoding="utf-8", newline="\n")
-            print(f"wrote {out / _FILENAMES[layer]}")
-    else:
-        for layer, text in outputs.items():
-            print(f"===== {layer} ({_FILENAMES[layer]}) =====\n{text}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -8,7 +8,7 @@ built* work instead of *closed gaps*.
 ## Checks by item kind
 
 - **contract scaffold** — re-extract the field shapes across every generated layer and diff them
-  against the carrier with `contract_diff` (`python scripts/runtime/shapes.py --contract … --ddl …`).
+  against the carrier with `contract_diff`.
   Must be **zero drift** — aligned by construction, so **an empty result is the evidence** and
   anything else means the propagation is broken, not that the diff is being fussy. The installed CI
   drift-check is the standing form of this same call. Plus the generated **contract tests** pass at

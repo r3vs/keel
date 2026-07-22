@@ -165,26 +165,3 @@ def _render_text(tour: dict) -> str:
             lines.append(f"     - {fpath}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Generate a dependency-ordered guided tour from a structural graph.json "
-                    "(the understand-mode teaching surface). Heuristic, LLM-free, deterministic.")
-    parser.add_argument("graph", help="path to graph.json (from scripts/runtime/graph_build.py)")
-    parser.add_argument("--json", action="store_true", help="emit the tour as JSON (default: text)")
-    parser.add_argument("--max-steps", type=int, default=14)
-    args = parser.parse_args(argv)
-
-    tour = build_tour(load(args.graph), max_steps=args.max_steps)
-    if args.json:
-        print(json.dumps(tour, ensure_ascii=False, indent=2))
-    else:
-        print(_render_text(tour), end="")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

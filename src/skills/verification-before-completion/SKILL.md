@@ -66,13 +66,10 @@ location — and fails for everyone. **Verify from the user's position, not your
 
 ## Binding to the ledger
 
-Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
-
-```bash
-# resolve ONLY after observing — the command itself demands the evidence:
-python scripts/runtime/ledger.py resolve ledger.json --pin <pin_id> --evidence "<what you observed>"
-python scripts/runtime/ledger.py summary ledger.json
-```
+Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
+cwd (see `using-the-ledger`). Call `ledger_resolve` ONLY after observing: the tool demands the
+`evidence`, so a criterion cannot close on "code written" — then `ledger_summary` to confirm nothing
+the scope claimed is still open.
 
 An `acceptance_criterion` is the testable outcome, so it is also the verification target: what you
 exercise in step 2 is exactly what the criterion states. That is why the criterion has to be

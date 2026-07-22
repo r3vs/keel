@@ -43,7 +43,7 @@ and corroboration can use the full graph and all other findings at once.
 
 ## Runtime
 
-`scripts/runtime/findings.py` (vendored into this skill; stdlib-only, tested in CI) implements this gate:
+The `findings_gate` tool implements this gate:
 `normalize_sarif` / `normalize_osv` reduce SARIF (semgrep, gitleaks, trivy — anything
 SARIF-emitting) and OSV-scanner JSON to one finding stream; `FpGate.run()` applies the five
 checks in order and returns `{confirmed, downgraded, dropped}`; `to_pins()` maps survivors to
@@ -53,4 +53,5 @@ checks in order and returns `{confirmed, downgraded, dropped}`; `to_pins()` maps
 `reachable(file)` (from the graph; unknown→keep, so a missing graph never silently drops a real
 bug) and `intentional_stub(file, line)` (from the completeness module). Deterministic diagnostics
 (type errors, compiler output) are tagged and **skip the gate** — proven, not suspected
-(`references/core/static-analysis.md`). CLI: `python scripts/runtime/findings.py report.sarif osv.json`.
+(`references/core/static-analysis.md`). The `findings_gate` tool is the entry point — pass it the
+SARIF and OSV report paths (e.g. `report.sarif osv.json`).

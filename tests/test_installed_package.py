@@ -98,7 +98,11 @@ class TestManifests(unittest.TestCase):
 
 
 class TestRunsFromAnInstalledLocation(unittest.TestCase):
-    """Copy the plugin out, chdir into a foreign project, and only then ask if it works."""
+    """Copy the plugin out, chdir into a foreign project, and only then ask if it works.
+
+    The CLI floor is gone: the channel is the MCP server, so what must survive the copy is the
+    server importing its vendored runtime from a foreign cwd — the same regression class (a bare
+    `runtime/` on sys.path would hit the *user's* tree), one channel over."""
 
     @classmethod
     def setUpClass(cls):
@@ -107,70 +111,49 @@ class TestRunsFromAnInstalledLocation(unittest.TestCase):
         cls.userproj = os.path.join(cls.tmp, "userproj")  # stands in for the user's repo
         os.makedirs(cls.cache)
         os.makedirs(cls.userproj)
+        # The MCP server ships in alignment-core; the workflow skill ships beside it. Copy both:
+        # the server + its runtime is what must run, the skill is what must name no dead CLI path.
+        shutil.copytree(PLUGINS / "alignment-core", os.path.join(cls.cache, "alignment-core"))
         shutil.copytree(PLUGINS / "codebase-rescue", os.path.join(cls.cache, "codebase-rescue"))
-        cls.skill = os.path.join(cls.cache, "codebase-rescue", "skills", "codebase-rescue")
-        cls.rt = os.path.join(cls.skill, "scripts", "runtime")
+        cls.mcp = os.path.join(cls.cache, "alignment-core", "mcp")
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def _ledger(self):
-        sys.path.insert(0, self.rt)
-        try:
-            from ledger import Ledger
-        finally:
-            sys.path.pop(0)
-        path = os.path.join(tempfile.mkdtemp(), "ledger.json")
-        led = Ledger(path)
-        led.add_pin(kind="contract_mismatch", title="users.email nullable in DB, required in API",
-                    severity="high", confidence="extracted",
-                    provenance=[{"source": "contract_recon", "detail": "db<->api shape diff"}])
-        led.save()
-        return path
-
-    def test_the_runtime_is_vendored_into_the_skill(self):
-        # Not "somewhere in the plugin" — inside the SKILL. Every agent resolves a skill's assets
-        # relative to the skill's own directory, which is what makes one payload work on all four.
-        self.assertTrue(os.path.isdir(self.rt), "scripts/runtime/ missing from the shipped skill")
+    def test_the_runtime_is_vendored_where_the_server_imports_it(self):
+        # Not "somewhere in the plugin" — beside the server (mcp/runtime/), because that is the dir
+        # tools.py puts on sys.path. This is the payload that makes one server work on every host.
+        self.assertTrue(os.path.isfile(os.path.join(self.mcp, "server.py")), "server.py not vendored")
+        self.assertTrue(os.path.isfile(os.path.join(self.mcp, "tools.py")), "tools.py not vendored")
+        rt = os.path.join(self.mcp, "runtime")
         for mod in ("ledger.py", "shapes.py", "map.py"):
-            self.assertTrue(os.path.isfile(os.path.join(self.rt, mod)), f"{mod} not vendored")
+            self.assertTrue(os.path.isfile(os.path.join(rt, mod)), f"{mod} not vendored beside the server")
 
-    def test_vendored_cli_runs_with_the_cwd_set_to_a_foreign_project(self):
-        # The regression that started all of this: `python runtime/ledger.py` from here would hit
-        # <userproj>/runtime/ledger.py — absent, or worse, someone else's script.
-        led = self._ledger()
-        r = subprocess.run([sys.executable, os.path.join(self.rt, "ledger.py"), "summary", led],
-                           capture_output=True, text=True, cwd=self.userproj)
-        self.assertEqual(r.returncode, 0, f"vendored ledger.py failed from a foreign cwd:\n{r.stderr}")
-        self.assertTrue(json.loads(r.stdout), "summary of a ledger with a pin must not be empty")
-
-    def test_flat_imports_survive_vendoring(self):
-        # The runtime imports siblings flatly (`from ledger import Ledger`) because each module is
-        # invoked as a script, which puts its own dir on sys.path[0]. Vendoring must not break that.
-        led = self._ledger()
-        r = subprocess.run([sys.executable, os.path.join(self.rt, "buildloop.py"), led],
-                           capture_output=True, text=True, cwd=self.userproj)
-        self.assertEqual(r.returncode, 0,
-                         f"buildloop.py imports ledger.py flatly; vendoring broke it:\n{r.stderr}")
-
-    def test_the_map_renders_self_contained_from_an_install(self):
-        led = self._ledger()
-        out = os.path.join(self.tmp, "map.html")
-        r = subprocess.run([sys.executable, os.path.join(self.rt, "map.py"), led, "-o", out],
-                           capture_output=True, text=True, cwd=self.userproj)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        with open(out, encoding="utf-8") as fh:
-            html = fh.read()
-        self.assertNotIn("<script src=", html, "the map must not fetch anything at view time")
+    def test_the_tool_layer_imports_its_runtime_from_a_foreign_cwd(self):
+        # The regression that started all of this, in its post-CLI form: tools.py adds mcp/runtime to
+        # sys.path and the runtime imports its siblings flatly (`from ledger import Ledger`). Run it
+        # with the cwd set to an unrelated project — a bare `runtime/` would resolve to
+        # <userproj>/runtime, not the vendored one. No uv needed: this is the library layer, which is
+        # exactly the part that must survive the copy; the FastMCP wrapper is tested in test_mcp_server.
+        code = (
+            "import sys; sys.path.insert(0, r'%s'); "
+            "import tools; import buildloop; "                 # buildloop imports ledger flatly
+            "print('ok', tools.ledger_summary.__name__, buildloop.__name__)" % self.mcp
+        )
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=self.userproj)
+        self.assertEqual(r.returncode, 0, f"vendored tool layer failed to import from a foreign cwd:\n{r.stderr}")
+        self.assertIn("ok ledger_summary buildloop", r.stdout)
 
     def test_no_shipped_file_names_a_repo_relative_runtime_path(self):
         # verify_commands.py enforces this on the source; this asserts it survived the build, since
-        # the build is what a user actually receives.
+        # the build is what a user actually receives. With the CLI gone, `scripts/runtime/` is a
+        # dangling instruction too, so it joins the forbidden set.
         bad = []
         for p in Path(self.cache).rglob("*.md"):
             text = p.read_text(encoding="utf-8", errors="ignore")
-            for needle in ("python runtime/", "python3 runtime/", "bash scripts/bootstrap.sh"):
+            for needle in ("python runtime/", "python3 runtime/", "python scripts/runtime/",
+                           "python3 scripts/runtime/", "bash scripts/bootstrap.sh"):
                 if needle in text:
                     bad.append(f"{p.relative_to(self.cache)}: {needle}")
         self.assertEqual(bad, [], "shipped prose still names a path that cannot resolve after install")

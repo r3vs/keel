@@ -13,7 +13,7 @@ Methodology (deep, phase-gated):
   - greenfield-forge : NEW project -> elect the design in an interview BEFORE code exists.
 
 Composable helpers (use mid-task whenever relevant):
-  - using-the-ledger      : read/write ledger.json state (runtime: runtime/ledger.py)
+  - using-the-ledger      : read/write ledger.json state (via the ledger_* MCP tools)
   - grounded-research     : external knowledge — escalate Local->Context7->DeepWiki->Web, cite it
   - static-first-analysis : strongest static signal before judgment
   - project-memory        : durable facts (ledger + MEMORY.md + memory MCP)

@@ -24,30 +24,27 @@ npmspec() { [ -n "${2:-}" ] && printf '%s@%s'  "$1" "$2" || printf '%s' "$1"; }
 
 echo "== Codebase Rescue toolchain =="
 
-# --- uv: the one tool whose absence fails SILENTLY --------------------------------------
-# Every other tool here degrades loudly — the skill notes the gap and falls back to judgment.
-# uv does not. The MCP server is spawned by the host as `uv run --script .../server.py`; with no
-# uv on PATH the host simply cannot start it, and all ten runtime tools are **absent with no error
-# surfaced to the agent**. That is the worst failure shape in a package whose doctrine is "degrade
-# gracefully, never hard-fail", so it is installed first and warned about loudest.
-# The floor if this fails: the same runtime is vendored into each skill at scripts/runtime/ and is
-# runnable directly — capability degrades to a documented command instead of vanishing.
-if have uv; then
-  ok "uv (present) — MCP server can start"
-else
+# --- uv: a HARD prerequisite (the CLI floor is gone) ------------------------------------
+# The runtime is reached ONLY through the MCP server, which the host spawns as
+# `uv run --script .../server.py`. There is no bundled-CLI floor anymore, so without uv on PATH the
+# deterministic runtime is entirely unavailable. Rather than let that fail silently mid-run, uv is a
+# hard prerequisite: install it, and if that cannot be done, ABORT loudly — a fail-fast the operator
+# can act on, never a silent degrade. (Every OTHER tool below stays best-effort.)
+if ! have uv; then
   if have curl; then
     curl -LsSf https://astral.sh/uv/install.sh 2>/dev/null | sh >/dev/null 2>&1 || true
   elif have wget; then
     wget -qO- https://astral.sh/uv/install.sh 2>/dev/null | sh >/dev/null 2>&1 || true
   fi
   # The installer puts uv in ~/.local/bin, which may not be on PATH for this shell yet.
-  have uv || [ -x "$HOME/.local/bin/uv" ] && export PATH="$HOME/.local/bin:$PATH"
-  if have uv; then
-    ok "uv (installed) — MCP server can start"
-  else
-    warn "uv MISSING — the MCP server cannot be spawned and its tools will be SILENTLY absent; \
-install from https://astral.sh/uv or invoke the vendored runtime directly (scripts/runtime/)"
-  fi
+  have uv || { [ -x "$HOME/.local/bin/uv" ] && export PATH="$HOME/.local/bin:$PATH"; }
+fi
+if have uv; then
+  ok "uv (present) — MCP server can start"
+else
+  printf '  \033[31m✗\033[0m %s\n' "uv MISSING and could not be installed — the MCP server cannot \
+start and the runtime is unavailable. Install it from https://astral.sh/uv and re-run. Aborting." >&2
+  exit 1
 fi
 
 # Warm the dependency cache so the server also starts offline. A cold cache with no network is
@@ -107,13 +104,13 @@ fi
 # --- Wiki backbone (CodeWiki, runs on the Claude login in subscription mode) -----------
 if have pip3 || have pip; then
   # Graphify = OPTIONAL alternative graph source (MIT). The backbone is the stdlib + tree-sitter
-  # builder scripts/runtime/graph_build.py, which needs no install. PyPI package is graphifyy (double y).
+  # builder graph_build.py (the build_graph tool), which needs no install. PyPI package is graphifyy (double y).
   have graphify || { python3 -m pip install --user "$(pipspec graphifyy "$GRAPHIFY_VER")" >/dev/null 2>&1 && ok "graphify (pip, optional graph source)"; } || warn "graphify not installed — optional; the tree-sitter builder graph_build.py is the backbone"
   have codewiki || { python3 -m pip install --user "$(pipspec codewiki "$CODEWIKI_VER")" >/dev/null 2>&1 && ok "codewiki (pip)"; } || warn "codewiki not installed — as-is wiki degraded"
 fi
 
 # --- Optional shape-engine backend: tree-sitter (generic extractor generalization) -----
-# runtime/treesitter_extract.py uses it when present for more robust TS/GraphQL/arbitrary-stack
+# the tree-sitter extraction backend uses it when present for more robust TS/GraphQL/arbitrary-stack
 # extraction (a stack = a query, not a new parser). The runtime stays stdlib-only and degrades to
 # the regex/ast parsers when it is absent — so this is genuinely optional.
 #
@@ -142,7 +139,7 @@ if have pip3 || have pip; then
   # declaration of which grammars exist, and a second copy in a shell script is a copy that drifts.
   python3 - <<'PY' 2>/dev/null || warn "grammar prefetch skipped — grammars fetch on first use (needs network then)"
 import sys, pathlib
-for p in ("scripts/runtime", "src/runtime"):
+for p in ("mcp/runtime", "src/runtime"):
     d = pathlib.Path(__file__).resolve().parent.parent / p
     if d.is_dir():
         sys.path.insert(0, str(d))

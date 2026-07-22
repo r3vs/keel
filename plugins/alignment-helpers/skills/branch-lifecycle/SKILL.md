@@ -56,13 +56,11 @@ git branch -d <scope>
 
 ## Binding to the ledger
 
-Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
+Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
+cwd (see `using-the-ledger`).
 
-The branch is a **reader** here: before finishing, confirm no pin the scope claimed is still open.
-
-```bash
-python scripts/runtime/ledger.py summary ledger.json   # a needs_input or decided-not-resolved pin blocks the finish
-```
+The branch is a **reader** here: before finishing, confirm with `ledger_summary` that no pin the
+scope claimed is still open — a `needs_input` or decided-not-resolved pin blocks the finish.
 
 Pins are closed **during** the work with `resolve … --evidence` (see `verification-before-completion`),
 not batched at the end.

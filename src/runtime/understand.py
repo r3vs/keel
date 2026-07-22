@@ -106,31 +106,3 @@ def _render_text(bundle: dict) -> str:
     for s in tour["steps"]:
         lines.append(f"  {s['order'] + 1}. {s['title']} — {len(s['files'])} file(s)")
     return "\n".join(lines) + "\n"
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Run the understand mode over a repo: build the structural graph, a layered "
-                    "overview, and a guided tour — comprehension as the deliverable. Pure as-is.")
-    parser.add_argument("root", nargs="?", default=".", help="repo root (default: .)")
-    parser.add_argument("-o", "--out", help="write the bundle here (e.g. .understand/)")
-    parser.add_argument("--commit", help="override built_at_commit (default: git HEAD)")
-    parser.add_argument("--json", action="store_true", help="emit the whole bundle as JSON")
-    args = parser.parse_args(argv)
-
-    bundle = understand(args.root, commit=args.commit)
-    if args.out:
-        paths = write_bundle(bundle, args.out)
-        if not args.json:
-            print(f"wrote: {', '.join(paths.values())}\n")
-    if args.json:
-        print(json.dumps(bundle, ensure_ascii=False, indent=2))
-    else:
-        print(_render_text(bundle), end="")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

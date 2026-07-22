@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
-from ledger import Ledger, LedgerError, main  # noqa: E402
+from ledger import Ledger, LedgerError  # noqa: E402
 
 
 def make_ledger() -> Ledger:
@@ -378,55 +378,6 @@ class TestViewsAndPersistence(unittest.TestCase):
         with self.assertRaises(LedgerError):
             Ledger(led.path)
 
-
-class TestCLI(unittest.TestCase):
-    """The CLI exposes the non-electing writes (add / remediate / resolve) plus the read views.
-    Electing a decision (`decide`) is deliberately NOT a command — only the human interview commits."""
-
-    def _path(self) -> str:
-        return os.path.join(tempfile.mkdtemp(), "ledger.json")
-
-    def test_write_flow_persists(self):
-        path = self._path()
-        self.assertEqual(main(["add-pin", path, "--kind", "defect", "--title", "off-by-one",
-                               "--severity", "high", "--confidence", "extracted",
-                               "--provenance", '[{"source":"debug","detail":"repro"}]']), 0)
-        self.assertEqual(main(["add-remediation", path, "--pin", "pin_0001",
-                               "--action", "implement", "--ladder-rung", "1"]), 0)
-        self.assertEqual(main(["set-remediation-status", path, "--pin", "pin_0001",
-                               "--item", "rem_0001", "--status", "done"]), 0)
-        self.assertEqual(main(["resolve", path, "--pin", "pin_0001",
-                               "--evidence", "observed: test_pager green"]), 0)
-        reloaded = Ledger(path)                       # everything landed on disk
-        pin = reloaded.pin("pin_0001")
-        self.assertEqual(pin["state"], "resolved")
-        self.assertEqual(pin["evidence"], "observed: test_pager green")
-
-    def test_resolve_requires_evidence(self):
-        # 'resolved = observed': the CLI makes evidence mandatory (argparse exits non-zero)
-        with self.assertRaises(SystemExit):
-            main(["resolve", self._path(), "--pin", "pin_0001"])
-
-    def test_ledger_error_is_clean_exit_1(self):
-        # a rule violation (resolve with no remediation) is exit 1, never a traceback
-        path = self._path()
-        main(["add-pin", path, "--kind", "defect", "--title", "x", "--severity", "low",
-              "--confidence", "extracted", "--provenance", '[{"source":"d","detail":"r"}]'])
-        self.assertEqual(main(["resolve", path, "--pin", "pin_0001",
-                               "--evidence", "observed"]), 1)
-
-    def test_decide_is_not_a_command(self):
-        # the electing write is human-only: there is deliberately no `decide` subcommand
-        with self.assertRaises(SystemExit):
-            main(["decide", self._path(), "--pin", "pin_0001", "--outcome", "x"])
-
-    def test_read_views_still_work(self):
-        path = self._path()
-        main(["add-pin", path, "--kind", "ambiguity", "--title", "q", "--severity", "high",
-              "--confidence", "inferred", "--provenance", '[{"source":"d","detail":"r"}]',
-              "--question", '{"prompt":"which?","options":[{"id":"a","label":"A"}]}'])
-        self.assertEqual(main(["summary", path]), 0)
-        self.assertEqual(main(["interview", path]), 0)
 
 
 if __name__ == "__main__":

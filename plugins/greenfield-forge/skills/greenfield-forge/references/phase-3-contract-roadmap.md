@@ -19,11 +19,8 @@ a hardcoded rule.
 > ORM, API-schema and client-type layers — aligned **by construction**, which is the entire claim of
 > this skill. Hand-writing a layer "just this once" is how the first drift enters a project that
 > was supposed to never have any. The drift-check you install in CI is the same engine run backwards
-> (`contract_diff`), and it is what keeps the guarantee alive after today. Without the MCP server:
-> `python scripts/runtime/generate.py --contract contract.json --out scaffold/`, then
-> `python scripts/runtime/shapes.py --contract contract.json --ddl … --sqlalchemy …` (exit 1 on
-> drift). Generation round-trips to zero drift — if it does not, the carrier is wrong, not the
-> generator.
+> (`contract_diff`), and it is what keeps the guarantee alive after today. Generation round-trips
+> to zero drift — if it does not, the carrier is wrong, not the generator.
 
 ## Job 2 — Scaffold the paved road
 

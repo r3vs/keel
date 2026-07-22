@@ -16,7 +16,7 @@ dependency graph.
    source" decision that tells it which layer is truth.
 3. **Topologically sort.** Within a topological level, order by `severity`, then `effort`
    (cheap wins first). **Blast-radius is the risk tie-breaker** — a fix that fans out to more of the
-   graph is sequenced and reviewed with more care. `scripts/runtime/impact.py` computes the overlay
+   graph is sequenced and reviewed with more care. The `impact_overlay` tool computes the overlay
    (`{changed_node_ids, affected_node_ids, affected_layers, unmapped_files, risk}`) from the changed
    files; project its affected set onto the map so the user sees the ripple before approving.
 4. **Detect cycles.** Mutual `depends_on` = a knot (e.g. two contracts each assumed as the
@@ -37,8 +37,7 @@ The topology almost always produces this shape — present it this way, but let 
 > **Let the DAG decide, literally.** `build_waves` levels `depends_on` topologically (cycle-
 > detecting) and returns the actual waves for *this* ledger. The shape above is what usually
 > emerges — it is not the answer. Typing it out as if it were is how a hardcoded order sneaks back
-> in wearing "emergent" as a costume. Without the MCP server:
-> `python scripts/runtime/buildloop.py <ledger>`.
+> in wearing "emergent" as a costume.
 
 ## Guardrail
 Never schedule a rewrite. Every item is minimum-change (the Phase-4 ladder enforces this).

@@ -46,7 +46,7 @@ mutation. Three high-value static signals are commonly under-used:
     dependency-constraint checks into CI, so the elected boundaries are enforced from commit one.
 - **Degrade gracefully — but never silently.** No checker for a *present* language → the run
   continues, but the gap becomes a **fact in the ledger, not a silent zero**.
-  `scripts/runtime/coverage.py` compares the capabilities expected for the stacks tokei found against
+  The `coverage_gaps` tool compares the capabilities expected for the stacks tokei found against
   the tools that actually produced a report, and surfaces each uncovered one as an `incompleteness`
   **`coverage-gap`** pin (`confidence: extracted` — the absence is a fact). "Unchecked" must never
   read as "clean": a deterministic module that could not run its engine did not find zero problems, it

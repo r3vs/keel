@@ -32,13 +32,15 @@ REF_RE = re.compile(r"`(references/[\w\-./]+\.md)`")   # skill-relative
 CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 
 # A `deterministic` module must declare an `engine` — what actually produces its output. Three
-# honest forms: a vendored runtime path (`scripts/runtime/<name>.py`, stat-verified below), an
-# `external:<tool>` (a third-party tool emits it, e.g. codewiki), or an `agent:<how>` (the
-# greenfield "generate/scaffold from a decided source" sense — produced by the agent, not a runtime).
-# This replaced a prose-grep of the reference file, which let modules sharing a playbook free-ride on
-# one runnable mention — and grepping prose for correspondence is the very heuristic this repo forbids.
-# The check is now per-module and deterministic: the engine is declared, and a runtime path is stat'd.
-RUNTIME_ENGINE_RE = re.compile(r"^scripts/runtime/\w+\.py$")
+# honest forms: an `mcp:<tool>` MCP tool (the CLI is gone — the runtime is reached only through the
+# MCP server, so the engine names the tool, validated below against src/mcp/server.py's own
+# `@mcp.tool` decorations), an `external:<tool>` (a third-party tool emits it, e.g. codewiki), or an
+# `agent:<how>` (the greenfield "generate/scaffold from a decided source" sense — produced by the
+# agent, not a runtime). This replaced a prose-grep of the reference file, which let modules sharing a
+# playbook free-ride on one runnable mention — and grepping prose for correspondence is the very
+# heuristic this repo forbids. The check is per-module and deterministic: the engine is declared, and
+# an `mcp:` tool is checked to actually exist on the server (the carrier, never a second list).
+MCP_ENGINE_RE = re.compile(r"^mcp:(\w+)$")
 
 
 SRC_CORE = ROOT / "src" / "core"
@@ -75,6 +77,25 @@ all_files = [
 module_count = 0
 reference_dirs = []
 
+def mcp_tools() -> set:
+    """Tool names src/mcp/server.py advertises, parsed structurally from its `@mcp.tool`
+    decorations — the one source of truth, so a module's engine cannot name a tool the server does
+    not expose (validate against the thing that serves, never a hand-kept second list)."""
+    lines = read(ROOT / "src" / "mcp" / "server.py").splitlines()
+    out = set()
+    for i, line in enumerate(lines):
+        if line.startswith("def ") and i:
+            j = i - 1
+            while j >= 0 and not lines[j].strip():
+                j -= 1
+            if j >= 0 and lines[j].lstrip().startswith("@mcp.tool"):
+                out.add(line[4:].split("(", 1)[0].strip())
+    return out
+
+
+MCP_TOOLS = mcp_tools()
+
+
 # 1. Per-skill: modules.json references + SKILL.md pointers all resolve
 for skill, rel in SKILLS.items():
     sroot = (ROOT / rel).resolve()
@@ -98,20 +119,20 @@ for skill, rel in SKILLS.items():
                 if not engine:
                     errors.append(
                         f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but "
-                        "names no `engine` — say what produces its output: a runtime path "
-                        "(`scripts/runtime/<name>.py`), an `external:<tool>`, or an `agent:<how>`. A "
-                        "deterministic module with no declared mechanism is prose wearing a label"
+                        "names no `engine` — say what produces its output: an `mcp:<tool>` MCP tool, "
+                        "an `external:<tool>`, or an `agent:<how>`. A deterministic module with no "
+                        "declared mechanism is prose wearing a label"
                     )
-                elif RUNTIME_ENGINE_RE.match(engine):
-                    if not (ROOT / "src" / "runtime" / Path(engine).name).exists():
+                elif (mm := MCP_ENGINE_RE.match(engine)):
+                    if mm.group(1) not in MCP_TOOLS:
                         errors.append(
                             f"[{skill}] module '{m.get('id', '?')}' names engine '{engine}' but "
-                            "src/runtime/ has no such file"
+                            f"src/mcp/server.py advertises no `{mm.group(1)}` tool"
                         )
                 elif not (engine.startswith("external:") or engine.startswith("agent:")):
                     errors.append(
                         f"[{skill}] module '{m.get('id', '?')}' engine '{engine}' is not a "
-                        "recognized form (scripts/runtime/x.py | external:<tool> | agent:<how>)"
+                        "recognized form (mcp:<tool> | external:<tool> | agent:<how>)"
                     )
 
     if not skill_path.exists():

@@ -286,39 +286,3 @@ def anchor_ledger(ledger_data: dict, graph: Graph, head: Optional[str] = None,
                 }
                 report["with_blast_radius"] += 1
     return report
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Anchor a ledger's pins to graphify graph nodes (by file:line) + blast-radius")
-    parser.add_argument("--graph", required=True, help="path to graphify graph.json")
-    parser.add_argument("--ledger", required=True, help="path to ledger.json (enriched in place)")
-    parser.add_argument("--head", help="HEAD sha to enforce built_at_commit==HEAD (anti-staleness)")
-    parser.add_argument("--depth", type=int, default=2, help="blast-radius BFS depth")
-    parser.add_argument("--force", action="store_true",
-                        help="anchor even if the graph is stale (NOT recommended)")
-    parser.add_argument("--dry-run", action="store_true", help="report only; do not write")
-    args = parser.parse_args(argv)
-
-    graph = load(args.graph)
-    ledger_path = pathlib.Path(args.ledger)
-    ledger_data = json.loads(ledger_path.read_text(encoding="utf-8"))
-    report = anchor_ledger(ledger_data, graph, head=args.head,
-                           max_depth=args.depth, force=args.force)
-
-    if report["skipped_stale"]:
-        print(f"REFUSED: graph built_at_commit={report['built_at_commit']!r} != HEAD "
-              f"{args.head!r} — rebuild it (`graphify update <path>`) or pass --force. "
-              f"A stale graph is worse than none.")
-        return 2
-    if not args.dry_run and (report["resolved"] or report["with_blast_radius"]):
-        ledger_path.write_text(json.dumps(ledger_data, ensure_ascii=False, indent=2),
-                               encoding="utf-8", newline="\n")
-    print(json.dumps(report, indent=2, ensure_ascii=False))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

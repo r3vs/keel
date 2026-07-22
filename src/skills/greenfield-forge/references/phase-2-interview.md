@@ -23,10 +23,9 @@ The pins are **open decisions**, not code findings. So:
 - **Options come from the catalog**, each carrying its downstream implication, so the user sees
   what a choice commits them to before choosing.
 
-> **The frame is code, not a script to improvise.** `python scripts/runtime/interview.py <ledger>
-> --project-type <type>` expands the decision catalog into `open_decision` /
-> `acceptance_criterion` pins and seeds the per-cluster default policies; `interview_next` (or the
-> same script) then returns the funnelled view in catalog order, threshold already enforced.
+> **The frame is code, not a script to improvise.** The `interview_next` tool expands the decision
+> catalog into `open_decision` / `acceptance_criterion` pins and seeds the per-cluster default
+> policies, then returns the funnelled view in catalog order, threshold already enforced.
 > Improvising the question order is how "what are the core entities" ends up asked third, after two
 > questions its answer would have collapsed.
 
@@ -87,7 +86,6 @@ strong also makes a bad oracle harder to walk back. So before Phase 3, the `chal
 > — a criterion with no `verify` is unfalsifiable as a matter of fact — and returns proposals
 > without writing. That output is where the `challenger` agent begins; its judgment belongs on the
 > classes a checker cannot reach (`unsatisfiable` against the givens, `unstated_assumption`).
-> Without the MCP server: `python scripts/runtime/challenger.py <ledger> --dry-run`.
 
 A sustained challenge emits an immutable `ChallengeEvent`, returns the pin to `needs_input`
 (`challenged`), and reopens the **minimum** (the fork + genuine dependents) back into this interview.

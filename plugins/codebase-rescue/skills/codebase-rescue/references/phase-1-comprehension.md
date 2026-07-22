@@ -9,10 +9,10 @@ problems, not codebase size.
 Build a local, multi-language **structural graph** — the spine every later step queries instead of
 re-reading files, which is what keeps a too-large codebase inside bounded context.
 
-**Build it yourself** with `scripts/runtime/graph_build.py` — a deterministic structural builder
-(Python via the stdlib `ast` today; the tree-sitter path in `scripts/runtime/treesitter_extract.py`
+**Build it** with the `build_graph` tool — a deterministic structural builder
+(Python via the stdlib `ast` today; the tree-sitter extraction backend
 generalizes it to other languages, the additive next step). It emits exactly the node-link
-`graph.json` that `scripts/runtime/graph.py` consumes, so anchoring, blast-radius, and the
+`graph.json` that the graph tools consume, so anchoring, blast-radius, and the
 `understand`-mode tools read it with no adapter. The step-0 gating verdict
 (`references/contract-reconciliation.md`) settled what the graph is good for — the **structural
 spine** (files, symbols, tables as EXTRACTED nodes; `imports`/`calls`/`references` as EXTRACTED
@@ -30,7 +30,7 @@ The semantic pass (summaries, tags, layer names) can run local via Ollama.
 
 Requirements:
 - **Stable node IDs + `file:line`.** Every node carries `id` + `source_file` + `source_location`;
-  anchor pins to these directly (`scripts/runtime/graph.py`, no MCP round-trip needed).
+  anchor pins to these directly from the graph, via `blast_radius`.
 - **Resolve imports once, verify edges against them.** Build an `importMap` (`{file: [resolved
   internal paths]}`, external packages dropped) with per-language resolvers, then require the
   semantic pass to emit import edges **1:1** with it — a stated self-check plus a deterministic
@@ -45,12 +45,12 @@ Requirements:
   `confidence`, which the severity threshold uses. This node/edge-level confidence is ours to keep: a
   graph that carries only an edge weight cannot feed the severity threshold.
 - **Validate/repair the graph on load**, before anything trusts it — the guardrail sibling of
-  fp-check for an LLM-authored graph (`validate_repair` in `scripts/runtime/graph_build.py`): drop
+  fp-check for an LLM-authored graph (`validate_repair`, in the `build_graph` builder): drop
   nodes that don't parse, **drop edges whose endpoints don't resolve** (referential integrity),
   filter dangling ids out of any grouping, normalize aliased type/edge names to the canonical set,
   and emit a showable issue list. A dangling edge trusted at anchor time is a wrong blast-radius later.
 
-**Incremental by fingerprint — the `resume` / re-audit path** (`scripts/runtime/fingerprint.py`).
+**Incremental by fingerprint — the `resume` / re-audit path** (the `fingerprint_scan` tool).
 Store a signature-level fingerprint per file: a content hash for the fast "unchanged" path, plus the
 *signature* (function params/returns/exports, class members, imports). A change that leaves the
 signature intact (formatting, internal logic) is **COSMETIC** and spends **zero** model tokens; only
@@ -110,7 +110,7 @@ on a single format. Order of value for a slop rescue:
 > (stale doc → update; wrong code → fix). This gives the skill's own principle — "you cannot audit
 > slop against its own docs; the found docs are stale or aspirational" — a *mechanism*: the claim
 > becomes a *candidate* `to_be` the user ratifies or rejects, never an asserted truth. The
-> deterministic floor is `scripts/runtime/docs_claims.py`: it extracts each claim's code references
+> deterministic floor is the `docs_claims` tool: it extracts each claim's code references
 > and flags the **dangling** ones — a doc naming a symbol/file the graph has no node for — as
 > candidate pins (`confidence: inferred`, `provenance: doc_claim`), never assertions; the deeper
 > "does the code contradict what the claim says it *does*" stays the agent's judgment. Treat the doc
@@ -123,16 +123,15 @@ over-reports; this gate is non-negotiable.
 > normalizes them into one stream, and returns each cluster's verdict (CONFIRM / DOWNGRADE / DROP)
 > plus the **drop audit trail** — fp-check must be showable, and a gate you performed mentally
 > cannot be shown. It also skips deterministic findings automatically, so the judgment budget goes
-> where judgment is actually needed. Without the MCP server:
-> `python scripts/runtime/findings.py report.sarif osv.json`.
+> where judgment is actually needed.
 >
 > For the cross-layer core, the engine is `contract_diff` (against a carrier) or `reconcile_layers`
 > (two layers head-to-head, no carrier — the usual case on an existing codebase, where no contract
 > exists yet). Both read each stack's own type system and guess nothing; see
 > `references/contract-reconciliation.md` before using either.
 >
-> **Coverage is recorded, not assumed.** After running the tools,
-> `python scripts/runtime/coverage.py --langs <tokei languages> --reports .audit/*.sarif --ledger <ledger>`
+> **Coverage is recorded, not assumed.** After running the tools, the `coverage_gaps` tool
+> (given the tokei languages and the `.audit/*.sarif` reports)
 > turns every EXPECTED-but-absent capability into a visible `coverage-gap` pin. A finder whose tool did
 > not run produced *nothing*, not *zero problems* — the ledger must not let the two read the same
 > (`references/core/static-analysis.md`).
@@ -151,8 +150,7 @@ For each surviving finding, write a `Pin` (schema: `references/core/ledger.md`):
 > **Write pins through the runtime, never by hand-editing `ledger.json`.** The spec's load-bearing
 > rules — kind-specific `as_is` shapes, the severity threshold, append-only events, the
 > `agent_assumption` confidence rule — are enforced in code, and a hand-written pin bypasses every
-> one of them silently. `python scripts/runtime/ledger.py summary <ledger>` (or the
-> `ledger_summary` tool) is the read-back that proves the write landed.
+> one of them silently. The `ledger_summary` tool is the read-back that proves the write landed.
 >
 > Once pins exist, `blast_radius` attaches impact to an anchor — but only on a graph whose
 > `built_at_commit` equals HEAD. It refuses on a stale graph rather than answering: impact computed
@@ -164,7 +162,7 @@ For each surviving finding, write a `Pin` (schema: `references/core/ledger.md`):
 generated), the self-contained as-is map, and the queryable graph. These three artifacts are
 what Phase 2 reads — Phase 1 does not carry conversational state forward.
 
-The wiki's pin layer is rendered by `render_map` (`python scripts/runtime/map.py <ledger> -o map.html`)
+The wiki's pin layer is rendered by the `render_map` tool
 — one self-contained HTML file, no build step and no external fetch, holding **no state of its own**:
 it projects the ledger. Regenerate it rather than editing it; an edited map is a fourth source of
 truth, which is the divergence this whole phase exists to end.
@@ -178,28 +176,28 @@ same map, same disk-artifact discipline; what changes is that nothing downstream
 no roadmap, no remediation) and the surface is tuned for *navigation and teaching* rather than for
 feeding a fix.
 
-Run the mode with `scripts/runtime/understand.py <root>`: it builds the graph
-(`scripts/runtime/graph_build.py`), computes a layered overview (languages · layers · hotspots =
+Run the mode with the `understand_codebase` tool: it builds the graph
+(`build_graph`), computes a layered overview (languages · layers · hotspots =
 most-depended-upon nodes), generates the tour, and renders a **navigable, self-contained HTML map**
-(`scripts/runtime/graphmap.py` — the *layered lens*: an overview of colour-coded layer cards, drill
+(`graph_map` — the *layered lens*: an overview of colour-coded layer cards, drill
 into a layer's files, click a file for its neighbourhood, with search, tour playback, and SVG
 export), writing the whole bundle to disk so every surface below reads one artifact. All of these are
 read-only projections over the graph, holding no state of their own (the same anti-divergence rule as
 the map):
 
-- **Guided tours, dependency-ordered** (`scripts/runtime/tours.py`). A short walkthrough that starts
+- **Guided tours, dependency-ordered** (`guided_tour`). A short walkthrough that starts
   at the top entry point (what nothing imports) and follows imports outward (a BFS reading order),
   grouped by layer — the "learn it in the right order" path. Heuristic and LLM-free; the semantic
   pass only names and narrates the steps.
-- **Explain-a-node drill-down** (`scripts/runtime/explain.py`). For any node (or pin), assemble its
+- **Explain-a-node drill-down** (`explain_node`). For any node (or pin), assemble its
   graph neighborhood — its contains-children, its 1-hop dependencies/dependents, its owning layer —
   **and then read the real source** at its `source_location` for ground truth, against a fixed
   checklist (purpose · data flow · interactions · patterns · gotchas). The graph gives the map; the
   source gives the detail.
-- **A query surface over the graph** (`scripts/runtime/query.py`). Answer "which parts handle auth?"
+- **A query surface over the graph** (`graph_query`). Answer "which parts handle auth?"
   / "what depends on X?" by retrieving a relevant subgraph (weighted name/summary/tag search → 1-hop
   expansion) and reasoning over it, instead of dumping files into context.
-- **Domain view** (`scripts/runtime/domain.py`). A framework-agnostic entry-point scan (HTTP routes,
+- **Domain view** (`domain_view`). A framework-agnostic entry-point scan (HTTP routes,
   CLI, tasks, events, cron — Python via the stdlib `ast`, deterministic) that an agent lifts into a
   Domain → Flow → Step business hierarchy, so a newcomer sees what the system *does* in business
   terms before touching a line.

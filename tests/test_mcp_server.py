@@ -8,7 +8,8 @@ actually advertised. Tool *behaviour* is tested in test_mcp_tools.py with no dep
 
 Skips when uv is absent — which is the real deployment risk, so the skip message names it: without
 uv the host cannot spawn the server and the tools go missing with no error surfaced to the agent.
-The skill-bundled CLI under scripts/runtime/ is the floor for exactly that case.
+uv is a hard prerequisite now (the CLI floor was removed; bootstrap.sh aborts without it), so this
+skip marks an environment that must be fixed, not a soft fallback.
 """
 import json
 import os
@@ -43,7 +44,7 @@ READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
 
 @unittest.skipIf(shutil.which("uv") is None,
                  "uv not on PATH — the host cannot spawn the MCP server, and its tools would be "
-                 "silently absent. bootstrap.sh installs uv; scripts/runtime/ is the CLI floor.")
+                 "silently absent. uv is a hard prerequisite; bootstrap.sh installs it and aborts if it cannot.")
 class TestServerAdvertisesItsTools(unittest.TestCase):
     """One session, driven over real stdio, reused across assertions (a cold uv resolve is ~7s)."""
 

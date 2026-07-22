@@ -238,28 +238,3 @@ def audit_log(gated: dict) -> list[dict]:
     """The DROP audit trail — what was suppressed and why (fp-check must be showable)."""
     return [{"cluster_id": r["cluster_id"], "reason": r["reason"], "count": r["count"],
              "example": f"{r['lead']['file']}:{r['lead']['line']}"} for r in gated["dropped"]]
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-    parser = argparse.ArgumentParser(description="Normalize tool output + run the fp-check gate")
-    parser.add_argument("reports", nargs="+", help="SARIF or OSV JSON files")
-    parser.add_argument("--json", action="store_true")
-    args = parser.parse_args(argv)
-
-    stream = load_and_normalize(args.reports)
-    gated = FpGate().run(stream)
-    if args.json:
-        print(json.dumps({k: (v if isinstance(v, int) else
-                              [{kk: vv for kk, vv in r.items() if kk != "anchors"} for r in v])
-                          for k, v in gated.items()}, indent=2))
-    else:
-        print(f"findings in: {gated['findings_in']}  clusters: {gated['clusters']}")
-        for bucket in ("confirmed", "downgraded", "dropped"):
-            for r in gated[bucket]:
-                print(f"  {r['verdict']:9} [{r['count']:>3}x] {r['cluster_id']}  — {r['reason']}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

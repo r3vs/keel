@@ -95,39 +95,3 @@ def overlay(data: dict, changed_files: Iterable[str], *, depth: int = 1) -> dict
 
 def load(path: str | pathlib.Path) -> dict:
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Compute a diff/impact overlay (changed + affected nodes, affected layers, "
-                    "unmapped files, risk) from a graph.json and a set of changed files.")
-    parser.add_argument("graph", help="path to graph.json")
-    parser.add_argument("--changed", nargs="*", default=None,
-                        help="changed file paths (relative to repo root)")
-    parser.add_argument("--git", metavar="BASE",
-                        help="derive changed files from `git diff --name-only BASE` under --root")
-    parser.add_argument("--root", default=".", help="repo root for --git (default: .)")
-    parser.add_argument("--depth", type=int, default=1, help="reverse-reachability depth")
-    parser.add_argument("-o", "--out", help="write diff-overlay.json here")
-    args = parser.parse_args(argv)
-
-    if args.changed is not None:
-        changed = args.changed
-    elif args.git:
-        changed = changed_files_from_git(args.root, args.git)
-    else:
-        parser.error("pass --changed <files...> or --git <base>")
-        return 2
-
-    ov = overlay(load(args.graph), changed, depth=args.depth)
-    if args.out:
-        pathlib.Path(args.out).write_text(json.dumps(ov, ensure_ascii=False, indent=2),
-                                          encoding="utf-8", newline="\n")
-    print(json.dumps(ov, ensure_ascii=False, indent=2))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

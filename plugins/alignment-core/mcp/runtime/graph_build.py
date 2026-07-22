@@ -510,38 +510,3 @@ def validate_repair(data: dict) -> tuple[dict, list[dict]]:
     clean["links"] = edges_out
     clean.pop("edges", None)  # canonicalize on the node-link `links` key
     return clean, issues
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Build a deterministic structural graph.json from a repo (tree-sitter-native "
-                    "backbone; stdlib Python floor). Emits the node-link shape graph.py consumes.")
-    parser.add_argument("root", nargs="?", default=".", help="repo root to graph (default: .)")
-    parser.add_argument("-o", "--out", help="write graph.json here (default: stdout)")
-    parser.add_argument("--commit", help="override built_at_commit (default: git HEAD of root)")
-    parser.add_argument("--stats", action="store_true", help="print a node/edge summary to stderr")
-    args = parser.parse_args(argv)
-
-    data = build_graph(args.root, commit=args.commit)
-    text = json.dumps(data, ensure_ascii=False, indent=2)
-    if args.out:
-        pathlib.Path(args.out).write_text(text, encoding="utf-8", newline="\n")
-    else:
-        print(text)
-    if args.stats:
-        import sys
-        types: dict[str, int] = {}
-        for n in data["nodes"]:
-            types[n["type"]] = types.get(n["type"], 0) + 1
-        etypes: dict[str, int] = {}
-        for e in data["links"]:
-            etypes[e["type"]] = etypes.get(e["type"], 0) + 1
-        print(f"nodes={len(data['nodes'])} {types}  edges={len(data['links'])} {etypes}",
-              file=sys.stderr)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

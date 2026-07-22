@@ -36,8 +36,7 @@ Result: **200 findings → ~20 clusters → ~5 policies → ~10 real questions �
 > `interview_next` tool returns the compressed view straight from the ledger — clusters collapsed,
 > policies cascaded, the severity threshold already enforced, `asked` questions already ordered by
 > information gain. Re-deriving that order in your head is exactly how the threshold gets quietly
-> skipped and a `blocker` slips into a silent default. Without the MCP server, the same engine is
-> `python scripts/runtime/interview.py <ledger>`.
+> skipped and a `blocker` slips into a silent default.
 
 ## Question shape
 
@@ -103,8 +102,7 @@ it after Wave 1 remediation costs the wave.
 > that are decidable without judgment — an `acceptance_criterion` with no `verify` is unfalsifiable
 > as a matter of fact, not opinion. It returns proposals and never writes, so its output is where
 > the `challenger` agent *starts*, not what it reports: spend the agent's judgment on the classes a
-> checker cannot reach (unsatisfiable-against-the-code, unstated_assumption). Without the MCP
-> server: `python scripts/runtime/challenger.py <ledger> --dry-run`.
+> checker cannot reach (unsatisfiable-against-the-code, unstated_assumption).
 
 ## Output
 

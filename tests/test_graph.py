@@ -7,8 +7,6 @@ resolution is loc-only and never fabricates, and blast-radius ignores INFERRED e
 """
 from __future__ import annotations
 
-import contextlib
-import io
 import json
 import os
 import pathlib
@@ -18,7 +16,6 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
-import graph as graphmod  # noqa: E402
 from graph import Graph, _parse_loc, _same_commit, anchor_ledger  # noqa: E402
 
 
@@ -225,32 +222,6 @@ class TestEdgesKeyAndMetadata(unittest.TestCase):
         self.assertEqual(g.built_at_commit, "feed1234beef")
         self.assertEqual(g.blast_radius("a", max_depth=1), ["b"])
 
-
-class TestCLI(unittest.TestCase):
-    def test_dry_run_reports_without_writing(self):
-        d = tempfile.mkdtemp()
-        gpath, lpath = os.path.join(d, "graph.json"), os.path.join(d, "ledger.json")
-        with open(gpath, "w", encoding="utf-8") as fh:
-            json.dump(sample_graph().raw, fh)
-        with open(lpath, "w", encoding="utf-8") as fh:
-            json.dump({"version": "0.6", "pins": [{"id": "pin_0001", "anchors":
-                      [{"node_id": None, "loc": "packages/db/schema/users.ts:12"}]}]}, fh)
-        before = pathlib.Path(lpath).read_text(encoding="utf-8")
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = graphmod.main(["--graph", gpath, "--ledger", lpath, "--dry-run"])
-        self.assertEqual(rc, 0)
-        self.assertEqual(pathlib.Path(lpath).read_text(encoding="utf-8"), before)  # untouched
-
-    def test_stale_exit_code(self):
-        d = tempfile.mkdtemp()
-        gpath, lpath = os.path.join(d, "graph.json"), os.path.join(d, "ledger.json")
-        with open(gpath, "w", encoding="utf-8") as fh:
-            json.dump(sample_graph(built_at="0000000stale").raw, fh)
-        with open(lpath, "w", encoding="utf-8") as fh:
-            json.dump({"version": "0.6", "pins": []}, fh)
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = graphmod.main(["--graph", gpath, "--ledger", lpath, "--head", "abc1234deadbeef"])
-        self.assertEqual(rc, 2)   # refused: stale
 
 
 if __name__ == "__main__":

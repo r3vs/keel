@@ -30,7 +30,7 @@ never a change or a guess.
 - **Static signal is evidence too.** The type-checker passes on the touched files and any
   architecture-fitness constraint stays green — deterministic, high-confidence, and cheaper than
   re-running judgment checks (`references/core/static-analysis.md`).
-- **Confirm the change stayed in scope** (`scripts/runtime/impact.py`). Diff the touched files against
+- **Confirm the change stayed in scope** (the `impact_overlay` tool). Diff the touched files against
   the graph: the change should reach only the pin's intended nodes/anchors — an unexpected node in the
   `affected_node_ids` set is a regression signal, not a pass. Files in the diff that map to **no**
   graph node (`unmapped_files`) are new or renamed code the graph does not know yet — flag them for

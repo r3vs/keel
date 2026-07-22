@@ -10,8 +10,9 @@ It also survives the thing that killed the first attempt: MCP's 2026-07-28 revis
 one line in this file knows or cares — the protocol churn lands entirely on the adapter, where a
 version bump absorbs it.
 
-Every function calls the runtime's *library* API rather than its `main()` entry points, which print
-to stdout. Under stdio transport stdout is the wire, so a stray print corrupts the session.
+Every function calls the runtime's *library* API — never a subprocess or a printing entry point
+(the modules no longer have a `main()` at all). Under stdio transport stdout is the wire, so a stray
+print would corrupt the session.
 """
 import json
 import sys

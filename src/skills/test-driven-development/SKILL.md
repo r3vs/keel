@@ -37,16 +37,11 @@ catch it. That restores the only property that made the red step worth anything.
 
 ## Binding to the ledger
 
-Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
-
-```bash
-# the acceptance_criterion pin pre-exists (from the interview, or the defect you're closing):
-python scripts/runtime/ledger.py summary ledger.json
-# tempted to invent a criterion for code already written? surface it, never self-elect:
-python scripts/runtime/ledger.py add-pin ledger.json --kind open_decision --severity high \
-  --title "<the undecided outcome>" --confidence inferred \
-  --provenance '[{"source":"test-driven-development","detail":"no elected criterion for existing code"}]'
-```
+Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
+cwd (see `using-the-ledger`). The `acceptance_criterion` pin pre-exists (from the interview, or the
+defect you're closing): read it with `ledger_summary`. Tempted to invent a criterion for code
+already written? Surface it with `ledger_add_pin` as an `open_decision` (confidence `inferred`) —
+never self-elect one.
 
 - The pin's `to_be` is the assertion, in words. If you cannot state it as an observable outcome, the
   criterion is not testable yet and the gap is in the interview, not in your test file.
