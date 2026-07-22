@@ -1,0 +1,146 @@
+/**
+ * Slice-2 tests — host adapters (argv contract) + the pure-engine → PinSink write seam.
+ * Run:  node --experimental-strip-types src/workflow/__tests__/slice2.ts
+ *
+ * What is VERIFIED here: the argv/flag contract of each CLI adapter (the part grounded in real docs),
+ * the stdin-vs-argv wiring, schema-file handling, the guarded SDK adapters failing loud, and
+ * launchFinding landing survivors via a PinSink. What is NOT verified (and marked in-source): the
+ * exact JSONL/JSON event schema of `codex exec`/`opencode run` output, and live SDK execution.
+ */
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import type { ExecFn } from '../exec.ts';
+import { CodexCliAdapter, parseCodexJsonl } from '../adapters/codex.ts';
+import { OpencodeCliAdapter, parseOpencodeJson } from '../adapters/opencode.ts';
+import { ClaudeSdkAdapter } from '../adapters/claude-sdk.ts';
+import { PiAdapter } from '../adapters/pi.ts';
+import { MockAdapter } from '../adapter.ts';
+import { MockPinSink, pinToAddArgs } from '../ports.ts';
+import { launchFinding } from '../launch.ts';
+import { phase1Finding } from '../topologies/phase1-finding.ts';
+
+let passed = 0;
+let failed = 0;
+
+async function test(name: string, fn: () => Promise<void> | void): Promise<void> {
+  try {
+    await fn();
+    passed++;
+    console.log(`  ✓ ${name}`);
+  } catch (e) {
+    failed++;
+    console.log(`  ✗ ${name}\n      ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+// 1 — Codex: verified argv, prompt via stdin, schema written to a file passed as --output-schema.
+await test('CodexCliAdapter: verified argv + stdin prompt + schema file', async () => {
+  let seen: { cmd: string; args: string[]; input?: string } | null = null;
+  let schemaOnDisk: string | null = null;
+  const fake: ExecFn = async (cmd, args, input) => {
+    seen = { cmd, args, input };
+    const i = args.indexOf('--output-schema');
+    if (i >= 0) schemaOnDisk = await readFile(args[i + 1], 'utf8');
+    return { stdout: '', stderr: '', code: 0 };
+  };
+  const ad = new CodexCliAdapter({ exec: fake });
+  await ad.run('audit routes', { model: 'gpt-5.5', schema: { type: 'object', properties: {} } });
+  assert.equal(seen!.cmd, 'codex');
+  assert.deepEqual(seen!.args.slice(0, 4), ['exec', '--json', '--model', 'gpt-5.5']);
+  assert.equal(seen!.args[4], '--output-schema');
+  assert.equal(seen!.input, 'audit routes');
+  assert.ok(schemaOnDisk && JSON.parse(schemaOnDisk).type === 'object');
+});
+
+// 2 — Codex parse (ASSUMED event schema — must be re-verified against a real sample).
+await test('parseCodexJsonl: final structured + usage (ASSUMED schema)', () => {
+  const jsonl = [
+    JSON.stringify({ msg: { text: 'thinking...' } }),
+    JSON.stringify({ msg: { text: '{"real":true}' }, usage: { total_tokens: 42, cost_usd: 0.001 } }),
+  ].join('\n');
+  const r = parseCodexJsonl(jsonl, { schema: { type: 'object' } });
+  assert.deepEqual(r.result, { real: true });
+  assert.equal(r.tokens, 42);
+});
+
+// 3 — opencode: verified argv, prompt as an argv arg (not stdin).
+await test('OpencodeCliAdapter: verified argv, prompt as arg', async () => {
+  let seen: { cmd: string; args: string[]; input?: string } | null = null;
+  const fake: ExecFn = async (cmd, args, input) => {
+    seen = { cmd, args, input };
+    return { stdout: '{}', stderr: '', code: 0 };
+  };
+  const ad = new OpencodeCliAdapter({ exec: fake, agent: 'executor' });
+  await ad.run('the prompt', { model: 'x' });
+  assert.equal(seen!.cmd, 'opencode');
+  assert.deepEqual(seen!.args, ['run', 'the prompt', '--format', 'json', '--model', 'x', '--agent', 'executor']);
+  assert.equal(seen!.input, undefined);
+});
+
+// 3b — opencode parse against the REAL --format json event schema (captured from opencode in WSL).
+await test('parseOpencodeJson: real JSONL schema → text + cost + tokens', () => {
+  const real = [
+    JSON.stringify({ type: 'step_start', part: { type: 'step-start' } }),
+    JSON.stringify({ type: 'text', part: { type: 'text', text: 'OK' } }),
+    JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { total: 35432, input: 35332, output: 2 }, cost: 0.01545642 },
+    }),
+  ].join('\n');
+  const r = parseOpencodeJson(real);
+  assert.equal(r.result, 'OK');
+  assert.equal(r.cost, 0.01545642);
+  assert.equal(r.tokens, 35432);
+
+  // schema path: a text event carrying JSON is parsed to the structured object
+  const withJson = JSON.stringify({ type: 'text', part: { type: 'text', text: '{"real":true}' } });
+  const r2 = parseOpencodeJson(withJson, { schema: { type: 'object' } });
+  assert.deepEqual(r2.result, { real: true });
+});
+
+// 4 — Claude SDK adapter fails loud with an install hint when the dep is absent.
+await test('ClaudeSdkAdapter: clear error when SDK missing', async () => {
+  await assert.rejects(() => new ClaudeSdkAdapter().run('hi'), /claude-agent-sdk/);
+});
+
+// 5 — Pi adapter fails loud (skeleton / missing peer) — never silent.
+await test('PiAdapter: fails loud (skeleton / missing peer)', async () => {
+  await assert.rejects(() => new PiAdapter().run('hi'), /pi-coding-agent|not implemented/);
+});
+
+// 6 — launchFinding lands survivors as pins via the PinSink (the one serialized write).
+await test('launchFinding: survivors → PinSink, kind passthrough, provenance set', async () => {
+  const A = { file: 'a.ts', line: 1, kind: 'contract_mismatch', summary: 'real' };
+  const B = { file: 'b.ts', line: 2, kind: 'dead', summary: 'false' };
+  const mock = new MockAdapter((prompt) => {
+    if (prompt.startsWith('Round')) {
+      return prompt.includes('per-layer') || prompt.includes('per-entity') ? A : B;
+    }
+    if (prompt.startsWith('Verifica')) return { real: prompt.includes('a.ts') };
+    return 'x';
+  });
+  const sink = new MockPinSink();
+  const { pins, committed } = await launchFinding((wf) => phase1Finding(wf), {
+    adapter: mock,
+    sink,
+    source: 'test',
+  });
+  assert.equal(pins.length, 1);
+  assert.equal(committed.length, 1);
+  assert.equal(sink.added.length, 1);
+  assert.equal(sink.added[0].kind, 'contract_mismatch'); // valid ledger kind passes through
+  assert.equal(sink.added[0].provenance[0].source, 'test');
+});
+
+// 7 — pinToAddArgs: no invented taxonomy.
+await test('pinToAddArgs: unknown kind → other + kind_detail; valid kind passes through', () => {
+  const unknown = pinToAddArgs({ file: 'x', line: 3, kind: 'weird-thing' });
+  assert.equal(unknown.kind, 'other');
+  assert.equal(unknown.kind_detail, 'weird-thing');
+  const valid = pinToAddArgs({ file: 'y', line: 4, kind: 'defect' });
+  assert.equal(valid.kind, 'defect');
+  assert.equal(valid.kind_detail, undefined);
+});
+
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);
