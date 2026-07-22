@@ -271,6 +271,19 @@ def render_map(ledger: str, out: str, live: bool = False) -> dict:
     return {"written": out, "live": live}
 
 
+def spend_report(project: str = "", session: str = "", pricing: str = "",
+                 declared_mcp: list | None = None) -> dict:
+    import spend
+    price = pricing or None
+    if session:
+        return spend.report_session(session, pricing=price, declared_mcp=declared_mcp)
+    if project:
+        return spend.report_project(project, pricing=price, declared_mcp=declared_mcp)
+    raise ValueError(
+        "spend_report needs `session` (a transcript .jsonl) or `project` (a repo dir, to discover "
+        "this host's session store)")
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 # These read/write the graph.json + its projections on disk. The graph is the foundational
 # artifact the rest of the family consumes (phases communicate through disk, never a session).

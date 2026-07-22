@@ -384,6 +384,29 @@ def render_map(ledger: str, out: str, live: bool = False) -> dict:
     return tools.render_map(ledger, out, live=live)
 
 
+@mcp.tool(annotations={"title": "Spend Report (tokens / cost telemetry)", **_RO})
+def spend_report(project: str = "", session: str = "", pricing: str = "",
+                 declared_mcp: list | None = None) -> dict:
+    """Token — and, with a price sheet, cost — telemetry over the session transcript the host writes.
+
+    Read-only and deterministic: it sums the `usage` the model itself reported; no estimation. The
+    `measurer`'s cost surface — what makes the model-orchestration tiers measured rather than
+    asserted, and what turns "which declared MCP servers are loaded but never used" into a fact.
+
+    Tokens are exact. COST IS NOT BAKED IN: pass `pricing` (a JSON sheet — model → USD per 1M tokens
+    per bucket) to project cost; unpriced models degrade to tokens-only and are listed. A host whose
+    session store is absent reports `unchecked`, never zero.
+
+    Args:
+        project: Repo dir — discover and aggregate this host's sessions for it (Claude Code today).
+        session: A single transcript .jsonl (plus its subagents) instead of a whole project.
+        pricing: Path to a price sheet; omit for tokens-only.
+        declared_mcp: MCP servers the install declares, to compute the unused-server optimize finding.
+    """
+    return tools.spend_report(project=project, session=session, pricing=pricing,
+                              declared_mcp=declared_mcp)
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 
 @mcp.tool(annotations={"title": "Build Structural Graph", **_RW})
