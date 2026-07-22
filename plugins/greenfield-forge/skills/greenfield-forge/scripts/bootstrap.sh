@@ -137,12 +137,19 @@ if have pip3 || have pip; then
   # Warm the grammar cache for the stacks shapes.py supports, so extraction never fetches mid-run.
   # The list is READ FROM THE RUNTIME, not restated here: treesitter_extract.STACKS is the one
   # declaration of which grammars exist, and a second copy in a shell script is a copy that drifts.
-  python3 - <<'PY' 2>/dev/null || warn "grammar prefetch skipped — grammars fetch on first use (needs network then)"
+  # Pass the base dir in explicitly: __file__ inside `python3 -` is the literal "<stdin>", so it
+  # cannot locate the runtime. `dirname "$0")/../..` is the repo root in dev (src/runtime lives there);
+  # in the shipped skill the runtime is in a sibling plugin (alignment-core/mcp/runtime) and is not
+  # reachable relatively, so no candidate resolves and the block degrades to the `|| warn` below.
+  _boot_base="$(cd "$(dirname "$0")/../.." && pwd)"
+  python3 - "$_boot_base" <<'PY' 2>/dev/null || warn "grammar prefetch skipped — grammars fetch on first use (needs network then)"
 import sys, pathlib
+base = pathlib.Path(sys.argv[1])
 for p in ("mcp/runtime", "src/runtime"):
-    d = pathlib.Path(__file__).resolve().parent.parent / p
+    d = base / p
     if d.is_dir():
         sys.path.insert(0, str(d))
+        break
 import treesitter_extract as ts                      # noqa: E402
 from tree_sitter_language_pack import prefetch, downloaded_languages  # noqa: E402
 want = sorted({s["grammar"] for s in ts.STACKS.values()} | set(ts._CUSTOM))
