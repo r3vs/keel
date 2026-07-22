@@ -1,12 +1,12 @@
-"""The TS workflow engine must ship — one copy in the shared spine (alignment-core/workflow/),
-beside mcp/, exactly as the Python runtime ships beside the server. Tests never ship. This is
+"""The TS workflow engine must ship INSIDE the run-workflow skill (so it is reachable at a
+skill-relative path the host injects), not at the plugin root. Tests never ship. This is
 belt-and-suspenders beside `build.py --check`: it states the intent as an executable fact."""
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "workflow"
-OUT = ROOT / "plugins" / "alignment-core" / "workflow"
+OUT = ROOT / "plugins" / "alignment-core" / "skills" / "run-workflow" / "engine"
 
 
 class TestWorkflowVendored(unittest.TestCase):

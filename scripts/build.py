@@ -82,6 +82,12 @@ SKILL_EXCLUDE = {"TODO.md", "evals"}
 # CLAUDE.md). It is our contributor guide in a skill's clothes and must never ship.
 DEV_ONLY_SKILLS = {"writing-skills"}
 
+# Skills that carry the TS workflow engine (src/workflow/) inside themselves, so it is reachable at a
+# SKILL-RELATIVE path the host injects for the skill — the only portable way to ship a RUNNABLE script.
+# A plugin-root copy would need ${CLAUDE_PLUGIN_ROOT} (Claude-only) or a `../` escape out of the skill
+# (which is exactly what does not travel). __tests__/ (unit + live-smoke) develop the engine, never ship.
+ENGINE_SKILLS = {"run-workflow"}
+
 # --- vendoring rules (absorbed from the former sync_core.py / sync_runtime.py) ----------------
 # A skill needs a core doc / runtime module / tool if its own authored prose names the vendored
 # path. Anchored on the vendored form: a bare `core/x.md` or `runtime/x.py` is drift by definition
@@ -149,8 +155,8 @@ PLUGINS = {
             "challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. "
             "Installed automatically as a dependency of codebase-rescue and greenfield-forge."
         ),
-        "skills": ["using-the-ledger"],
-        "agents": True, "hooks": True, "mcp": True, "core_docs": True, "workflow": True,
+        "skills": ["using-the-ledger", "run-workflow"],
+        "agents": True, "hooks": True, "mcp": True, "core_docs": True,
         "dependencies": [],
     },
     "codebase-rescue": {
@@ -310,6 +316,13 @@ def skill_payload(skill: str) -> dict:
         out[f"skills/{skill}/scripts/runtime/{mod}.py"] = PY_BANNER.format(name=f"{mod}.py") + read(RUNTIME / f"{mod}.py")
     for t in sorted(tool_closure(skill)):
         out[f"skills/{skill}/scripts/{t}.sh"] = read(TOOLS / f"{t}.sh")
+    if skill in ENGINE_SKILLS:
+        # The TS engine rides inside the skill, at engine/, reachable skill-relative. Source stays the
+        # single src/workflow/ (never duplicated in the source tree); the copy exists only in plugins/.
+        for f in sorted((SRC / "workflow").rglob("*")):
+            rel = f.relative_to(SRC / "workflow")
+            if f.is_file() and "__tests__" not in rel.parts:
+                out[f"skills/{skill}/engine/{rel.as_posix()}"] = read(f)
     return out
 
 
@@ -491,18 +504,6 @@ def plugin_payload(name: str, spec: dict) -> dict:
         # opencode has no manifest slot for servers, so its plugin declares them in a `config()`
         # hook. Third host, same table, still zero user action.
         out["adapters/opencode/plugin/mcp.ts"] = opencode_mcp_plugin()
-    if spec.get("workflow"):
-        # The TS ceiling engine (src/workflow/) ships as ONE copy in the shared spine, beside mcp/ —
-        # the same home the Python runtime got post-Totale (next to the server, not vendored per-skill).
-        # It is PURE and never speaks MCP: a host-session skill invokes `workflow/cli.ts` (Node + the
-        # host's own cli, no npm dep) and the calling agent writes the returned pins via ledger_add_pin.
-        # __tests__/ (unit + live-smoke) develop the engine and never ship. Verbatim, like mcp/.
-        wf = SRC / "workflow"
-        for f in sorted(wf.rglob("*")):
-            rel = f.relative_to(wf)
-            if not f.is_file() or "__tests__" in rel.parts:
-                continue
-            out[f"workflow/{rel.as_posix()}"] = read(f)
     if spec.get("hooks"):
         for h in sorted((SRC / "hooks").iterdir()):
             if h.is_file():

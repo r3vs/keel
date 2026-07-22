@@ -226,11 +226,13 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
   `DETERMINISM_PRELUDE` runtime (blocca `Date.now`/`Math.random`/`Date()` argless, lascia `new Date(arg)`),
   `stripLeadingExportMeta`. Refactor `createWorkflowContext` condiviso tra path a-funzione e a-sorgente.
 - **Slice 3** — bind topologia ↔ `buildloop.waves()`; wave build §6.3 con worktree.
-- **Slice 4 — parziale (vendoring FATTO, 4/4 test cli + test Python)** — `build.py` vendorizza
-  `src/workflow/` → `plugins/alignment-core/workflow/` (UNA copia nel plugin-spine, accanto a `mcp/`,
-  `__tests__` esclusi), gated da `build --check` + `tests/test_workflow_vendored.py`. Entry `cli.ts`
-  (dry-run/discovery: solo Node + CLI host, **zero dep npm**). Manca: la skill/command che invoca
-  `cli.ts` e l'agente che scrive i pin ritornati via `ledger_add_pin`; bind live di `build_waves`.
+- **Slice 4 — ✅ FATTO** — skill **`run-workflow`** (in alignment-core) col motore vendorizzato
+  **dentro la skill** (`engine/`, path **skill-relative** che ogni host inietta → portabile; il
+  plugin-root avrebbe richiesto `${CLAUDE_PLUGIN_ROOT}`, solo-Claude, o un `../` che non viaggia).
+  `build.py` copia `src/workflow/`→`skills/run-workflow/engine/` (`__tests__` esclusi), gated da
+  `build --check` + `tests/test_workflow_vendored.py`. La `SKILL.md` dà il protocollo: esegui
+  `engine/cli.ts` (Node + CLI host, **zero dep npm**) → pin JSON → **l'agente** li scrive via
+  `ledger_add_pin`. Manca: bind live di `build_waves`; path SDK caldo + Pi native; item-successo codex.
 
 ## 10. Riconciliazione con decisioni recenti (⚠️ da integrare prima delle slice 2+)
 
