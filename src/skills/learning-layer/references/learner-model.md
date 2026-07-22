@@ -1,15 +1,22 @@
-# The Learner Model — `learner.json` (the operator-gap gradebook)
+# The Learner Model — `learner.json` (the operator-gap coaching model)
 
-The structural twin of the decisions ledger. The ledger (`references/core/ledger.md`) measures the
-**codebase's** gap and drives its closure; this measures the **operator's** gap and drives the
-teaching. Same anti-divergence discipline: a single `learner.json` on disk is the source of truth for
-what this user has and hasn't internalized, and every hook reads/writes it — no surface holds a
-private opinion of the user's level. Portable, git-ignored per user (it is personal data), never
-committed to the project repo.
+The **conceptual** twin of the decisions ledger. The ledger (`references/core/ledger.md`) tracks the
+**codebase's** gap and drives its closure; this tracks the **operator's** gap and drives the teaching.
+One `learner.json` on disk is where the layer keeps what this user has and hasn't internalized, so no
+surface holds a private opinion of the user's level. Portable, git-ignored per user (it is personal
+data), never committed to the project repo.
+
+**One honest difference from the ledger, stated up front:** the ledger is enforced by code —
+`ledger.py` plus the ledger gate — so its state is *measured*. `learner.json` has **no runtime**: the
+agent maintains it by judgment (there is no `learner.py`, no gate, no test behind the counters). Treat
+its numbers as the agent's best coaching estimate, not a measurement — this is a coaching heuristic,
+not a second gated spine. It is an early surface; the mechanics below describe the intended shape, which
+a future `learner.py` could make literal.
 
 Without it, "the delta fades as you improve" is an unmeasured hope and "you might be cargo-culting"
-is unfalsifiable. The learner model makes both **observable**: it is what ranks the delta, fades the
-scaffold, and catches rote execution.
+is unfalsifiable. The learner model makes both **trackable** — it is what ranks the delta, fades the
+scaffold, and flags rote execution — as far as the agent's own bookkeeping can, which is honest
+coaching, not a gated measurement.
 
 ## What it records
 
@@ -49,8 +56,9 @@ one-off fix). Categories are open-ended and accrue as work surfaces them; seed e
    untaught.
 2. **Fade on evidence, and say so.** When `streak ≥ fade_threshold` (default 3) a category moves to
    `fading` then `mastered`; the layer stops prompting for it and **tells the user** ("you've got
-   this — dropping the prompt"). Fade is *measured*, not assumed by time. A later miss reopens it
-   (`mastered → learning`), exactly as a fired `flip_signal` reopens a ledger pin.
+   this — dropping the prompt"). Fade follows the tracked `streak`, not the passage of time. A later
+   miss reopens it (`mastered → learning`), the same shape as a fired `flip_signal` reopening a ledger
+   pin — here tracked by the agent's bookkeeping, not enforced by a gate.
 3. **Detect cargo-cult.** The tell is a **divergence between output and prediction**: deliverables
    keep passing (the layer/gates carry them) while `matched/attempts` stays flat and `exposure_only`
    climbs. That is rote execution, not learning — set `cargo_cult_watch` and escalate from passive
@@ -90,7 +98,7 @@ removed, so even at full volume it stays coaching rather than a lecture.
 
 ## Boundary
 
-The learner model measures what the layer **can** verify — categories with a checkable senior
+The learner model tracks only what the layer **can** check — categories with a checkable senior
 version (the same "prefer the checkable formulation" bias as `references/core/static-analysis.md`).
 It deliberately does **not** score frontier judgment, where there is no senior version to match
 against; there the layer exposes reasoning and is honest that it cannot grade. Claiming to measure
