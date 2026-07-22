@@ -367,7 +367,7 @@ def coverage_gaps(langs: list[str], reports: list[str] | None = None) -> dict:
 
 
 @mcp.tool(annotations={"title": "Render Visual Map", **_RW})
-def render_map(ledger: str, out: str) -> dict:
+def render_map(ledger: str, out: str, live: bool = False) -> dict:
     """Render the ledger as the self-contained visual HTML map. WRITES A FILE.
 
     Clickable pins, three-column contract diff, as-is/to-be toggle. The map holds no state — it
@@ -376,8 +376,12 @@ def render_map(ledger: str, out: str) -> dict:
     Args:
         ledger: Path to ledger.json.
         out: Output .html path.
+        live: When True, render a dev-time monitor that self-reloads and re-projects the ledger as
+            pins land (selection / view / scroll survive the reload; changed pins flash), and
+            register it so every later ledger write refreshes it. When False (default), render the
+            frozen single-file artifact safe to hand to anyone, and stop any prior live refresh.
     """
-    return tools.render_map(ledger, out)
+    return tools.render_map(ledger, out, live=live)
 
 
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------

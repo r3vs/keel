@@ -96,5 +96,36 @@ class TestGraphAnchoredRendering(unittest.TestCase):
         self.assertNotIn("fetch(", html.split("const LEDGER =", 1)[1].split("\n", 1)[0])
 
 
+class TestLiveMode(unittest.TestCase):
+    """live=True turns the map into a self-reloading dev monitor; live=False (the default) stays the
+    frozen single-file artifact. The self-contained invariant must survive live mode."""
+
+    def test_default_is_frozen(self):
+        html = mapmod.render(demo_ledger().data, title="demo")
+        self.assertNotIn("livebadge", html)
+        self.assertNotIn("location.reload", html)
+
+    def test_live_adds_self_reload_and_badge(self):
+        html = mapmod.render(demo_ledger().data, title="demo", live=True)
+        self.assertIn("livebadge", html)        # the LIVE badge
+        self.assertIn("location.reload", html)  # the self-reload loop
+        self.assertIn("decmap.live", html)      # selection/view/state persisted across reload
+
+    def test_live_stays_self_contained(self):
+        # the whole point of the map: even live, one offline file with no external fetch
+        html = mapmod.render(demo_ledger().data, title="demo", live=True)
+        for pattern in (r'src\s*=\s*["\']https?:', r'href\s*=\s*["\']https?:', r'@import', r'fetch\('):
+            self.assertIsNone(re.search(pattern, html),
+                              f"live mode introduced an external resource: {pattern!r}")
+        self.assertTrue(html.lstrip().lower().startswith("<!doctype html>"))
+
+    def test_render_file_live_flag(self):
+        led = demo_ledger(); led.save()
+        out_path = os.path.join(tempfile.mkdtemp(), "map.html")
+        mapmod.render_file(led.path, out_path, live=True)
+        with open(out_path, encoding="utf-8") as fh:
+            self.assertIn("livebadge", fh.read())
+
+
 if __name__ == "__main__":
     unittest.main()

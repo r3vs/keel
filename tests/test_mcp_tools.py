@@ -199,5 +199,44 @@ class TestBlastRadiusStalenessGate(unittest.TestCase):
         self.assertIn("b", out["impacted"], "b calls a, so changing a must impact b")
 
 
+class TestLiveMap(unittest.TestCase):
+    """live=True registers the map so every later ledger write re-projects it — the map projecting
+    the *live* ledger, driven by the MCP layer itself (no per-host hook, no running server)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ledger = os.path.join(self.tmp, "ledger.json")
+        tools.ledger_add_pin(self.ledger, kind="defect", title="first pin", severity="low",
+                             confidence="inferred", provenance=[{"source": "x", "detail": "y"}])
+        self.out = os.path.join(self.tmp, "map.html")
+
+    def _html(self):
+        with open(self.out, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_live_render_registers_a_marker_and_badge(self):
+        tools.render_map(self.ledger, self.out, live=True)
+        self.assertTrue(os.path.exists(self.ledger + ".livemap"))
+        self.assertIn("livebadge", self._html())
+
+    def test_a_ledger_write_reprojects_the_live_map(self):
+        tools.render_map(self.ledger, self.out, live=True)
+        self.assertNotIn("second pin", self._html())
+        # no one calls render_map again — the write itself re-projects the registered live map
+        tools.ledger_add_pin(self.ledger, kind="defect", title="second pin", severity="low",
+                             confidence="inferred", provenance=[{"source": "x", "detail": "y"}])
+        self.assertIn("second pin", self._html())
+
+    def test_frozen_render_stops_the_live_refresh(self):
+        tools.render_map(self.ledger, self.out, live=True)
+        self.assertTrue(os.path.exists(self.ledger + ".livemap"))
+        tools.render_map(self.ledger, self.out, live=False)   # freeze the shareable artifact
+        self.assertFalse(os.path.exists(self.ledger + ".livemap"))
+        tools.ledger_add_pin(self.ledger, kind="defect", title="third pin", severity="low",
+                             confidence="inferred", provenance=[{"source": "x", "detail": "y"}])
+        self.assertNotIn("third pin", self._html())   # no longer tracked
+        self.assertNotIn("livebadge", self._html())
+
+
 if __name__ == "__main__":
     unittest.main()
