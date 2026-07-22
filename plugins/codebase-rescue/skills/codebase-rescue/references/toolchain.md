@@ -53,10 +53,11 @@ a fact, where the same boundary expressed in prose stays an opinion.
   **production render**. The carrier is a **committed spec** (re-runnable, diffable), not a one-off
   screenshot: the executor writes it, the measurer re-runs it read-only as the Phase-5 oracle.
   Token-membership on the render (`impeccable detect <url>`) is deterministic; a pixel visual-regression
-  diff is judgment (human-reviewed pin). The Playwright **MCP** (accessibility-tree snapshots) is an
-  **opt-in** authoring aid, not declared by default — it needs browser binaries (`npx playwright
-  install`). Full playbook: `references/browser-verification.md`. Best-effort; absent → the UI surface
-  degrades to static + Impeccable source scans, noted as a coverage gap.
+  diff is judgment (human-reviewed pin). The Playwright **MCP** (accessibility-tree snapshots) is
+  **declared** by the built plugin (`stdio`, `npx @playwright/mcp`) — a capability server delivered by
+  the install, like our own; it connects with zero setup and degrades only on a browser action without
+  binaries (`npx playwright install`). Full playbook: `references/browser-verification.md`. Best-effort;
+  absent → the UI surface degrades to static + Impeccable source scans, noted as a coverage gap.
 
 ## Backbones
 - **tree-sitter-native structural builder** — RECOMMENDED backbone. Build the graph's structural

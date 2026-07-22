@@ -45,16 +45,24 @@ A UI defect's Given/When/Then is pinned as a committed Playwright **repro spec**
 that must exist before the fix, and that must pass after it (`references/module-logic.md` and the
 systematic-debugging discipline: the root cause lands in the `defect` pin, the repro in the spec).
 
-## The optional MCP (opt-in, never bundled)
+## The Playwright MCP (declared — delivered by the install)
 
-Microsoft's **Playwright MCP** exposes the browser to an agent as an **accessibility-tree snapshot**
-(structured, deterministic — not pixels), which suits *authoring* and *exploration*: an agent finds
-the selectors and flows, then writes them into the committed spec. It is **opt-in** and **not declared
-by default** — it needs browser binaries (`npx playwright install`, hundreds of MB), so declaring it
-for everyone is the cognee anti-pattern (a server that fails to connect for anyone who hasn't run the
-setup). Turn it on yourself if you want interactive exploration; the committed spec + CLI is the floor
-that needs nothing. Microsoft's own guidance matches this split: CLI + skills for coding agents, the
-MCP for exploration.
+Microsoft's **Playwright MCP** (`@playwright/mcp`) exposes the browser to an agent as an
+**accessibility-tree snapshot** (structured, deterministic — not pixels), which suits *authoring* and
+*exploration*: an agent finds the selectors and flows, then writes them into the committed spec. The
+built plugin **declares** it (a `stdio` server, `npx -y @playwright/mcp@latest`), the same way it
+delivers our own server — so a user gets the browser tools by installing, and the capability is
+**discoverable**, not merely available.
+
+It is declared, **not** opt-in, and the distinction is precise: the declared-vs-opt-in line is
+*"connects with zero setup?"*. Unlike **cognee** (which cannot connect without a Docker container and
+a key), the Playwright MCP **connects immediately** — stdio via npx, no container, no key. Its only
+prerequisite is browser **binaries** for an actual navigation (`npx playwright install`), which is a
+graceful **use-time** degrade — a clear "install the browser" error on first action, not a broken
+server in every session. That is exactly how the toolchain treats every other tool: present and
+discoverable, degrading with a note when a dependency is missing, never a hard failure. The committed
+spec + CLI remain the deterministic verification *carrier*; the MCP is the *authoring/exploration*
+surface on top — Microsoft's own split (CLI + skills for coding agents, MCP for exploration).
 
 ## Discipline
 
