@@ -48,6 +48,16 @@ a fact, where the same boundary expressed in prose stays an opinion.
   (js/ts), ArchUnit (jvm). Encodes the elected boundaries as executable constraints → `design_concern`
   on violation (rescue) or a CI gate (greenfield).
 
+## Dynamic / browser verification (UI behavior + rendered design)
+- **Playwright** (`external:playwright`) — drive a real browser to verify UI behavior and the
+  **production render**. The carrier is a **committed spec** (re-runnable, diffable), not a one-off
+  screenshot: the executor writes it, the measurer re-runs it read-only as the Phase-5 oracle.
+  Token-membership on the render (`impeccable detect <url>`) is deterministic; a pixel visual-regression
+  diff is judgment (human-reviewed pin). The Playwright **MCP** (accessibility-tree snapshots) is an
+  **opt-in** authoring aid, not declared by default — it needs browser binaries (`npx playwright
+  install`). Full playbook: `references/browser-verification.md`. Best-effort; absent → the UI surface
+  degrades to static + Impeccable source scans, noted as a coverage gap.
+
 ## Backbones
 - **tree-sitter-native structural builder** — RECOMMENDED backbone. Build the graph's structural
   spine (files/symbols/tables as EXTRACTED nodes; `imports`/`calls` as EXTRACTED edges) from

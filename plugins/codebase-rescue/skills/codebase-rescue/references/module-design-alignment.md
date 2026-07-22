@@ -60,6 +60,34 @@ proposed `to_be` to elect in the interview), and only after it has been confirme
 tokens once does a `design-system-*` hit become a true `contract_mismatch`. The detector still runs;
 what changes is the *kind* of pin the un-confirmed case produces.
 
+## The contract carrier is DTCG — rescue extracts the as-is, elects the to-be
+
+The machine contract of design is a **W3C DTCG** token set (the stable, 40+ vendor standard), not the
+DESIGN.md frontmatter (Google Stitch alpha, with an incompatible Open Design fork). DESIGN.md is a
+*generated projection* of the tokens — the one Impeccable reads to enforce membership. Rescue runs the
+diff **backward**, exactly as it does for the data contract:
+
+1. **as-is** — extract the code's **de-facto** design tokens (`extract_tokens`: the CSS custom
+   properties the codebase declares, classified by value — a hex is a color, a `px` is a dimension —
+   ambiguous values dropped, never guessed). This is a *candidate* DTCG, descriptive of the mess.
+2. **to-be** — the user **elects** the DTCG token set in the interview (accept the extracted
+   candidate, refine it — e.g. split the flat dimension group into radius / font-size / spacing — or
+   import a real brand). Only the elected set is the contract.
+3. **enforce** — `generate_tokens` projects the elected DTCG into a `DESIGN.md`, and `impeccable
+   detect` flags every off-token usage as `design-system-*` → `contract_mismatch`; `tokens_diff`
+   guards the generated CSS layer. Same `gap = diff(to_be, as_is)`, on the presentation layer.
+
+## Verifying a re-implementation on the **production render** (not a prototype)
+
+When a design comes from a visual tool (the opt-in ceiling below), its HTML prototype is **throwaway**;
+what survives is the elected DTCG contract. The real UI is **rebuilt as real components** in the
+project's framework (the Phase-4 loop), never transpiled from the HTML. To verify that rebuild honors
+the design, point `design_scan` at the **running app's URL** (`impeccable detect` renders it in a real
+browser): a production component that uses an off-token color/font/radius is caught as a
+`design-system-*` `contract_mismatch` against the same DESIGN.md — deterministic. This is the
+token-membership half; the pixel-level "does it look right" half is **judgment** (visual regression),
+routed to a human-reviewed pin, never auto-resolved (`references/browser-verification.md`).
+
 ## Method
 
 1. **Run the detector** through the `design_scan` MCP tool over the frontend paths (files, dirs, or
@@ -100,10 +128,10 @@ of the fp-check line is the same fact-vs-taste split this package draws everywhe
 - **Greenfield's `design-propagation`** is the preventive mirror: author the `DESIGN.md` from decided
   design pins up front and wire `impeccable detect` as a CI drift-check, so the drift this module
   *finds* is, there, made impossible to introduce (`skills/greenfield-forge/references/design-propagation.md`).
-- **Browser verification** — a browser driver (Playwright) can drive the app into an
-  interaction-gated state and hand the rendered URL to `design_scan`, for design checks that only
-  appear after a user flow. Optional synergy; Impeccable's own single-shot URL render covers the
-  common case.
+- **Browser verification** (`references/browser-verification.md`) — render the real components and
+  check the **production render**: `design_scan` on the running URL for deterministic token-membership,
+  visual regression as a human-reviewed judgment pin. Also drives interaction-gated states a
+  single-shot render misses.
 
 ## Degrade, never hard-fail
 

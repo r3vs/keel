@@ -129,5 +129,39 @@ class TestRoundTripDriftCheck(unittest.TestCase):
         self.assertTrue(any(x["var"] == "--rogue" and x["kind"] == "extra" for x in d))
 
 
+class TestHarvest(unittest.TestCase):
+    """As-is extraction: declared CSS custom properties → a candidate DTCG contract, facts only."""
+
+    CSS = """:root {
+      --brand-blue: #0055ff;
+      --surface: rgb(255, 255, 255);
+      --radius-md: 8px;
+      --body-font: Georgia, serif;
+      --z-modal: 1000;
+      --line-height: 1.5;
+    }"""
+
+    def test_harvests_only_unambiguous_design_tokens(self):
+        cand = dt.harvest_tokens(self.CSS)
+        self.assertIn("brand-blue", cand["color"])
+        self.assertIn("surface", cand["color"])          # rgb() literal is a color
+        self.assertIn("radius-md", cand["dimension"])    # px is a dimension
+        self.assertIn("body-font", cand["font"])         # comma stack is a fontFamily
+        self.assertEqual(cand["color"]["$type"], "color")
+        self.assertEqual(cand["font"]["$type"], "fontFamily")
+
+    def test_drops_ambiguous_values_never_guesses(self):
+        cand = dt.harvest_tokens(self.CSS)
+        flat = {k for g in cand.values() for k in g if not k.startswith("$")}
+        self.assertNotIn("z-modal", flat)                # a raw number is not a design token
+        self.assertNotIn("line-height", flat)            # unitless number → not classified
+
+    def test_candidate_is_a_valid_dtcg_contract(self):
+        # the as-is candidate round-trips through the same parser the to-be uses
+        ts = dt.TokenSet.from_obj(dt.harvest_tokens(self.CSS))
+        by = {t["path"] for t in ts.tokens}
+        self.assertIn("color.brand-blue", by)
+
+
 if __name__ == "__main__":
     unittest.main()

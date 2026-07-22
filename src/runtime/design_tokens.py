@@ -260,6 +260,44 @@ def extract_css_vars(css: str) -> dict:
     return {m.group(1): m.group(2).strip() for m in _CSS_VAR_RE.finditer(css or "")}
 
 
+_COLOR_RE = re.compile(r"^(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|oklch\([^)]*\))$")
+_LEN_RE = re.compile(r"^-?[\d.]+(px|rem|em|%|vh|vw)$")
+
+
+def _classify_type(value: str) -> Optional[str]:
+    """The DTCG `$type` a declared value unambiguously IS — or None. A hex/rgb/hsl/oklch literal is a
+    `color`, a px/rem/… literal is a `dimension`, a comma-separated stack with letters is a
+    `fontFamily`. Anything else (a z-index, a raw number, a shadow, a gradient) is NOT classified —
+    left out rather than guessed, per the no-heuristics rule (the value class is a fact; a guess is not)."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if _COLOR_RE.match(v):
+        return "color"
+    if _LEN_RE.match(v):
+        return "dimension"
+    if "," in v and re.search(r"[A-Za-z]", v):
+        return "fontFamily"
+    return None
+
+
+def harvest_tokens(css: str) -> dict:
+    """De-facto design tokens declared as CSS custom properties → a **candidate DTCG contract** (the
+    as-is). Only values that are unambiguously a design token are harvested (see `_classify_type`);
+    the value classification is a fact, ambiguous values are dropped, not guessed. This is a PROPOSED
+    `to_be` for the interview to elect and refine — e.g. splitting the flat `dimension` group into
+    radius / font-size / spacing, which the value alone cannot tell apart — never an enforced contract
+    on its own. It is the design analog of extracting the as-is from code before the user elects the to-be."""
+    buckets = {"color": ("color", {}), "font": ("fontFamily", {}), "dimension": ("dimension", {})}
+    group_of = {"color": "color", "fontFamily": "font", "dimension": "dimension"}
+    for name, value in extract_css_vars(css).items():
+        typ = _classify_type(value)
+        if typ is None:
+            continue
+        buckets[group_of[typ]][1][name] = {"$value": value.strip()}
+    return {g: {"$type": gtype, **toks} for g, (gtype, toks) in buckets.items() if toks}
+
+
 def drift_check(ts: TokenSet, css: str) -> dict:
     """Diff a CSS layer's variables against the DTCG contract. Every mismatch is a drift finding
     (`confidence: extracted` — a value comparison is a fact). Missing/extra/changed are all surfaced;

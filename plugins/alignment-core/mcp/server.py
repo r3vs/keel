@@ -463,6 +463,23 @@ def tokens_diff(contract: str, css: str) -> dict:
     return tools.tokens_diff(contract, css)
 
 
+@mcp.tool(annotations={"title": "Extract Design Tokens (as-is → candidate DTCG)", **_RO})
+def extract_tokens(css: str) -> dict:
+    """Harvest the de-facto design tokens a codebase DECLARES as CSS custom properties into a
+    candidate DTCG contract — the design as-is. WRITES NO FILE.
+
+    Only unambiguous values are harvested (a color literal, a length, a font stack); the value class
+    is a fact, ambiguous values are dropped, not guessed. The result is a PROPOSED to_be for the
+    interview to elect and refine (e.g. splitting the flat dimension group into radius/font-size/
+    spacing), never an enforced contract — the design analog of extracting the as-is before the user
+    elects the to-be.
+
+    Args:
+        css: path to a CSS file (or raw CSS text) that declares :root custom properties.
+    """
+    return tools.extract_tokens(css)
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 
 @mcp.tool(annotations={"title": "Build Structural Graph", **_RW})

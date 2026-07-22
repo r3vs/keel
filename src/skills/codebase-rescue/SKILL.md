@@ -258,8 +258,10 @@ Rescue-specific:
 - `references/toolchain.md` — deterministic tools, install, SARIF normalization.
 - `references/phase-1-comprehension.md` — graph, wiki, finding, pin materialization.
 - `references/contract-reconciliation.md` — the cross-layer engine (core module).
-- `references/module-design-alignment.md` — the presentation-layer contract: Impeccable's no-LLM
-  detector bound to the ledger (design_concern; contract_mismatch vs an elected DESIGN.md).
+- `references/module-design-alignment.md` — the presentation-layer contract: DTCG tokens + Impeccable's
+  no-LLM detector bound to the ledger (design_concern; contract_mismatch vs the elected contract).
+- `references/browser-verification.md` — verify UI behavior + the production design render in a real
+  browser (Playwright): deterministic token-membership + judgment visual-regression, "resolved = observed".
 - `references/phase-2-interview.md` — how rescue sources the shared funnel (pins = findings).
 - `references/phase-3-roadmap.md` — diff + dependency sequencing.
 - `references/phase-4-remediation.md` — the ponytail ladder in practice.

@@ -312,6 +312,13 @@ def tokens_diff(contract: str, css: str) -> dict:
     return DT.drift_check(ts, text)
 
 
+def extract_tokens(css: str) -> dict:
+    import design_tokens as DT
+    p = Path(css)
+    text = p.read_text(encoding="utf-8") if p.exists() else css
+    return {"candidate": DT.harvest_tokens(text)}
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 # These read/write the graph.json + its projections on disk. The graph is the foundational
 # artifact the rest of the family consumes (phases communicate through disk, never a session).
