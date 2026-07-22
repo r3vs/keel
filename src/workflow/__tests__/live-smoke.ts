@@ -1,11 +1,13 @@
 /**
- * LIVE end-to-end smoke — drives a REAL host (opencode) through the real adapter + engine.
+ * LIVE end-to-end smoke — drives REAL hosts through the real adapters + engine.
  *
- * NOT part of `npm test`: it spends real tokens and needs opencode reachable. Manual:
- *   node --experimental-strip-types src/workflow/__tests__/live-smoke.ts
- * Here it routes opencode through WSL (`wsl.exe -- <linux-bin> …`). Proves: (1) the engine drives a
- * real host, (2) journal replay against a real host is free (0 new host calls), (3) the vm-sandbox
- * source path also drives a real host.
+ * NOT part of `npm test`: spends real tokens, needs the hosts reachable (here via WSL). Manual:
+ *   node --experimental-strip-types src/workflow/__tests__/live-smoke.ts            # all hosts
+ *   SMOKE_ONLY=opencode node --experimental-strip-types …/live-smoke.ts             # one host
+ *   SMOKE_ONLY=codex    node --experimental-strip-types …/live-smoke.ts
+ * Proves: (1) the engine drives a real host, (2) journal replay against a real host is free
+ * (0 new host calls), (3) the vm-sandbox source path also drives a real host, (4) a real host
+ * failure (e.g. codex usage-limit at rc=0) surfaces as a thrown error, not a silent ''.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -13,10 +15,17 @@ import type { ExecFn } from '../exec.ts';
 import { runWorkflow } from '../engine.ts';
 import { runWorkflowSource } from '../sandbox.ts';
 import { OpencodeCliAdapter } from '../adapters/opencode.ts';
+import { CodexCliAdapter } from '../adapters/codex.ts';
 
 const OPENCODE = '/home/pietr/.opencode/bin/opencode';
+const CODEX = '/home/pietr/.local/bin/codex';
+const PROMPT = 'Reply with exactly the digit 4 and nothing else.';
 
-// Route the adapter's process boundary through WSL, counting real invocations.
+const only = process.env.SMOKE_ONLY;
+const runOpencode = !only || only === 'opencode';
+const runCodex = !only || only === 'codex';
+
+// Route an adapter's process boundary through WSL, counting real invocations.
 function wslExec(counter: { n: number }): ExecFn {
   return (cmd, args, input) =>
     new Promise((resolve, reject) => {
@@ -33,40 +42,49 @@ function wslExec(counter: { n: number }): ExecFn {
     });
 }
 
-const counter = { n: 0 };
-const oc = new OpencodeCliAdapter({ bin: OPENCODE, exec: wslExec(counter) });
-const PROMPT = 'Reply with exactly the digit 4 and nothing else.';
+const topo = async (wf: { phase(t: string): void; agent(p: string): Promise<unknown> }) => {
+  wf.phase('smoke');
+  return wf.agent(PROMPT);
+};
 
-// 1 — function topology, one real call.
-const r1 = await runWorkflow(
-  async (wf) => {
-    wf.phase('smoke');
-    return wf.agent(PROMPT);
-  },
-  { adapter: oc, onLog: (m) => console.log('   ', m) },
-);
-console.log('1) live result:', JSON.stringify(r1.result), '| host calls so far:', counter.n);
-assert.ok(String(r1.result).includes('4'), 'expected the model to reply 4');
+if (runOpencode) {
+  const counter = { n: 0 };
+  const oc = new OpencodeCliAdapter({ bin: OPENCODE, exec: wslExec(counter) });
 
-// 2 — replay from journal: must not touch the host again.
-const before = counter.n;
-const r2 = await runWorkflow(
-  async (wf) => {
-    wf.phase('smoke');
-    return wf.agent(PROMPT);
-  },
-  { adapter: oc, resume: r1.journal },
-);
-console.log('2) replay result:', JSON.stringify(r2.result), '| new host calls:', counter.n - before);
-assert.equal(counter.n - before, 0, 'replay must be free (served from journal)');
-assert.equal(r2.result, r1.result, 'replay must reproduce the result');
+  const r1 = await runWorkflow(topo, { adapter: oc, onLog: (m) => console.log('   ', m) });
+  console.log('opencode 1) live result:', JSON.stringify(r1.result), '| host calls:', counter.n);
+  assert.ok(String(r1.result).includes('4'), 'opencode should reply 4');
 
-// 3 — vm-sandbox source path drives a real host too.
-const r3 = await runWorkflowSource(`phase('smoke'); return await agent(args.p);`, {
-  adapter: oc,
-  args: { p: PROMPT },
-});
-console.log('3) vm-source live result:', JSON.stringify(r3.result));
-assert.ok(String(r3.result).includes('4'), 'vm path should also reach the host');
+  const before = counter.n;
+  const r2 = await runWorkflow(topo, { adapter: oc, resume: r1.journal });
+  console.log('opencode 2) replay:', JSON.stringify(r2.result), '| new host calls:', counter.n - before);
+  assert.equal(counter.n - before, 0, 'replay must be free (served from journal)');
+  assert.equal(r2.result, r1.result, 'replay must reproduce the result');
 
-console.log(`\nLIVE SMOKE OK — ${counter.n} real opencode call(s) total.`);
+  const r3 = await runWorkflowSource(`phase('smoke'); return await agent(args.p);`, {
+    adapter: oc,
+    args: { p: PROMPT },
+  });
+  console.log('opencode 3) vm-source result:', JSON.stringify(r3.result));
+  assert.ok(String(r3.result).includes('4'), 'vm path should also reach the host');
+  console.log(`opencode END-TO-END OK — ${counter.n} real call(s).`);
+}
+
+if (runCodex) {
+  const counter = { n: 0 };
+  const cx = new CodexCliAdapter({ bin: CODEX, exec: wslExec(counter) });
+  try {
+    const rc = await runWorkflow(topo, { adapter: cx });
+    console.log('codex) live result:', JSON.stringify(rc.result));
+    assert.ok(String(rc.result).includes('4'), 'codex should reply 4');
+    console.log('codex END-TO-END OK (success path).');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // A real host failure (e.g. usage-limit at rc=0) must surface as a throw, not a silent ''.
+    if (/usage limit|turn failed/i.test(msg)) {
+      console.log('codex) fail-loud verified against REAL host:', msg.replace(/\s+/g, ' ').slice(0, 90));
+    } else {
+      throw e;
+    }
+  }
+}
