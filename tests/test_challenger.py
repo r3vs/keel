@@ -31,15 +31,16 @@ def acceptance_pin(led, verify, title="outcome"):
 
 
 class TestUnfalsifiable(unittest.TestCase):
-    def test_vibe_verify_is_challenged(self):
+    def test_vague_but_present_verify_is_left_to_judgment(self):
+        # A present-but-vague verify ("feels solid") is NOT flagged by the deterministic slice —
+        # that is a judgment call for the agent-driven unfalsifiable challenge. Keyword-sniffing
+        # here would be the guessing this package forbids (and "fast" hides inside "breakfast").
         led = fresh()
         pin = acceptance_pin(led, verify="auth should feel solid")
         led.decide(pin["id"], "in", "elected", "flip")
         proposals = challenger.run(led)
-        self.assertEqual(len(proposals), 1)
-        self.assertEqual(proposals[0]["class"], "unfalsifiable")
-        self.assertEqual(led.pin(pin["id"])["state"], "needs_input")   # reopened
-        self.assertEqual(led.pin(pin["id"])["substate"], "challenged")
+        self.assertEqual(proposals, [])
+        self.assertEqual(led.pin(pin["id"])["state"], "decided")       # untouched by the slice
 
     def test_testable_verify_is_not_challenged(self):
         led = fresh()
@@ -87,7 +88,7 @@ class TestIgnoredFanout(unittest.TestCase):
 class TestNeutrality(unittest.TestCase):
     def test_challenger_never_writes_a_decision_event(self):
         led = fresh()
-        pin = acceptance_pin(led, verify="feels good")
+        pin = acceptance_pin(led, verify="")   # empty verify: the deterministic unfalsifiable case
         led.decide(pin["id"], "in", "elected", "flip")
         before = len([e for e in led.data["decision_log"] if e["id"].startswith("ev_")])
         challenger.run(led)
@@ -97,7 +98,7 @@ class TestNeutrality(unittest.TestCase):
 
     def test_dry_run_reports_without_reopening(self):
         led = fresh()
-        pin = acceptance_pin(led, verify="feels good")
+        pin = acceptance_pin(led, verify="")   # empty verify: the deterministic unfalsifiable case
         led.decide(pin["id"], "in", "elected", "flip")
         proposals = challenger.run(led, apply=False)
         self.assertEqual(len(proposals), 1)
