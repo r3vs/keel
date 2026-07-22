@@ -6,13 +6,20 @@
  * a hand-rolled newline-delimited JSON-RPC client over stdio — NOT `@modelcontextprotocol/sdk`. The
  * SDK is not in Pi's jiti allowlist, so using it would force this into an npm sub-package inside Pi's
  * shared dependency tree and reintroduce the exact `ERESOLVE` that makes `nicobailon/pi-mcp-adapter`
- * unusable (its open issue #176). A loose `.ts` sidesteps that entirely.
+ * unusable (its open issue #176). A loose `.ts` sidesteps that entirely. The protocol is small and
+ * fully exercised in `tests/test_mcp_server.py`, so owning ~130 lines of it is cheaper than the SDK.
+ *
+ * Robustness posture — the whole point of hand-rolling it is that nothing here may hang or wedge:
+ *   - stderr is DRAINED (a `pipe` that is never read fills its OS buffer and deadlocks the child);
+ *     a bounded tail is kept so a startup failure is diagnosable, not silent.
+ *   - every connect failure (spawn error, crash, initialize timeout) TEARS THE PROCESS DOWN and nulls
+ *     it, so the next call re-spawns from clean instead of returning early on a dead handle.
+ *   - the whole thing FAILS OPEN: `uv` missing, server won't start, request times out -> the tool
+ *     returns a readable error instead of throwing out of the extension (the `ledger-gate.ts` posture).
  *
  * ONE proxy tool `alignment` is registered — synchronously, so the "does registerTool after an await
  * get collected?" question (unverified on Pi) never arises. `{describe:true}` lists the server's
- * tools; `{tool, args}` calls one. The server connection is LAZY (spawned on first use) and the whole
- * thing FAILS OPEN: if `uv` is missing or the server cannot start, the tool returns a readable error
- * instead of crashing the extension — the same posture as `ledger-gate.ts`.
+ * tools; `{tool, args}` calls one. The server connection is LAZY (spawned on first use).
  *
  * Install: `scripts/install.sh` symlinks this into `~/.pi/agent/extensions/`, keeping the relative
  * link to `../../../mcp/server.py` (the vendored server) intact — the same trick opencode's `mcp.ts`
@@ -30,12 +37,15 @@ import { fileURLToPath } from "node:url"
 // The vendored MCP server sits at the plugin root; from adapters/pi/extensions/ that is three up.
 const SERVER = resolve(dirname(fileURLToPath(import.meta.url)), "../../../mcp/server.py")
 const REQUEST_TIMEOUT_MS = 60_000 // first `uv run` resolves FastMCP (~7s cold); generous ceiling.
+const STDERR_TAIL_MAX = 4096 // enough of a failed startup to diagnose, bounded so it cannot grow.
+const PROTOCOL_VERSION = "2025-11-25" // kept identical to tests/test_mcp_server.py (CI-verified).
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
 
 class McpStdioClient {
   private proc: ChildProcessWithoutNullStreams | null = null
   private buf = ""
+  private stderrTail = ""
   private id = 0
   private readonly pending = new Map<number, Pending>()
   private connecting: Promise<void> | null = null
@@ -43,24 +53,59 @@ class McpStdioClient {
   private async ensure(): Promise<void> {
     if (this.proc) return
     if (this.connecting) return this.connecting
-    this.connecting = (async () => {
-      const p = spawn("uv", ["run", "--script", SERVER], { stdio: ["pipe", "pipe", "pipe"] })
-      this.proc = p
-      p.stdout.setEncoding("utf8")
-      p.stdout.on("data", (chunk: string) => this.onData(chunk))
-      p.on("error", (e) => this.fail(e))
-      p.on("exit", () => this.fail(new Error("MCP server exited")))
-      await this.request("initialize", {
-        protocolVersion: "2025-11-25",
-        capabilities: {},
-        clientInfo: { name: "codebase-alignment-pi", version: "0.1.0" },
-      })
-      this.notify("notifications/initialized")
-    })()
+    this.connecting = this.connect()
     try {
       await this.connecting
     } finally {
       this.connecting = null
+    }
+  }
+
+  private async connect(): Promise<void> {
+    let p: ChildProcessWithoutNullStreams
+    try {
+      p = spawn("uv", ["run", "--script", SERVER], { stdio: ["pipe", "pipe", "pipe"] })
+    } catch (e) {
+      throw e instanceof Error ? e : new Error(String(e))
+    }
+    this.proc = p
+    this.buf = ""
+    this.stderrTail = ""
+    p.stdout.setEncoding("utf8")
+    p.stderr.setEncoding("utf8")
+    p.stdout.on("data", (chunk: string) => this.onData(chunk))
+    // Drain stderr: an unread `pipe` fills its OS buffer and deadlocks the child. Keep a bounded
+    // tail only, so `uv`/FastMCP startup errors surface in the failure message instead of vanishing.
+    p.stderr.on("data", (chunk: string) => {
+      this.stderrTail = (this.stderrTail + chunk).slice(-STDERR_TAIL_MAX)
+    })
+    p.on("error", (e) => this.fail(e))
+    p.on("exit", (code) => this.fail(new Error(`MCP server exited (code ${code ?? "?"})`)))
+    try {
+      await this.request("initialize", {
+        protocolVersion: PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "codebase-alignment-pi", version: "0.1.0" },
+      })
+      this.notify("notifications/initialized")
+    } catch (e) {
+      // The connect sequence failed. Tear the process down and null it so the NEXT call re-spawns
+      // from clean, rather than ensure() short-circuiting on a dead handle forever.
+      this.teardown()
+      const base = e instanceof Error ? e.message : String(e)
+      const detail = this.stderrTail.trim()
+      throw new Error(detail ? `${base}\n${detail}` : base)
+    }
+  }
+
+  private teardown(): void {
+    const p = this.proc
+    this.proc = null
+    try {
+      p?.stdin.end()
+      p?.kill()
+    } catch {
+      /* fail open */
     }
   }
 
@@ -98,7 +143,9 @@ class McpStdioClient {
   }
 
   private send(obj: unknown): void {
-    this.proc!.stdin.write(JSON.stringify(obj) + "\n")
+    const p = this.proc
+    if (!p) throw new Error("MCP server is not connected")
+    p.stdin.write(JSON.stringify(obj) + "\n")
   }
 
   private notify(method: string, params: unknown = {}): void {
@@ -110,10 +157,16 @@ class McpStdioClient {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(new Error(`MCP request '${method}' timed out`))
+        reject(new Error(`MCP request '${method}' timed out after ${REQUEST_TIMEOUT_MS}ms`))
       }, REQUEST_TIMEOUT_MS)
       this.pending.set(id, { resolve, reject, timer })
-      this.send({ jsonrpc: "2.0", id, method, params })
+      try {
+        this.send({ jsonrpc: "2.0", id, method, params })
+      } catch (e) {
+        clearTimeout(timer)
+        this.pending.delete(id)
+        reject(e instanceof Error ? e : new Error(String(e)))
+      }
     })
   }
 
@@ -129,13 +182,7 @@ class McpStdioClient {
   }
 
   close(): void {
-    try {
-      this.proc?.stdin.end()
-      this.proc?.kill()
-    } catch {
-      /* fail open */
-    }
-    this.proc = null
+    this.teardown()
   }
 }
 
