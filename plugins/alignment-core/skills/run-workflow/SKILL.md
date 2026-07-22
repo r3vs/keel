@@ -71,6 +71,25 @@ host cli). If Node is unavailable, degrade: run the topology's steps by hand, or
 3. **Report** what was written / opened, and stop. A finding is a gap, not a resolution — the
    interview elects what to do next.
 
+## Author a workflow on the fly
+
+Beyond the registered topologies you can write a **one-off workflow as source** and run it — the
+"dynamic" path. Pass it via `--script <file>` or pipe it to `--script-stdin`:
+
+```bash
+node --experimental-strip-types <this-skill>/engine/cli.ts --host <the host you are> --script my-workflow.js
+```
+
+The script runs in a vm with the DSL injected as globals: `agent(prompt, opts)`, `parallel(thunks)`,
+`pipeline(items, …stages)`, `verify(item, opts)`, `loopUntilDry(opts)`, `checkpoint(prompt, opts)`,
+`phase(title)`, `log(msg)`, and `args` (from `--args-file` / `--args-stdin`). `return` a value and it
+is printed as JSON — handle it like a topology's output (findings → `ledger_add_pin`, etc.).
+
+Determinism: the script may NOT use `Date.now()` / `Math.random()` / argless `new Date()` (they break
+journal replay — the guard rejects them). The vm is NOT a security sandbox: it exposes only the DSL +
+pure JS (no `require` / `fs` / `process` / network), so a script reaches outside ONLY through `agent()`.
+Run only scripts YOU authored for the task at hand.
+
 ## Rules
 
 - The engine calls no MCP and writes nothing — if you find yourself wanting it to, stop: that write

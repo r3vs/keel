@@ -84,6 +84,7 @@ export async function runWorkflowSource(
     pipeline: bind('pipeline'),
     verify: bind('verify'),
     loopUntilDry: bind('loopUntilDry'),
+    checkpoint: bind('checkpoint'),
     phase: bind('phase'),
     log: bind('log'),
     args: opts.args,

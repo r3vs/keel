@@ -15,6 +15,7 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { runWorkflow } from './engine.ts';
+import { runWorkflowSource } from './sandbox.ts';
 import type { SpawnAdapter } from './adapter.ts';
 import { ClaudeCliAdapter } from './adapter.ts';
 import { CodexCliAdapter } from './adapters/codex.ts';
@@ -35,6 +36,8 @@ export type CliOpts = {
   ledger?: string;
   argsFile?: string;
   argsStdin: boolean;
+  script?: string; // path to an ad-hoc workflow SOURCE (the "author on the fly" path)
+  scriptStdin: boolean;
   worktree: boolean;
   json: boolean;
 };
@@ -44,6 +47,7 @@ export function parseArgs(argv: string[]): CliOpts {
     host: 'claude',
     topology: 'phase1-finding',
     argsStdin: false,
+    scriptStdin: false,
     worktree: false,
     json: true,
   };
@@ -55,13 +59,19 @@ export function parseArgs(argv: string[]): CliOpts {
     else if (a === '--ledger') o.ledger = argv[++i];
     else if (a === '--args-file') o.argsFile = argv[++i];
     else if (a === '--args-stdin') o.argsStdin = true;
+    else if (a === '--script') o.script = argv[++i];
+    else if (a === '--script-stdin') o.scriptStdin = true;
     else if (a === '--worktree') o.worktree = true;
     else if (a === '--text') o.json = false;
   }
-  // `--args-file -` is shorthand for stdin (pipe `build_waves` straight in, no temp file).
+  // `--args-file -` / `--script -` are shorthand for reading that input from stdin.
   if (o.argsFile === '-') {
     o.argsFile = undefined;
     o.argsStdin = true;
+  }
+  if (o.script === '-') {
+    o.script = undefined;
+    o.scriptStdin = true;
   }
   return o;
 }
@@ -94,6 +104,7 @@ export async function runCli(
     adapters?: Record<string, (model?: string) => SpawnAdapter>;
     topologies?: Record<string, Topology>;
     args?: unknown;
+    source?: string;
     repoRoot?: string;
   },
 ): Promise<unknown> {
@@ -103,14 +114,16 @@ export async function runCli(
   if (!makeAdapter) {
     throw new Error(`unknown --host "${opts.host}" (have: ${Object.keys(adapters).join(', ')})`);
   }
-  const topo = topologies[opts.topology];
-  if (!topo) {
-    throw new Error(`unknown --topology "${opts.topology}" (have: ${Object.keys(topologies).join(', ')})`);
-  }
-  // Topology args: injected (tests) > stdin (agent pipes `build_waves` straight in) > file > none.
+
+  // An ad-hoc workflow SOURCE (author-on-the-fly) takes precedence over a registered topology.
+  const source =
+    deps?.source ??
+    (opts.scriptStdin ? readFileSync(0, 'utf8') : opts.script ? readFileSync(opts.script, 'utf8') : undefined);
+
+  // Topology args: injected (tests) > stdin (only when the script isn't already using stdin) > file > none.
   const args =
     deps?.args ??
-    (opts.argsStdin
+    (opts.argsStdin && !opts.scriptStdin
       ? JSON.parse(readFileSync(0, 'utf8') || '{}')
       : opts.argsFile
         ? JSON.parse(readFileSync(opts.argsFile, 'utf8'))
@@ -119,6 +132,17 @@ export async function runCli(
   let adapter = makeAdapter(opts.model);
   if (opts.worktree || WRITE_TOPOLOGIES.has(opts.topology)) {
     adapter = new WorktreeAdapter(adapter, { repoRoot: deps?.repoRoot ?? process.cwd() });
+  }
+
+  if (source != null) {
+    // vm sandbox + determinism guard; primitives injected as globals (agent/parallel/verify/…/checkpoint).
+    const { result } = await runWorkflowSource(source, { adapter, args, onLog: (m) => console.error(m) });
+    return result;
+  }
+
+  const topo = topologies[opts.topology];
+  if (!topo) {
+    throw new Error(`unknown --topology "${opts.topology}" (have: ${Object.keys(topologies).join(', ')})`);
   }
   const { result } = await runWorkflow((wf) => topo(wf, args), {
     adapter,
