@@ -17,6 +17,16 @@ that used to stand here — *"normalize all output to SARIF/JSON so fp-check and
 one format"* — described this and never said to run it, which is how a tested implementation and a
 playbook that reimplements it by judgment end up side by side.
 
+**Coverage is a fact, not a hope.** After the tools run:
+
+```bash
+python scripts/runtime/coverage.py --langs <tokei languages> --reports .audit/*.sarif --ledger <ledger>
+```
+
+It compares the capabilities EXPECTED for the present stacks against the tools that actually produced
+a report, and writes a `coverage-gap` `incompleteness` pin for each uncovered one. A tool that did not
+run is a **visible gap, never a silent clean 0** (`references/core/static-analysis.md`).
+
 **Type-checker output is the exception worth knowing:** `findings.py` marks rule-ids prefixed
 `mypy` / `tsc` / `pyright` / `typecheck` / `compile` / `syntax` as **deterministic**, so they skip
 fp-check entirely and are never DROPPED as suspected false positives. A proven diagnostic needs no

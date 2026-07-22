@@ -312,6 +312,21 @@ def challenge_oracle(ledger: str) -> dict:
     return tools.challenge_oracle(ledger)
 
 
+@mcp.tool(annotations={"title": "Coverage Gaps (what analysis did NOT run)", **_RO})
+def coverage_gaps(langs: list[str], reports: list[str] | None = None) -> dict:
+    """Which expected analysis capabilities ran vs are MISSING for the present stacks.
+
+    From the languages tokei found, derive the capabilities expected (SAST, secrets, type-check, …),
+    compare against the tools that actually produced a report, and return each uncovered one. A gap is
+    'unchecked', never a clean 0 — surface each as a coverage-gap incompleteness pin.
+
+    Args:
+        langs: Languages present, from tokei (e.g. ["Python", "TypeScript"]).
+        reports: SARIF/OSV report files that were actually produced (omit if none ran).
+    """
+    return tools.coverage_gaps(langs, reports)
+
+
 @mcp.tool(annotations={"title": "Render Visual Map", **_RW})
 def render_map(ledger: str, out: str) -> dict:
     """Render the ledger as the self-contained visual HTML map. WRITES A FILE.

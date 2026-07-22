@@ -44,8 +44,15 @@ mutation. Three high-value static signals are commonly under-used:
     just a green build.
   - **greenfield paved road** (Phase 3): scaffold the type-checker and the architecture-fitness /
     dependency-constraint checks into CI, so the elected boundaries are enforced from commit one.
-- **Degrade gracefully.** No language server or checker for a language → fall back to the graph /
-  grep and note the gap. Never hard-fail (same posture as the rest of the toolchain).
+- **Degrade gracefully — but never silently.** No checker for a *present* language → the run
+  continues, but the gap becomes a **fact in the ledger, not a silent zero**.
+  `scripts/runtime/coverage.py` compares the capabilities expected for the stacks tokei found against
+  the tools that actually produced a report, and surfaces each uncovered one as an `incompleteness`
+  **`coverage-gap`** pin (`confidence: extracted` — the absence is a fact). "Unchecked" must never
+  read as "clean": a deterministic module that could not run its engine did not find zero problems, it
+  found *nothing*. The gap then flows through the interview like any pin — closed (install the tool +
+  re-run) or accepted (out of scope) — never defaulted away. **Never hard-fail; never hide the hole
+  either** — that silent fallback is the package's own "claiming vs doing" failure turned inward.
 
 ## Prefer the checkable formulation (a selection heuristic)
 

@@ -24,6 +24,7 @@ SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py"
 EXPECTED_TOOLS = {
     "ledger_summary", "interview_next", "contract_diff", "reconcile_layers", "blast_radius",
     "generate_layers", "findings_gate", "build_waves", "challenge_oracle", "render_map",
+    "coverage_gaps",
     # non-electing ledger writes; decide/accept stay human-only and are deliberately NOT here
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",

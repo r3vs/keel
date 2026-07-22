@@ -130,6 +130,12 @@ over-reports; this gate is non-negotiable.
 > (two layers head-to-head, no carrier — the usual case on an existing codebase, where no contract
 > exists yet). Both read each stack's own type system and guess nothing; see
 > `references/contract-reconciliation.md` before using either.
+>
+> **Coverage is recorded, not assumed.** After running the tools,
+> `python scripts/runtime/coverage.py --langs <tokei languages> --reports .audit/*.sarif --ledger <ledger>`
+> turns every EXPECTED-but-absent capability into a visible `coverage-gap` pin. A finder whose tool did
+> not run produced *nothing*, not *zero problems* — the ledger must not let the two read the same
+> (`references/core/static-analysis.md`).
 
 ## Step 4 — Materialize pins
 

@@ -170,6 +170,19 @@
       "reference": "references/module-fp-check.md"
     },
     {
+      "id": "coverage",
+      "phase": 1,
+      "kind": "gate",
+      "type": "deterministic",
+      "engine": "scripts/runtime/coverage.py",
+      "tools": [],
+      "produces": [
+        "incompleteness"
+      ],
+      "notes": "Coverage manifest. From the languages tokei detected, derive the analysis capabilities EXPECTED for those stacks, compare against the tools that actually emitted a report, and surface each uncovered capability as a coverage-gap incompleteness pin (confidence extracted — the absence is a fact). Closes the silent-degrade hole: a deterministic finder that could not run its engine is 'unchecked', not 'clean', and the ledger says so. Flows through the interview like any pin — closed (install + re-run) or accepted (out of scope), never defaulted away.",
+      "reference": "references/toolchain.md"
+    },
+    {
       "id": "graph-build",
       "phase": 1,
       "kind": "infrastructure",

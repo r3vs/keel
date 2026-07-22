@@ -112,6 +112,14 @@ def ledger_defer(ledger: str, pin_id: str) -> dict:
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
+# -- coverage manifest -------------------------------------------------------------------------
+
+def coverage_gaps(langs: list, reports: list | None = None) -> dict:
+    """Which expected analysis capabilities ran vs are missing, for the present stacks."""
+    import coverage
+    return coverage.report(langs, reports or [])
+
+
 def contract_diff(contract: str, backend: str = "auto", **layers) -> dict:
     import shapes
     return shapes.drift_check(contract, backend=backend, **{k: v for k, v in layers.items() if v})
