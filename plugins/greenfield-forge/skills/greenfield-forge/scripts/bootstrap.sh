@@ -50,9 +50,16 @@ fi
 # Warm the dependency cache so the server also starts offline. A cold cache with no network is
 # uv's one hard failure: first run needs the network, every run after does not.
 if have uv; then
-  _server="$(cd "$(dirname "$0")/.." && pwd)/src/mcp/server.py"
-  [ -f "$_server" ] && timeout 180 uv run --script "$_server" --help >/dev/null 2>&1
-  ok "MCP dependency cache warmed (server starts offline from here on)"
+  # `dirname "$0")/../..` is the repo root in dev, where src/mcp/server.py lives (the old `/..`
+  # stopped one level short, so the path had a doubled `src/` and never resolved). In the shipped
+  # skill the server is in a sibling plugin (alignment-core/mcp) and is not reachable relatively, so
+  # the `-f` test fails and the host warms it on its own first spawn. Report only what actually ran.
+  _server="$(cd "$(dirname "$0")/../.." && pwd)/src/mcp/server.py"
+  if [ -f "$_server" ] && timeout 180 uv run --script "$_server" --help >/dev/null 2>&1; then
+    ok "MCP dependency cache warmed (server starts offline from here on)"
+  else
+    warn "MCP server not reachable from here to warm — its deps resolve on the host's first spawn (needs network then)"
+  fi
 fi
 
 # --- Core single-binary tools (Go/Rust, no runtime) ------------------------------------
