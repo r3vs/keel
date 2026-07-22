@@ -182,11 +182,14 @@ never ships; CI's `build.py --check` fails if any vendored copy drifts from it, 
 can never diverge — the very anti-divergence property the skills enforce on the codebases they
 touch, applied to their own shared prose.
 
-**Why vendor at all — verified on the opencode and Pi sources, not assumed.** Neither host resolves
-a skill's relative paths against the skill directory; **both resolve against the user's project**. So
-a `../../core/x.md` in a skill body does not read our file — it reads, or misses, something in
-*their* repo (opencode v2 rejects it outright: `relative_escape`). Self-containment is enforced by no
-host; our linter is the only thing between us and a bug both would happily ship.
+**Why vendor at all — distribution atomicity, and nothing else.** The Agent Skills spec's unit of
+distribution is the **standalone skill folder**, and `scripts/install.sh` links each skill directory
+individually into the host — a sibling `core/` is not part of what travels. Vendoring guarantees the
+bytes a skill needs live *inside* the unit that ships. It buys nothing about path resolution: both
+opencode and Pi inject the skill's own base directory and delegate resolution to the model (no host
+resolves skill-relative reads deterministically), so a `../../core/x.md` is not rejected — it is
+lexically internal and would silently read the user's *own* file at that path. Self-containment is
+enforced by no host; our linter is the only thing between us and a bug both would happily ship.
 
 ### Why not just write the text directly in each skill (and delete `core/`)?
 
@@ -229,8 +232,10 @@ The gates: `scripts/build.py --check` (every generated file still equals its sou
 command a shipped file tells an agent to run resolves *after install*, not just here), and
 `python -m unittest discover -s tests`. All run in CI (`.github/workflows/ci.yml`).
 
-The residual none of them close: **`Bash` is a write vector Claude Code cannot restrict** — the
-ledger gate closes that at runtime.
+The residual none of them close: **a plugin cannot ship a selective, agent-scoped `Bash` rule.**
+Claude Code restricts `Bash` fine — `Bash(rm *)`-style matchers exist, with `deny → ask → allow`
+precedence — but only in the user's own `settings.json`, session-wide, which a plugin cannot write.
+The ledger gate closes that residual at runtime.
 
 ## External tool licenses
 

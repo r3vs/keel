@@ -52,8 +52,8 @@ pulled from elsewhere, because a generic skill that cannot write to the decision
 find. Ours bind to it: TDD's red step **is** an acceptance-criterion pin.
 
 Each skill is **self-contained**: the build vendors the doctrine and runtime a skill needs *inside*
-it, because neither opencode nor Pi resolves a skill's relative paths against the skill directory —
-both resolve against the user's own project. See `docs/packaging.md`.
+it, because the Agent Skills spec's unit of distribution is the standalone skill folder — a skill
+copied out of the repo must ship complete, with no pointer dangling outside it. See `docs/packaging.md`.
 
 ## Install
 
@@ -122,7 +122,7 @@ aligned by construction, guarded for life by a CI drift-check.
 
 ## Status
 Design-complete across two methodology skills + eleven composable skills, packaged
-agent-agnostically, with the **runtime largely implemented** (~240 tests in CI). Authored under
+agent-agnostically, with the **runtime largely implemented** (344 tests in CI). Authored under
 `src/runtime/`; reaching the agent as MCP tools, and vendored into each skill that runs it as the
 portable floor:
 
