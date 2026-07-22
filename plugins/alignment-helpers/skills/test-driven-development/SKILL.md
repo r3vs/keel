@@ -37,6 +37,8 @@ catch it. That restores the only property that made the red step worth anything.
 
 ## Binding to the ledger
 
+Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
+
 ```bash
 # the acceptance_criterion pin pre-exists (from the interview, or the defect you're closing):
 python scripts/runtime/ledger.py summary ledger.json

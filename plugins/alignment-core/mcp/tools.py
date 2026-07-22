@@ -51,6 +51,67 @@ def interview_next(ledger: str) -> dict:
     return interview.funnel(_open_existing(ledger))
 
 
+# -- ledger writes (non-electing only; electing an outcome is the human interview's job) ----------
+
+def _open_or_create(path: str):
+    """Load a ledger for a WRITE. Unlike the read path, a missing file is created here — this is how
+    the first pin lands. Reads refuse a missing path; writes bootstrap it."""
+    from ledger import Ledger
+    return Ledger(path)
+
+
+def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence: str,
+                   provenance: list, as_is: dict | None = None, to_be: dict | None = None,
+                   question: dict | None = None, depends_on: list | None = None,
+                   kind_detail: str | None = None, cluster_id: str | None = None) -> dict:
+    led = _open_or_create(ledger)
+    pin = led.add_pin(kind=kind, title=title, severity=severity, confidence=confidence,
+                      provenance=provenance, as_is=as_is, to_be=to_be, question=question,
+                      depends_on=depends_on, kind_detail=kind_detail, cluster_id=cluster_id)
+    led.save()
+    return {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
+
+
+def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: str = "medium",
+                              confidence: str = "inferred") -> dict:
+    led = _open_or_create(ledger)
+    pin = led.surface_assumption(title=title, detail=detail, severity=severity, confidence=confidence)
+    led.save()
+    return {"pin_id": pin["id"], "state": pin["state"]}
+
+
+def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
+                           canonical_target: str | None = None, build_track: str | None = None,
+                           contract_carrier: str | None = None, depends_on: list | None = None) -> dict:
+    led = _open_existing(ledger)
+    item = led.add_remediation(pin_id, action=action, ladder_rung=ladder_rung,
+                               canonical_target=canonical_target, build_track=build_track,
+                               contract_carrier=contract_carrier, depends_on=depends_on)
+    led.save()
+    return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
+
+
+def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status: str) -> dict:
+    led = _open_existing(ledger)
+    item = led.set_remediation_status(pin_id, item_id, status)
+    led.save()
+    return {"item_id": item["id"], "status": item["status"]}
+
+
+def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
+    led = _open_existing(ledger)
+    pin = led.resolve(pin_id, evidence=evidence)
+    led.save()
+    return {"pin_id": pin["id"], "state": pin["state"]}
+
+
+def ledger_defer(ledger: str, pin_id: str) -> dict:
+    led = _open_existing(ledger)
+    pin = led.defer(pin_id)
+    led.save()
+    return {"pin_id": pin["id"], "state": pin["state"]}
+
+
 def contract_diff(contract: str, backend: str = "auto", **layers) -> dict:
     import shapes
     return shapes.drift_check(contract, backend=backend, **{k: v for k, v in layers.items() if v})

@@ -17,13 +17,20 @@ its data**, silently.
 
 The rule this enforces
 ----------------------
-In any shipped, agent-facing file, a path into this package must resolve **at install time**:
+In any shipped, agent-facing file, a path into this package must **exist inside the shipped unit**,
+so a caller that knows the path can find it. It does NOT verify cwd-resolution, because **no host
+resolves a skill-relative command against the skill directory deterministically**: opencode and Pi
+resolve relative paths against the *user's* project, and Claude Code's cwd is the user's project too.
+That is exactly why the MCP server is the preferred channel — its location is host-resolved, so the
+whole path class disappears — and the bundled CLI is the floor. So this gate validates **presence in
+the package**, in two forms:
 
-* under ``skills/`` -> the path is **skill-root-relative** and exists under that skill
-  (every agent resolves skill-bundled assets relative to the skill's own directory);
+* under ``skills/`` -> the path is **skill-root-relative** and exists under that skill: the bytes are
+  vendored into the unit that ships, and the agent reaches them either through the MCP tool or by
+  resolving the path against the skill base directory the host injects (never against its own cwd);
 * in a **plugin-root adapter** (``agents/``, ``commands/``, ``hooks/``) -> the path is
-  ``${CLAUDE_PLUGIN_ROOT}``-anchored, because the adapter ships into a cache dir whose
-  location is only knowable at runtime.
+  ``${CLAUDE_PLUGIN_ROOT}``-anchored, because the adapter ships into a cache dir whose location is
+  only knowable at runtime.
 
 Anything else is drift, and it is invisible until a user installs the package.
 

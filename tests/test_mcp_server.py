@@ -24,8 +24,16 @@ SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py"
 EXPECTED_TOOLS = {
     "ledger_summary", "interview_next", "contract_diff", "reconcile_layers", "blast_radius",
     "generate_layers", "findings_gate", "build_waves", "challenge_oracle", "render_map",
+    # non-electing ledger writes; decide/accept stay human-only and are deliberately NOT here
+    "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
+    "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
 }
-READ_ONLY = EXPECTED_TOOLS - {"generate_layers", "render_map"}
+WRITE_TOOLS = {
+    "generate_layers", "render_map",
+    "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
+    "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
+}
+READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
 
 
 @unittest.skipIf(shutil.which("uv") is None,
@@ -105,10 +113,15 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
         for name in sorted(READ_ONLY):
             with self.subTest(tool=name):
                 self.assertTrue(self.tools[name]["annotations"]["readOnlyHint"])
-        for name in ("generate_layers", "render_map"):
+        for name in sorted(WRITE_TOOLS):
             with self.subTest(tool=name):
                 self.assertFalse(self.tools[name]["annotations"]["readOnlyHint"],
-                                 "this tool writes files and must not claim to be read-only")
+                                 "a write tool must not claim to be read-only")
+
+    def test_decide_is_not_advertised(self):
+        # Electing an outcome stays the human interview's job — no MCP tool may commit a decision.
+        self.assertNotIn("ledger_decide", self.tools)
+        self.assertNotIn("ledger_accept", self.tools)
 
     def test_schemas_are_derived_from_the_signatures(self):
         diff = self.tools["contract_diff"]["inputSchema"]

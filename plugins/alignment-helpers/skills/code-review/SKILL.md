@@ -56,6 +56,8 @@ validating, not reviewing. Say that out loud rather than manufacturing findings.
 
 ## Binding to the ledger
 
+Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
+
 The reviewer is **read-only** (`edit: deny`) — it reads the ledger, it does not write it:
 
 ```bash

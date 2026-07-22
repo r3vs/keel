@@ -47,13 +47,14 @@ mcp = FastMCP(
     instructions=(
         "The deterministic spine of the codebase-alignment skills. The ledger is the single source "
         "of truth; the map, interview, and brainstorm hold no state — they project it. Only the "
-        "human's committed interview answer elects a decision: these tools find, propose, and "
-        "verify, and never decide."
+        "human's committed interview answer elects a decision: these tools find, record, propose, "
+        "and verify, and never decide — electing an outcome stays the human interview's job."
     ),
 )
 
 _RO = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 _RW = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}
+_RW_CREATE = {**_RW, "idempotentHint": False}  # each call appends a new pin / remediation item
 
 
 @mcp.tool(annotations={"title": "Ledger Summary", **_RO})
@@ -81,6 +82,111 @@ def interview_next(ledger: str) -> dict:
         ledger: Path to ledger.json.
     """
     return tools.interview_next(ledger)
+
+
+@mcp.tool(annotations={"title": "Ledger — Add Pin (finding / defect / open_decision)", **_RW_CREATE})
+def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence: str,
+                   provenance: list, as_is: dict | None = None, to_be: dict | None = None,
+                   question: dict | None = None, depends_on: list[str] | None = None,
+                   kind_detail: str | None = None, cluster_id: str | None = None) -> dict:
+    """Record a pin — a finding, a defect, an open_decision. WRITES THE LEDGER; never elects it.
+
+    Creates the gap; does NOT decide its outcome — only the human interview commits a decision.
+    as_is is descriptive (a defect's root cause goes here or in kind_detail); to_be is elected later.
+
+    Args:
+        ledger: Path to ledger.json (created if absent — this is how the first pin lands).
+        kind: contract_mismatch | internal_contradiction | ambiguity | incompleteness | design_concern | defect | open_decision | acceptance_criterion | other.
+        title: Short human-readable title.
+        severity: blocker | high | medium | low.
+        confidence: extracted | inferred | ambiguous.
+        provenance: List of {source, detail} — who found this and how (required, non-empty).
+        as_is: Current descriptive state (optional).
+        to_be: Elected by the interview later, not here (optional).
+        question: Materializes the pin as needs_input (optional).
+        depends_on: Pin ids this depends on (optional).
+        kind_detail: Required when kind is "other".
+        cluster_id: Optional cluster grouping.
+    """
+    return tools.ledger_add_pin(ledger, kind, title, severity, confidence, provenance,
+                                as_is, to_be, question, depends_on, kind_detail, cluster_id)
+
+
+@mcp.tool(annotations={"title": "Ledger — Surface an Assumption", **_RW_CREATE})
+def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: str = "medium",
+                              confidence: str = "inferred") -> dict:
+    """Surface a forced assumption as a vetoable pin (the anti-slop rule turned on the agent itself).
+
+    Under-specified input forces a guess? Record it as a pin the human can veto — never encode it
+    silently. Enters with confidence inferred|ambiguous and a keep/correct question.
+
+    Args:
+        ledger: Path to ledger.json (created if absent).
+        title: Short title for the assumption.
+        detail: What you assumed, in order to proceed.
+        severity: blocker | high | medium | low.
+        confidence: inferred | ambiguous.
+    """
+    return tools.ledger_surface_assumption(ledger, title, detail, severity, confidence)
+
+
+@mcp.tool(annotations={"title": "Ledger — Add Remediation / Build Item", **_RW_CREATE})
+def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
+                           canonical_target: str | None = None, build_track: str | None = None,
+                           contract_carrier: str | None = None, depends_on: list[str] | None = None) -> dict:
+    """Attach a RemediationItem (rescue) or BuildItem (greenfield, build_track set) to a decided pin.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin this remediation closes.
+        action: consolidate | implement | refactor | delete | align (rescue) or scaffold | implement | wire | configure | instrument (greenfield).
+        ladder_rung: The ponytail-ladder rung (YAGNI by construction).
+        canonical_target: Optional canonical target of a consolidate.
+        build_track: "A" or "B" — set this to make it a BuildItem.
+        contract_carrier: Optional contract carrier path.
+        depends_on: Remediation ids this depends on.
+    """
+    return tools.ledger_add_remediation(ledger, pin_id, action, ladder_rung, canonical_target,
+                                        build_track, contract_carrier, depends_on)
+
+
+@mcp.tool(annotations={"title": "Ledger — Set Remediation Status", **_RW})
+def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status: str) -> dict:
+    """Move a remediation item todo -> in_progress -> done.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin the item is on.
+        item_id: The remediation/build item id.
+        status: todo | in_progress | done.
+    """
+    return tools.ledger_set_remediation_status(ledger, pin_id, item_id, status)
+
+
+@mcp.tool(annotations={"title": "Ledger — Resolve a Pin (resolved = observed)", **_RW})
+def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
+    """Resolve a pin — records the OBSERVED evidence that closed the gap. Requires every remediation done.
+
+    Evidence is what you OBSERVED (the endpoint returned, the reproduction no longer reproduces) —
+    not "the code is written". The tool enforces 'resolved = observed' by requiring it.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin to resolve.
+        evidence: What you observed that closed the gap (required, non-empty).
+    """
+    return tools.ledger_resolve(ledger, pin_id, evidence)
+
+
+@mcp.tool(annotations={"title": "Ledger — Defer a Pin", **_RW})
+def ledger_defer(ledger: str, pin_id: str) -> dict:
+    """Mark a pin out of scope now (YAGNI at spec level) — it stays as future backlog.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin to defer.
+    """
+    return tools.ledger_defer(ledger, pin_id)
 
 
 @mcp.tool(annotations={"title": "Contract Diff (cross-layer drift)", **_RO})

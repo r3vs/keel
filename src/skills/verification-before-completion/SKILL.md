@@ -66,6 +66,8 @@ location — and fails for everyone. **Verify from the user's position, not your
 
 ## Binding to the ledger
 
+Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
+
 ```bash
 # resolve ONLY after observing — the command itself demands the evidence:
 python scripts/runtime/ledger.py resolve ledger.json --pin <pin_id> --evidence "<what you observed>"

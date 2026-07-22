@@ -39,16 +39,22 @@ what the spec says it means.
 |---|---|---|
 | the state, before acting | `ledger_summary` | `python scripts/runtime/ledger.py summary <ledger>` |
 | the next real questions | `interview_next` | `python scripts/runtime/ledger.py interview <ledger>` |
-| add a finding / defect / `open_decision` | — | `python scripts/runtime/ledger.py add-pin <ledger> --kind … --title … --severity … --confidence … --provenance …` |
-| plan & close the gap | — | `python scripts/runtime/ledger.py add-remediation <ledger> …`, then `set-remediation-status … --status done`, then `resolve <ledger> --pin … --evidence …` |
-| surface a forced assumption | — | `python scripts/runtime/ledger.py surface-assumption <ledger> --title … --detail …` |
+| add a finding / defect / `open_decision` | `ledger_add_pin` | `python scripts/runtime/ledger.py add-pin <ledger> --kind … --title … --severity … --confidence … --provenance …` |
+| plan & close the gap | `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` | `python scripts/runtime/ledger.py add-remediation <ledger> …`, then `set-remediation-status … --status done`, then `resolve <ledger> --pin … --evidence …` |
+| surface a forced assumption | `ledger_surface_assumption` | `python scripts/runtime/ledger.py surface-assumption <ledger> --title … --detail …` |
 
 The reads are automatable **and so is every non-electing write** — add a finding, plan its
 remediation, mark an item done, resolve a pin. `resolve` demands `--evidence` (what you *observed*
 closed the gap, not that code was written): the command itself enforces `resolved = observed`. What
 stays off-limits to every agent is the one **electing** write — only the human's committed interview
 answer sets `state: decided` and appends a `DecisionEvent`, so there is deliberately no `decide`
-command. (The MCP surface exposes the reads as typed tools today; the writes run through this floor CLI.)
+command and no `ledger_decide` tool.
+
+**Prefer the MCP tools.** The server's location is resolved by the host, so the `ledger_*` tools work
+from the user's project cwd. The CLI is the **floor** for when the MCP server is absent (e.g. Pi has
+no MCP): there a bare `scripts/runtime/…` path is **skill-relative, never cwd-relative** — resolve it
+against the skill's base directory the host injects, not the directory you are running from. No host
+resolves that for you deterministically, which is exactly why the MCP channel is preferred.
 
 **Reading a ledger that isn't there is not an empty ledger.** The tools refuse a missing path rather
 than answering "no pins", because that answer reads as "nothing to do" and is the most expensive

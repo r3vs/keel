@@ -32,6 +32,8 @@ that impossible, and it is deliberately slower at the start and much faster at t
 
 ## Binding to the ledger
 
+Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
+
 A bug is a `defect` pin, and the pin holds what a commit message loses:
 
 - `as_is` = the observed wrong behavior, with the reproduction.
