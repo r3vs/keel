@@ -230,27 +230,3 @@ def render_file(graph_path: str | pathlib.Path, out_path: str | pathlib.Path,
     out = pathlib.Path(out_path)
     out.write_text(render(data, tour, title=out.stem), encoding="utf-8", newline="\n")
     return out
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Render a structural graph.json as one self-contained, navigable HTML map "
-                    "(layered lens: layers → files → neighbourhood). The understand-mode visual.")
-    parser.add_argument("graph", help="path to graph.json (from scripts/runtime/graph_build.py)")
-    parser.add_argument("-o", "--out", default="graph-map.html")
-    parser.add_argument("--tour", help="optional tour.json to drive the tour panel")
-    parser.add_argument("--title", default="")
-    args = parser.parse_args(argv)
-
-    data = json.loads(pathlib.Path(args.graph).read_text(encoding="utf-8"))
-    tour = json.loads(pathlib.Path(args.tour).read_text(encoding="utf-8")) if args.tour else None
-    pathlib.Path(args.out).write_text(render(data, tour, title=args.title or pathlib.Path(args.out).stem),
-                                      encoding="utf-8", newline="\n")
-    print(f"wrote {args.out}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

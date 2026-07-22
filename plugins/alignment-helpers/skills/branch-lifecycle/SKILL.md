@@ -56,9 +56,14 @@ git branch -d <scope>
 
 ## Binding to the ledger
 
-```bash
-python scripts/runtime/ledger.py summary ledger.json
-```
+Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
+cwd (see `using-the-ledger`).
+
+The branch is a **reader** here: before finishing, confirm with `ledger_summary` that no pin the
+scope claimed is still open — a `needs_input` or decided-not-resolved pin blocks the finish.
+
+Pins are closed **during** the work with `resolve … --evidence` (see `verification-before-completion`),
+not batched at the end.
 
 The branch exists to close pins. If you cannot name which pins a branch closes, the work was never
 scoped — go back and scope it. And if the work reveals the *decision* was wrong rather than the code,

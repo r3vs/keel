@@ -19,7 +19,7 @@ not re-decide order.
 > **Ask for the order — never reconstruct it.** `build_waves` levels the `depends_on` DAG and
 > returns the waves plus what is actionable *right now*. Reading the roadmap and picking what looks
 > next is how an item gets built ahead of the decision it depends on, which is the one mistake this
-> phase cannot absorb. Without the MCP server: `python scripts/runtime/buildloop.py <ledger>`.
+> phase cannot absorb.
 
 ## Context management: reset, don't accumulate
 

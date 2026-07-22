@@ -153,12 +153,11 @@ become the interview's opening policy questions. See `references/phase-1-frame.m
 ## Runtime
 
 The machine-usable form of this catalog is `assets/decision-catalog.json` (this doc stays the
-authoring source — keep them in step). `scripts/runtime/interview.py` loads it and runs Phase 1:
+authoring source — keep them in step). The `interview_next` tool loads it and runs Phase 1:
 `expand_catalog(ledger, catalog, project_type, brief_decisions)` prunes by project type, skips the
 forks the brief already decided (pre-committed, never re-asked), materializes one pin per surviving
 fork, and wires `depends_on` to the created pin ids; `funnel(ledger)` compresses to the asked
 questions ordered by transitive information gain with the tail as `proposed_default`;
-`default_policies()` offers the per-cluster defaults. `scripts/runtime/challenger.py` then red-teams the
-elected oracles (deterministic classes). CLI:
-`python scripts/runtime/interview.py ledger.json --project-type web-saas`. Covered by the runtime's
-own test suite.
+`default_policies()` offers the per-cluster defaults. The `challenge_oracle` tool then red-teams the
+elected oracles (deterministic classes). `interview_next` takes the project type (e.g. `web-saas`).
+Both are covered by the runtime's own test suite.

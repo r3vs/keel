@@ -10,9 +10,11 @@ It also survives the thing that killed the first attempt: MCP's 2026-07-28 revis
 one line in this file knows or cares — the protocol churn lands entirely on the adapter, where a
 version bump absorbs it.
 
-Every function calls the runtime's *library* API rather than its `main()` entry points, which print
-to stdout. Under stdio transport stdout is the wire, so a stray print corrupts the session.
+Every function calls the runtime's *library* API — never a subprocess or a printing entry point
+(the modules no longer have a `main()` at all). Under stdio transport stdout is the wire, so a stray
+print would corrupt the session.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -49,6 +51,75 @@ def ledger_summary(ledger: str) -> dict:
 def interview_next(ledger: str) -> dict:
     import interview
     return interview.funnel(_open_existing(ledger))
+
+
+# -- ledger writes (non-electing only; electing an outcome is the human interview's job) ----------
+
+def _open_or_create(path: str):
+    """Load a ledger for a WRITE. Unlike the read path, a missing file is created here — this is how
+    the first pin lands. Reads refuse a missing path; writes bootstrap it."""
+    from ledger import Ledger
+    return Ledger(path)
+
+
+def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence: str,
+                   provenance: list, as_is: dict | None = None, to_be: dict | None = None,
+                   question: dict | None = None, depends_on: list | None = None,
+                   kind_detail: str | None = None, cluster_id: str | None = None) -> dict:
+    led = _open_or_create(ledger)
+    pin = led.add_pin(kind=kind, title=title, severity=severity, confidence=confidence,
+                      provenance=provenance, as_is=as_is, to_be=to_be, question=question,
+                      depends_on=depends_on, kind_detail=kind_detail, cluster_id=cluster_id)
+    led.save()
+    return {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
+
+
+def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: str = "medium",
+                              confidence: str = "inferred") -> dict:
+    led = _open_or_create(ledger)
+    pin = led.surface_assumption(title=title, detail=detail, severity=severity, confidence=confidence)
+    led.save()
+    return {"pin_id": pin["id"], "state": pin["state"]}
+
+
+def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
+                           canonical_target: str | None = None, build_track: str | None = None,
+                           contract_carrier: str | None = None, depends_on: list | None = None) -> dict:
+    led = _open_existing(ledger)
+    item = led.add_remediation(pin_id, action=action, ladder_rung=ladder_rung,
+                               canonical_target=canonical_target, build_track=build_track,
+                               contract_carrier=contract_carrier, depends_on=depends_on)
+    led.save()
+    return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
+
+
+def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status: str) -> dict:
+    led = _open_existing(ledger)
+    item = led.set_remediation_status(pin_id, item_id, status)
+    led.save()
+    return {"item_id": item["id"], "status": item["status"]}
+
+
+def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
+    led = _open_existing(ledger)
+    pin = led.resolve(pin_id, evidence=evidence)
+    led.save()
+    return {"pin_id": pin["id"], "state": pin["state"]}
+
+
+def ledger_defer(ledger: str, pin_id: str) -> dict:
+    led = _open_existing(ledger)
+    pin = led.defer(pin_id)
+    led.save()
+    return {"pin_id": pin["id"], "state": pin["state"]}
+
+
+# -- coverage manifest -------------------------------------------------------------------------
+
+def coverage_gaps(langs: list, reports: list | None = None) -> dict:
+    """Which expected analysis capabilities ran vs are missing, for the present stacks."""
+    import coverage
+    return coverage.report(langs, reports or [])
 
 
 def contract_diff(contract: str, backend: str = "auto", **layers) -> dict:
@@ -128,3 +199,78 @@ def render_map(ledger: str, out: str) -> dict:
     _open_existing(ledger)  # refuse to render a map of a ledger that isn't there
     M.render_file(ledger, out)
     return {"written": out}
+
+
+# -- comprehension / understand-mode (the structural-graph family) ----------------------------
+# These read/write the graph.json + its projections on disk. The graph is the foundational
+# artifact the rest of the family consumes (phases communicate through disk, never a session).
+
+def build_graph(root: str, out: str, commit: str = "") -> dict:
+    import graph_build
+    data = graph_build.build_graph(root, commit=commit or None)
+    p = Path(out)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    return {"written": out, "nodes": len(data.get("nodes", [])), "edges": len(data.get("links", [])),
+            "built_at_commit": (data.get("graph") or {}).get("built_at_commit")}
+
+
+def understand_codebase(root: str, out: str, commit: str = "") -> dict:
+    import understand
+    bundle = understand.understand(root, commit=commit or None)
+    paths = understand.write_bundle(bundle, out)
+    return {"written": paths, "overview": bundle.get("overview")}
+
+
+def explain_node(graph_path: str, target: str, root: str = "") -> dict:
+    import explain
+    return explain.explain(explain.load(graph_path), target, root=root or None)
+
+
+def graph_query(graph_path: str, query: str, limit: int = 10, expand: bool = True) -> dict:
+    import query as Q
+    return Q.search(Q.load(graph_path), query, limit=limit, expand=expand)
+
+
+def guided_tour(graph_path: str, max_steps: int = 14) -> dict:
+    import tours
+    return tours.build_tour(tours.load(graph_path), max_steps=max_steps)
+
+
+def domain_view(root: str) -> dict:
+    import domain
+    return domain.scan_entry_points(root)
+
+
+def fingerprint_scan(root: str, out: str, against: str = "", commit: str = "") -> dict:
+    import fingerprint as FP
+    new = FP.store(root, commit=commit or None)
+    result = {"files": len(new.get("files", {})), "built_at_commit": new.get("built_at_commit")}
+    if against:
+        old = FP.load_store(against)
+        result["verdict"] = FP.classify_update(FP.diff_stores(old, new), len(new.get("files", {}))) \
+            if old else {"verdict": "FULL", "reason": "no prior fingerprint store"}
+    result["wrote"] = FP.save_store(new, out)   # guarded: False rather than clobber a non-empty store
+    return result
+
+
+def graph_map(graph_path: str, out: str, tour_path: str = "", title: str = "") -> dict:
+    import graphmap
+    graphmap.render_file(graph_path, out, tour_path or None)
+    return {"written": out}
+
+
+def impact_overlay(graph_path: str, changed: list | None = None, git_base: str = "",
+                   root: str = ".", depth: int = 1) -> dict:
+    import impact
+    files = list(changed) if changed else (
+        impact.changed_files_from_git(root, git_base) if git_base else None)
+    if not files:
+        raise ValueError("provide `changed` (a file list) or `git_base` (a git ref) — "
+                         "impact needs a change set to compute a blast radius over")
+    return impact.overlay(impact.load(graph_path), files, depth=depth)
+
+
+def docs_claims(graph_path: str, docs: list) -> dict:
+    import docs_claims as DC
+    return DC.analyze(list(docs), DC.load(graph_path))

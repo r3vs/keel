@@ -16,11 +16,9 @@ All output normalizes to SARIF/JSON, then passes `fp-check`, then becomes pins.
 semgrep --config=auto --sarif -o .audit/semgrep.sarif .
 gitleaks detect --report-format sarif --report-path .audit/gitleaks.sarif
 osv-scanner --format json -r . > .audit/osv.json
-
-python scripts/runtime/findings.py .audit/*.sarif .audit/osv.json
 ```
 
-`findings.py` is the ingester **and** the fp-check gate: it normalizes SARIF and OSV to one finding
+Then pass those reports to the `findings_gate` tool — the ingester **and** the fp-check gate: it normalizes SARIF and OSV to one finding
 stream, runs the five ordered checks (intentional-stub → reachability → framework suppression →
 corroboration → duplicate merge), clusters N instances of one root cause into a single pin with
 many anchors, and maps survivors to `defect` / `incompleteness`.

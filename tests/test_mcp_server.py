@@ -8,7 +8,8 @@ actually advertised. Tool *behaviour* is tested in test_mcp_tools.py with no dep
 
 Skips when uv is absent — which is the real deployment risk, so the skip message names it: without
 uv the host cannot spawn the server and the tools go missing with no error surfaced to the agent.
-The skill-bundled CLI under scripts/runtime/ is the floor for exactly that case.
+uv is a hard prerequisite now (the CLI floor was removed; bootstrap.sh aborts without it), so this
+skip marks an environment that must be fixed, not a soft fallback.
 """
 import json
 import os
@@ -24,13 +25,26 @@ SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py"
 EXPECTED_TOOLS = {
     "ledger_summary", "interview_next", "contract_diff", "reconcile_layers", "blast_radius",
     "generate_layers", "findings_gate", "build_waves", "challenge_oracle", "render_map",
+    "coverage_gaps",
+    # non-electing ledger writes; decide/accept stay human-only and are deliberately NOT here
+    "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
+    "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
+    # comprehension / understand-mode (the structural-graph family)
+    "build_graph", "understand_codebase", "explain_node", "graph_query", "guided_tour",
+    "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
 }
-READ_ONLY = EXPECTED_TOOLS - {"generate_layers", "render_map"}
+WRITE_TOOLS = {
+    "generate_layers", "render_map",
+    "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
+    "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
+    "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
+}
+READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
 
 
 @unittest.skipIf(shutil.which("uv") is None,
                  "uv not on PATH — the host cannot spawn the MCP server, and its tools would be "
-                 "silently absent. bootstrap.sh installs uv; scripts/runtime/ is the CLI floor.")
+                 "silently absent. uv is a hard prerequisite; bootstrap.sh installs it and aborts if it cannot.")
 class TestServerAdvertisesItsTools(unittest.TestCase):
     """One session, driven over real stdio, reused across assertions (a cold uv resolve is ~7s)."""
 
@@ -40,6 +54,9 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
             ["uv", "run", "--script", SERVER],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", bufsize=1,
+            # Don't let the server's best-effort grammar warm-up fetch in the background here — it
+            # would race test_treesitter's `available()` probes and flake the suite. Prod still warms.
+            env={**os.environ, "CODEBASE_ALIGNMENT_SKIP_WARM": "1"},
         )
         cls._id = 0
         try:
@@ -105,10 +122,15 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
         for name in sorted(READ_ONLY):
             with self.subTest(tool=name):
                 self.assertTrue(self.tools[name]["annotations"]["readOnlyHint"])
-        for name in ("generate_layers", "render_map"):
+        for name in sorted(WRITE_TOOLS):
             with self.subTest(tool=name):
                 self.assertFalse(self.tools[name]["annotations"]["readOnlyHint"],
-                                 "this tool writes files and must not claim to be read-only")
+                                 "a write tool must not claim to be read-only")
+
+    def test_decide_is_not_advertised(self):
+        # Electing an outcome stays the human interview's job — no MCP tool may commit a decision.
+        self.assertNotIn("ledger_decide", self.tools)
+        self.assertNotIn("ledger_accept", self.tools)
 
     def test_schemas_are_derived_from_the_signatures(self):
         diff = self.tools["contract_diff"]["inputSchema"]

@@ -1,12 +1,13 @@
 {
   "schema_version": "0.1",
-  "note": "Source of truth for the module catalog. A CI drift-linter should verify every module here has a matching reference playbook and that SKILL.md phase pointers stay consistent. 'deterministic' modules run a tool and emit SARIF/JSON; 'judgment' modules require model reasoning over the graph + findings.",
+  "note": "Source of truth for the module catalog. A CI drift-linter should verify every module here has a matching reference playbook and that SKILL.md phase pointers stay consistent. 'deterministic' modules run a tool and emit SARIF/JSON; 'judgment' modules require model reasoning over the graph + findings. Every deterministic module names an `engine` — an `mcp:<tool>` MCP tool (validated against src/mcp/server.py by check_consistency.py), an `external:<tool>`, or an `agent:<how>` — so none free-rides on a sibling's mechanism.",
   "modules": [
     {
       "id": "architecture-fitness",
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "import-linter",
         "dependency-cruiser",
@@ -40,6 +41,7 @@
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "lizard",
         "scc"
@@ -55,6 +57,7 @@
       "phase": 1,
       "kind": "core",
       "type": "deterministic",
+      "engine": "mcp:contract_diff",
       "tools": [
         "graph",
         "ast-grep"
@@ -72,6 +75,7 @@
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "vulture",
         "knip",
@@ -90,6 +94,7 @@
       "phase": 1,
       "kind": "defect",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "osv-scanner",
         "trivy"
@@ -105,6 +110,7 @@
       "phase": 1,
       "kind": "core",
       "type": "deterministic",
+      "engine": "mcp:docs_claims",
       "tools": [],
       "produces": [
         "contract_mismatch",
@@ -118,6 +124,7 @@
       "phase": 1,
       "kind": "core",
       "type": "deterministic",
+      "engine": "mcp:domain_view",
       "tools": [],
       "produces": [
         "design_concern"
@@ -130,6 +137,7 @@
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "jscpd"
       ],
@@ -145,6 +153,7 @@
       "phase": 1,
       "kind": "core",
       "type": "deterministic",
+      "engine": "mcp:explain_node",
       "tools": [],
       "produces": "explanation",
       "notes": "Drill-down for one node (or pin): its neighbourhood, inbound/outbound edges, source anchors and any pins attached. The read path a human uses to check the map's claim against the code.",
@@ -161,17 +170,31 @@
       "reference": "references/module-fp-check.md"
     },
     {
+      "id": "coverage",
+      "phase": 1,
+      "kind": "gate",
+      "type": "deterministic",
+      "engine": "mcp:coverage_gaps",
+      "tools": [],
+      "produces": [
+        "incompleteness"
+      ],
+      "notes": "Coverage manifest. From the languages tokei detected, derive the analysis capabilities EXPECTED for those stacks, compare against the tools that actually emitted a report, and surface each uncovered capability as a coverage-gap incompleteness pin (confidence extracted — the absence is a fact). Closes the silent-degrade hole: a deterministic finder that could not run its engine is 'unchecked', not 'clean', and the ledger says so. Flows through the interview like any pin — closed (install + re-run) or accepted (out of scope), never defaulted away.",
+      "reference": "references/toolchain.md"
+    },
+    {
       "id": "graph-build",
       "phase": 1,
       "kind": "infrastructure",
       "type": "deterministic",
+      "engine": "mcp:build_graph",
       "tools": [],
       "tools_optional": [
         "graphify",
         "gitnexus"
       ],
       "produces": "knowledge_graph",
-      "notes": "Backbone = the tree-sitter-native structural builder (`scripts/runtime/graph_build.py`): files/symbols/tables as EXTRACTED nodes, imports/calls as EXTRACTED edges, from the same grammars treesitter_extract.py already loads — so it adds no dependency, runs offline, and is deterministic and incremental (signature fingerprints). It emits exactly the NetworkX graph.json shape scripts/runtime/graph.py consumes. OPTIONAL alternatives, neither required: graphify (MIT, 31+ languages, models DB schema, but DEMOTED from primary — the step-0 gating verdict rated its cross-layer edges the INFERRED tier we refuse to ride, ~0 usable semantic edges on a real repo, so only its structural spine was ever used and the native builder produces that without the external dep); gitnexus (PolyForm Noncommercial — no commercial use; code-structure only, no DB schema, does not link separate frontend/backend trees). Cross-layer correspondence is computed by the field-shape engine, never taken from an inferred edge.",
+      "notes": "Backbone = the tree-sitter-native structural builder (the `build_graph` tool): files/symbols/tables as EXTRACTED nodes, imports/calls as EXTRACTED edges, from the same grammars treesitter_extract.py already loads — so it adds no dependency, runs offline, and is deterministic and incremental (signature fingerprints). It emits exactly the NetworkX graph.json shape the `blast_radius` graph consumes. OPTIONAL alternatives, neither required: graphify (MIT, 31+ languages, models DB schema, but DEMOTED from primary — the step-0 gating verdict rated its cross-layer edges the INFERRED tier we refuse to ride, ~0 usable semantic edges on a real repo, so only its structural spine was ever used and the native builder produces that without the external dep); gitnexus (PolyForm Noncommercial — no commercial use; code-structure only, no DB schema, does not link separate frontend/backend trees). Cross-layer correspondence is computed by the field-shape engine, never taken from an inferred edge.",
       "reference": "references/phase-1-comprehension.md"
     },
     {
@@ -179,6 +202,7 @@
       "phase": 1,
       "kind": "core",
       "type": "deterministic",
+      "engine": "mcp:graph_query",
       "tools": [],
       "produces": "query_result",
       "notes": "The question surface over the graph — 'which parts handle auth?' answered from EXTRACTED edges, not from a semantic guess. Deterministic by construction: it returns what the carrier says, or nothing.",
@@ -189,6 +213,7 @@
       "phase": 1,
       "kind": "core",
       "type": "deterministic",
+      "engine": "mcp:guided_tour",
       "tools": [],
       "produces": "tour",
       "notes": "Dependency-ordered walkthroughs: start at an entry point and follow the graph in the order a reader must understand it. The `understand` mode's main deliverable — comprehension as the END, not a step toward remediation.",
@@ -199,6 +224,7 @@
       "phase": 1,
       "kind": "maintainability",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "git",
         "code-maat"
@@ -214,6 +240,7 @@
       "phase": 1,
       "kind": "infrastructure",
       "type": "deterministic",
+      "engine": "mcp:fingerprint_scan",
       "tools": [],
       "produces": "graph_delta",
       "notes": "A2. Signature-level fingerprints per symbol, so a re-run reparses only what changed and classifies each change (added / removed / signature-changed / body-only). What makes `resume` and re-audit cheap instead of a full rebuild, and what lets the staleness gate say WHICH part went stale rather than just that the graph did.",
@@ -224,6 +251,7 @@
       "phase": 1,
       "kind": "infrastructure",
       "type": "deterministic",
+      "engine": "mcp:graph_map",
       "tools": [],
       "produces": "map_layered",
       "notes": "D. The layered lens over the graph: colour-coded layer cards (DB / API / client / infra), drill-down per layer, hotspots. A view, holding no state of its own — same rule as the pin map: it projects graph.json + ledger.json and is re-rendered, never hand-edited.",
@@ -250,6 +278,7 @@
       "phase": 1,
       "kind": "security-adjacent",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "ast-grep",
         "ripgrep"
@@ -266,6 +295,7 @@
       "phase": 1,
       "kind": "defect",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "gitleaks"
       ],
@@ -280,6 +310,7 @@
       "phase": 1,
       "kind": "defect",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "semgrep"
       ],
@@ -294,6 +325,7 @@
       "phase": 1,
       "kind": "correctness",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "mutmut",
         "stryker",
@@ -312,6 +344,7 @@
       "phase": 1,
       "kind": "correctness",
       "type": "deterministic",
+      "engine": "mcp:findings_gate",
       "tools": [
         "tsc",
         "mypy",
@@ -331,6 +364,7 @@
       "phase": 1,
       "kind": "infrastructure",
       "type": "deterministic",
+      "engine": "external:codewiki",
       "tools": [
         "codewiki"
       ],
@@ -356,6 +390,7 @@
       "phase": 3,
       "kind": "core",
       "type": "deterministic",
+      "engine": "mcp:impact_overlay",
       "tools": [],
       "produces": "impact_overlay",
       "notes": "C2. Blast radius for a concrete diff: which nodes the touched files reach, and which touched files the graph does not know about ('unmapped'). Feeds Phase-3 sequencing and Phase-5 validation, where the unmapped set is the honest admission that the graph is not total.",

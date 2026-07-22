@@ -149,27 +149,3 @@ def _render_text(ctx: dict) -> str:
     out += ["", "Explain against this checklist:"]
     out += [f"  {i + 1}. {c}" for i, c in enumerate(ctx["checklist"])]
     return "\n".join(out) + "\n"
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Assemble the explain context for a file/symbol from a graph.json + real "
-                    "source (the understand-mode deep-dive). Deterministic; the agent narrates.")
-    parser.add_argument("graph", help="path to graph.json")
-    parser.add_argument("target", help="node id, path, or path:symbol")
-    parser.add_argument("--root", help="repo root, to read the real source for ground truth")
-    parser.add_argument("--json", action="store_true", help="emit JSON (default: text)")
-    args = parser.parse_args(argv)
-
-    ctx = explain(load(args.graph), args.target, root=args.root)
-    if args.json:
-        print(json.dumps(ctx, ensure_ascii=False, indent=2))
-    else:
-        print(_render_text(ctx), end="")
-    return 0 if ctx.get("found") else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

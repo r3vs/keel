@@ -135,31 +135,3 @@ def funnel(ledger) -> dict:
     return {"asked": asked, "proposed_default": tail,
             "asked_count": len(asked), "tail_count": len(tail),
             "total_open": len(view)}
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Expand the decision catalog into a ledger and print the funnel view")
-    parser.add_argument("ledger", help="path to a ledger.json (created if absent)")
-    parser.add_argument("--project-type", default="web-saas",
-                        help="cli | library | static-site | api-service | web-saas")
-    parser.add_argument("--catalog", default=str(CATALOG_PATH))
-    args = parser.parse_args(argv)
-
-    from ledger import Ledger
-    led = Ledger(args.ledger)
-    catalog = load_catalog(args.catalog)
-    result = expand_catalog(led, catalog, args.project_type)
-    view = funnel(led)
-    led.save()
-    print(f"expanded catalog for project-type={args.project_type}: "
-          f"{len(result['created'])} open decisions, {len(result['pruned'])} clusters pruned")
-    print(f"funnel: {view['asked_count']} asked, {view['tail_count']} proposed_default\n")
-    for q in view["asked"]:
-        print(f"  [{q['severity']:>7}] (+{q['downstream']} downstream) {q['title']}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

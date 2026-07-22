@@ -20,11 +20,7 @@ From the observability decisions (a decided NFR in Phase 2), the code emits:
   `manual_checkpoint`). **This is the physical anchor of the feedback arc** — without it, the
   arc has no inputs, which is why this slice is a precondition of Evolve, not an extra.
 
-**Enumerate the signals from the carrier, not from the session:**
-
-```bash
-python scripts/runtime/ledger.py summary ledger.json
-```
+**Enumerate the signals from the carrier, not from the session** — call the `ledger_summary` tool.
 
 Every elected decision carries a `flip_criteria`, and `ledger.py` refuses a `decide()` without one
 (*"a decision without a reopen condition fossilizes"*) — so the ledger already holds the complete

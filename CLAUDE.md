@@ -77,14 +77,16 @@ Each skill is **design-complete with the runtime largely implemented**; its `TOD
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
 Plan A); rescue's VibraFlow verdict was **re-run on a fresh graph** (2026-07-14 — WEAK cross-layer
 correspondence, so standalone extraction is Plan A). The runtime lives under `src/runtime/`
-(core stdlib-only, 262 tests in CI): `ledger.py` (spec v0.6), `shapes.py` (field-shape engine +
+(core stdlib-only, 344 tests in CI): `ledger.py` (spec v0.6), `shapes.py` (field-shape engine +
 drift-check, 8 stacks), `treesitter_extract.py` (the **primary** extraction backend — a real grammar per language, so
 real-world TS/GraphQL/SQL parse with no per-repo patches; declarative per-grammar data, degrades to
 the stdlib parsers when absent), `generate.py` (contract generators,
 round-trip to zero drift), `findings.py` (SARIF/OSV + fp-check gate), `interview.py` +
 `assets/decision-catalog.json` (frame + funnel), `challenger.py`, `buildloop.py` (Phase-4 wave
 scheduler), `map.py` (self-contained visual map), `graph.py` (graph anchoring + blast-radius over
-graphify's `graph.json`, staleness-gated). Plus the eval harness (`scripts/run_evals.py`), the
+the `graph.json`, staleness-gated), and the `understand`-mode comprehension family (`graph_build.py`
+— the tree-sitter-native graph backbone — plus `understand.py`, `explain.py`, `query.py`, `tours.py`,
+`impact.py`, `domain.py`, `graphmap.py`, `fingerprint.py`, `docs_claims.py`). Plus the eval harness (`scripts/run_evals.py`), the
 consistency linters under `scripts/`, and rescue's ast-grep rule pack. What remains is
 agent-orchestrated at runtime (the per-item TDD loop).
 

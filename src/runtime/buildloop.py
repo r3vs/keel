@@ -128,22 +128,3 @@ def plan(ledger) -> dict:
             "wave_count": len(wv),
             "ready_now": [p["title"] for p in ready(ledger)],
             "open": _open_count(ledger)}
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-    parser = argparse.ArgumentParser(description="Show the Phase-4 wave plan for a ledger")
-    parser.add_argument("ledger")
-    args = parser.parse_args(argv)
-    from ledger import Ledger
-    led = Ledger(args.ledger)
-    p = plan(led)
-    print(f"{p['wave_count']} wave(s), {p['open']} open item(s)")
-    for i, w in enumerate(p["waves"]):
-        print(f"  wave {i}: " + ", ".join(w))
-    print("ready now: " + (", ".join(p["ready_now"]) or "—"))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

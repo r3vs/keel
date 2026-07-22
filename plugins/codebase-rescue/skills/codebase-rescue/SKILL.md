@@ -85,8 +85,8 @@ Where the **learning-layer** is available, any mode runs with it composed over i
 interview, roadmap, test-first and review so each **explains the *why*** behind a choice, making the
 elected `to_be` better-informed. It runs at `guided` by default; `learn:<level>` on the command sets
 only the **intensity** (`essential` · `guided` · `deep`) — a volume, not an on/off, so no setting
-silently drops the coaching. The level is written to `learner.json` and read by every phase, so one
-dial governs the whole workflow. The explanations *accompany* delivery and never replace or delay it —
+silently drops the coaching. The level is recorded in `learner.json` (which the agent maintains — no
+runtime behind it) and read by every phase, so one dial governs the whole workflow. The explanations *accompany* delivery and never replace or delay it —
 coaching, never a substitute for the fix (`references/core/self-model.md`: execute, don't advise). If the learning-layer isn't installed, rescue degrades and
 runs without it. Full mechanism and the three presets: the `learning-layer` skill and its
 `learner-model` reference.
@@ -104,12 +104,13 @@ Goal: a navigable, **visual-first** map of what the code is now, with problems p
 it. The user reviews *pins*, never the whole wiki; attention scales with the number of
 problems, not the size of the codebase.
 
-1. Build the knowledge graph (local, multi-language) with Graphify (MIT-licensed backbone;
-   models DB schema as nodes and spans DB<->API<->frontend; exports plain NetworkX
-   `graph.json` with stable node ids + source locations + EXTRACTED/INFERRED/AMBIGUOUS
-   confidence tags; semantic pass can run local via Ollama). This backbone lets later phases
-   stay in bounded context. Cross-layer edges are INFERRED hints — the contract module
-   computes field-level shape diffs itself. See `references/phase-1-comprehension.md`.
+1. Build the knowledge graph (local, multi-language) with the tree-sitter-native `build_graph` tool
+   (the backbone — it needs no external install; models DB schema
+   as nodes and spans DB<->API<->frontend; exports plain NetworkX `graph.json` with stable node ids
+   + source locations + EXTRACTED/INFERRED/AMBIGUOUS confidence tags). Graphify (MIT, pip `graphifyy`)
+   is an **optional** alternative source of a compatible `graph.json`, no longer required. The graph
+   lets later phases stay in bounded context. Cross-layer edges are INFERRED hints — the contract
+   module computes field-level shape diffs itself. See `references/phase-1-comprehension.md`.
 2. Generate the as-is wiki (visual-first: architecture map, ER diagram, contract-diff
    panels, sequence diagrams, hotspot heatmap). Text is minimal and on-demand behind each
    pin. Do NOT produce a wiki that reads as prose to be read start-to-finish.

@@ -14,11 +14,10 @@ constrain behavior.
 
 ```bash
 mutmut run --paths-to-mutate src/auth        # or: stryker / pit / cargo-mutants, per stack
-python scripts/runtime/findings.py .audit/mutation.sarif
 ```
 
-Mutation tools that emit SARIF go through `findings.py` like every other finding source, so a
-surviving mutant becomes a pin by the same path as an SQLi. Those that only print a report are read
+Mutation tools that emit SARIF go through the `findings_gate` tool (pass it `.audit/mutation.sarif`)
+like every other finding source, so a surviving mutant becomes a pin by the same path as an SQLi. Those that only print a report are read
 into the pin mapping below by hand — and note *why* that is acceptable here and not elsewhere: the
 mapping below is a genuine judgment ("is this module effectively untested?"), which is why this
 module is the one place where reading a report is the work rather than a shortcut around it.

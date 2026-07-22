@@ -3,12 +3,8 @@
 Install with `scripts/bootstrap.sh` (Python + Node assumed). Every tool is best-effort: a
 missing tool degrades to model judgment, never a hard failure.
 
-**Normalization is a command, not an aspiration.** Every tool below emits SARIF or JSON; one
-runtime turns that into pins:
-
-```bash
-python scripts/runtime/findings.py .audit/*.sarif .audit/*.json
-```
+**Normalization is a command, not an aspiration.** Every tool below emits SARIF or JSON; the
+`findings_gate` tool turns that into pins — pass it the reports (`.audit/*.sarif .audit/*.json`).
 
 That is the single entry point for every finding module (security, maintainability,
 placeholder-stub, test-validity, type-check, architecture-fitness). It normalizes, gates through
@@ -17,7 +13,13 @@ that used to stand here — *"normalize all output to SARIF/JSON so fp-check and
 one format"* — described this and never said to run it, which is how a tested implementation and a
 playbook that reimplements it by judgment end up side by side.
 
-**Type-checker output is the exception worth knowing:** `findings.py` marks rule-ids prefixed
+**Coverage is a fact, not a hope.** After the tools run, the `coverage_gaps` tool (pass it the
+`langs` tokei detected and the `reports`) compares the capabilities EXPECTED for the present stacks
+against the tools that actually produced a report, and writes a `coverage-gap` `incompleteness` pin
+for each uncovered one. A tool that did not run is a **visible gap, never a silent clean 0**
+(`references/core/static-analysis.md`).
+
+**Type-checker output is the exception worth knowing:** `findings_gate` marks rule-ids prefixed
 `mypy` / `tsc` / `pyright` / `typecheck` / `compile` / `syntax` as **deterministic**, so they skip
 fp-check entirely and are never DROPPED as suspected false positives. A proven diagnostic needs no
 corroboration (`references/core/static-analysis.md`). That is also why it is worth authoring
@@ -49,9 +51,9 @@ a fact, where the same boundary expressed in prose stays an opinion.
 ## Backbones
 - **tree-sitter-native structural builder** — RECOMMENDED backbone. Build the graph's structural
   spine (files/symbols/tables as EXTRACTED nodes; `imports`/`calls` as EXTRACTED edges) from
-  `web-tree-sitter` WASM grammars — the same parser `scripts/runtime/treesitter_extract.py` already loads,
+  `web-tree-sitter` WASM grammars — the same parser the tree-sitter extraction backend already loads,
   so it adds no new dependency. Deterministic, offline, incremental (signature fingerprints), and it
-  produces exactly the spine `scripts/runtime/graph.py` consumes with nothing wasted. Prior art to model on:
+  produces exactly the spine the `blast_radius` graph consumes with nothing wasted. Prior art to model on:
   [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) (MIT). See
   `references/phase-1-comprehension.md`; the rationale is the step-0 verdict below.
 - **graphify** (graph, pip `graphifyy`) — OPTIONAL alternative source of a compatible NetworkX
@@ -65,7 +67,7 @@ a fact, where the same boundary expressed in prose stays an opinion.
   PolyForm Noncommercial license (no commercial use); code-structure only (no DB schema);
   does not link separate frontend/backend trees. Not the backbone.
 - **codewiki** (pip) — OPTIONAL visual-first as-is wiki (subscription mode runs on the Claude login).
-  Not required: the as-is map ships as one self-contained HTML file (`scripts/runtime/map.py`); CodeWiki is a
+  Not required: the as-is map ships as one self-contained HTML file (the `render_map` tool); CodeWiki is a
   heavier alternative only if a full external wiki is wanted.
 
 ## Gated per language (run only when tokei detects the language)

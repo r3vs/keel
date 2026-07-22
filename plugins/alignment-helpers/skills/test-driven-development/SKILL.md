@@ -37,9 +37,11 @@ catch it. That restores the only property that made the red step worth anything.
 
 ## Binding to the ledger
 
-```bash
-python scripts/runtime/ledger.py summary ledger.json
-```
+Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
+cwd (see `using-the-ledger`). The `acceptance_criterion` pin pre-exists (from the interview, or the
+defect you're closing): read it with `ledger_summary`. Tempted to invent a criterion for code
+already written? Surface it with `ledger_add_pin` as an `open_decision` (confidence `inferred`) —
+never self-elect one.
 
 - The pin's `to_be` is the assertion, in words. If you cannot state it as an observable outcome, the
   criterion is not testable yet and the gap is in the interview, not in your test file.

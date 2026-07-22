@@ -31,12 +31,16 @@ errors, warnings = [], []
 REF_RE = re.compile(r"`(references/[\w\-./]+\.md)`")   # skill-relative
 CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 
-# A module's playbook "names a runnable" when it cites the vendored runtime path an agent can
-# execute. Anchored on the SHIPPED form (`scripts/runtime/x.py`) for the same reason the build's
-# closure is: that is the only spelling that resolves once installed, and it is what
-# verify_commands.py already validates. Naming a tool (`semgrep`) is not naming a mechanism — the
-# tool emits SARIF, and SARIF that reaches no ingester reaches no pin.
-RUNNABLE_RE = re.compile(r"scripts/runtime/\w+\.py")
+# A `deterministic` module must declare an `engine` — what actually produces its output. Three
+# honest forms: an `mcp:<tool>` MCP tool (the CLI is gone — the runtime is reached only through the
+# MCP server, so the engine names the tool, validated below against src/mcp/server.py's own
+# `@mcp.tool` decorations), an `external:<tool>` (a third-party tool emits it, e.g. codewiki), or an
+# `agent:<how>` (the greenfield "generate/scaffold from a decided source" sense — produced by the
+# agent, not a runtime). This replaced a prose-grep of the reference file, which let modules sharing a
+# playbook free-ride on one runnable mention — and grepping prose for correspondence is the very
+# heuristic this repo forbids. The check is per-module and deterministic: the engine is declared, and
+# an `mcp:` tool is checked to actually exist on the server (the carrier, never a second list).
+MCP_ENGINE_RE = re.compile(r"^mcp:(\w+)$")
 
 
 SRC_CORE = ROOT / "src" / "core"
@@ -73,6 +77,25 @@ all_files = [
 module_count = 0
 reference_dirs = []
 
+def mcp_tools() -> set:
+    """Tool names src/mcp/server.py advertises, parsed structurally from its `@mcp.tool`
+    decorations — the one source of truth, so a module's engine cannot name a tool the server does
+    not expose (validate against the thing that serves, never a hand-kept second list)."""
+    lines = read(ROOT / "src" / "mcp" / "server.py").splitlines()
+    out = set()
+    for i, line in enumerate(lines):
+        if line.startswith("def ") and i:
+            j = i - 1
+            while j >= 0 and not lines[j].strip():
+                j -= 1
+            if j >= 0 and lines[j].lstrip().startswith("@mcp.tool"):
+                out.add(line[4:].split("(", 1)[0].strip())
+    return out
+
+
+MCP_TOOLS = mcp_tools()
+
+
 # 1. Per-skill: modules.json references + SKILL.md pointers all resolve
 for skill, rel in SKILLS.items():
     sroot = (ROOT / rel).resolve()
@@ -91,14 +114,26 @@ for skill, rel in SKILLS.items():
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' has no reference")
             elif not ref_resolves(ref, sroot):
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' -> missing reference '{ref}'")
-            elif m.get("type") == "deterministic" and not RUNNABLE_RE.search(
-                    read(sroot / ref)):
-                errors.append(
-                    f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but its "
-                    f"playbook '{ref}' names no runnable — a deterministic module the agent must "
-                    "execute by judgment is prose wearing a mechanism's label. Name the command "
-                    "(`scripts/runtime/x.py`), or declare type=judgment and mean it"
-                )
+            elif m.get("type") == "deterministic":
+                engine = m.get("engine")
+                if not engine:
+                    errors.append(
+                        f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but "
+                        "names no `engine` — say what produces its output: an `mcp:<tool>` MCP tool, "
+                        "an `external:<tool>`, or an `agent:<how>`. A deterministic module with no "
+                        "declared mechanism is prose wearing a label"
+                    )
+                elif (mm := MCP_ENGINE_RE.match(engine)):
+                    if mm.group(1) not in MCP_TOOLS:
+                        errors.append(
+                            f"[{skill}] module '{m.get('id', '?')}' names engine '{engine}' but "
+                            f"src/mcp/server.py advertises no `{mm.group(1)}` tool"
+                        )
+                elif not (engine.startswith("external:") or engine.startswith("agent:")):
+                    errors.append(
+                        f"[{skill}] module '{m.get('id', '?')}' engine '{engine}' is not a "
+                        "recognized form (mcp:<tool> | external:<tool> | agent:<how>)"
+                    )
 
     if not skill_path.exists():
         errors.append(f"[{skill}] missing SKILL.md")
@@ -163,8 +198,8 @@ for f in content_md:
 #    see. A parity linter is a smell; it says two things should be one thing, generated. So the
 #    write verb now lives once (the roster table in src/core/agents.md), build.py derives each
 #    host's mechanism from it (`disallowedTools` for Claude, `permission.edit` for opencode), and
-#    build.py --check is the guarantee. The residual it cannot close is unchanged: `Bash` is a
-#    write vector Claude Code cannot restrict — the ledger gate closes that at runtime.
+#    build.py --check is the guarantee. The residual it cannot close is narrower than it once read:
+#    a plugin cannot ship a selective, agent-scoped `Bash` rule — the ledger gate closes that at runtime.
 #
 #    NOTE what else is deliberately gone: the root `opencode.json` / `.mcp.json` / `.codex/config.toml`.
 #    They were host config for THIS repo, and a user installing a plugin never works in this repo —

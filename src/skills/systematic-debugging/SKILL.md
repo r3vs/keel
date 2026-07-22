@@ -32,16 +32,20 @@ that impossible, and it is deliberately slower at the start and much faster at t
 
 ## Binding to the ledger
 
+Prefer the `ledger_*` MCP tools (the server resolves paths, so they work from the user's cwd); the CLI below is the floor when the MCP server is absent — see `using-the-ledger`.
+
 A bug is a `defect` pin, and the pin holds what a commit message loses:
 
 - `as_is` = the observed wrong behavior, with the reproduction.
 - `to_be` = the correct behavior — the same object the test asserts.
-- The **root cause** goes in the pin. Six months later the code shows *what* changed; only the pin
+- The **root cause** goes in the pin's `as_is` (or `kind_detail`). Six months later the code shows *what* changed; only the pin
   says *why it was wrong in the first place*, which is what stops the class recurring.
 
-```bash
-python scripts/runtime/ledger.py summary ledger.json
-```
+Record it through the ledger's MCP tools: `ledger_add_pin` opens the `defect` (root cause in
+`as_is`, provenance the reproduction at the test); `ledger_add_remediation` plans the fix and
+`ledger_set_remediation_status` marks it done; then `ledger_resolve` closes it against the OBSERVED
+reproduction — the tool demands `evidence`, so the pin cannot close until the repro no longer
+reproduces.
 
 If the cause turns out to be a decision that was wrong rather than code that was wrong, **do not
 fix it here** — reopen the decision. Fixing code to work around an unsound elected decision buries

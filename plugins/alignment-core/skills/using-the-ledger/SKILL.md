@@ -35,14 +35,27 @@ Every rule above is enforced in code. A hand-written pin in `ledger.json` bypass
 `agent_assumption` confidence rule. There is no error — just a ledger that quietly stopped meaning
 what the spec says it means.
 
-| you want | tool | without the MCP server |
-|---|---|---|
-| the state, before acting | `ledger_summary` | `python scripts/runtime/ledger.py summary <ledger>` |
-| the next real questions | `interview_next` | `python scripts/runtime/ledger.py interview <ledger>` |
+| you want | MCP tool |
+|---|---|
+| the state, before acting | `ledger_summary` |
+| the next real questions | `interview_next` |
+| add a finding / defect / `open_decision` | `ledger_add_pin` |
+| plan & close the gap | `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` |
+| surface a forced assumption | `ledger_surface_assumption` |
 
-Both are **read-only**, and that is the point: the reads are automatable, the write is not. Only the
-human's committed interview answer elects a decision — so there is deliberately no `decide` tool for
-an agent to reach for.
+The reads are automatable **and so is every non-electing write** — add a finding, plan its
+remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidence` (what you
+*observed* closed the gap, not that code was written): the tool itself enforces `resolved =
+observed`. What stays off-limits to every agent is the one **electing** write — only the human's
+committed interview answer sets `state: decided` and appends a `DecisionEvent`, so there is
+deliberately no `ledger_decide` tool.
+
+**The MCP tools are the only channel.** The server's location is resolved by the host, so the
+`ledger_*` tools work from the user's project cwd — the whole class of path-resolution bugs a bundled
+CLI carried simply disappears. All four hosts reach the server this way: Claude Code and Codex through
+`.mcp.json`, opencode through its plugin's config hook, and Pi through the bridge extension this
+package ships. It needs `uv` on PATH (the host spawns the server as `uv run`); that is a hard
+prerequisite, and its absence fails loudly rather than degrading to a path that cannot resolve.
 
 **Reading a ledger that isn't there is not an empty ledger.** The tools refuse a missing path rather
 than answering "no pins", because that answer reads as "nothing to do" and is the most expensive

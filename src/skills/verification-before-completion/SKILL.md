@@ -58,16 +58,18 @@ location — and fails for everyone. **Verify from the user's position, not your
   destroys it.
 - **Partially verified is a real state, and it has a ledger form.** "The API returns correctly; I
   could not exercise the frontend" is a useful, honest report; "Done" is not. Record it as what it
-  is — the pin stays `needs_input` (or carries a `blocked` note), never silently `resolved`. This is
+  is — the pin stays `needs_input` and the unverified remainder is surfaced as an `incompleteness`
+  pin, never silently `resolved`. This is
   the **honest exit** every gate must leave open: when the agent cannot satisfy the verification, it
   says so *in the ledger* rather than fabricating an observation or quietly stopping. A gate that
   blocks without leaving this exit does not prevent the shortcut — it forces it.
 
 ## Binding to the ledger
 
-```bash
-python scripts/runtime/ledger.py summary ledger.json
-```
+Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
+cwd (see `using-the-ledger`). Call `ledger_resolve` ONLY after observing: the tool demands the
+`evidence`, so a criterion cannot close on "code written" — then `ledger_summary` to confirm nothing
+the scope claimed is still open.
 
 An `acceptance_criterion` is the testable outcome, so it is also the verification target: what you
 exercise in step 2 is exactly what the criterion states. That is why the criterion has to be

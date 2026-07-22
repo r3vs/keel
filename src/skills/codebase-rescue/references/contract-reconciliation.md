@@ -39,7 +39,7 @@ extraction is Plan A.** Same conclusion as before, now on a current graph and fo
 not "no DB nodes" but "the DB nodes exist, yet no field-level cross-layer edges connect them; and
 the semantic pass that might infer such edges requires an unset API key."
 
-**Positively confirmed on the real repo:** `scripts/runtime/shapes.py`'s standalone Drizzle extractor pulls
+**Positively confirmed on the real repo:** the shape engine's standalone Drizzle extractor pulls
 **113 tables / 1 290 fields** from VibraFlow's actual `db/schema/*.ts` (after being hardened for
 real Drizzle: single quotes, multi-line method chains, cross-file/named enums, `decimal`) —
 including `budgets.spent_usd`, the field behind the known budget-enforcement blocker. The
@@ -48,14 +48,14 @@ not.
 
 Consequences, baked into this module's posture (unchanged — the fresh run reaffirms them):
 1. **Compute contracts STANDALONE from source** (DDL/migration, ORM model, DTO/route, shared
-   types) via `scripts/runtime/shapes.py`. Treat any graph cross-layer edges as weak corroboration only.
+   types) via the shape engine (`contract_diff` / `reconcile_layers`). Treat any graph cross-layer edges as weak corroboration only.
 2. **Use the graph ONLY for** anchoring, imports/calls reachability (blast radius), and community
-   structure — never for field-level correspondence. This is exactly what `scripts/runtime/graph.py` does,
+   structure — never for field-level correspondence. This is exactly what the `blast_radius` graph does,
    **deterministically**: it resolves a pin anchor to a `node_id` **by `file:line` only** and walks
    **reverse reachability over the graph's own EXTRACTED edges** for blast-radius — never an
    INFERRED/semantic edge, and with no editorial edge-type filter.
 3. **Anchor pins to `source_location` (`file:line`), accepting `node_id: null`.** Do not anchor to
-   nodes the graph lacks, and never to files a stale graph still references. `scripts/runtime/graph.py`
+   nodes the graph lacks, and never to files a stale graph still references. `blast_radius`
    fills `node_id` (and a compact blast-radius) onto each anchor **only from an exact/containment
    `file:line` match** — no name matching, no pluralization, no nearest-line guess — leaves it null
    otherwise, and **refuses to write at all when `built_at_commit` != HEAD** (a graph 37 commits
@@ -161,18 +161,18 @@ Once a truth is elected and the boundary is aligned in Phase 4, a generated **co
 runtime complement to re-diffing shapes in Phase 5.
 
 ## TODO (implementation)
-- [x] Per-stack extractors for the four boundaries — the live stacks in `scripts/runtime/shapes.py`
+- [x] Per-stack extractors for the four boundaries — the live stacks in the shape engine
       (DDL/SQLAlchemy/Pydantic/TS + Drizzle/Prisma/Django/GraphQL), **generalized** via
-      `scripts/runtime/treesitter_extract.py`: one generic engine driven by declarative per-grammar **data**
+      the tree-sitter extraction backend: one generic engine driven by declarative per-grammar **data**
       (a query + type maps — no per-stack code, no heuristics), so a new stack is a data entry, not
       a rewrite. Optional backend, degrades to the stdlib parsers.
-- [x] Type-equivalence table across DB/ORM/API/TS type systems — in `scripts/runtime/shapes.py`
+- [x] Type-equivalence table across DB/ORM/API/TS type systems — in the shape engine
       (`_ann_to_canonical`, the `_*_TYPE_MAP`s, and `diff_shapes`' equivalence/honesty rules).
-- [x] Correspondence resolver: **standalone shapes first** — implemented in `scripts/runtime/shapes.py`
+- [x] Correspondence resolver: **standalone shapes first** — implemented in the shape engine
       (`drift_check` carrier-anchored, `reconcile_layers` carrier-less), with graph edges as
       corroboration/anchoring only. The fresh Phase-0 re-run (above) settled the graph's weight:
       DB nodes for anchoring, no field-level correspondence edges.
-- [x] Graph-edge *anchoring* of pins — `scripts/runtime/graph.py` attaches `node_id` + blast-radius **only
+- [x] Graph-edge *anchoring* of pins — `blast_radius` attaches `node_id` + blast-radius **only
       from an exact/containment `file:line` match** (staleness-gated, EXTRACTED edges only), leaving
       `node_id: null` legitimate. It does no correspondence itself; the carrier (`drift_check`)
       stays the correspondence source of truth. This is navigation + impact, exactly the scope the

@@ -149,19 +149,3 @@ def render_file(ledger_path: str | pathlib.Path, out_path: str | pathlib.Path) -
     out.write_text(render(data, title=str(pathlib.Path(ledger_path).stem)),
                    encoding="utf-8", newline="\n")
     return out
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-    parser = argparse.ArgumentParser(description="Render a ledger.json as a self-contained HTML map")
-    parser.add_argument("ledger", help="path to ledger.json")
-    parser.add_argument("-o", "--out", default="map.html")
-    args = parser.parse_args(argv)
-    out = render_file(args.ledger, args.out)
-    pins = len(json.loads(pathlib.Path(args.ledger).read_text(encoding="utf-8")).get("pins", []))
-    print(f"wrote {out} ({pins} pins)")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

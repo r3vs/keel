@@ -108,28 +108,3 @@ def _render_text(res: dict) -> str:
             if nb["depended_on_by"]:
                 lines.append(f"     used by:    {', '.join(nb['depended_on_by'])}")
     return "\n".join(lines) + "\n"
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Query a structural graph.json by meaning-ish keywords → a ranked, 1-hop-"
-                    "expanded subgraph (the understand-mode query surface). Deterministic.")
-    parser.add_argument("graph", help="path to graph.json")
-    parser.add_argument("query", help="what to look for, e.g. \"auth login\"")
-    parser.add_argument("--limit", type=int, default=10)
-    parser.add_argument("--no-expand", action="store_true", help="do not attach neighborhoods")
-    parser.add_argument("--json", action="store_true", help="emit JSON (default: text)")
-    args = parser.parse_args(argv)
-
-    res = search(load(args.graph), args.query, limit=args.limit, expand=not args.no_expand)
-    if args.json:
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-    else:
-        print(_render_text(res), end="")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

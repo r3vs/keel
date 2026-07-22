@@ -67,21 +67,24 @@ gates already carry (`references/core/agents.md`): the reviewer's REJECT and the
 `ChallengeEvent` already emit the class — this layer surfaces it to the operator instead of burying
 it in the ledger.
 
-## The learner-model: a gradebook, the twin of the decisions ledger
+## The learner-model: the conceptual twin of the decisions ledger
 
-The decisions ledger measures the *codebase's* gap; the learner-model (`references/learner-model.md`)
-measures the *operator's*. Same discipline, different subject: a single `learner.json` that records,
+The decisions ledger tracks the *codebase's* gap; the learner-model (`references/learner-model.md`)
+tracks the *operator's*. Same discipline, different subject: a single `learner.json` that records,
 per gap-category, how often the user's committed prediction already matched the senior version. It is
-what turns vague "it fades automatically" into a **measured mastery model**:
+what turns vague "it fades automatically" into an **explicit, agent-tracked mastery model** — with one
+honest caveat: unlike the ledger, it has no runtime behind it (no `learner.py`, no gate), so its
+counters are the agent's coaching estimate, not a measurement:
 
 - **Rank** the delta (which 1–2 misses to teach) by the user's weakest live categories.
 - **Fade** a scaffold once the user's predictions have matched N times running — and *say so*
   ("you've got auth-invariant edge cases; I'll stop prompting for them").
 - **Detect cargo-cult**: if the *output* is always good but the *predictions* never improve, that is
-  measurable rote execution — flag it, because the day the checklist doesn't cover the case, a
+  trackable rote execution — flag it, because the day the checklist doesn't cover the case, a
   cargo-culting operator is lost.
 
-Without measurement the pedagogy is theater; the gradebook is what keeps felt-mastery honest.
+Without this bookkeeping the pedagogy is guesswork; the model is what keeps felt-mastery honest — an
+agent-maintained estimate, not a gated measurement like the ledger.
 
 ## The four hooks (one per existing surface)
 
@@ -127,8 +130,8 @@ once it proves out.
   an explicit decision-support / transparency choice, honest that it trades retention for coverage; it
   is never the default.
 - **Never teach the instance alone.** Name the class and the recognition cue, or it doesn't transfer.
-- **Never let felt-mastery outrun measured mastery.** The learner-model is the check on false
-  confidence; surface when the user is operating *outside* what the layer can verify.
+- **Never let felt-mastery outrun tracked mastery.** The learner-model is the check on false
+  confidence; surface when the user is operating *outside* what the layer can check.
 - **Never make *learning itself* a mode.** The why-trace is default-on and the micro-retrieval is
   opt-out per-artifact — there is no on/off switch that deskills by getting left on "off". What *is* a
   session choice is the **`intensity` dial** (`references/learner-model.md`): a volume on the
@@ -143,8 +146,8 @@ once it proves out.
 
 ## Reference index
 
-- `references/learner-model.md` — the `learner.json` gradebook schema (the operator-gap twin of the
-  decisions ledger): categories, mastery signal, fade rule, cargo-cult detector.
+- `references/learner-model.md` — the `learner.json` coaching-model schema (the operator-gap twin of
+  the decisions ledger): categories, mastery signal, fade rule, cargo-cult detector.
 - `references/core/interview-funnel.md` — the spec surface the first hook wraps.
 - `references/core/agents.md` — the reviewer/challenger gates whose class-named verdicts this layer
   surfaces (teach-on-rejection).

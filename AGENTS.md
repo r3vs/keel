@@ -35,8 +35,9 @@ these skills exist to find. Ours bind: TDD's red step *is* an `acceptance_criter
 They share one spine (the decisions ledger, interview funnel, brainstorm, field-shape engine,
 contract-testing, feedback loop, static-analysis / knowledge-sources doctrines, and the agent
 roster), authored once under **`src/core/`** and **vendored by the build into each shipped skill** as
-`references/core/`, so every skill is self-contained — neither opencode nor Pi resolves a skill's
-relative paths against the skill directory; both resolve against the *user's* project. Read a skill's
+`references/core/`, so every skill is self-contained — the Agent Skills spec's unit of distribution
+is the standalone skill folder, so a skill copied out of the repo must carry the doctrine it needs
+rather than dangle a pointer outside itself. Read a skill's
 `SKILL.md` first; it points to the rest. Durable project facts live in **`MEMORY.md`**; current
 external knowledge comes from the **Context7 / DeepWiki** MCP servers (which the built plugin
 declares, so a user gets them by installing), and optional durable graph memory from the **cognee**

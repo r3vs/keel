@@ -18,11 +18,7 @@ elected, that is an `open_decision` to resolve first — never release on an unm
 2. **Version & changelog from the ledger.** Cut a version (semver), and generate the changelog
    **from the ledger's `DecisionEvent`s and `BuildItem`s** — the ledger already records what
    changed and why, so the changelog is a projection, not hand-written prose. Read it from the
-   carrier, never from memory of the session:
-
-   ```bash
-   python scripts/runtime/ledger.py summary ledger.json
-   ```
+   carrier with the `ledger_summary` tool, never from memory of the session.
 
    The `decision_log` is what a changelog entry *is*: each `DecisionEvent` carries the elected
    option and its rationale. Writing the changelog from recollection instead is how a release note

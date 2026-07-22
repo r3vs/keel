@@ -483,7 +483,7 @@ class Ledger:
                 return item
         raise LedgerError(f"no remediation item {item_id} on {pin_id}")
 
-    def resolve(self, pin_id: str) -> dict:
+    def resolve(self, pin_id: str, evidence: Optional[str] = None) -> dict:
         pin = self.pin(pin_id)
         _require(pin["state"] == "decided" or pin["kind"] == "defect",
                  "only a decided pin (or a defect) can resolve")
@@ -491,6 +491,11 @@ class Ledger:
                  "resolve requires every remediation item done")
         _require(len(pin["remediation"]) > 0,
                  "resolve without remediation is a silent close — record what closed the gap")
+        # v0.6 'resolved = observed': the evidence is what was OBSERVED to close the gap,
+        # not merely that the code was written. The CLI makes it mandatory (see main()).
+        if evidence is not None:
+            _require(bool(str(evidence).strip()), "evidence, when given, must not be blank")
+            pin["evidence"] = evidence
         pin["state"] = "resolved"
         return pin
 
@@ -532,23 +537,10 @@ class Ledger:
         }
 
 
-def main(argv: Optional[list[str]] = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Inspect a ledger.json (read-only views)")
-    parser.add_argument("command", choices=["summary", "interview"])
-    parser.add_argument("path", help="path to ledger.json")
-    args = parser.parse_args(argv)
-
-    ledger = Ledger(args.path)
-    if args.command == "summary":
-        print(json.dumps(ledger.summary(), indent=2, ensure_ascii=False))
-    else:
-        for pin in ledger.interview_view():
-            prompt = (pin.get("question") or {}).get("prompt", "(no question materialized)")
-            print(f"[{pin['severity']:>7}] {pin['id']}  {pin['title']}\n          {prompt}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+def _json_arg(raw: Optional[str], field: str) -> Any:
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"--{field}: invalid JSON ({exc})")

@@ -68,15 +68,14 @@ cross-layer graph edge. That empirical finding is the hinge between the two skil
 Same descriptor, same table, same "never fabricate" discipline — pointed backward to reconcile,
 or forward to prevent.
 
-**Runtime:** `scripts/runtime/shapes.py` (vendored into this skill; stdlib-only, tested in CI) implements this file for
+**Runtime:** the `contract_diff` / `reconcile_layers` tools implement this file for
 the live stacks: extractors for Postgres DDL / SQLAlchemy 2 / Pydantic v2 / TS interfaces that
 normalize to the descriptor, plus `diff_shapes`/`drift_check` with both honesty rules enforced
-(unresolved → `ambiguous` note, absence → `missing_field`/`extra_field` finding). As a CLI it is
-greenfield's CI drift-check: `python scripts/runtime/shapes.py --contract … --ddl … --sqlalchemy …
---pydantic … --typescript …` exits 1 on drift. New stacks are additive: an optional tree-sitter
-backend (`scripts/runtime/treesitter_extract.py`) is one generic engine driven by declarative per-grammar
-**data** (a query + type maps — no per-stack code, no heuristics, no comment sniffing), so a new
-stack is a data entry, not a parser. It degrades to the stdlib parsers when tree-sitter is absent —
-pass `--treesitter` (or `backend="auto"`) to route TS/GraphQL through it. Types come only from the
+(unresolved → `ambiguous` note, absence → `missing_field`/`extra_field` finding). It is also
+greenfield's CI drift-check — the same shape-diff wired to fail the build on drift. New stacks are
+additive: an optional tree-sitter extraction backend is one generic engine driven by declarative
+per-grammar **data** (a query + type maps — no per-stack code, no heuristics, no comment sniffing),
+so a new stack is a data entry, not a parser. It degrades to the stdlib parsers when tree-sitter is
+absent — pass `backend="auto"` to route TS/GraphQL through it. Types come only from the
 grammar's own type system; the uuid/datetime↔string equivalence for stringly-typed layers is
 applied deterministically at diff time, never inferred from a comment.
