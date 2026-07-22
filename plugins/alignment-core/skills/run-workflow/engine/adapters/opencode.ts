@@ -88,7 +88,7 @@ export class OpencodeCliAdapter implements SpawnAdapter {
   }
 
   async run(prompt: string, opts?: SpawnOpts): Promise<SpawnResult> {
-    const { stdout } = await this.exec(this.bin, this.buildArgs(prompt, opts));
+    const { stdout } = await this.exec(this.bin, this.buildArgs(prompt, opts), undefined, opts?.cwd);
     return parseOpencodeJson(stdout, opts);
   }
 }

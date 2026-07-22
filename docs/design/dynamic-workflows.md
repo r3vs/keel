@@ -142,6 +142,11 @@ contributors dice "michaelliv". In dubbio si riproduce la notice del `LICENSE` c
 
 ## 6. Topologie flagship (pseudocodice, stile DSL da forkare)
 
+> **Stato: tutte e tre implementate e testate** in `src/workflow/topologies/` (`phase1-finding`,
+> `challenger-verify`, `build-waves`), registrate in `cli.ts`. `build-waves` usa il primitivo
+> `checkpoint` (gate journaled, auto-approve headless) + `WorktreeAdapter` (isolamento git **reale**,
+> un worktree+branch per executor). Il pseudocodice sotto è la referenza; il codice è la verità.
+
 ### 6.1 Phase-1 finding (rescue) — multi-modal sweep + loop-until-dry  ⟵ valore massimo
 ```js
 export const meta = { name: 'rescue-phase1-finding',

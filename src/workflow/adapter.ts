@@ -24,6 +24,7 @@ export type SpawnOpts = {
   tier?: string;
   schema?: object;
   isolation?: 'worktree';
+  cwd?: string; // working directory for this agent (set by WorktreeAdapter when isolation is on)
   timeoutMs?: number | null;
   agentType?: string;
   label?: string;

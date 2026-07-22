@@ -6,12 +6,13 @@ import { spawn } from 'node:child_process';
 
 export type ExecResult = { stdout: string; stderr: string; code: number };
 
-/** `input`, when present, is written to the child's stdin (e.g. `codex exec` reads the prompt there). */
-export type ExecFn = (cmd: string, args: string[], input?: string) => Promise<ExecResult>;
+/** `input`, when present, is written to the child's stdin (e.g. `codex exec` reads the prompt there).
+ *  `cwd` sets the child's working directory (used by WorktreeAdapter to isolate parallel writers). */
+export type ExecFn = (cmd: string, args: string[], input?: string, cwd?: string) => Promise<ExecResult>;
 
-export const spawnExec: ExecFn = (cmd, args, input) =>
+export const spawnExec: ExecFn = (cmd, args, input, cwd) =>
   new Promise<ExecResult>((resolve, reject) => {
-    const cp = spawn(cmd, args, { windowsHide: true });
+    const cp = spawn(cmd, args, { windowsHide: true, cwd });
     let stdout = '';
     let stderr = '';
     cp.stdout.on('data', (d) => {

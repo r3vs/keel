@@ -93,7 +93,7 @@ export class CodexCliAdapter implements SpawnAdapter {
     const schemaFile = opts?.schema ? tmpPath('schema') : undefined;
     if (schemaFile) await writeFile(schemaFile, JSON.stringify(opts!.schema), 'utf8');
     try {
-      const { stdout } = await this.exec(this.bin, this.buildArgs(opts, lastFile, schemaFile), prompt);
+      const { stdout } = await this.exec(this.bin, this.buildArgs(opts, lastFile, schemaFile), prompt, opts?.cwd);
 
       // codex exits 0 even on failure — detect turn-level errors and fail loud.
       const err = firstCodexError(stdout);

@@ -30,6 +30,13 @@ export type LoopOpts = {
   maxRounds?: number;
 };
 
+export type CheckpointOpts = {
+  default?: unknown;
+  kind?: 'confirm' | 'input' | 'select';
+  headless?: 'default' | 'abort';
+  choices?: string[];
+};
+
 export interface WorkflowCtx {
   readonly runId: string;
   /** Spawn one read-only sub-agent. Journaled by positional call index. */
@@ -45,6 +52,9 @@ export interface WorkflowCtx {
   verify(item: unknown, opts?: VerifyOpts): Promise<VerifyResult>;
   /** Repeat discovery rounds until `consecutiveEmpty` rounds surface nothing new (deduped by `key`). */
   loopUntilDry(opts: LoopOpts): Promise<unknown[]>;
+  /** A journaled approval gate. Headless (no human) returns `{approved:true, value:default}`, or
+   * `{approved:false, aborted:true}` when `headless:'abort'`. Journaled like agent() so replay is stable. */
+  checkpoint(prompt: string, opts?: CheckpointOpts): Promise<unknown>;
   phase(title: string): void;
   log(msg: string): void;
 }
@@ -209,6 +219,32 @@ export function createWorkflowContext(opts: RunOpts): { ctx: WorkflowCtx; journa
         i++;
       }
       return all;
+    },
+
+    async checkpoint(prompt, copts) {
+      // callIndex before any work, like agent() — so the gate replays deterministically.
+      const index = seq++;
+      const hash = callHash('checkpoint', {
+        prompt,
+        kind: copts?.kind ?? 'confirm',
+        default: copts?.default ?? null,
+        headless: copts?.headless ?? 'default',
+      });
+      const cached = journal.lookup(runId, index, hash);
+      if (cached) {
+        log(`· replay checkpoint #${index}`);
+        return cached.result;
+      }
+      journal.miss(index);
+      // Non-interactive: no human to prompt. Auto-approve (or abort), journaled so replay reproduces it.
+      const result =
+        copts?.headless === 'abort'
+          ? { approved: false, aborted: true }
+          : { approved: true, value: copts?.default ?? null };
+      log(`◆ checkpoint #${index} — ${copts?.headless === 'abort' ? 'ABORT' : 'auto-approve'}: ${prompt}`);
+      journal.put({ index, runId, hash, result });
+      opts.onJournal?.(journal.dump());
+      return result;
     },
   };
 

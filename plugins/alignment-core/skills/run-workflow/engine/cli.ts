@@ -5,35 +5,46 @@
  * MCP. A skill/command running INSIDE a host session invokes this —
  *   node --experimental-strip-types workflow/cli.ts --host <self> --topology phase1-finding
  * — the engine drives sub-invocations of that host's OWN cli (claude -p / codex exec / opencode run)
- * and prints the surviving pins as JSON. The calling agent then writes them with the `ledger_add_pin`
- * MCP tool it already holds. So the engine needs no MCP client, and this path needs no npm deps —
- * only Node + the host cli. That is why the CLI is discovery/dry-run: it finds, it does not write.
+ * and prints the result as JSON. For read-only finding/challenge topologies the calling agent then
+ * writes the returned pins/events via the MCP tools it already holds (`ledger_add_pin`); the WRITE
+ * topology (build-waves) runs executors in git worktrees and returns a wave summary. So the engine
+ * needs no MCP client, and the read-only path needs no npm deps — only Node + the host cli.
+ *
+ * Topology args (oracles for challenger-verify, waves for build-waves) come from `--args-file <json>`.
  */
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { runWorkflow } from './engine.ts';
 import type { SpawnAdapter } from './adapter.ts';
 import { ClaudeCliAdapter } from './adapter.ts';
 import { CodexCliAdapter } from './adapters/codex.ts';
 import { OpencodeCliAdapter } from './adapters/opencode.ts';
-import { phase1Finding } from './topologies/phase1-finding.ts';
+import { WorktreeAdapter } from './worktree.ts';
 import type { WorkflowCtx } from './engine.ts';
+import { phase1Finding } from './topologies/phase1-finding.ts';
+import { challengerVerify } from './topologies/challenger-verify.ts';
+import { buildWaves } from './topologies/build-waves.ts';
 
 export type CliOpts = {
   host: string;
   topology: string;
   model?: string;
   ledger?: string;
+  argsFile?: string;
+  worktree: boolean;
   json: boolean;
 };
 
 export function parseArgs(argv: string[]): CliOpts {
-  const o: CliOpts = { host: 'claude', topology: 'phase1-finding', json: true };
+  const o: CliOpts = { host: 'claude', topology: 'phase1-finding', worktree: false, json: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--host') o.host = argv[++i];
     else if (a === '--topology') o.topology = argv[++i];
     else if (a === '--model') o.model = argv[++i];
     else if (a === '--ledger') o.ledger = argv[++i];
+    else if (a === '--args-file') o.argsFile = argv[++i];
+    else if (a === '--worktree') o.worktree = true;
     else if (a === '--text') o.json = false;
   }
   return o;
@@ -46,15 +57,24 @@ export const ADAPTERS: Record<string, (model?: string) => SpawnAdapter> = {
   opencode: (model) => new OpencodeCliAdapter({ model }),
 };
 
-export const TOPOLOGIES: Record<string, (wf: WorkflowCtx) => Promise<unknown>> = {
+export type Topology = (wf: WorkflowCtx, args?: any) => Promise<unknown>;
+
+export const TOPOLOGIES: Record<string, Topology> = {
   'phase1-finding': (wf) => phase1Finding(wf),
+  'challenger-verify': (wf, args) => challengerVerify(wf, args),
+  'build-waves': (wf, args) => buildWaves(wf, args),
 };
+
+// build-waves writes code, so its executors must be isolated in worktrees.
+const WRITE_TOPOLOGIES = new Set(['build-waves']);
 
 export async function runCli(
   opts: CliOpts,
   deps?: {
     adapters?: Record<string, (model?: string) => SpawnAdapter>;
-    topologies?: Record<string, (wf: WorkflowCtx) => Promise<unknown>>;
+    topologies?: Record<string, Topology>;
+    args?: unknown;
+    repoRoot?: string;
   },
 ): Promise<unknown> {
   const adapters = deps?.adapters ?? ADAPTERS;
@@ -67,8 +87,14 @@ export async function runCli(
   if (!topo) {
     throw new Error(`unknown --topology "${opts.topology}" (have: ${Object.keys(topologies).join(', ')})`);
   }
-  const { result } = await runWorkflow(topo, {
-    adapter: makeAdapter(opts.model),
+  const args = deps?.args ?? (opts.argsFile ? JSON.parse(readFileSync(opts.argsFile, 'utf8')) : {});
+
+  let adapter = makeAdapter(opts.model);
+  if (opts.worktree || WRITE_TOPOLOGIES.has(opts.topology)) {
+    adapter = new WorktreeAdapter(adapter, { repoRoot: deps?.repoRoot ?? process.cwd() });
+  }
+  const { result } = await runWorkflow((wf) => topo(wf, args), {
+    adapter,
     onLog: (m) => console.error(m), // logs to stderr; stdout stays clean JSON
   });
   return result;
