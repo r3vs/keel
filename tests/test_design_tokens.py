@@ -102,6 +102,21 @@ class TestGenerators(unittest.TestCase):
         # a font stack must be quoted so Impeccable's frontmatter parser reads it
         self.assertIn('"Avenir Next, sans-serif"', md)
 
+    def test_composite_token_is_skipped_not_emitted_as_broken_css(self):
+        # a DTCG composite (typography/border/shadow) has an OBJECT $value — it cannot be one CSS
+        # variable, so the web generators skip it rather than dump JSON into the stylesheet
+        contract = {
+            "type": {"$type": "typography",
+                     "heading": {"$value": {"fontFamily": "Georgia", "fontSize": "24px"}}},
+            "color": {"$type": "color", "ink": {"$value": "#111111"}},
+        }
+        ts = dt.TokenSet.from_obj(contract)
+        css = dt.to_css_vars(ts)
+        self.assertIn("--color-ink: #111111;", css)
+        self.assertNotIn("fontFamily", css)                     # the object never leaks into CSS
+        self.assertNotIn("fontSize", css)
+        self.assertEqual(dt.drift_check(ts, css)["drift"], [])  # no phantom drift against itself
+
     def test_design_md_excludes_unmapped_spacing(self):
         # space.gap is a dimension in no recognized group → CSS-only, never force-fit into the contract
         md = dt.to_design_md(self.ts)

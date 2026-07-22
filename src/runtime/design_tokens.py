@@ -19,9 +19,14 @@ variables, diff against the DTCG source — a correct generator round-trips to *
 round-trip is the design twin of `contract_diff`, and it is what the CI drift-check runs.
 
 **Scope of this floor.** Stdlib-only; the web targets (CSS variables, Tailwind v4, DESIGN.md
-frontmatter). Style Dictionary / Terrazzo are richer external generators we prefer WHEN present
-(they add iOS / Android / more), the same way tree-sitter is preferred when present — this module is
-the always-available floor, never a reimplementation we force.
+frontmatter), and the scalar token types a UI is styled from: `color`, `fontFamily`, and `dimension`
+(radii / font-sizes / spacing). DTCG **composite** types (`typography` / `border` / `shadow`, whose
+`$value` is an object) are **not projected** — they are skipped, never emitted as a broken CSS value;
+handling them is additive. Style Dictionary / Terrazzo are the mature standard DTCG generators and add
+more targets (iOS / Android / …); a project that uses one consumes the **same DTCG contract**, so they
+are compatible with this floor, not replaced by it. This module **neither detects nor shells them** —
+delegating to a present Style Dictionary would be an additive extension, not implemented here (do not
+read this as a tree-sitter-style "prefer when present" code path; there is none).
 
 **DTCG → DESIGN.md role mapping is read from the contract's own structure, never guessed.** A token's
 `$type` decides most of it (`color` → `colors`, `fontFamily` → a typography family). The one genuine
@@ -144,13 +149,20 @@ def _leaf(path: str) -> str:
     return path.rsplit(".", 1)[-1] if path else path
 
 
+def _scalar_tokens(ts: "TokenSet") -> list:
+    """Tokens whose value is a single CSS-emittable scalar (string / number / a fontFamily list) —
+    NOT a DTCG composite (`typography` / `border` / `shadow`, whose `$value` is an object). A composite
+    cannot be one `--var: value;`, so the web generators skip it rather than emit invalid CSS."""
+    return [t for t in ts.tokens if not isinstance(t["value"], dict)]
+
+
 # ── generators (one DTCG contract → each design layer) ──────────────────────
 
 def to_css_vars(ts: TokenSet, selector: str = ":root") -> str:
     """DTCG → CSS custom properties. The exact, lossless projection — every token becomes one
     `--<kebab-path>` variable; this is the layer the drift-check round-trips against."""
     lines = [f"/* {_BANNER} */", f"{selector} {{"]
-    for t in ts.tokens:
+    for t in _scalar_tokens(ts):
         lines.append(f"  --{_kebab(t['path'])}: {_fmt_value(t)};")
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -161,7 +173,7 @@ def to_tailwind(ts: TokenSet) -> str:
     `@theme`, so this is the same projection as `to_css_vars` in Tailwind's namespaced form
     (`--color-*`, `--font-*`, `--radius-*`, `--text-*`) — token names Tailwind turns into utilities."""
     lines = [f"/* {_BANNER} */", "@theme {"]
-    for t in ts.tokens:
+    for t in _scalar_tokens(ts):
         lines.append(f"  --{_tw_name(t)}: {_fmt_value(t)};")
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -302,7 +314,7 @@ def drift_check(ts: TokenSet, css: str) -> dict:
     """Diff a CSS layer's variables against the DTCG contract. Every mismatch is a drift finding
     (`confidence: extracted` — a value comparison is a fact). Missing/extra/changed are all surfaced;
     a correct generated layer produces `{"drift": []}` (the executable alignment guarantee)."""
-    want = {f"--{_kebab(t['path'])}": _fmt_value(t) for t in ts.tokens}
+    want = {f"--{_kebab(t['path'])}": _fmt_value(t) for t in _scalar_tokens(ts)}
     have = {f"--{k}": v for k, v in extract_css_vars(css).items()}
     drift = []
     for var, val in want.items():

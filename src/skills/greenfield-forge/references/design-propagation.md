@@ -94,8 +94,12 @@ component that *uses* an off-contract value. Static + membership together, for t
 DESIGN.md) and `tokens_diff` (the drift-check). Alignment is mechanical: the generator's own tests
 generate the CSS layer and run `tokens_diff` over it — a correct generator round-trips to **zero
 drift**. Verified end-to-end: a DTCG contract → generated DESIGN.md → `impeccable detect` reads it and
-flags off-contract usage as `design-system-*`. Richer generators (Style Dictionary, Terrazzo) that add
-iOS/Android targets are preferred **when present**; this stdlib floor covers the web targets offline.
+flags off-contract usage as `design-system-*`. Style Dictionary / Terrazzo are the standard generators
+for more targets (iOS / Android / …) and consume the **same DTCG contract** — compatible with this
+floor, not replaced by it. This stdlib floor covers the web targets offline and **does not detect or
+shell them** (a project already on Style Dictionary keeps using it; delegating to it is additive, not
+done here). It handles the scalar token types (`color` / `fontFamily` / `dimension`); DTCG composite
+types (`typography` / `border` / `shadow`) are skipped, not mis-emitted — additive.
 
 ## Visual generation (opt-in, per-host — the ceiling, not the floor)
 
