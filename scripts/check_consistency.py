@@ -31,12 +31,14 @@ errors, warnings = [], []
 REF_RE = re.compile(r"`(references/[\w\-./]+\.md)`")   # skill-relative
 CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 
-# A module's playbook "names a runnable" when it cites the vendored runtime path an agent can
-# execute. Anchored on the SHIPPED form (`scripts/runtime/x.py`) for the same reason the build's
-# closure is: that is the only spelling that resolves once installed, and it is what
-# verify_commands.py already validates. Naming a tool (`semgrep`) is not naming a mechanism — the
-# tool emits SARIF, and SARIF that reaches no ingester reaches no pin.
-RUNNABLE_RE = re.compile(r"scripts/runtime/\w+\.py")
+# A `deterministic` module must declare an `engine` — what actually produces its output. Three
+# honest forms: a vendored runtime path (`scripts/runtime/<name>.py`, stat-verified below), an
+# `external:<tool>` (a third-party tool emits it, e.g. codewiki), or an `agent:<how>` (the
+# greenfield "generate/scaffold from a decided source" sense — produced by the agent, not a runtime).
+# This replaced a prose-grep of the reference file, which let modules sharing a playbook free-ride on
+# one runnable mention — and grepping prose for correspondence is the very heuristic this repo forbids.
+# The check is now per-module and deterministic: the engine is declared, and a runtime path is stat'd.
+RUNTIME_ENGINE_RE = re.compile(r"^scripts/runtime/\w+\.py$")
 
 
 SRC_CORE = ROOT / "src" / "core"
@@ -91,14 +93,26 @@ for skill, rel in SKILLS.items():
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' has no reference")
             elif not ref_resolves(ref, sroot):
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' -> missing reference '{ref}'")
-            elif m.get("type") == "deterministic" and not RUNNABLE_RE.search(
-                    read(sroot / ref)):
-                errors.append(
-                    f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but its "
-                    f"playbook '{ref}' names no runnable — a deterministic module the agent must "
-                    "execute by judgment is prose wearing a mechanism's label. Name the command "
-                    "(`scripts/runtime/x.py`), or declare type=judgment and mean it"
-                )
+            elif m.get("type") == "deterministic":
+                engine = m.get("engine")
+                if not engine:
+                    errors.append(
+                        f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but "
+                        "names no `engine` — say what produces its output: a runtime path "
+                        "(`scripts/runtime/<name>.py`), an `external:<tool>`, or an `agent:<how>`. A "
+                        "deterministic module with no declared mechanism is prose wearing a label"
+                    )
+                elif RUNTIME_ENGINE_RE.match(engine):
+                    if not (ROOT / "src" / "runtime" / Path(engine).name).exists():
+                        errors.append(
+                            f"[{skill}] module '{m.get('id', '?')}' names engine '{engine}' but "
+                            "src/runtime/ has no such file"
+                        )
+                elif not (engine.startswith("external:") or engine.startswith("agent:")):
+                    errors.append(
+                        f"[{skill}] module '{m.get('id', '?')}' engine '{engine}' is not a "
+                        "recognized form (scripts/runtime/x.py | external:<tool> | agent:<how>)"
+                    )
 
     if not skill_path.exists():
         errors.append(f"[{skill}] missing SKILL.md")
@@ -163,8 +177,8 @@ for f in content_md:
 #    see. A parity linter is a smell; it says two things should be one thing, generated. So the
 #    write verb now lives once (the roster table in src/core/agents.md), build.py derives each
 #    host's mechanism from it (`disallowedTools` for Claude, `permission.edit` for opencode), and
-#    build.py --check is the guarantee. The residual it cannot close is unchanged: `Bash` is a
-#    write vector Claude Code cannot restrict — the ledger gate closes that at runtime.
+#    build.py --check is the guarantee. The residual it cannot close is narrower than it once read:
+#    a plugin cannot ship a selective, agent-scoped `Bash` rule — the ledger gate closes that at runtime.
 #
 #    NOTE what else is deliberately gone: the root `opencode.json` / `.mcp.json` / `.codex/config.toml`.
 #    They were host config for THIS repo, and a user installing a plugin never works in this repo —
