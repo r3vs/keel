@@ -226,8 +226,11 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
   `DETERMINISM_PRELUDE` runtime (blocca `Date.now`/`Math.random`/`Date()` argless, lascia `new Date(arg)`),
   `stripLeadingExportMeta`. Refactor `createWorkflowContext` condiviso tra path a-funzione e a-sorgente.
 - **Slice 3** — bind topologia ↔ `buildloop.waves()`; wave build §6.3 con worktree.
-- **Slice 4** — `build.py` genera i binder per-host + il fallback `SKILL.md`→`buildloop.py`; gate di
-  self-containment.
+- **Slice 4 — parziale (vendoring FATTO, 4/4 test cli + test Python)** — `build.py` vendorizza
+  `src/workflow/` → `plugins/alignment-core/workflow/` (UNA copia nel plugin-spine, accanto a `mcp/`,
+  `__tests__` esclusi), gated da `build --check` + `tests/test_workflow_vendored.py`. Entry `cli.ts`
+  (dry-run/discovery: solo Node + CLI host, **zero dep npm**). Manca: la skill/command che invoca
+  `cli.ts` e l'agente che scrive i pin ritornati via `ledger_add_pin`; bind live di `build_waves`.
 
 ## 10. Riconciliazione con decisioni recenti (⚠️ da integrare prima delle slice 2+)
 
@@ -248,6 +251,13 @@ Due elezioni recenti intersecano questo design e ne correggono la cornice — il
 
 Slice 0 non è toccata da nulla di questo (il motore è agnostico su come arrivano DAG/tier/fatti —
 sono slice successive). Ma le slice 2-4 devono partire da questa cornice, non da §1-§2 originali.
+
+**Risoluzione (Slice 4), senza fork controverso:** il motore **non parla MCP**. Una skill/command dentro
+la sessione host invoca `workflow/cli.ts` (Node + il CLI dello *stesso* host, zero dep npm); il motore
+pilota sub-invocazioni di quel CLI e **stampa i pin come JSON**; l'agente chiamante li scrive con
+`ledger_add_pin` — il tool MCP che ha già. Così `build_waves` (via `args`) e la scrittura del ledger
+restano sull'agente, non nel motore. Questo scioglie il "come raggiunge MCP" senza scegliere nulla di
+opinabile: il motore vendorizzato è invocabile subito (discovery/dry-run), la scrittura è dell'agente.
 
 ---
 *Ricerca a fondamento (2026-07-22): sorgente pi-dw v3.4.0 letto integralmente; Claude Code Agent SDK

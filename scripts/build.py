@@ -150,7 +150,7 @@ PLUGINS = {
             "Installed automatically as a dependency of codebase-rescue and greenfield-forge."
         ),
         "skills": ["using-the-ledger"],
-        "agents": True, "hooks": True, "mcp": True, "core_docs": True,
+        "agents": True, "hooks": True, "mcp": True, "core_docs": True, "workflow": True,
         "dependencies": [],
     },
     "codebase-rescue": {
@@ -491,6 +491,18 @@ def plugin_payload(name: str, spec: dict) -> dict:
         # opencode has no manifest slot for servers, so its plugin declares them in a `config()`
         # hook. Third host, same table, still zero user action.
         out["adapters/opencode/plugin/mcp.ts"] = opencode_mcp_plugin()
+    if spec.get("workflow"):
+        # The TS ceiling engine (src/workflow/) ships as ONE copy in the shared spine, beside mcp/ —
+        # the same home the Python runtime got post-Totale (next to the server, not vendored per-skill).
+        # It is PURE and never speaks MCP: a host-session skill invokes `workflow/cli.ts` (Node + the
+        # host's own cli, no npm dep) and the calling agent writes the returned pins via ledger_add_pin.
+        # __tests__/ (unit + live-smoke) develop the engine and never ship. Verbatim, like mcp/.
+        wf = SRC / "workflow"
+        for f in sorted(wf.rglob("*")):
+            rel = f.relative_to(wf)
+            if not f.is_file() or "__tests__" in rel.parts:
+                continue
+            out[f"workflow/{rel.as_posix()}"] = read(f)
     if spec.get("hooks"):
         for h in sorted((SRC / "hooks").iterdir()):
             if h.is_file():
