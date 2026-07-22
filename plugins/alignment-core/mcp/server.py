@@ -407,6 +407,25 @@ def spend_report(project: str = "", session: str = "", pricing: str = "",
                               declared_mcp=declared_mcp)
 
 
+@mcp.tool(annotations={"title": "Design Scan (frontend slop / a11y → ledger findings)", **_RO})
+def design_scan(paths: list) -> dict:
+    """Scan the frontend for AI-slop tells and design-quality / accessibility issues, as ledger-ready
+    findings. WRITES NO FILE.
+
+    Deterministic: it shells the Impeccable detector (pbakaus/impeccable, Apache-2.0) — no model, no
+    API key — so every hit is a fact (`confidence: extracted`) that skips fp-check, like a type error.
+    Each finding maps to a design_concern pin (or a contract_mismatch once a DESIGN.md is elected). The
+    taste half (LLM critique) is NOT run here — that is the reviewer / challenger lens.
+
+    Degrades, never hard-fails: if the detector cannot run (no Node / impeccable), returns
+    {"unchecked": True, ...} rather than a false clean bill (coverage-gap doctrine).
+
+    Args:
+        paths: Frontend files or dirs to scan (HTML / CSS / JSX / TSX / Vue / Svelte).
+    """
+    return tools.design_scan(paths)
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 
 @mcp.tool(annotations={"title": "Build Structural Graph", **_RW})

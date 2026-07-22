@@ -284,6 +284,11 @@ def spend_report(project: str = "", session: str = "", pricing: str = "",
         "this host's session store)")
 
 
+def design_scan(paths: list) -> dict:
+    import design
+    return design.scan(paths)
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 # These read/write the graph.json + its projections on disk. The graph is the foundational
 # artifact the rest of the family consumes (phases communicate through disk, never a session).
