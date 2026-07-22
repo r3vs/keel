@@ -289,6 +289,29 @@ def design_scan(paths: list, scope: str = "", viewport: str = "", no_advisory: b
     return design.scan(paths, scope=scope or None, viewport=viewport, no_advisory=no_advisory)
 
 
+def generate_tokens(contract: str, out: str) -> dict:
+    import design_tokens as DT
+    ts = DT.TokenSet.load(contract)
+    outdir = Path(out)
+    outdir.mkdir(parents=True, exist_ok=True)
+    files = {"tokens.css": DT.to_css_vars(ts), "theme.css": DT.to_tailwind(ts),
+             "DESIGN.md": DT.to_design_md(ts)}
+    written = {}
+    for name, text in files.items():
+        p = outdir / name
+        p.write_text(text, encoding="utf-8", newline="\n")
+        written[name] = str(p)
+    return {"written": written}
+
+
+def tokens_diff(contract: str, css: str) -> dict:
+    import design_tokens as DT
+    ts = DT.TokenSet.load(contract)
+    p = Path(css)
+    text = p.read_text(encoding="utf-8") if p.exists() else css
+    return DT.drift_check(ts, text)
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 # These read/write the graph.json + its projections on disk. The graph is the foundational
 # artifact the rest of the family consumes (phases communicate through disk, never a session).

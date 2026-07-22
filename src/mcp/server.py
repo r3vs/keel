@@ -431,6 +431,38 @@ def design_scan(paths: list, scope: str = "", viewport: str = "", no_advisory: b
     return tools.design_scan(paths, scope=scope, viewport=viewport, no_advisory=no_advisory)
 
 
+@mcp.tool(annotations={"title": "Generate Design Tokens (DTCG → CSS / Tailwind / DESIGN.md)", **_RW})
+def generate_tokens(contract: str, out: str) -> dict:
+    """Generate the aligned design layers from ONE W3C DTCG token contract. WRITES FILES.
+
+    The design twin of `generate_layers`: a single DTCG token JSON (the stable, multi-vendor design
+    standard) is projected into every layer a UI is built from — CSS custom properties (`tokens.css`),
+    a Tailwind v4 `@theme` block (`theme.css`), and a `DESIGN.md` (Google Stitch format) whose
+    frontmatter Impeccable's detector enforces token-membership against. One source of truth; the
+    layers cannot drift. Round-trips to zero drift against `tokens_diff`.
+
+    Args:
+        contract: path to the DTCG token JSON — the single source of design truth.
+        out: directory to write tokens.css / theme.css / DESIGN.md into.
+    """
+    return tools.generate_tokens(contract, out)
+
+
+@mcp.tool(annotations={"title": "Design Tokens Diff (drift vs the DTCG contract)", **_RO})
+def tokens_diff(contract: str, css: str) -> dict:
+    """Diff a CSS layer's `--variables` against the DTCG token contract. WRITES NO FILE.
+
+    Every mismatch (missing / changed / extra) is a drift finding with `confidence: extracted` — a
+    value comparison is a fact, so it skips fp-check like a type error. A correctly generated layer
+    diffs to `{"drift": []}`; this is the design analog of `contract_diff`, run as the CI drift-check.
+
+    Args:
+        contract: path to the DTCG token JSON.
+        css: path to a generated / hand-edited CSS file (or raw CSS text) to check against it.
+    """
+    return tools.tokens_diff(contract, css)
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 
 @mcp.tool(annotations={"title": "Build Structural Graph", **_RW})
