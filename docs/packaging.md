@@ -71,11 +71,19 @@ prose and missing from the product.
 | **Claude Code** | `.mcp.json` at the plugin root, read on install | `type: stdio` / `http` |
 | **Codex** | the same file — its manifest's `mcpServers: "./.mcp.json"` points at it | same |
 | **opencode** | a `config(cfg)` hook in the placed plugin mutates the live merged config | `type: local` / `remote`, `command` is an **array**, `environment` (not `env`) |
-| **Pi** | no native MCP — its extension is the bridge | — |
+| **Pi** | no native MCP — our own extension bridges it (`adapters/pi/extensions/mcp-bridge.ts`) | hand-rolled JSON-RPC over stdio; a proxy tool `alignment`; **no `@modelcontextprotocol/sdk`** |
 
 Host facts verified **at the function that consumes the value**, not inferred, and none guessable
 from the others:
 
+- **The Pi bridge is a loose `.ts`, deliberately dependency-free.** Pi's jiti allowlist excludes
+  `@modelcontextprotocol/sdk`, so using the SDK would force the bridge into an npm sub-package inside
+  Pi's shared dependency tree — reintroducing the exact `ERESOLVE` that makes `nicobailon/pi-mcp-adapter`
+  unusable (its open issue #176). So `mcp-bridge.ts` speaks the protocol by hand (initialize →
+  tools/list → tools/call, newline-delimited, mirroring `tests/test_mcp_server.py`), spawns the
+  vendored `../../../mcp/server.py` via `uv run`, registers ONE proxy tool `alignment` synchronously,
+  connects lazily, and fails open. `install.sh` symlinks it, keeping that relative link intact — the
+  same trick opencode's `mcp.ts` uses.
 - **Codex needs the `./`.** `resolve_manifest_mcp_servers` → `resolve_manifest_path`, which does
   `path.strip_prefix("./")` and returns `None` + a `tracing::warn` otherwise. This doc used to cite
   `PluginManifestMcpServers::Path` as the verification — the type that *holds* the value, which
