@@ -262,6 +262,8 @@ Rescue-specific:
   no-LLM detector bound to the ledger (design_concern; contract_mismatch vs the elected contract).
 - `references/browser-verification.md` — verify UI behavior + the production design render in a real
   browser (Playwright): deterministic token-membership + judgment visual-regression, "resolved = observed".
+- `references/design-taste-lens.md` — the *taste* half as a read-only reviewer/challenger lens
+  (judgment `design_concern`, fp-checked), adapted with attribution from Impeccable + Anthropic frontend-design.
 - `references/phase-2-interview.md` — how rescue sources the shared funnel (pins = findings).
 - `references/phase-3-roadmap.md` — diff + dependency sequencing.
 - `references/phase-4-remediation.md` — the ponytail ladder in practice.

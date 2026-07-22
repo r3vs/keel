@@ -33,6 +33,14 @@ Because the ledger is append-only and materialized on disk, the loop is **restar
 crashes or a session ends, it resumes from the first non-`resolved` item with zero rework. On a
 large codebase that resilience is not a luxury.
 
+**Checkpoint on a *measured* context budget, not a feeling.** Even a single item can saturate context
+(a wide blast radius, a long generated diff). When the working context crosses a threshold, **stop and
+hand off** — write the state to the ledger and start a fresh invocation for the remainder — rather than
+push into a degraded window where quality silently drops. The trigger is measured: the harness's live
+context measure crosses the budget, calibrated against what past scopes actually cost (the `spend`
+telemetry). This is the executor's version of the whole doctrine — surface the limit and reset, never
+work past it and hope. A checkpoint fired on evidence is not a failure; it is the reset working.
+
 ## The two-track TDD protocol (the core of this phase)
 
 Classic red→green→refactor assumes you know what the code should do. On slop you don't — that
@@ -102,6 +110,13 @@ Run the deterministic static checks **on the diff, as you edit** — the type-ch
 LSP-assisted refactor, and architecture-fitness — not only in the Phase-1 scan. A type error or a
 boundary violation caught in-loop is fixed before the two-stage review, at `extracted` confidence
 and without spending fp-check budget. See `references/core/static-analysis.md`.
+
+For a **UI** diff, `design_scan` is the same kind of in-loop signal — a token off the DESIGN.md is a
+`design-system-*` fact caught as you edit, like a type error. Run it **two-speed** (the pattern
+Impeccable's own edit hook uses): on each edit, only the critical/objective checks (overflow, contrast,
+tiny text, DESIGN.md deviations); the full sweep once at the item/wave boundary. The reason is measured,
+not stylistic — running the *whole* rule set on every edit makes models **more conservative, not more
+careful**, so the loud checks fire per-edit and the long tail waits for the boundary.
 
 ## Ground fixes in current sources
 

@@ -115,11 +115,38 @@ routed to a human-reviewed pin, never auto-resolved (`references/browser-verific
 
 Impeccable also ships an **LLM critique** — the subjective "does this look designed or generated"
 judgment — as its own *skill* (installed via `impeccable install`), deliberately **not** a `detect`
-subcommand. We do **not** run it inside this deterministic module. Where subjective design quality
-matters, it is a **reviewer / challenger lens** (`references/core/agents.md`): a judgment pin that
-DOES pass fp-check, adapted from Impeccable's rule catalog **with attribution**, kept on the
-read-only side of the roster. Keeping fact (the detector) and taste (the critique) on opposite sides
-of the fp-check line is the same fact-vs-taste split this package draws everywhere.
+subcommand. We do **not** run it inside this deterministic module, and we do **not** install its
+skill (self-contained). Where subjective design quality matters, it is a **reviewer / challenger
+lens** — a judgment pin that DOES pass fp-check, authored here and adapted **with attribution** from
+Impeccable's rule catalog and Anthropic's `frontend-design` principles, kept on the read-only side of
+the roster. Full playbook: `references/design-taste-lens.md`. Keeping fact (the detector) and taste
+(the critique) on opposite sides of the fp-check line is the same fact-vs-taste split this package
+draws everywhere.
+
+## Visual generation (opt-in, per-host — the ceiling)
+
+The tools that *produce* design — turn a brief into a visual — are the **ceiling**, not the floor.
+They are **opt-in, per-host, and never bundled** (both are external; self-contained holds). Our
+deterministic layer is the floor and the **alignment guarantee**: whatever a non-deterministic
+generator emits re-enters as an ordinary diff, verified against the elected DTCG contract by
+`tokens_diff` + `impeccable detect` — enforced *more* strictly on a generator-originated diff, not less.
+
+- **Claude Code → Claude Design** (Anthropic Labs). Web-only, human-in-the-loop; it produces
+  HTML/CSS, not framework components, and ingests a design system as *prose* (no DESIGN.md parser, no
+  autonomous API — it cannot be driven headless). **Sequencing matters:** establish the DTCG contract
+  first (run the rescue), *then* point Claude Design at the codebase — pointed at un-rescued code it
+  learns and mass-reproduces the existing drift ("messy material teaches messy patterns"). Its output
+  is starting code, re-verified here like any diff.
+- **Other hosts → Open Design** (nexu-io, Apache-2.0). An **opt-in MCP** (`od mcp install`) on Claude
+  Code / Codex / opencode / Pi, local-first (Ollama = offline). Its own `DESIGN.md` is a
+  **different, prose-only dialect** (machine data in a sibling `design-tokens.json`) — so consume its
+  `design-tokens.json` (DTCG) as a candidate contract, **not** its prose. Its `od-code-migration`
+  refreshes a repo to a design via a build/test loop and gates at **the PR**; rescue gates at **the
+  pin** (per-drift election before any edit) — its migration diff can feed our ledger as input, not
+  replace it.
+
+Neither is declared by default: an external app / hosted product that fails to connect for everyone
+who has not installed it is the cognee anti-pattern. The floor needs neither.
 
 ## Relationship to the rest
 

@@ -39,7 +39,10 @@ mutation. Three high-value static signals are commonly under-used:
   - **Comprehension / finding** (rescue Phase 1): type-check + LSP/SCIP index + architecture-fitness
     alongside the existing finders; type errors and constraint violations become high-confidence pins.
   - **Build / remediation** (Phase 4): type-check + LSP in-loop on the diff; `ast-grep` for
-    mechanical rewrites.
+    mechanical rewrites. For a UI diff, design token-membership (`design_scan` / `impeccable detect`)
+    is the same in-loop signal — a token off the DESIGN.md is a fact, like a type error — run
+    **two-speed**: critical checks per-edit, the full rule set at the boundary (the whole set per-edit
+    makes models more conservative, not more careful).
   - **Validate** (Phase 5): type-check passes and architecture-fitness is green — as evidence, not
     just a green build.
   - **greenfield paved road** (Phase 3): scaffold the type-checker and the architecture-fitness /
