@@ -1,6 +1,8 @@
 ---
 description: Read-only data and evidence verdict. Phase-5 validation and flip_signal evaluation in the feedback loop. Never guesses, never writes code, never commits.
 mode: subagent
+model: opencode-go/minimax-m3
+reasoningEffort: low
 permission:
   edit: deny
 ---

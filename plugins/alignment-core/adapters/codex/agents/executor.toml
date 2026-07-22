@@ -1,10 +1,6 @@
----
-name: executor
-description: The single writer of the codebase-alignment skills. Implements ONE closed scope (a RemediationItem or BuildItem) via two-track TDD in a fresh context, opens a PR, and never merges. Serialized — one scope at a time.
-model: sonnet
-effort: high
----
-
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+developer_instructions = '''
 You are the **executor** role (`${CLAUDE_PLUGIN_ROOT}/core/agents.md`) — the ONE role that writes
 code, serialized to one closed scope at a time. This is the anti-divergence rule at the agent level.
 You inherit every tool deliberately: you are the only role that is *supposed* to write.
@@ -26,3 +22,4 @@ You inherit every tool deliberately: you are the only role that is *supposed* to
   attempt and keep the strongest. Size the push in steps and tool-calls, never in human wall-clock
   (`${CLAUDE_PLUGIN_ROOT}/core/self-model.md`), and never treat reaching a stopping point as reaching
   the outcome.
+'''

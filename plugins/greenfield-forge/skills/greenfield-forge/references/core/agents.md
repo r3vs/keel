@@ -66,6 +66,27 @@ obey it: put optimization pressure on a monitor and a model learns to hide the i
 it, so a read-only gate must never be turned into a score to beat. A monitor you optimize against
 stops seeing.
 
+## Model tier per role — **the build reads this too**
+
+The write permission is not the only per-role property the build derives. Each role also carries a
+**tier**: a classification by cognitive demand, from which `model-tiers.md` resolves a concrete model
+and reasoning effort **per profile** (Anthropic / OpenAI / OpenCode-Go / mixed), and `build.py`
+emits it into each host's adapter. The tier is a property of the **role**, known deterministically —
+never a guess about how hard a given task is, which is the heuristic this package forbids. These
+lines are parsed; editing them re-tiers every host at once.
+
+- `challenger` → **tier: T3** (deepest reasoning — refute the oracle; rare, highest stakes)
+- `reviewer`, `brainstorm` → **tier: T2** (judgment — find real bugs, propose options)
+- `executor` → **tier: T1** (bounded implementation — the one writer, high volume)
+- `researcher`, `measurer` → **tier: T0** (read / verify at fan-out — cheap, parallel)
+
+The **orchestrator** (the main loop) is not a roster subagent and has no tier: on Claude Code a
+plugin cannot set the main-loop model (it stays the human's `/model`), so there it is guidance; on
+opencode/Pi it is the configurable primary agent. Escalation (`executor` → a higher tier) fires only
+on a ledger signal — a `reviewer` `REJECT` twice or an unmet `acceptance_criterion` — so it is a
+runtime decision on evidence, never baked into an adapter. Full policy + the four profiles:
+`model-tiers.md`.
+
 ## Mapping notes
 
 - The two-stage review the phase playbooks describe **is** the `reviewer`; the "data decides"

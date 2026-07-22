@@ -265,6 +265,8 @@ HTTP/token/allowlist server (only relevant if we ever *serve* rather than *embed
   `model: inherit` is a Claude-Code-only keyword that opencode/others reject as a literal model id
   (`ProviderModelNotFoundError`). We ship opencode/pi/codex adapters and are exposed to the same bug
   — verify our roster/build omits `model` (or maps it per host).
+  *Implemented via the map-per-host branch: `core/model-tiers.md` resolves each role's `tier` to a
+  host-correct model — Claude aliases, opencode `provider/model-id` — and never emits `inherit`.*
 - **E2 — Commit-the-graph team sharing + `--auto-update` post-commit hook (S).** Commit the graph
   JSON so teammates skip the pipeline; a PostToolUse(Bash) hook matches `git (commit|merge|rebase)`
   and incrementally patches the graph. Pairs with A2. For us: the *ledger* is already the committed

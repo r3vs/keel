@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Install the built package into a host that has no plugin format of its own.
 #
-# Claude Code and Codex do not need this — they install from the marketplace:
+# Claude Code installs entirely from the marketplace and needs nothing here:
 #   Claude Code:  /plugin marketplace add r3vs/codebase-rescue
 #                 /plugin install codebase-rescue@codebase-alignment   (alignment-core comes with it)
-#   Codex:        codex plugin marketplace add r3vs/codebase-rescue
+#   Codex:        codex plugin marketplace add r3vs/codebase-rescue    (skills/MCP/hooks)
+# Codex is a PARTIAL exception: its marketplace plugin delivers skills/MCP/hooks, but a Codex plugin
+# manifest cannot declare agents (verified in openai/codex), so Profile B's per-role model files are
+# placed here into ~/.codex/agents/ — run this too if you want per-role models on Codex.
 #
 # opencode and Pi have no plugin manifest, so their pieces are generated into
 # plugins/alignment-core/adapters/ (a directory Claude Code simply ignores) and placed here. There
@@ -23,6 +26,7 @@ core="$root/plugins/alignment-core/adapters"
 skills_dir="${1:-$HOME/.agents/skills}"     # opencode + Pi both auto-discover this
 oc_dir="${OPENCODE_DIR:-$HOME/.config/opencode}"
 pi_dir="${PI_DIR:-$HOME/.pi/agent}"
+codex_dir="${CODEX_DIR:-$HOME/.codex}"
 
 if [ ! -d "$root/plugins" ]; then
   echo "! plugins/ not built — run: python scripts/build.py" >&2
@@ -84,6 +88,17 @@ if [ -d "$core/pi/extensions" ]; then
     [ -f "$f" ] && place "$f" "$pi_dir/extensions/$(basename "$f")" >/dev/null && n=$((n + 1))
   done
   echo "✓ ${n} Pi extension file(s) placed in $pi_dir/extensions"
+fi
+
+# Codex: its plugin manifest cannot declare agents, so Profile B's per-role model files (model +
+# model_reasoning_effort + developer_instructions) are placed here into ~/.codex/agents/, which Codex
+# auto-discovers. The marketplace plugin still delivers skills/MCP/hooks; this only adds per-role models.
+if [ -d "$core/codex/agents" ]; then
+  n=0
+  for f in "$core"/codex/agents/*.toml; do
+    [ -f "$f" ] && place "$f" "$codex_dir/agents/$(basename "$f")" >/dev/null && n=$((n + 1))
+  done
+  echo "✓ ${n} Codex per-role agent(s) placed in $codex_dir/agents (auto-discovered)"
 fi
 
 cat <<MSG

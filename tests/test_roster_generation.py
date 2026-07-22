@@ -15,12 +15,18 @@ import sys
 import unittest
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None
+
 ROOT = Path(__file__).resolve().parent.parent
 PLUGINS = ROOT / "plugins"
 ROSTER = ROOT / "src" / "core" / "agents.md"
 AUTHORED = ROOT / "src" / "agents"
 CLAUDE = PLUGINS / "alignment-core" / "agents"
 OPENCODE = PLUGINS / "alignment-core" / "adapters" / "opencode" / "agent"
+CODEX = PLUGINS / "alignment-core" / "adapters" / "codex" / "agents"
 
 PERM = re.compile(r"^- ((?:`[\w-]+`(?:, )?)+)\s*→\s*\*\*edit: (deny|allow)\*\*", re.M)
 ROLE = re.compile(r"`([\w-]+)`")
@@ -32,6 +38,21 @@ def roster() -> dict:
         for r in ROLE.findall(blob):
             out[r] = verb
     return out
+
+
+# Profile A's model must be an Anthropic alias or a full claude-* id; opencode's must be
+# provider-qualified. `max` is session-only, so it is not a legal frontmatter effort.
+CLAUDE_ALIASES = {"sonnet", "opus", "haiku", "fable"}
+CLAUDE_EFFORTS = {"low", "medium", "high", "xhigh"}
+
+
+def _frontmatter(base: Path, role: str) -> str:
+    return (base / f"{role}.md").read_text(encoding="utf-8").split("---\n", 2)[1]
+
+
+def _value(frontmatter: str, key: str):
+    m = re.search(rf"(?mi)^\s*{key}\s*:\s*(\S+)\s*$", frontmatter)
+    return m.group(1) if m else None
 
 
 class TestTheRosterIsTheOnlySource(unittest.TestCase):
@@ -80,17 +101,63 @@ class TestBothHostsAreDerived(unittest.TestCase):
             with self.subTest(role=role, host="opencode"):
                 self.assertRegex(text, rf"permission:\s*\n\s*edit:\s*{verb}")
 
-    def test_no_host_emits_a_model_frontmatter_line(self):
-        # Understand-Anything's issue #167: `model: inherit` is a Claude-Code-only keyword that
-        # opencode/Pi reject as a literal model id (ProviderModelNotFoundError). We ship those
-        # adapters, so guard the invariant the study flagged (E1): no generated agent frontmatter
-        # declares a `model:` on ANY host — the model is left to each host's own default.
+    # Study finding E1 offered two safe options — "omit `model` (OR map it per host)". These enforce
+    # the second: per-role models are now an elected feature, so instead of forbidding `model:` we
+    # guard the exact hazard E1 named — a model id its host cannot resolve. Strictly stronger than the
+    # old blanket "no `model:` anywhere".
+
+    def test_no_host_emits_model_inherit(self):
+        # The literal #167 bug: `inherit` is a Claude-only keyword; opencode/Pi read it as a model id
+        # and raise ProviderModelNotFoundError. We emit concrete ids per host, never `inherit`.
         for role in sorted(roster()):
             for host, base in (("claude", CLAUDE), ("opencode", OPENCODE)):
-                frontmatter = (base / f"{role}.md").read_text(encoding="utf-8").split("---\n", 2)[1]
                 with self.subTest(role=role, host=host):
-                    self.assertNotRegex(frontmatter, r"(?mi)^\s*model\s*:",
-                                        "no host may emit an agent `model:` frontmatter (UA #167)")
+                    self.assertNotRegex(_frontmatter(base, role), r"(?mi)^\s*model\s*:\s*inherit\b",
+                                        "`inherit` is Claude-only; opencode/Pi reject it (E1 / UA #167)")
+
+    def test_claude_models_are_anthropic_aliases(self):
+        # Claude frontmatter takes an alias (sonnet/opus/haiku/fable) or a full claude-* id — never a
+        # `provider/model-id`, and a wrong value is silently ignored, so assert the value is real.
+        for role in sorted(roster()):
+            model = _value(_frontmatter(CLAUDE, role), "model")
+            with self.subTest(role=role):
+                self.assertIsNotNone(model, "Profile A pins a model for every roster role")
+                self.assertTrue(model in CLAUDE_ALIASES or model.startswith("claude-"),
+                                f"claude model `{model}` is not an alias or a claude-* id")
+
+    def test_opencode_models_are_provider_qualified(self):
+        # opencode resolves `provider/model-id`; a bare alias (or `inherit`) is the #167 error. Every
+        # opencode model must carry a provider namespace.
+        for role in sorted(roster()):
+            model = _value(_frontmatter(OPENCODE, role), "model")
+            with self.subTest(role=role):
+                self.assertIsNotNone(model, "the opencode profile pins a model for every roster role")
+                self.assertIn("/", model, f"opencode model `{model}` must be `provider/model-id`")
+
+    def test_claude_effort_is_a_legal_frontmatter_value(self):
+        # `max` is session-only; a wrong effort is silently ignored by Claude Code.
+        for role in sorted(roster()):
+            effort = _value(_frontmatter(CLAUDE, role), "effort")
+            with self.subTest(role=role):
+                if effort is not None:
+                    self.assertIn(effort, CLAUDE_EFFORTS,
+                                  f"claude effort `{effort}` is not low|medium|high|xhigh")
+
+    def test_codex_agents_are_valid_toml_with_only_the_three_keys(self):
+        # Codex's role config layer is `deny_unknown_fields`, so a wrong key HARD-errors (not silent
+        # like Claude). Assert each per-role file is valid TOML carrying a model + ONLY the three
+        # verified keys — the guard that we never ship a field Codex would reject.
+        if tomllib is None:
+            self.skipTest("tomllib requires Python 3.11+")
+        allowed = {"model", "model_reasoning_effort", "developer_instructions"}
+        for role in sorted(roster()):
+            p = CODEX / f"{role}.toml"
+            with self.subTest(role=role):
+                self.assertTrue(p.exists(), f"Codex per-role file {role}.toml must be generated")
+                data = tomllib.loads(p.read_text(encoding="utf-8"))
+                self.assertIn("model", data, "Codex agent must pin a model (Profile B)")
+                self.assertEqual(set(data) - allowed, set(),
+                                 "Codex role config denies unknown fields — emit only the three keys")
 
     def test_both_hosts_get_the_identical_body(self):
         # The failure the old linter could not see: same role, two hand-written prompts, drifted.

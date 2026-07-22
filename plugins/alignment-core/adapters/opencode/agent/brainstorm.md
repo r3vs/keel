@@ -1,6 +1,8 @@
 ---
 description: Proposes 2-3 options with tradeoffs for ONE pinned problem or decision, grounded and cited. Writes proposals only; never decides, never commits, never edits code. Use on a hard fork in either skill.
 mode: subagent
+model: opencode-go/glm-5.2
+reasoningEffort: high
 permission:
   edit: deny
 ---

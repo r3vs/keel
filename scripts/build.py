@@ -114,6 +114,28 @@ FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.S)
 # runtime by the ledger gate instead.
 DENY_TOOLS = "Write, Edit, NotebookEdit"
 
+# --- model tiers, resolved per profile (src/core/agents.md tiers + src/core/model-tiers.md) -----
+# A third per-role property the build derives, beside the write verb: a `tier` (agents.md), resolved
+# to a concrete model + reasoning effort per PROFILE (model-tiers.md), emitted into each host's
+# adapter in that host's own vocabulary. Same principle as the roster: the doc that states the policy
+# is the source the build reads — nothing here hardcodes a model.
+ROSTER_TIER = re.compile(r"^- ((?:`[\w-]+`(?:, )?)+)\s*→\s*\*\*tier: (T\d)\*\*", re.M)
+PROFILE_HEAD = re.compile(r"^## Profile ([A-D]) · ", re.M)
+HEADING = re.compile(r"^#{1,6} ", re.M)
+MODEL_ROW = re.compile(r"^- `([\w-]+)` → `([\w./:-]+)`(?: · `([\w-]+)`)?\s*$", re.M)
+# Which profile each host's adapter SHIPS by default. Claude Code -> A (only Anthropic models run
+# there). opencode/Pi -> C: the open-weight floor that needs only the one $10 Go sub. Profile D
+# (mixed, needs both subs) is the recommended power-profile but is applied via the host's own
+# per-agent override (model-tiers.md), not baked into what every user installs.
+CLAUDE_PROFILE, OPENCODE_PROFILE, CODEX_PROFILE = "A", "C", "B"
+# Claude frontmatter takes these effort values only (`max` is session-only) — a wrong one is silently
+# ignored by Claude Code, so the build refuses it instead of shipping a dead field.
+CLAUDE_EFFORTS = {"low", "medium", "high", "xhigh"}
+# Codex's role config_file is `deny_unknown_fields` (verified in openai/codex: `AgentRoleToml` /
+# the role layer), so a wrong key HARD-errors — the opposite of Claude. Emit only `model` +
+# `model_reasoning_effort` + `developer_instructions`, and only these effort values.
+CODEX_EFFORTS = {"minimal", "low", "medium", "high"}
+
 # The MCP servers the doctrine REQUIRES, parsed from its own table (src/core/knowledge-sources.md).
 # `- `name` → **http** `url` — …`  is required; `→ **opt-in**` is named there and deliberately left
 # undeclared. Same shape as the roster: the doc that states the rule is the source the build reads.
@@ -302,6 +324,34 @@ def roster() -> dict:
     return out
 
 
+def tiers() -> dict:
+    """role -> tier (T0..T3), from the tier lines in agents.md — the same table shape as the write
+    verb, parsed the same way."""
+    out = {}
+    for roles_blob, tier in ROSTER_TIER.findall(read(CORE / "agents.md")):
+        for role in ROLE_IN_LIST.findall(roles_blob):
+            out[role] = tier
+    return out
+
+
+def model_profile(letter: str) -> dict:
+    """role -> (model, effort|None) for one `## Profile <letter>` block of model-tiers.md.
+
+    Bounded to its own block (heading to next heading), so the `- role → model` rows of the override
+    and shipping-defaults sections below the profiles are never mistaken for assignments. A role
+    absent from a profile is simply omitted — the adapter emits no model line and the host falls back
+    to its session model. Graceful degradation, never an error."""
+    text = read(CORE / "model-tiers.md")
+    for m in PROFILE_HEAD.finditer(text):
+        if m.group(1) != letter:
+            continue
+        nxt = HEADING.search(text, m.end())
+        block = text[m.end(): nxt.start() if nxt else len(text)]
+        return {role: (model, effort or None) for role, model, effort in MODEL_ROW.findall(block)}
+    problems.append(f"src/core/model-tiers.md declares no `## Profile {letter} · …` block")
+    return {}
+
+
 def agent_parts(role: str) -> tuple[dict, str]:
     """(frontmatter fields, body) of an authored role prompt."""
     m = FRONTMATTER.match(read(SRC / "agents" / f"{role}.md"))
@@ -316,13 +366,20 @@ def agent_parts(role: str) -> tuple[dict, str]:
     return fields, m.group(2)
 
 
-def claude_agent(role: str, verb: str) -> str:
+def claude_agent(role: str, verb: str, models: dict) -> str:
     fields, body = agent_parts(role)
     lines = [f"name: {role}", f"description: {fields.get('description', '')}"]
     if fields.get("tools"):
         lines.append(f"tools: {fields['tools']}")
     if verb == "deny":
         lines.append(f"disallowedTools: {DENY_TOOLS}")
+    # Profile A: pin the subagent's model + effort. The main-loop model a plugin cannot set (it stays
+    # the human's /model), so the orchestrator carries no row and nothing is emitted for it.
+    model, effort = models.get(role, (None, None))
+    if model:
+        lines.append(f"model: {model}")
+    if effort:
+        lines.append(f"effort: {effort}")
     return "---\n" + "\n".join(lines) + "\n---\n" + body
 
 
@@ -339,19 +396,38 @@ def command_parts(cmd: str) -> tuple[dict, str]:
     return fields, m.group(2).strip() + "\n"
 
 
-def opencode_agent(role: str, verb: str) -> str:
+def opencode_agent(role: str, verb: str, models: dict) -> str:
     """opencode's own shape: `permission: {edit: …}` (its `tools` field is deprecated in favour of
-    permission), and the SAME body — so the two hosts can no longer say different things about the
-    same role, which is precisely what had already happened."""
+    permission), a per-agent `model:`/`reasoningEffort:` (opencode's own keys, e.g. `opencode/glm-5.2`),
+    and the SAME body — so the two hosts can no longer say different things about the same role, which
+    is precisely what had already happened."""
     fields, body = agent_parts(role)
-    return (
-        "---\n"
-        f"description: {fields.get('description', '')}\n"
-        "mode: subagent\n"
-        "permission:\n"
-        f"  edit: {verb}\n"
-        "---\n" + body
-    )
+    lines = ["---", f"description: {fields.get('description', '')}", "mode: subagent"]
+    model, effort = models.get(role, (None, None))
+    if model:
+        lines.append(f"model: {model}")
+    if effort:
+        lines.append(f"reasoningEffort: {effort}")
+    lines += ["permission:", f"  edit: {verb}", "---"]
+    return "\n".join(lines) + "\n" + body
+
+
+def codex_agent(role: str, models: dict) -> str:
+    """Codex's per-role model file — a standalone `.codex/agents/<role>.toml` Codex auto-discovers,
+    carrying the three verified keys of the role config layer (`model`, `model_reasoning_effort`,
+    `developer_instructions`). A Codex plugin manifest cannot declare agents (it bundles skills/mcp/
+    hooks only), so scripts/install.sh places these into `~/.codex/agents/`, the same way it places
+    the opencode/Pi adapters. The struct denies unknown fields, so nothing else is emitted; the body
+    is a TOML literal string (no escape processing) — the SAME role prose the other hosts carry."""
+    _, body = agent_parts(role)
+    model, effort = models.get(role, (None, None))
+    lines = []
+    if model:
+        lines.append(f'model = "{model}"')
+    if effort:
+        lines.append(f'model_reasoning_effort = "{effort}"')
+    lines.append("developer_instructions = '''\n" + body.strip() + "\n'''")
+    return "\n".join(lines) + "\n"
 
 
 def plugin_payload(name: str, spec: dict) -> dict:
@@ -360,18 +436,45 @@ def plugin_payload(name: str, spec: dict) -> dict:
         out.update(skill_payload(skill))
     if spec.get("agents"):
         verbs = roster()
+        role_tiers = tiers()
+        cmodels, omodels = model_profile(CLAUDE_PROFILE), model_profile(OPENCODE_PROFILE)
+        bmodels = model_profile(CODEX_PROFILE)
         authored = {p.stem for p in (SRC / "agents").glob("*.md")}
         for extra in sorted(authored - set(verbs)):
             problems.append(f"src/agents/{extra}.md has no permission in src/core/agents.md")
         for missing in sorted(set(verbs) - authored):
             problems.append(f"src/core/agents.md lists `{missing}` but src/agents/{missing}.md is absent")
+        # Every shipped role must carry a tier and resolve to a model in each shipped profile, or it
+        # would silently get the session model while its peers are pinned — the quiet half-applied
+        # config this repo gates against.
+        for role in sorted(set(verbs) & authored):
+            if role not in role_tiers:
+                problems.append(f"src/core/agents.md: role `{role}` has a permission but no tier")
+            for prof, m in (("A", cmodels), ("B", bmodels), ("C", omodels)):
+                if role not in m:
+                    problems.append(f"src/core/model-tiers.md Profile {prof}: no model for role `{role}`")
+        for role, (model, effort) in cmodels.items():
+            if effort and effort not in CLAUDE_EFFORTS:
+                problems.append(
+                    f"src/core/model-tiers.md Profile A: effort `{effort}` for `{role}` is not a Claude "
+                    f"frontmatter value ({'|'.join(sorted(CLAUDE_EFFORTS))}); `max` is session-only"
+                )
+        for role, (model, effort) in bmodels.items():
+            if effort and effort not in CODEX_EFFORTS:
+                problems.append(
+                    f"src/core/model-tiers.md Profile B: effort `{effort}` for `{role}` is not a Codex "
+                    f"model_reasoning_effort ({'|'.join(sorted(CODEX_EFFORTS))})"
+                )
         for role, verb in sorted(verbs.items()):
             if role not in authored:
                 continue
-            out[f"agents/{role}.md"] = claude_agent(role, verb)
+            out[f"agents/{role}.md"] = claude_agent(role, verb, cmodels)
             # opencode has no plugin format, so its adapter rides along inside the plugin (which
             # Claude Code simply ignores) and `scripts/install.sh` places it. One output tree.
-            out[f"adapters/opencode/agent/{role}.md"] = opencode_agent(role, verb)
+            out[f"adapters/opencode/agent/{role}.md"] = opencode_agent(role, verb, omodels)
+            # Codex's manifest cannot carry agents either, so its per-role model file rides the same
+            # way; install.sh places it into ~/.codex/agents/ (auto-discovered by Codex).
+            out[f"adapters/codex/agents/{role}.toml"] = codex_agent(role, bmodels)
     if spec.get("core_docs"):
         # The agents resolve ${CLAUDE_PLUGIN_ROOT}/core/<doc>.md — a plugin-root copy, distinct from
         # the per-skill vendoring, because an agent is not inside any skill.

@@ -1,6 +1,8 @@
 ---
 description: Read-only comprehension, finding, and grounded research for the codebase-alignment skills. Fans out in parallel and never writes code. Use for Phase-1 comprehension/finding (rescue) and framing / threat-model / catalog research (greenfield).
 mode: subagent
+model: opencode-go/minimax-m3
+reasoningEffort: low
 permission:
   edit: deny
 ---

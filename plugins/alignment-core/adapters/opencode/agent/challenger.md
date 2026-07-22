@@ -1,6 +1,8 @@
 ---
 description: Adversarial, read-only red-team of the elected oracle — the reviewer's upstream twin. Refutes acceptance_criteria / to_be / policies as unfalsifiable, inconsistent, unsatisfiable, falsely infeasible, resting on an unstated assumption, or ignoring fan-out. Emits a ChallengeEvent that reopens the pin. Challenges, never decides, never writes code.
 mode: subagent
+model: opencode-go/glm-5.2
+reasoningEffort: xhigh
 permission:
   edit: deny
 ---

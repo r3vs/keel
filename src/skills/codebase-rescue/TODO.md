@@ -194,9 +194,11 @@ Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its b
 - [x] **A2** `runtime/fingerprint.py` — signature fingerprints (COSMETIC vs STRUCTURAL) + change
       classifier (SKIP / PARTIAL / ARCHITECTURE / FULL); both guards implemented (commit stamped with
       the store; `save_store` refuses to wipe a non-empty baseline). `tests/test_fingerprint.py`.
-- [x] **E1** verified the roster emits **no** agent `model:` frontmatter on any host (the UA #167
-      bug structurally cannot occur here) and **guarded it** with a regression test.
-      `tests/test_roster_generation.py::...test_no_host_emits_a_model_frontmatter_line`.
+- [x] **E1** took the branch E1 itself offered — **map `model` per host**, not omit it: the roster
+      carries a `tier` (`src/core/agents.md`) resolved to a model + effort per profile
+      (`src/core/model-tiers.md`), and the build emits host-correct ids (Claude aliases / opencode
+      `provider/model-id`), **never `inherit`** — so the UA #167 bug still cannot occur. Guarded by
+      `tests/test_roster_generation.py` (no-`inherit`, per-host namespace, legal effort).
 - [x] **C2** `runtime/impact.py` — diff/impact overlay: changed + affected (reverse-reachable) nodes,
       affected layers, **unmapped files** (new/renamed → re-analyze), and a deterministic risk read;
       wired into Phase 3 (roadmap risk tie-break) and Phase 5 (change-scope check). `tests/test_impact.py`.

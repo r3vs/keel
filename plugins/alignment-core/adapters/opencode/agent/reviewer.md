@@ -1,6 +1,8 @@
 ---
 description: Adversarial, read-only pre-merge gate. Two stages — spec compliance vs the elected to_be, then code quality. Verdict MERGE / ADJUST / REJECT. Also the wave-checkpoint reviewer. Never writes code.
 mode: subagent
+model: opencode-go/glm-5.2
+reasoningEffort: high
 permission:
   edit: deny
 ---

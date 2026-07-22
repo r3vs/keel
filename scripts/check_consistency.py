@@ -174,8 +174,14 @@ core_files = list(core_dir.glob("*.md")) if core_dir.is_dir() else []
 # A core doc earns its place by being vendored into at least one SHIPPED skill. The copies live
 # in plugins/ (build output) — the source tree holds none by design.
 vendored_names = {g.name for g in (ROOT / "plugins").rglob("references/core/*.md")}     if (ROOT / "plugins").is_dir() else set()
+# Exception: a few core docs are BUILD POLICY, not skill doctrine. build.py PARSES them to generate
+# per-host config, and no skill vendors them because the agent receives the result (e.g. its model)
+# from the generated adapter frontmatter, never by reading the doc at runtime. They sit in core/
+# beside agents.md because they are the roster's policy — "unused by any skill" is correct for them,
+# not drift.
+BUILD_POLICY_CORE = {"model-tiers.md"}
 for f in core_files:
-    if f.name not in vendored_names:
+    if f.name not in vendored_names and f.name not in BUILD_POLICY_CORE:
         warnings.append(f"unused core source (never vendored into any skill): core/{f.name}")
 
 # 4. No leftover scaffolding stubs in skill content (SKILL.md, references/, core/).
