@@ -46,6 +46,17 @@
       "reference": "references/contract-propagation.md"
     },
     {
+      "id": "design-propagation",
+      "phase": 3,
+      "kind": "core",
+      "type": "deterministic",
+      "engine": "mcp:generate_tokens",
+      "tools": ["impeccable"],
+      "produces": ["contract_carrier", "scaffold", "configure"],
+      "notes": "The preventive mirror of rescue's design-alignment, and contract-propagation applied to the presentation layer. The machine contract is a W3C DTCG token JSON (the stable 40+ vendor standard), NOT DESIGN.md frontmatter (Google Stitch alpha, with an incompatible Open Design fork). From the elected design-system pin (decision-catalog 5b — tokens CAPTURED from an approved visual direction or IMPORTED, never invented blind), `generate_tokens` projects the one DTCG contract into every design layer: CSS custom properties, a Tailwind v4 @theme, and a DESIGN.md (Stitch frontmatter) Impeccable enforces membership against. The real components that use these tokens are Phase-4 Track-A BuildItems in the actual framework, structurally token-bound (they reference the generated CSS vars) — real components, never throwaway HTML, no transpile. Two deterministic CI drift-checks: `tokens_diff` (edits to token definitions round-trip to zero) + `impeccable detect --no-advisory` (a component using an off-token value is a `design-system-*` failure). The drift rescue FINDS is here made structurally impossible and guarded for life. A token set is an enum; same shape engine (core/shape-engine.md), run forward. No design-system decision -> no DTCG contract (YAGNI). Sequenced into Wave 1 with the data contract. Attribution: DTCG = W3C; DESIGN.md format = Google (Stitch); detector = Impeccable (Apache-2.0). Read the full playbook.",
+      "reference": "references/design-propagation.md"
+    },
+    {
       "id": "roadmap-sequencer",
       "phase": 3,
       "kind": "core",

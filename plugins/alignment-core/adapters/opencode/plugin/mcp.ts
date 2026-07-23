@@ -34,7 +34,10 @@ const SERVER = resolve(dirname(fileURLToPath(import.meta.url)), "../../../mcp/se
 
 export const McpServers: Plugin = async () => ({
   config: (cfg: any) => {
-    const ours: Record<string, unknown> = { ...REMOTE }
+    // Playwright MCP is a capability server (browser verification), delivered like codebase-alignment.
+    // opencode's local `command` is an array; it connects via npx with no container/key (unlike the
+    // opt-in servers), degrading only on a browser action without `npx playwright install`.
+    const ours: Record<string, unknown> = { ...REMOTE, playwright: { type: "local", command: ["npx", "-y", "@playwright/mcp@latest"] } }
     // Degrade gracefully, never hard-fail: if this plugin was copied out of the built tree rather
     // than linked into it, our server is unreachable — declaring it anyway would hand the user a
     // broken entry. The doctrine's remote servers still land.

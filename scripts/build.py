@@ -620,7 +620,19 @@ def mcp_json() -> str:
             "command": "uv",
             # The host expands this; a repo-relative path would resolve into the USER'S project.
             "args": ["run", "--script", "${CLAUDE_PLUGIN_ROOT}/mcp/server.py"],
-        }
+        },
+        # A CAPABILITY server, not a knowledge source — so it is hardcoded here beside our own server,
+        # NOT parsed from the knowledge-sources doctrine table. Microsoft's Playwright MCP: browser
+        # verification (see references/browser-verification.md). Declared, not opt-in — because unlike
+        # cognee it CONNECTS with zero external setup (stdio via npx, no container, no API key); it
+        # degrades only on a browser ACTION without binaries (`npx playwright install`), a graceful
+        # use-time degrade, not a connection failure. That is the doctrine's real declared-vs-opt-in
+        # discriminator, and Playwright sits on the declared side of it.
+        "playwright": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["-y", "@playwright/mcp@latest"],
+        },
     }
     for name, url in required_servers().items():
         servers[name] = {"type": "http", "url": url}
@@ -668,7 +680,10 @@ const SERVER = resolve(dirname(fileURLToPath(import.meta.url)), "../../../mcp/se
 
 export const McpServers: Plugin = async () => ({{
   config: (cfg: any) => {{
-    const ours: Record<string, unknown> = {{ ...REMOTE }}
+    // Playwright MCP is a capability server (browser verification), delivered like codebase-alignment.
+    // opencode's local `command` is an array; it connects via npx with no container/key (unlike the
+    // opt-in servers), degrading only on a browser action without `npx playwright install`.
+    const ours: Record<string, unknown> = {{ ...REMOTE, playwright: {{ type: "local", command: ["npx", "-y", "@playwright/mcp@latest"] }} }}
     // Degrade gracefully, never hard-fail: if this plugin was copied out of the built tree rather
     // than linked into it, our server is unreachable — declaring it anyway would hand the user a
     // broken entry. The doctrine's remote servers still land.

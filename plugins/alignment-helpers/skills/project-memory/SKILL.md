@@ -23,10 +23,10 @@ Three layers, cheapest first.
   this stays curated and not a dump.
 
   **It is not wired for you, on purpose.** Unlike the other servers this package declares, cognee
-  runs its own LLM extraction: it needs a Docker container on `:8000` and an `LLM_API_KEY`.
-  Declaring it by default would hand every user a server that fails to connect — so it is opt-in,
-  and the first two layers cover durable memory without it. To turn it on, start the container and
-  add the server to your own MCP config:
+  runs its own LLM extraction: it needs a Docker container and an `LLM_API_KEY`. Declaring it by
+  default would hand every user a server that fails to connect — so it is opt-in, and the first two
+  layers cover durable memory without it. To turn it on, start the container and add the server to
+  your own MCP config:
 
   ```
   docker run -e TRANSPORT_MODE=http --env-file ./.env -p 8000:8000 --rm -it cognee/cognee-mcp:main
@@ -34,6 +34,22 @@ Three layers, cheapest first.
   ```json
   { "mcpServers": { "cognee": { "type": "http", "url": "http://localhost:8000/mcp" } } }
   ```
+
+  **The URL path is decided by the transport, not by preference** — the MCP server mounts
+  `streamable_http_app()` at `/mcp` under `TRANSPORT_MODE=http`, and `sse_app()` at `/sse` under
+  `TRANSPORT_MODE=sse`. A `type`/path pair that disagrees with `TRANSPORT_MODE` connects to nothing.
+
+  That one-container recipe is the minimum. Running cognee's **full stack** from a clone
+  (`docker compose --profile mcp --profile ui up`) instead gives the REST API on `:8000` and a web
+  UI on `:3000` — and there `:8000` is the API, so compose maps the MCP server to **`:8001`** with
+  `TRANSPORT_MODE=sse`, i.e. `{"type": "sse", "url": "http://localhost:8001/sse"}`. Take the ports
+  from whichever shape you actually started; the two are not interchangeable.
+
+  **Writes are dataset-scoped.** `remember` targets an agent-scoped dataset derived from the calling
+  MCP client (falling back to `main_dataset`), so two hosts writing "the same" memory land in two
+  datasets and neither `recall` sees both. Pass `dataset_name` explicitly when it matters, and pass
+  `datasets` on `recall` — an unfiltered query can resolve to an empty dataset and answer "no
+  context" while the data sits indexed next door.
 
 ## When to write
 Record something only if it is (a) durable across sessions, (b) non-obvious / not cheaply

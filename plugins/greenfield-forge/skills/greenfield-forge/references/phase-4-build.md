@@ -28,6 +28,12 @@ carrier, and its tests. No history of prior iterations in context. All state liv
 append-only ledger on disk, so the loop is **restartable** — after any interruption it resumes
 from the first non-`resolved` item with zero rework.
 
+**Checkpoint on a *measured* context budget, not a feeling.** If a single slice saturates context,
+hand off — write state to the ledger and start fresh for the remainder — rather than push into a
+degraded window. The trigger is measured (the harness's live context measure crossing a budget
+calibrated by the `spend` telemetry), never a vibe. A checkpoint on evidence is the reset working, not
+a failure.
+
 ## Two-track TDD — Track A is primary here
 
 The tests come from the ledger's `to_be`, not from invention. Two tracks, opposite jobs:

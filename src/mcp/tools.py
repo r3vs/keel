@@ -71,6 +71,7 @@ def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence
                       provenance=provenance, as_is=as_is, to_be=to_be, question=question,
                       depends_on=depends_on, kind_detail=kind_detail, cluster_id=cluster_id)
     led.save()
+    _refresh_live_maps(ledger)
     return {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
 
 
@@ -79,6 +80,7 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
     led = _open_or_create(ledger)
     pin = led.surface_assumption(title=title, detail=detail, severity=severity, confidence=confidence)
     led.save()
+    _refresh_live_maps(ledger)
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
@@ -90,6 +92,7 @@ def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: i
                                canonical_target=canonical_target, build_track=build_track,
                                contract_carrier=contract_carrier, depends_on=depends_on)
     led.save()
+    _refresh_live_maps(ledger)
     return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
 
 
@@ -97,6 +100,7 @@ def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status
     led = _open_existing(ledger)
     item = led.set_remediation_status(pin_id, item_id, status)
     led.save()
+    _refresh_live_maps(ledger)
     return {"item_id": item["id"], "status": item["status"]}
 
 
@@ -104,6 +108,7 @@ def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
     led = _open_existing(ledger)
     pin = led.resolve(pin_id, evidence=evidence)
     led.save()
+    _refresh_live_maps(ledger)
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
@@ -111,6 +116,7 @@ def ledger_defer(ledger: str, pin_id: str) -> dict:
     led = _open_existing(ledger)
     pin = led.defer(pin_id)
     led.save()
+    _refresh_live_maps(ledger)
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
@@ -194,11 +200,123 @@ def challenge_oracle(ledger: str) -> dict:
     return {"proposed": challenger.scan(_open_existing(ledger))}
 
 
-def render_map(ledger: str, out: str) -> dict:
+def _livemap_marker(ledger: str) -> Path:
+    """Sidecar that records which map file(s) are tracking this ledger live. A file:// page cannot
+    poll a sibling JSON (opaque origin), so 'live' is the MCP layer re-projecting the file on every
+    ledger write; this marker is how a write knows a live map exists and where it is. It is a runtime
+    artifact next to ledger.json (same gitignore class), created only when live=True is requested."""
+    return Path(str(ledger) + ".livemap")
+
+
+def _register_live_map(ledger: str, out: str) -> None:
+    m = _livemap_marker(ledger)
+    outs: list = []
+    if m.is_file():
+        try:
+            outs = json.loads(m.read_text(encoding="utf-8")).get("outs", [])
+        except (OSError, ValueError):
+            outs = []
+    ap = str(Path(out).resolve())
+    if ap not in outs:
+        outs.append(ap)
+    m.write_text(json.dumps({"outs": outs}), encoding="utf-8", newline="\n")
+
+
+def _unregister_live_map(ledger: str, out: str) -> None:
+    m = _livemap_marker(ledger)
+    if not m.is_file():
+        return
+    try:
+        outs = json.loads(m.read_text(encoding="utf-8")).get("outs", [])
+    except (OSError, ValueError):
+        return
+    outs = [o for o in outs if o != str(Path(out).resolve())]
+    if outs:
+        m.write_text(json.dumps({"outs": outs}), encoding="utf-8", newline="\n")
+    else:
+        try:
+            m.unlink()
+        except OSError:
+            pass
+
+
+def _refresh_live_maps(ledger: str) -> None:
+    """Re-project every live map registered for this ledger. Best-effort by design: a render failure
+    must never break the ledger write that triggered it, and a ledger with no live map pays nothing
+    (the marker check returns immediately)."""
+    m = _livemap_marker(ledger)
+    if not m.is_file():
+        return
+    try:
+        outs = json.loads(m.read_text(encoding="utf-8")).get("outs", [])
+    except (OSError, ValueError):
+        return
+    if not outs:
+        return
+    import map as M
+    for out in outs:
+        try:
+            M.render_file(ledger, out, live=True)
+        except (OSError, ValueError):
+            continue
+
+
+def render_map(ledger: str, out: str, live: bool = False) -> dict:
     import map as M
     _open_existing(ledger)  # refuse to render a map of a ledger that isn't there
-    M.render_file(ledger, out)
-    return {"written": out}
+    M.render_file(ledger, out, live=live)
+    # live=True registers the file so every later ledger write re-projects it; live=False (the
+    # shareable frozen artifact) clears any prior registration so it stops auto-refreshing.
+    (_register_live_map if live else _unregister_live_map)(ledger, out)
+    return {"written": out, "live": live}
+
+
+def spend_report(project: str = "", session: str = "", pricing: str = "",
+                 declared_mcp: list | None = None) -> dict:
+    import spend
+    price = pricing or None
+    if session:
+        return spend.report_session(session, pricing=price, declared_mcp=declared_mcp)
+    if project:
+        return spend.report_project(project, pricing=price, declared_mcp=declared_mcp)
+    raise ValueError(
+        "spend_report needs `session` (a transcript .jsonl) or `project` (a repo dir, to discover "
+        "this host's session store)")
+
+
+def design_scan(paths: list, scope: str = "", viewport: str = "", no_advisory: bool = False) -> dict:
+    import design
+    return design.scan(paths, scope=scope or None, viewport=viewport, no_advisory=no_advisory)
+
+
+def generate_tokens(contract: str, out: str) -> dict:
+    import design_tokens as DT
+    ts = DT.TokenSet.load(contract)
+    outdir = Path(out)
+    outdir.mkdir(parents=True, exist_ok=True)
+    files = {"tokens.css": DT.to_css_vars(ts), "theme.css": DT.to_tailwind(ts),
+             "DESIGN.md": DT.to_design_md(ts)}
+    written = {}
+    for name, text in files.items():
+        p = outdir / name
+        p.write_text(text, encoding="utf-8", newline="\n")
+        written[name] = str(p)
+    return {"written": written}
+
+
+def tokens_diff(contract: str, css: str) -> dict:
+    import design_tokens as DT
+    ts = DT.TokenSet.load(contract)
+    p = Path(css)
+    text = p.read_text(encoding="utf-8") if p.exists() else css
+    return DT.drift_check(ts, text)
+
+
+def extract_tokens(css: str) -> dict:
+    import design_tokens as DT
+    p = Path(css)
+    text = p.read_text(encoding="utf-8") if p.exists() else css
+    return {"candidate": DT.harvest_tokens(text)}
 
 
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------

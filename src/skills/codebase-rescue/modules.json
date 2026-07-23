@@ -106,6 +106,22 @@
       "reference": "references/module-security.md"
     },
     {
+      "id": "design-alignment",
+      "phase": 1,
+      "kind": "core",
+      "type": "deterministic",
+      "engine": "mcp:design_scan",
+      "tools": [
+        "impeccable"
+      ],
+      "produces": [
+        "design_concern",
+        "contract_mismatch"
+      ],
+      "notes": "The presentation layer's contract, bound to the ledger. Shells the Impeccable detector (Paul Bakaus, Apache-2.0, no-LLM) over HTML/CSS/JSX/TSX/Vue/Svelte and URLs. Deterministic carrier decides the pin kind: a `design-system-*` hit (a font/color/radius/size outside the project's elected DESIGN.md) is a `contract_mismatch` — the frontend analog of the DB<->ORM<->API shape diff, emitted only when a DESIGN.md governs the files, so never fabricated; every universal a11y/slop tell (low-contrast, overused-font) is a `design_concern`. WCAG is a computed ratio and off-palette is set-membership, so hits are facts (confidence extracted) that skip fp-check; advisory rules are surfaced, floored low, and flagged non-blocking. URL targets render in a real browser (rendered checks). The taste half (Impeccable's LLM critique, its own skill) is NOT this detector — it is the reviewer/challenger lens, adapted with attribution. Degrades `unchecked`, never a clean bill, when impeccable is absent. Read the full playbook.",
+      "reference": "references/module-design-alignment.md"
+    },
+    {
       "id": "docs-claims",
       "phase": 1,
       "kind": "core",

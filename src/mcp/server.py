@@ -367,7 +367,7 @@ def coverage_gaps(langs: list[str], reports: list[str] | None = None) -> dict:
 
 
 @mcp.tool(annotations={"title": "Render Visual Map", **_RW})
-def render_map(ledger: str, out: str) -> dict:
+def render_map(ledger: str, out: str, live: bool = False) -> dict:
     """Render the ledger as the self-contained visual HTML map. WRITES A FILE.
 
     Clickable pins, three-column contract diff, as-is/to-be toggle. The map holds no state — it
@@ -376,8 +376,108 @@ def render_map(ledger: str, out: str) -> dict:
     Args:
         ledger: Path to ledger.json.
         out: Output .html path.
+        live: When True, render a dev-time monitor that self-reloads and re-projects the ledger as
+            pins land (selection / view / scroll survive the reload; changed pins flash), and
+            register it so every later ledger write refreshes it. When False (default), render the
+            frozen single-file artifact safe to hand to anyone, and stop any prior live refresh.
     """
-    return tools.render_map(ledger, out)
+    return tools.render_map(ledger, out, live=live)
+
+
+@mcp.tool(annotations={"title": "Spend Report (tokens / cost telemetry)", **_RO})
+def spend_report(project: str = "", session: str = "", pricing: str = "",
+                 declared_mcp: list | None = None) -> dict:
+    """Token — and, with a price sheet, cost — telemetry over the session transcript the host writes.
+
+    Read-only and deterministic: it sums the `usage` the model itself reported; no estimation. The
+    `measurer`'s cost surface — what makes the model-orchestration tiers measured rather than
+    asserted, and what turns "which declared MCP servers are loaded but never used" into a fact.
+
+    Tokens are exact. COST IS NOT BAKED IN: pass `pricing` (a JSON sheet — model → USD per 1M tokens
+    per bucket) to project cost; unpriced models degrade to tokens-only and are listed. A host whose
+    session store is absent reports `unchecked`, never zero.
+
+    Args:
+        project: Repo dir — discover and aggregate this host's sessions for it (Claude Code today).
+        session: A single transcript .jsonl (plus its subagents) instead of a whole project.
+        pricing: Path to a price sheet; omit for tokens-only.
+        declared_mcp: MCP servers the install declares, to compute the unused-server optimize finding.
+    """
+    return tools.spend_report(project=project, session=session, pricing=pricing,
+                              declared_mcp=declared_mcp)
+
+
+@mcp.tool(annotations={"title": "Design Scan (frontend slop / a11y → ledger findings)", **_RO})
+def design_scan(paths: list, scope: str = "", viewport: str = "", no_advisory: bool = False) -> dict:
+    """Scan the frontend for AI-slop tells, design-quality / accessibility issues, and drift from an
+    elected DESIGN.md, as ledger-ready findings. WRITES NO FILE.
+
+    Deterministic: it shells the Impeccable detector (pbakaus/impeccable, Apache-2.0) — no model, no
+    API key — so every hit is a fact (`confidence: extracted`) that skips fp-check, like a type error.
+    A universal a11y/slop tell → a `design_concern` pin; a `design-system-*` hit (a font/color/radius/
+    size outside the project's DESIGN.md) → a `contract_mismatch`, emitted only when a DESIGN.md
+    actually governs the files, so it is never fabricated. The taste half (LLM critique) is NOT run
+    here — that is the reviewer / challenger lens.
+
+    Degrades, never hard-fails: if the detector cannot run (no Node / impeccable), returns
+    {"unchecked": True, ...} rather than a false clean bill (coverage-gap doctrine).
+
+    Args:
+        paths: Frontend files, dirs, OR URLs (a URL renders in a real browser — rendered checks).
+        scope: restrict to design domains, comma-separated ("type,layout"); empty = all.
+        viewport: "WxH" browser viewport for a URL scan (e.g. "390x844" for a mobile-width pass).
+        no_advisory: drop soft advisory rules; default keeps them (flagged low, never blocking).
+    """
+    return tools.design_scan(paths, scope=scope, viewport=viewport, no_advisory=no_advisory)
+
+
+@mcp.tool(annotations={"title": "Generate Design Tokens (DTCG → CSS / Tailwind / DESIGN.md)", **_RW})
+def generate_tokens(contract: str, out: str) -> dict:
+    """Generate the aligned design layers from ONE W3C DTCG token contract. WRITES FILES.
+
+    The design twin of `generate_layers`: a single DTCG token JSON (the stable, multi-vendor design
+    standard) is projected into every layer a UI is built from — CSS custom properties (`tokens.css`),
+    a Tailwind v4 `@theme` block (`theme.css`), and a `DESIGN.md` (Google Stitch format) whose
+    frontmatter Impeccable's detector enforces token-membership against. One source of truth; the
+    layers cannot drift. Round-trips to zero drift against `tokens_diff`.
+
+    Args:
+        contract: path to the DTCG token JSON — the single source of design truth.
+        out: directory to write tokens.css / theme.css / DESIGN.md into.
+    """
+    return tools.generate_tokens(contract, out)
+
+
+@mcp.tool(annotations={"title": "Design Tokens Diff (drift vs the DTCG contract)", **_RO})
+def tokens_diff(contract: str, css: str) -> dict:
+    """Diff a CSS layer's `--variables` against the DTCG token contract. WRITES NO FILE.
+
+    Every mismatch (missing / changed / extra) is a drift finding with `confidence: extracted` — a
+    value comparison is a fact, so it skips fp-check like a type error. A correctly generated layer
+    diffs to `{"drift": []}`; this is the design analog of `contract_diff`, run as the CI drift-check.
+
+    Args:
+        contract: path to the DTCG token JSON.
+        css: path to a generated / hand-edited CSS file (or raw CSS text) to check against it.
+    """
+    return tools.tokens_diff(contract, css)
+
+
+@mcp.tool(annotations={"title": "Extract Design Tokens (as-is → candidate DTCG)", **_RO})
+def extract_tokens(css: str) -> dict:
+    """Harvest the de-facto design tokens a codebase DECLARES as CSS custom properties into a
+    candidate DTCG contract — the design as-is. WRITES NO FILE.
+
+    Only unambiguous values are harvested (a color literal, a length, a font stack); the value class
+    is a fact, ambiguous values are dropped, not guessed. The result is a PROPOSED to_be for the
+    interview to elect and refine (e.g. splitting the flat dimension group into radius/font-size/
+    spacing), never an enforced contract — the design analog of extracting the as-is before the user
+    elects the to-be.
+
+    Args:
+        css: path to a CSS file (or raw CSS text) that declares :root custom properties.
+    """
+    return tools.extract_tokens(css)
 
 
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------

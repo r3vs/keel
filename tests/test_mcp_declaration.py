@@ -85,6 +85,18 @@ class TestTheProductShipsWhatItOrders(unittest.TestCase):
     def test_our_own_server_is_declared(self):
         self.assertIn("codebase-alignment", declared())
 
+    def test_the_playwright_capability_server_is_declared(self):
+        # Browser verification (references/browser-verification.md) is a CAPABILITY, not a knowledge
+        # source — so Playwright's MCP is declared beside codebase-alignment, NOT via the doctrine
+        # table. It earns a default declaration because it CONNECTS with zero setup (stdio via npx, no
+        # container/key, unlike the opt-in cognee); it only degrades on a browser action without
+        # `npx playwright install`. That is the real declared-vs-opt-in line.
+        d = declared()
+        self.assertIn("playwright", d)
+        self.assertEqual(d["playwright"]["type"], "stdio")
+        self.assertNotIn("playwright", mandated(), "it is a capability, not a knowledge-table server")
+        self.assertNotIn("playwright", opt_in(), "it connects with zero setup — it is not opt-in")
+
     def test_opt_in_servers_are_named_but_not_declared(self):
         # Each needs external setup (cognee a container + key, github a token). A declared-but-
         # unreachable server is a broken entry in every user's session, which is the opposite of
@@ -149,6 +161,12 @@ class TestEveryHostGetsThemFromItsInstall(unittest.TestCase):
         for name, url in sorted(mandated().items()):
             with self.subTest(server=name):
                 self.assertIn(url, ts, "the doctrine mandates this server but opencode never gets it")
+
+    def test_the_opencode_plugin_carries_the_playwright_capability(self):
+        # the capability server reaches opencode too, in opencode's local/array shape
+        ts = self.opencode_plugin()
+        self.assertIn("@playwright/mcp", ts)
+        self.assertIn('playwright:', ts)
 
     def test_the_opencode_plugin_speaks_opencodes_schema_not_claudes(self):
         # Verified in anomalyco/opencode, and not guessable from Claude's shape: the discriminator is

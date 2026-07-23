@@ -13,7 +13,12 @@ elected design) — the toggle flips which side leads. `contract_mismatch` pins 
 cross-layer diff panel; every pin links its interview question; a completeness traffic-light sums
 the states.
 
-CLI: `python runtime/map.py path/to/ledger.json -o map.html`
+Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
+Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
+pins land, preserving selection / view / scroll across reloads and flashing pins whose state
+changed. The frozen default (``live=False``) stays a single offline file safe to hand to anyone —
+so "live" is opt-in and never leaks into the shareable artifact. The re-projection on each ledger
+mutation is driven by the MCP tool layer (`mcp/tools.py`), not a per-host hook.
 """
 from __future__ import annotations
 
@@ -64,9 +69,9 @@ main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0;min-height
 .imp{color:var(--high);font-size:12px;padding:0 0 4px 0}
 .kv{display:flex;gap:8px;font-size:13px;margin:3px 0}.kv b{color:var(--mut);min-width:88px}
 .empty{color:var(--mut);padding:40px;text-align:center}
-</style></head><body>
+__LIVE_STYLE__</style></head><body>
 <header>
-  <h1>🧭 Decisions map</h1>
+  <h1>🧭 Decisions map</h1>__LIVE_BADGE__
   <div class="light"><span class="dot" id="tl"></span><span id="tltext"></span>
     <span class="bar"><i id="prog"></i></span></div>
   <div class="toggle"><button id="bAsis" class="on" onclick="setView('as_is')">as-is</button>
@@ -132,20 +137,63 @@ function setView(v){view=v;document.getElementById('bAsis').classList.toggle('on
   if(sel!=null)document.getElementById('detail').innerHTML=detail(LEDGER.pins[sel]);}
 trafficLight();renderList();
 if((LEDGER.pins||[]).length)select(0);else document.getElementById('detail').innerHTML=detail(null);
-</script></body></html>
+__LIVE_SCRIPT__</script></body></html>
+"""
+
+# Live mode is opt-in and additive: these three fragments are injected only when live=True, so the
+# frozen default is byte-for-byte the shareable artifact. No external fetch is introduced — the page
+# re-reads nothing; it reloads itself and the MCP tool layer re-writes the file on each ledger write
+# (a file:// page cannot poll a sibling JSON, so self-reload of a re-projected file is the only
+# offline-safe "live"). Selection / view / scroll survive the reload via sessionStorage.
+_LIVE_STYLE = """.livebadge{display:inline-flex;gap:7px;align-items:center;font-size:12px;font-weight:600;color:var(--ok);
+padding:3px 10px;border:1px solid var(--ok);border-radius:20px}
+.livebadge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok);animation:pulse 1.4s infinite}
+.livebadge em{color:var(--mut);font-style:normal;font-weight:500}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes flash{0%{background:var(--accent)}100%{background:transparent}}
+.pin.changed{animation:flash 1.8s ease-out}
+"""
+_LIVE_BADGE = '<span class="livebadge" title="auto-refreshing from ledger.json">LIVE <em id="liveclock"></em></span>'
+_LIVE_SCRIPT = """
+(function(){
+  var KEY='decmap.live', MS=2500;
+  function keyOf(p,i){return p&&p.id!=null?String(p.id):'#'+i;}
+  var prev={}; try{prev=JSON.parse(sessionStorage.getItem(KEY)||'{}');}catch(e){}
+  try{
+    if(prev.view&&prev.view!==view)setView(prev.view);
+    if(prev.selKey){var ps=LEDGER.pins||[];for(var i=0;i<ps.length;i++){if(keyOf(ps[i],i)===prev.selKey){select(i);break;}}}
+    if(prev.scroll)document.getElementById('list').scrollTop=prev.scroll;
+  }catch(e){}
+  try{
+    var st=prev.states||{}, nodes=document.querySelectorAll('.pin');
+    (LEDGER.pins||[]).forEach(function(p,i){var k=keyOf(p,i);if((k in st)&&st[k]!==p.state&&nodes[i])nodes[i].classList.add('changed');});
+  }catch(e){}
+  function snapshot(){
+    var states={};(LEDGER.pins||[]).forEach(function(p,i){states[keyOf(p,i)]=p.state;});
+    var selKey=(sel!=null&&LEDGER.pins&&LEDGER.pins[sel])?keyOf(LEDGER.pins[sel],sel):'';
+    try{sessionStorage.setItem(KEY,JSON.stringify({view:view,selKey:selKey,scroll:document.getElementById('list').scrollTop,states:states}));}catch(e){}
+  }
+  var c=document.getElementById('liveclock');if(c)c.textContent=new Date().toLocaleTimeString();
+  window.addEventListener('beforeunload',snapshot);
+  setTimeout(function(){snapshot();location.reload();},MS);
+})();
 """
 
 
-def render(ledger_data: dict, title: str = "") -> str:
+def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
     data = json.dumps(ledger_data, ensure_ascii=False).replace("</", "<\\/")  # script-safe
     return (_TEMPLATE
             .replace("__DATA__", data)
-            .replace("__TITLE__", html.escape(title or "ledger")))
+            .replace("__TITLE__", html.escape(title or "ledger"))
+            .replace("__LIVE_STYLE__", _LIVE_STYLE if live else "")
+            .replace("__LIVE_BADGE__", _LIVE_BADGE if live else "")
+            .replace("__LIVE_SCRIPT__", _LIVE_SCRIPT if live else ""))
 
 
-def render_file(ledger_path: str | pathlib.Path, out_path: str | pathlib.Path) -> pathlib.Path:
+def render_file(ledger_path: str | pathlib.Path, out_path: str | pathlib.Path,
+                live: bool = False) -> pathlib.Path:
     data = json.loads(pathlib.Path(ledger_path).read_text(encoding="utf-8"))
     out = pathlib.Path(out_path)
-    out.write_text(render(data, title=str(pathlib.Path(ledger_path).stem)),
+    out.write_text(render(data, title=str(pathlib.Path(ledger_path).stem), live=live),
                    encoding="utf-8", newline="\n")
     return out

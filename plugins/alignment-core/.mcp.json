@@ -9,6 +9,14 @@
         "${CLAUDE_PLUGIN_ROOT}/mcp/server.py"
       ]
     },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ]
+    },
     "context7": {
       "type": "http",
       "url": "https://mcp.context7.com/mcp"

@@ -39,6 +39,13 @@ That last row is the one people skip. A script path that resolves in the repo yo
 dies in the directory the user actually runs from passes every check that anchors on the file's own
 location — and fails for everyone. **Verify from the user's position, not yours.**
 
+For a **UI** change, the re-runnable form of "loaded the page, saw it" is a **committed browser spec**
+(Playwright): the executor writes it, the measurer re-runs it as the Phase-5 oracle — an observation
+anyone can reproduce, not a screenshot eyeballed once. Split it by determinism: token-membership on
+the render (`impeccable detect <url>`) is a deterministic gate; the pixel-level "does it look right"
+is a human-reviewed judgment, never auto-resolved. The full playbook lives in the `codebase-rescue`
+skill (`browser-verification`).
+
 ## The loop
 
 1. **Name the observable outcome** the pin's `to_be` claims — before running anything.
