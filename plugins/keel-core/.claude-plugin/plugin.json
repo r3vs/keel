@@ -1,21 +1,24 @@
 {
-  "name": "alignment-core",
+  "name": "keel-core",
   "description": "The spine: the decisions-ledger MCP server (contract diff, blast radius, interview funnel, wave scheduler, findings gate), the researcher/brainstorm/executor/reviewer/challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. Installed automatically as a dependency of codebase-rescue and greenfield-forge.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "r3vs"
   },
-  "homepage": "https://github.com/r3vs/codebase-rescue",
-  "repository": "https://github.com/r3vs/codebase-rescue",
+  "homepage": "https://github.com/r3vs/keel",
+  "repository": "https://github.com/r3vs/keel",
   "license": "MIT",
   "keywords": [
     "skills",
+    "vibe-coding",
+    "ai-generated-code",
     "codebase",
     "rescue",
     "greenfield",
     "architecture",
     "cross-layer-contract",
     "decisions-ledger",
+    "spec-driven-development",
     "refactoring",
     "tdd"
   ]

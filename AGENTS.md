@@ -1,8 +1,12 @@
 # AGENTS.md — agent-agnostic entry point
 
-This repository **authors and builds** two composable skills + a shared core, to the **Anthropic
-Agent Skills specification**, so they run unchanged across agents. It is not a runnable app: the
-deliverable is prose a future agent reads and executes.
+This repository is **Keel**: it **authors and builds** two composable skills + a shared core, to the
+**Anthropic Agent Skills specification**, so they run unchanged across agents. It is not a runnable
+app: the deliverable is prose a future agent reads and executes.
+
+`Keel` is the brand and the marketplace name (repo `r3vs/keel`); the shipped units keep descriptive
+names — `keel-core`, `codebase-rescue`, `greenfield-forge`, `keel-kit` — because a skill activates
+off its own `description`, so `codebase-rescue` must keep saying what it does.
 
 Keep this file short: it is loaded as always-on context. The depth lives behind the skills.
 
@@ -76,6 +80,6 @@ constraint, not a detail: this file, `CLAUDE.md`, `MEMORY.md`, `tests/`, `script
 develop the repo and reach no user. Anything a user needs is delivered by the install, MCP servers
 included; there is no config here for them to copy.
 
-Claude Code and Codex install from the marketplace (`/plugin marketplace add r3vs/codebase-rescue`).
+Claude Code and Codex install from the marketplace (`/plugin marketplace add r3vs/keel`).
 opencode and Pi have no plugin manifest, so `python scripts/build.py && bash scripts/install.sh`
 places their pieces. Full detail, per host: `docs/packaging.md`.

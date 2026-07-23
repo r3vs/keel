@@ -1,5 +1,5 @@
 /**
- * Pi adapter — MCP bridge. Pi has no native MCP; this makes the codebase-alignment MCP server
+ * Pi adapter — MCP bridge. Pi has no native MCP; this makes the Keel MCP server
  * reachable from Pi, so MCP is the channel on all four hosts and no CLI is needed anywhere.
  *
  * DEPENDENCY-FREE ON PURPOSE. It is a loose `.ts` (Node built-ins + Pi's aliased `typebox` only) with
@@ -85,7 +85,7 @@ class McpStdioClient {
       await this.request("initialize", {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: "codebase-alignment-pi", version: "0.1.0" },
+        clientInfo: { name: "keel-pi", version: "0.1.0" },
       })
       this.notify("notifications/initialized")
     } catch (e) {
@@ -195,11 +195,11 @@ export default function mcpBridge(pi: ExtensionAPI): void {
     name: "alignment",
     label: "Codebase Alignment (MCP)",
     description:
-      "The codebase-alignment MCP tools (the decisions ledger, cross-layer contract diff, findings + " +
+      "The Keel MCP tools (the decisions ledger, cross-layer contract diff, findings + " +
       "fp-check, coverage manifest, and the understand-mode graph family). Pass {describe:true} to list " +
       "the tools and their schemas; pass {tool:'<name>', args:{...}} to call one.",
     promptSnippet:
-      "codebase-alignment MCP: ledger / contract-diff / findings / coverage / graph tools — " +
+      "keel MCP: ledger / contract-diff / findings / coverage / graph tools — " +
       "{describe:true} to list, {tool,args} to call",
     parameters: Type.Object({
       tool: Type.Optional(Type.String({ description: "tool to call, e.g. ledger_summary, contract_diff" })),

@@ -1,21 +1,24 @@
 {
-  "name": "codebase-alignment",
-  "description": "Two composable skills that keep a codebase aligned across its whole lifecycle: codebase-rescue (curative) and greenfield-forge (preventive), on a shared decisions-ledger core. Cross-layer contracts, a compressed decision interview, TDD remediation/build, and a flip-criteria feedback loop.",
+  "name": "keel",
+  "description": "Keel — make your layers agree. Cross-layer contract reconciliation (DB/ORM/API/client) on an append-only decisions ledger: codebase-rescue (curative) for a codebase that already drifted, greenfield-forge (preventive) for one that hasn't been written yet.",
   "version": "0.1.0",
   "author": {
     "name": "r3vs"
   },
-  "homepage": "https://github.com/r3vs/codebase-rescue",
-  "repository": "https://github.com/r3vs/codebase-rescue",
+  "homepage": "https://github.com/r3vs/keel",
+  "repository": "https://github.com/r3vs/keel",
   "license": "MIT",
   "keywords": [
     "skills",
+    "vibe-coding",
+    "ai-generated-code",
     "codebase",
     "rescue",
     "greenfield",
     "architecture",
     "cross-layer-contract",
     "decisions-ledger",
+    "spec-driven-development",
     "refactoring",
     "tdd"
   ]

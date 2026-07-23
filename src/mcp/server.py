@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["fastmcp==3.4.4", "tree-sitter>=0.23", "tree-sitter-language-pack==1.12.5"]
 # ///
-"""MCP adapter for the codebase-alignment runtime.
+"""MCP adapter for the Keel runtime.
 
 Why an MCP server at all — two failures, and the second is the bigger one
 -------------------------------------------------------------------------
@@ -82,9 +82,9 @@ def _warm_grammars_async() -> None:
         pass  # warming is best-effort; the backend still works, fetching each grammar lazily
 
 mcp = FastMCP(
-    name="codebase-alignment",
+    name="keel",
     instructions=(
-        "The deterministic spine of the codebase-alignment skills. The ledger is the single source "
+        "The deterministic spine of the Keel skills. The ledger is the single source "
         "of truth; the map, interview, and brainstorm hold no state — they project it. Only the "
         "human's committed interview answer elects a decision: these tools find, record, propose, "
         "and verify, and never decide — electing an outcome stays the human interview's job."

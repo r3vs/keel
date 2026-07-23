@@ -3,6 +3,28 @@
 All notable changes to this project are documented here. The design is complete and the runtime
 spine has started; versions track design + packaging + runtime together.
 
+## [Unreleased]
+
+### Changed
+- **The project is named `Keel`, and for the first time every surface agrees on it.** There used to
+  be three answers to "what is this called": the repo was `codebase-rescue`, the marketplace was
+  `codebase-alignment`, and the infrastructure plugins were `alignment-core` / `alignment-helpers` —
+  so the install line read `codebase-rescue@codebase-alignment` and the flagship plugin shared a name
+  with the repo that contained all four. Three names, no two agreeing: the exact drift this package
+  exists to find, sitting in its own front door. Now: repo `r3vs/keel`, marketplace `keel`, MCP
+  server `keel`, plugins `keel-core` + `keel-kit`.
+- **`codebase-rescue` and `greenfield-forge` deliberately keep their names.** A skill self-activates
+  off its `description`, and those two words are load-bearing there — `keel-rescue` would trade
+  trigger accuracy for brand symmetry. The brand carries the infrastructure; the methodology carries
+  the meaning.
+- **README rewritten for a reader who has never heard of any of this.** It now opens on the failure
+  it detects rather than on the architecture that detects it, and proves the claim with **real
+  output** from `tests/fixtures/slop-repo` plus the one-line command to reproduce it. The old hero
+  described the repository's own file layout in paragraph three.
+  - One line of that rewrite was cut on the house rule: the draft's hero ran `keel contract-diff`,
+    a CLI that has not existed since it was removed in favour of the MCP-only runtime. A fabricated
+    command in the first code block of the README is the claiming-vs-doing bug in its purest form.
+
 ## [0.1.0] — unreleased
 
 ### Removed

@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "workflow"
-OUT = ROOT / "plugins" / "alignment-core" / "skills" / "run-workflow" / "engine"
+OUT = ROOT / "plugins" / "keel-core" / "skills" / "run-workflow" / "engine"
 
 
 class TestWorkflowVendored(unittest.TestCase):

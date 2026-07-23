@@ -26,8 +26,17 @@ other host (opencode, Codex, Pi, Cursor) reads `AGENTS.md` directly.
 
 ## What this repository is
 
-This repository holds **two sibling Claude Code skills**, not runnable applications. The
-deliverable is prose that a future Claude instance reads and executes:
+This repository is **Keel** (repo `r3vs/keel`, marketplace `keel`). It holds **two sibling Claude
+Code skills**, not runnable applications. The deliverable is prose that a future Claude instance
+reads and executes.
+
+**On the name:** `Keel` is the brand + the marketplace; the two infrastructure plugins carry it
+(`keel-core`, `keel-kit`) and the two methodology plugins deliberately do **not** — a skill
+self-activates off its `description`, and `codebase-rescue` / `greenfield-forge` are load-bearing
+there. Renaming them to `keel-rescue` would trade trigger accuracy for brand symmetry, which is the
+wrong trade. This replaced a three-way naming split (repo `codebase-rescue`, marketplace
+`codebase-alignment`, plugins `alignment-*`) where no two surfaces agreed — the same drift the
+package exists to find, sitting in its own front door.
 
 - **`codebase-rescue`** (in `skills/codebase-rescue/`) — the **curative** skill: rescue an existing,
   misaligned, often AI-generated codebase. `SKILL.md` + `references/*.md` + `modules.json`.
@@ -39,7 +48,7 @@ deliverable is prose that a future Claude instance reads and executes:
   the runtime into each skill that runs it (the portable floor) *and* the MCP server serves it as
   typed tools — which is what makes the capability **discoverable** rather than merely available.
 - **`plugins/`** — **generated build output; the only thing that ships.** Four plugins
-  (`alignment-core`, `codebase-rescue`, `greenfield-forge`, `alignment-helpers`), each with both a
+  (`keel-core`, `codebase-rescue`, `greenfield-forge`, `keel-kit`), each with both a
   `.claude-plugin/` and a `.codex-plugin/` manifest. opencode and Pi link their skills straight out
   of here (`scripts/install.sh`) — a separate staging tree would just be a third copy of the same
   bytes.

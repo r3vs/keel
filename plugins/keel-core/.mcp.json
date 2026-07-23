@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "codebase-alignment": {
+    "keel": {
       "type": "stdio",
       "command": "uv",
       "args": [

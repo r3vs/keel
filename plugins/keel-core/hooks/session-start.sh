@@ -2,7 +2,7 @@
 # Claude Code SessionStart hook — the activation contract. Output becomes session context.
 # Deliberately compact (one screen): mandatory-entry rule + full skill inventory, no filler.
 cat <<'MSG'
-[codebase-alignment] MANDATORY WORKFLOW CHECK — before acting on ANY task, check whether one of
+[keel] MANDATORY WORKFLOW CHECK — before acting on ANY task, check whether one of
 these skills applies; if it does, you MUST enter through its SKILL.md and follow its phases.
 These are workflows, not suggestions — skipping Phase 1 to "just start coding" is the exact
 failure mode this package exists to prevent.

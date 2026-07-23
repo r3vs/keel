@@ -48,7 +48,7 @@ OPT_IN = re.compile(r"^- `([\w-]+)` → \*\*opt-in\*\*", re.M)
 
 
 def declared() -> dict:
-    with open(PLUGINS / "alignment-core" / ".mcp.json", encoding="utf-8") as fh:
+    with open(PLUGINS / "keel-core" / ".mcp.json", encoding="utf-8") as fh:
         return json.load(fh)["mcpServers"]
 
 
@@ -83,11 +83,11 @@ class TestTheProductShipsWhatItOrders(unittest.TestCase):
                                  "the declaration must match the doctrine's own table")
 
     def test_our_own_server_is_declared(self):
-        self.assertIn("codebase-alignment", declared())
+        self.assertIn("keel", declared())
 
     def test_the_playwright_capability_server_is_declared(self):
         # Browser verification (references/browser-verification.md) is a CAPABILITY, not a knowledge
-        # source — so Playwright's MCP is declared beside codebase-alignment, NOT via the doctrine
+        # source — so Playwright's MCP is declared beside keel, NOT via the doctrine
         # table. It earns a default declaration because it CONNECTS with zero setup (stdio via npx, no
         # container/key, unlike the opt-in cognee); it only degrades on a browser action without
         # `npx playwright install`. That is the real declared-vs-opt-in line.
@@ -115,7 +115,7 @@ class TestTheProductShipsWhatItOrders(unittest.TestCase):
             with self.subTest(plugin=p.name):
                 if (p / ".mcp.json").exists():
                     continue  # it declares them itself
-                self.assertIn("alignment-core", m.get("dependencies", []),
+                self.assertIn("keel-core", m.get("dependencies", []),
                               "this plugin's skills cite the doctrine's servers but nothing "
                               "guarantees the plugin that declares them is installed")
 
@@ -152,7 +152,7 @@ class TestEveryHostGetsThemFromItsInstall(unittest.TestCase):
     """Same table, three hosts, zero user action. The shapes differ; the fact does not."""
 
     def opencode_plugin(self) -> str:
-        p = PLUGINS / "alignment-core" / "adapters" / "opencode" / "plugin" / "mcp.ts"
+        p = PLUGINS / "keel-core" / "adapters" / "opencode" / "plugin" / "mcp.ts"
         self.assertTrue(p.is_file(), "opencode's MCP delivery is a generated plugin file")
         return p.read_text(encoding="utf-8")
 
@@ -199,7 +199,7 @@ class TestEveryHostGetsThemFromItsInstall(unittest.TestCase):
         # miss the bug, it pinned it as correct. The syntax rule and the invariant that enforces it
         # across every path-valued field live in test_codex_manifest.py; this one asserts only the
         # fact this suite is about — that Codex is pointed at the same declaration Claude reads.
-        with open(PLUGINS / "alignment-core" / ".codex-plugin" / "plugin.json", encoding="utf-8") as fh:
+        with open(PLUGINS / "keel-core" / ".codex-plugin" / "plugin.json", encoding="utf-8") as fh:
             self.assertEqual(json.load(fh).get("mcpServers"), "./.mcp.json")
 
     def test_install_sh_does_not_ask_the_user_to_copy_servers(self):
@@ -212,7 +212,7 @@ class TestDeclarationsResolveAfterInstall(unittest.TestCase):
     def test_the_stdio_server_is_plugin_root_anchored(self):
         # The whole bug class in one assertion: a repo-relative path resolves into the USER'S
         # project, because that is what the working directory is at runtime.
-        args = " ".join(declared()["codebase-alignment"]["args"])
+        args = " ".join(declared()["keel"]["args"])
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", args)
         self.assertNotIn("src/", args, "src/ is authoring source and never ships")
 

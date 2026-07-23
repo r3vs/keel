@@ -2,15 +2,15 @@
 # Install the built package into a host that has no plugin format of its own.
 #
 # Claude Code installs entirely from the marketplace and needs nothing here:
-#   Claude Code:  /plugin marketplace add r3vs/codebase-rescue
-#                 /plugin install codebase-rescue@codebase-alignment   (alignment-core comes with it)
-#   Codex:        codex plugin marketplace add r3vs/codebase-rescue    (skills/MCP/hooks)
+#   Claude Code:  /plugin marketplace add r3vs/keel
+#                 /plugin install codebase-rescue@keel   (keel-core comes with it)
+#   Codex:        codex plugin marketplace add r3vs/keel    (skills/MCP/hooks)
 # Codex is a PARTIAL exception: its marketplace plugin delivers skills/MCP/hooks, but a Codex plugin
 # manifest cannot declare agents (verified in openai/codex), so Profile B's per-role model files are
 # placed here into ~/.codex/agents/ — run this too if you want per-role models on Codex.
 #
 # opencode and Pi have no plugin manifest, so their pieces are generated into
-# plugins/alignment-core/adapters/ (a directory Claude Code simply ignores) and placed here. There
+# plugins/keel-core/adapters/ (a directory Claude Code simply ignores) and placed here. There
 # is no separate staging tree: `plugins/` is the ONE output, and a second copy of the same bytes is
 # exactly what this layout exists to stop.
 #
@@ -21,7 +21,7 @@
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-core="$root/plugins/alignment-core/adapters"
+core="$root/plugins/keel-core/adapters"
 
 skills_dir="${1:-$HOME/.agents/skills}"     # opencode + Pi both auto-discover this
 oc_dir="${OPENCODE_DIR:-$HOME/.config/opencode}"

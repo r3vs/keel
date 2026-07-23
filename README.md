@@ -1,153 +1,250 @@
-# codebase-alignment — an agent-agnostic skills package
+<div align="center">
 
-A complete, installable package for keeping a codebase aligned across its whole lifecycle, built
-around two deep, differentiated skills — one **curative**, one **preventive** — on a single
-decisions-ledger spine. Installs as a plugin on **Claude Code, Codex, opencode and Pi** — you point
-it at *your* project; nothing here needs to be cloned or copied by hand except for the two hosts
-that have no plugin manifest.
+# Keel
 
-- **`codebase-rescue`** — rescue a large, misaligned, often AI-generated ("vibecoded") codebase,
-  reconciling backend, frontend, and database into an aligned, state-of-the-art state. Works on
-  unfinished codebases and treats "not built yet" as a work item, not a defect.
-- **`greenfield-forge`** — build a NEW project aligned from the first commit,
-  so it never needs rescuing. Elects the design in a compressed decision interview *before* any
-  code exists, defines the cross-layer contract once and generates aligned layers from it, then
-  builds thin vertical slices test-first.
+### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
-Both center on architecture — design choices, logic, specs, and layers that agree — not just bugs
-and vulnerabilities.
+[![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-408%20passing-brightgreen)](.github/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
-## The shared idea
-Two artifacts, diffed: **as-is** (what the code is now) and **to-be** (what it should be, derived
-from decisions the user elects in a targeted interview). Everything is a delta:
-`gap = diff(to-be, as-is)`. Rescue runs it backward (as-is exists → derive to-be → close the gap);
-greenfield runs it forward (elect to-be → build until as-is meets it → gap → 0). A single
-append-only decisions ledger is the source of truth for the three surfaces (map/wiki, interview,
-brainstorm) — and a forged project's ledger is the audit baseline rescue can later diff against.
+**A boat without a keel doesn't sink. It just can't hold a line.**
 
-Rescue — five phases: comprehension → interview → diff/roadmap → TDD remediation loop → validate.
-Greenfield — seven: frame → interview → contract & roadmap → build loop → validate → release →
-operate & evolve, the last two feeding production back into the ledger (`flip_criteria` → reopen)
-to close the loop.
+</div>
 
-## Layout
+---
 
-One rule covers the whole tree: **`src/` you write by hand. `plugins/` `build.py` writes. Nothing
-else exists.**
+Your contract says a user's `role` is `admin | member`.
+Your database type only has `admin`.
 
-- **`src/`** — everything authored, and it never ships: `skills/` (the two methodology skills plus
-  the composable helpers), `core/` (the shared spine — ledger spec v0.6, interview funnel,
-  brainstorm, shape engine, contract testing, feedback loop, static-analysis and knowledge-sources
-  doctrine, the agent roster), `runtime/` (the deterministic engine, stdlib-only), `mcp/` (the
-  FastMCP adapter that serves it), `agents/`, `commands/`, `hooks/`, `adapters/`, `tools/`.
-- **`plugins/`** — **generated build output, and the only thing that ships.** Four plugins, each
-  carrying both a `.claude-plugin/` and a `.codex-plugin/` manifest. Committed because a marketplace
-  installs from the repo; `python scripts/build.py --check` is what stops it drifting from `src/`.
-- **`tests/` `scripts/` `docs/`** and the root `.md` files develop the repo and never ship.
+Nothing crashes. No linter fires. No type-checker complains — each layer type-checks **against
+itself**. Then someone clicks *invite a teammate*, Postgres rejects the INSERT, and the agent that
+wrote both sides cheerfully builds the next feature on top of the lie.
 
-**You install these plugins and you have everything.** No external plugin, ever — a gate enforces
-it. The generic engineering skills (TDD, debugging, review, worktrees) are authored here rather than
-pulled from elsewhere, because a generic skill that cannot write to the decisions ledger is a
-*stateless twin* standing beside the single source of truth — the exact drift these skills exist to
-find. Ours bind to it: TDD's red step **is** an acceptance-criterion pin.
+That is not slop. That is **drift** — and it is the failure mode of every codebase an AI wrote fast.
 
-Each skill is **self-contained**: the build vendors the doctrine and runtime a skill needs *inside*
-it, because the Agent Skills spec's unit of distribution is the standalone skill folder — a skill
-copied out of the repo must ship complete, with no pointer dangling outside it. See `docs/packaging.md`.
+```text
+> does my database actually match the contract?
+```
+Your agent calls the `contract_diff` MCP tool. It gets back facts, not prose:
 
-## Install
+```json
+[
+  {
+    "entity": "User", "field": "display_name",
+    "kind": "nullability_mismatch",
+    "detail": "contract nullable=False vs db nullable=True",
+    "layers": ["contract", "db"], "confidence": "extracted"
+  },
+  {
+    "entity": "User", "field": "role",
+    "kind": "enum_mismatch",
+    "detail": "contract=['admin', 'member'] vs db=['admin']",
+    "layers": ["contract", "db"], "confidence": "extracted"
+  }
+]
+```
 
-> **Naming note:** the GitHub repo and the flagship plugin are both `codebase-rescue`; the
-> **marketplace** is `codebase-alignment`. Hence `codebase-rescue@codebase-alignment` below.
+> Real output from [`tests/fixtures/slop-repo`](tests/fixtures/slop-repo) — reproduce it in one line:
+>
+> ```bash
+> python -c "import sys,json;sys.path.insert(0,'src/runtime');import shapes;print(json.dumps(shapes.drift_check('tests/fixtures/slop-repo/contract.json',ddl='tests/fixtures/slop-repo/schema.sql'),indent=2))"
+> ```
+>
+> No LLM was involved in that answer. It is a parse and a set difference.
+> `confidence: "extracted"` means *"I read this out of your code"* — not *"I think"*.
+
+## Why nothing you already run catches this
+
+| Your tool | What it sees | What it can't see |
+|---|---|---|
+| ESLint / Ruff | one file | two files that disagree |
+| `tsc` / mypy | one language | the Postgres enum on the other side of the wire |
+| `deslop`, `aislop`, AI-slop scanners | bad *patterns* — dead code, swallowed excepts, `as any` | code that is clean, idiomatic, well-named **and wrong about the layer next to it** |
+| Your coding agent | the 200k tokens you gave it | the 2M-token repo, and every decision it made last Tuesday |
+
+Drift lives **between** files, in the joints. Every tool you own works inside one.
+
+## 60 seconds
 
 **Claude Code**
+```bash
+/plugin marketplace add r3vs/keel
 ```
-/plugin marketplace add r3vs/codebase-rescue
-/plugin install codebase-rescue@codebase-alignment     # or greenfield-forge@…, alignment-helpers@…
+```bash
+/plugin install codebase-rescue@keel
 ```
-`alignment-core` comes along automatically (`dependencies`), bringing the MCP server, the roster,
-the hooks and the `/rescue` · `/forge` commands.
-
-**Codex**
-```
-codex plugin marketplace add r3vs/codebase-rescue
-codex plugin install codebase-rescue                   # Codex has no dependencies — add alignment-core too
-```
-
-**opencode / Pi** — neither has a plugin manifest, so a script places their pieces:
-```
-git clone https://github.com/r3vs/codebase-rescue && cd codebase-rescue
-python scripts/build.py && bash scripts/install.sh
-```
-Keep the clone: everything is symlinked into it, so a rebuild needs no reinstall.
-
-**MCP is part of the install on every host that can take it** — you never copy a server block by
-hand. Claude Code and Codex read the plugin's own `.mcp.json`; opencode gets the same servers from a
-`config()` hook in the plugin file the script places. Pi has no native MCP; its extension bridges.
-The servers are generated from `src/core/knowledge-sources.md` — the doctrine that *orders* the agent
-to use them is the thing entitled to name them.
-
-See `docs/packaging.md` for the per-host shapes, memory, and the compose model.
-
-## Try it in 5 minutes
-
-**Rescue an existing messy repo** (Claude Code, plugin installed):
-
 ```text
 > this codebase is a mess — the frontend, backend and DB don't agree. rescue it.
 ```
 
-The skill self-triggers (or invoke it explicitly), and the phases run as separate, restartable
-invocations that communicate only through on-disk artifacts:
+That's it. `keel-core` follows automatically, bringing the MCP server, the agent roster and the
+enforcement hooks. Other hosts (Codex, opencode, Pi) → [Install](#install).
 
-1. **Comprehension** — builds the as-is map; every problem becomes a *pin* in `ledger.json`
-   (contract mismatches, intentional stubs rendered as neutral work items — never as errors).
-2. **Interview** — you elect the truth: 200 findings compress to ~10 real questions via
-   clusters + policies. Nothing is decided for you; blocker/high items are always asked.
-3. **Roadmap → TDD remediation → validate** — the gap between elected to-be and as-is is closed
-   item by item, each decision carrying its `flip_criteria` (the condition to reopen it).
+## The one idea
 
-Watch the state at any point — the ledger is the single source of truth all surfaces project. Just
-ask; the plugin's MCP server exposes it as typed tools (`ledger_summary`, `interview_next`,
-`contract_diff`, `blast_radius`, `build_waves`, `render_map`, …), so the agent discovers them rather
-than being told a path:
+Two artifacts, diffed:
 
-```text
-> summarise the ledger, then show me the open questions best-first
+- **as-is** — what the code *actually* is. Extracted, never guessed.
+- **to-be** — what it *should* be. Derived from decisions **you elect in an interview**, never
+  reverse-engineered from the code. (Code that's wrong describes itself perfectly.)
+
+Everything else is a delta: **`gap = diff(to-be, as-is)`**.
+
+```mermaid
+flowchart LR
+  subgraph R["codebase-rescue — curative"]
+    direction LR
+    A1["as-is<br/>(exists, and it's a mess)"] --> I1["interview<br/>you elect the truth"] --> T1["to-be"] --> G1["close the gap"]
+  end
+  subgraph F["greenfield-forge — preventive"]
+    direction LR
+    T2["to-be<br/>(elected first)"] --> B2["build until<br/>as-is meets it"] --> G2["gap → 0"]
+  end
 ```
 
-**Forge a new project** the same way: `> new project: <brief> — forge it`, and the interview
-elects the design *before* any code exists; one contract then generates DB/ORM/API/client
-aligned by construction, guarded for life by a CI drift-check.
+Same machinery, run in opposite directions. Contract mismatches, dead code, wrong logic, missing
+features, design concerns and undecided forks are all the same object — which is why there is
+deliberately no taxonomy to memorise.
 
-## Status
-Design-complete across two methodology skills + eleven composable skills, packaged
-agent-agnostically, with the **runtime largely implemented** (344 tests in CI). Authored under
-`src/runtime/`; reaching the agent as MCP tools, and vendored into each skill that runs it as the
-portable floor:
+## What actually happens when you run it
 
-| Piece | Source | MCP tool |
+Five phases, each a **separate invocation with fresh context**, talking only through files on disk.
+Nothing depends on the agent remembering anything. Ctrl-C at any point; resume tomorrow.
+
+1. **Comprehend** — build the as-is map. Every problem becomes a *pin* in `ledger.json`. An
+   unfinished feature is logged as a work item, not screamed about as an error.
+2. **Interview** — *you* elect the truth. 200 findings compress to **~10 real questions** via
+   clustering and policies. Blocker and high-severity items are always asked. Nothing is decided
+   for you — and no agent may commit a decision you didn't make.
+3. **Roadmap → TDD → validate** — the gap closes one item at a time, each fix red-first, each
+   decision carrying its **`flip_criteria`**: the condition under which it reopens itself later.
+
+And the twist most tools skip: the agent must declare its **own** forced assumptions as vetoable
+pins. When the input is vague, high effort means making the gaps explicit — not guessing
+confidently.
+
+## Not another spec framework
+
+`spec-kit` (111k ★), `GSD` (61k ★), `OpenSpec` (52k ★ — counts as of June 2026) are all excellent
+and all **preventive**: write the spec, then build. Wonderful — if you're starting today.
+
+You're not. You have 40k lines that half-work, no spec, no memory of why any of it is like that,
+and an agent that will confidently rewrite the wrong half.
+
+Keel ships **both directions from one spine** — `greenfield-forge` for the empty repo, and
+`codebase-rescue` for the one you actually have. The forged project's ledger becomes the audit
+baseline the rescue can diff against years later. That's the same file, not two products.
+
+## Under it: one ledger, and no heuristics
+
+**The decisions ledger is the single source of truth.** The visual map, the interview, and the
+brainstorm hold *no state of their own* — they project it. That's the exact anti-divergence property
+Keel enforces on your codebase, applied to Keel itself.
+
+A pin is a discriminated union: `contract_mismatch · internal_contradiction · ambiguity ·
+incompleteness · design_concern · defect · open_decision · acceptance_criterion`. It is append-only,
+so *why* survives, not just *what*.
+
+The engine underneath is **24 modules, ~6.2k lines, Python stdlib only**, reaching your agent as
+**32 typed MCP tools** — so it *discovers* the capability instead of being told a file path:
+
+| | What it does | MCP tool |
 |---|---|---|
-| Decisions-ledger runtime (spec v0.6) | `src/runtime/ledger.py` | `ledger_summary` |
-| Field-shape engine + CI drift-check (8 stacks incl. Drizzle/Prisma/Django/GraphQL) | `src/runtime/shapes.py` | `contract_diff` · `reconcile_layers` |
-| Contract generators (round-trip to zero drift) | `src/runtime/generate.py` | `generate_layers` |
-| Findings + false-positive gate (SARIF/OSV) | `src/runtime/findings.py` | `findings_gate` |
-| Decision catalog + interview funnel | `src/runtime/interview.py` + `assets/decision-catalog.json` | `interview_next` |
-| Oracle challenger (deterministic classes) | `src/runtime/challenger.py` | `challenge_oracle` |
-| Phase-4 wave scheduler | `src/runtime/buildloop.py` | `build_waves` |
-| Visual map (self-contained HTML) | `src/runtime/map.py` | `render_map` |
-| Graph anchoring + blast-radius (deterministic, by `file:line`) | `src/runtime/graph.py` | `blast_radius` |
-| Tree-sitter backend (primary; generic engine + declarative per-grammar data) | `src/runtime/treesitter_extract.py` | — |
-| Eval harness + ast-grep rule pack + fixtures | `scripts/run_evals.py`, `assets/ast-grep/`, `tests/fixtures/` | — |
+| **Field-shape engine** | 8 stacks (Postgres DDL · Drizzle · Prisma · Django · SQLAlchemy · GraphQL · TS · Pydantic) → one descriptor, then diffed | `contract_diff` · `reconcile_layers` |
+| **Generators** | one contract → DB + ORM + API + client, round-tripping to zero drift | `generate_layers` |
+| **Comprehension graph** | tree-sitter native, real grammars — not regex | `understand_codebase` · `explain_node` · `graph_query` |
+| **Blast radius** | what breaks if you touch this, by `file:line`, staleness-gated | `blast_radius` · `impact_overlay` |
+| **Interview funnel** | 200 findings → ~10 questions | `interview_next` |
+| **Challenger** | red-teams *your elected spec* before a line is written | `challenge_oracle` |
+| **Findings gate** | SARIF/OSV in, false-positive gate out | `findings_gate` |
+| **Wave scheduler** | dependency DAG → what can be built in parallel | `build_waves` |
+| **Design tokens** | DTCG contract → CSS/Tailwind, drift-checked like any other layer | `generate_tokens` · `tokens_diff` |
 
-**Step-0 verdicts recorded** (both now on trustworthy data): greenfield (FastAPI+SQLAlchemy+TS)
-STRONG → full generation is Plan A; rescue **re-run on a fresh VibraFlow graph** (2026-07-14, after
-the stale-graph challenge) → WEAK cross-layer correspondence → standalone extraction is Plan A,
-confirmed by the shape engine pulling 113 tables / 1290 fields from VibraFlow's real Drizzle
-schema. What remains is agent-orchestrated at runtime (the per-item TDD loop), the Go/Java/Rust/C#
-stacks graduating from fixtures to real repos, and executing the evals against a live agent runner.
-See each `TODO.md`.
+**No heuristics is a hard rule here.** Deterministic findings (a parse, a graph edge, a type error)
+carry high confidence and skip the false-positive gate. Model judgment is *labelled as such*, every
+time. If Keel can't prove something, it says so instead of sounding confident.
+
+## The whole toolkit, nothing external
+
+Installing Keel installs **everything** — a gate in CI enforces that no source may point outside
+this repo. That includes the generic engineering loop, authored here rather than borrowed, because
+each one is **bound to the ledger**:
+
+- **`test-driven-development`** — the red step *is* an `acceptance_criterion` pin
+- **`systematic-debugging`** — the root cause lands in the `defect` pin, not the commit message
+- **`code-review`** — the reviewer *reopens*, never decides. Read-only by design.
+- **`verification-before-completion`** — resolved means **observed**, not "the code was written"
+- **`branch-lifecycle`** — a git worktree per scope, so parallel agents can't collide
+- plus `grounded-research` (cite current docs, never stale memory), `static-first-analysis`,
+  `project-memory`, `learning-layer` (senior-grade output while *you* level up), `run-workflow`
+
+A generic TDD skill can't make its red step a ledger pin. A skill that runs *beside* the source of
+truth without writing to it is a **stateless twin** — the exact divergence this package exists to
+find.
+
+## Six agents, one rule
+
+**Serialized writing, parallel reading.** `researcher · brainstorm · challenger · reviewer ·
+measurer` are read-only and fan out; only the **`executor`** writes, one scope at a time, in its own
+worktree. Three of those roles may only ever *reopen* a decision, never make one.
+
+**Only your committed interview answer elects anything.** No agent commits a decision. That is
+enforced by a hook, not by a paragraph asking nicely.
+
+## Install
+
+| Host | Command |
+|---|---|
+| **Claude Code** | `/plugin marketplace add r3vs/keel` → `/plugin install codebase-rescue@keel` |
+| **Codex** | `codex plugin marketplace add r3vs/keel` → `codex plugin install codebase-rescue` (add `keel-core` too — Codex has no dependency resolution) |
+| **opencode / Pi** | `git clone https://github.com/r3vs/keel && cd keel && python scripts/build.py && bash scripts/install.sh` |
+
+Four plugins: **`keel-core`** (the spine — MCP server, roster, hooks), **`codebase-rescue`**,
+**`greenfield-forge`**, **`keel-kit`** (the composable helpers).
+
+**MCP is part of the install on every host that can take it** — you never hand-copy a server block.
+Claude Code and Codex read the plugin's own `.mcp.json`; opencode gets the same servers from a
+`config()` hook. Per-host detail: [`docs/packaging.md`](docs/packaging.md).
+
+## Status — stated honestly, because that's the whole point
+
+Design-complete across 2 methodology skills + 11 composable ones, with the runtime **largely
+implemented**: 24 modules, 32 MCP tools, **408 tests green in CI**, 4 hosts.
+
+What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
+Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were
+re-run on fresh data (greenfield **STRONG** → full generation is Plan A; rescue **WEAK** cross-layer
+correspondence on that repo → standalone extraction is Plan A).
+
+What is **not yet**: the Go/Java/Rust/C# stacks are fixture-verified only — do not trust them on a
+real repo yet. The per-item TDD loop is agent-orchestrated at runtime rather than deterministic. The
+evals ship with assertions but have not been executed end-to-end against a live agent runner.
+
+If that list looks unusually blunt for a README, that's deliberate. This repo's signature bug class
+is **claiming-vs-doing** — a document asserting a mechanism that doesn't exist. Five instances were
+found and killed; the gates that catch the sixth are `build.py --check`, `verify_pointers.py`,
+`verify_commands.py` and `test_installed_package.py`, and they run on every PR.
+
+## Contributing
+
+`src/` you write by hand. `plugins/` `build.py` writes. Nothing else exists.
+
+```bash
+python scripts/build.py && python -m unittest discover -s tests
+```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CLAUDE.md`](CLAUDE.md) — the latter is the real
+architecture document, and it does not pull punches either.
 
 ## License
-MIT (`LICENSE`). The external toolchain keeps its own licenses — notably GitNexus is PolyForm
-Noncommercial (optional, opt-in).
+
+MIT. The optional external toolchain keeps its own licenses — notably GitNexus, which is PolyForm
+Noncommercial (opt-in, never required).
+
+<div align="center">
+
+**If your layers don't agree, nothing else you do to that codebase is real.**
+
+</div>

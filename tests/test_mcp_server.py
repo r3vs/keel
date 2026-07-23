@@ -63,7 +63,7 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
             cls._request("initialize", {
                 "protocolVersion": "2025-11-25",
                 "capabilities": {},
-                "clientInfo": {"name": "codebase-alignment-tests", "version": "1"},
+                "clientInfo": {"name": "keel-tests", "version": "1"},
             })
             cls._notify("notifications/initialized")
             listing = cls._request("tools/list", {})
