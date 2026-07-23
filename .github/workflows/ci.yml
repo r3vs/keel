@@ -20,7 +20,13 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 for the TAGS, not the history. `test_plugin_version.py` anchors "is this
+      # version still true?" on the `{name}--v{version}` tag written at release, and the default
+      # shallow checkout brings none — so without this every one of its assertions skips green,
+      # which is the self-healing silence the whole gate exists to end.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
