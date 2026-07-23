@@ -1,6 +1,6 @@
 {
-  "name": "codebase-rescue",
-  "description": "Curative: rescue a large, misaligned, often AI-generated codebase \u2014 reconcile backend, frontend and database into an aligned state. Runs the diff backward: as-is exists, derive the to-be from an elected interview, close the gap.",
+  "name": "keel-core",
+  "description": "The spine: the decisions-ledger MCP server (contract diff, blast radius, interview funnel, wave scheduler, findings gate), the researcher/brainstorm/executor/reviewer/challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. Installed automatically as a dependency of codebase-rescue and greenfield-forge.",
   "version": "0.2.0",
   "author": {
     "name": "r3vs"
@@ -21,8 +21,5 @@
     "spec-driven-development",
     "refactoring",
     "tdd"
-  ],
-  "dependencies": [
-    "keel-core"
   ]
 }

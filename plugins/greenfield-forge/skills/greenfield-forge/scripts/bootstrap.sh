@@ -53,7 +53,7 @@ fi
 if have uv; then
   # `dirname "$0")/../..` is the repo root in dev, where src/mcp/server.py lives (the old `/..`
   # stopped one level short, so the path had a doubled `src/` and never resolved). In the shipped
-  # skill the server is in a sibling plugin (alignment-core/mcp) and is not reachable relatively, so
+  # skill the server is in a sibling plugin (keel-core/mcp) and is not reachable relatively, so
   # the `-f` test fails and the host warms it on its own first spawn. Report only what actually ran.
   _server="$(cd "$(dirname "$0")/../.." && pwd)/src/mcp/server.py"
   if [ -f "$_server" ] && timeout 180 uv run --script "$_server" --help >/dev/null 2>&1; then
@@ -151,7 +151,7 @@ if have pip3 || have pip; then
   # declaration of which grammars exist, and a second copy in a shell script is a copy that drifts.
   # Pass the base dir in explicitly: __file__ inside `python3 -` is the literal "<stdin>", so it
   # cannot locate the runtime. `dirname "$0")/../..` is the repo root in dev (src/runtime lives there);
-  # in the shipped skill the runtime is in a sibling plugin (alignment-core/mcp/runtime) and is not
+  # in the shipped skill the runtime is in a sibling plugin (keel-core/mcp/runtime) and is not
   # reachable relatively, so no candidate resolves and the block degrades to the `|| warn` below.
   _boot_base="$(cd "$(dirname "$0")/../.." && pwd)"
   python3 - "$_boot_base" <<'PY' 2>/dev/null || warn "grammar prefetch skipped — grammars fetch on first use (needs network then)"

@@ -2,6 +2,9 @@
 name: researcher
 description: Read-only comprehension, finding, and grounded research for the Keel skills. Fans out in parallel and never writes code. Use for Phase-1 comprehension/finding (rescue) and framing / threat-model / catalog research (greenfield).
 tools: Read, Grep, Glob, Bash, WebFetch
+disallowedTools: Write, Edit, NotebookEdit
+model: sonnet
+effort: low
 ---
 
 You are the **researcher** role of the Keel skills

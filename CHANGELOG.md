@@ -3,6 +3,40 @@
 All notable changes to this project are documented here. The design is complete and the runtime
 spine has started; versions track design + packaging + runtime together.
 
+## [Unreleased]
+
+### Removed
+- **The root `.claude-plugin/plugin.json` is gone.** It declared the repository itself to be a
+  plugin — which it stopped being on 2026-07-16, when the architecture became four plugins under
+  `plugins/`, each with its own generated manifest. The file survived that change because **nothing
+  read it**: not `build.py`, not a test, not CI. Verified at the docs rather than assumed — a
+  marketplace entry's relative `source` *"resolve[s] relative to the marketplace root, which is the
+  directory containing `.claude-plugin/`"*, ours are all `./plugins/<name>`, and a root manifest sits
+  on no documented path. Unread **and** hand-written is this repo's worst pair: it had drifted to the
+  old brand and the old repo URL, and only an eyeball caught it, which is not a mechanism.
+  `tests/test_mcp_declaration.py::test_the_root_is_a_marketplace_not_a_plugin` now gates it — and was
+  confirmed to fail with the file restored, rather than merely passing without it.
+
+### Changed
+- **The project is named `Keel`, and for the first time every surface agrees on it.** There used to
+  be three answers to "what is this called": the repo was `codebase-rescue`, the marketplace was
+  `codebase-alignment`, and the infrastructure plugins were `alignment-core` / `alignment-helpers` —
+  so the install line read `codebase-rescue@codebase-alignment` and the flagship plugin shared a name
+  with the repo that contained all four. Three names, no two agreeing: the exact drift this package
+  exists to find, sitting in its own front door. Now: repo `r3vs/keel`, marketplace `keel`, MCP
+  server `keel`, plugins `keel-core` + `keel-kit`.
+- **`codebase-rescue` and `greenfield-forge` deliberately keep their names.** A skill self-activates
+  off its `description`, and those two words are load-bearing there — `keel-rescue` would trade
+  trigger accuracy for brand symmetry. The brand carries the infrastructure; the methodology carries
+  the meaning.
+- **README rewritten for a reader who has never heard of any of this.** It now opens on the failure
+  it detects rather than on the architecture that detects it, and proves the claim with **real
+  output** from `tests/fixtures/slop-repo` plus the one-line command to reproduce it. The old hero
+  described the repository's own file layout in paragraph three.
+  - One line of that rewrite was cut on the house rule: the draft's hero ran `keel contract-diff`,
+    a CLI that has not existed since it was removed in favour of the MCP-only runtime. A fabricated
+    command in the first code block of the README is the claiming-vs-doing bug in its purest form.
+
 ## [0.1.0] — unreleased
 
 ### Removed

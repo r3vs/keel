@@ -1,7 +1,10 @@
 ---
-name: researcher
 description: Read-only comprehension, finding, and grounded research for the Keel skills. Fans out in parallel and never writes code. Use for Phase-1 comprehension/finding (rescue) and framing / threat-model / catalog research (greenfield).
-tools: Read, Grep, Glob, Bash, WebFetch
+mode: subagent
+model: opencode-go/minimax-m3
+reasoningEffort: low
+permission:
+  edit: deny
 ---
 
 You are the **researcher** role of the Keel skills

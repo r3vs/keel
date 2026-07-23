@@ -252,7 +252,7 @@ for (const wave of args.waves) {                 // args.waves = buildloop.waves
   `DETERMINISM_PRELUDE` runtime (blocca `Date.now`/`Math.random`/`Date()` argless, lascia `new Date(arg)`),
   `stripLeadingExportMeta`. Refactor `createWorkflowContext` condiviso tra path a-funzione e a-sorgente.
 - **Slice 3** — bind topologia ↔ `buildloop.waves()`; wave build §6.3 con worktree.
-- **Slice 4 — ✅ FATTO** — skill **`run-workflow`** (in alignment-core) col motore vendorizzato
+- **Slice 4 — ✅ FATTO** — skill **`run-workflow`** (in keel-core) col motore vendorizzato
   **dentro la skill** (`engine/`, path **skill-relative** che ogni host inietta → portabile; il
   plugin-root avrebbe richiesto `${CLAUDE_PLUGIN_ROOT}`, solo-Claude, o un `../` che non viaggia).
   `build.py` copia `src/workflow/`→`skills/run-workflow/engine/` (`__tests__` esclusi), gated da

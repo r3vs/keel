@@ -36,23 +36,23 @@ needs is delivered by the install, and `tests/test_mcp_declaration.py` keeps it 
 
 **Claude Code** — add the marketplace, then the plugin:
 ```
-/plugin marketplace add r3vs/codebase-rescue
-/plugin install codebase-rescue@codebase-alignment
+/plugin marketplace add r3vs/keel
+/plugin install codebase-rescue@keel
 ```
-`alignment-core` follows automatically via `dependencies`. Skills, `agents/`, `commands/`
+`keel-core` follows automatically via `dependencies`. Skills, `agents/`, `commands/`
 (`/rescue`, `/forge`), the hooks and the MCP servers all load from the plugin root.
 
 **Codex** — same marketplace, one difference that matters:
 ```
-codex plugin marketplace add r3vs/codebase-rescue
+codex plugin marketplace add r3vs/keel
 codex plugin install codebase-rescue
-codex plugin install alignment-core     # Codex has no `dependencies` — install the core explicitly
+codex plugin install keel-core     # Codex has no `dependencies` — install the core explicitly
 ```
 
 **opencode / Pi** — neither has a plugin manifest, so their pieces are generated into
-`plugins/alignment-core/adapters/` (a directory Claude Code ignores) and a script places them:
+`plugins/keel-core/adapters/` (a directory Claude Code ignores) and a script places them:
 ```
-git clone https://github.com/r3vs/codebase-rescue && cd codebase-rescue
+git clone https://github.com/r3vs/keel && cd keel
 python scripts/build.py && bash scripts/install.sh
 ```
 Skills go to `~/.agents/skills` (both hosts auto-discover it); the roster, the commands, the ledger
@@ -175,7 +175,7 @@ prose is good the honest move is to adapt it with attribution — not to pretend
 An agent that reads `AGENTS.md` but has no plugin format is a partial target, and saying so plainly
 is better than the shortcut this document used to take (*"open the repo"*). Install the skills the
 way opencode and Pi do — `bash scripts/install.sh` places them where an `.agents/skills` reader
-finds them — and add the MCP servers from `plugins/alignment-core/.mcp.json` through that agent's
+finds them — and add the MCP servers from `plugins/keel-core/.mcp.json` through that agent's
 own settings UI. The distinction that matters: you are pointing your agent at **your** project and
 giving it our skills, not opening our repo and working inside it.
 

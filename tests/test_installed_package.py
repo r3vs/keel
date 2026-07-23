@@ -73,10 +73,10 @@ class TestManifests(unittest.TestCase):
         # and `dependencies` is what guarantees it is installed and enabled at all.
         for p in ("codebase-rescue", "greenfield-forge"):
             with self.subTest(plugin=p):
-                self.assertIn("alignment-core", self._manifest(p).get("dependencies", []))
+                self.assertIn("keel-core", self._manifest(p).get("dependencies", []))
 
     def test_the_core_depends_on_nothing(self):
-        self.assertEqual(self._manifest("alignment-core").get("dependencies", []), [])
+        self.assertEqual(self._manifest("keel-core").get("dependencies", []), [])
 
     def test_marketplace_points_at_every_built_plugin(self):
         with open(ROOT / ".claude-plugin" / "marketplace.json", encoding="utf-8") as fh:
@@ -89,8 +89,8 @@ class TestManifests(unittest.TestCase):
     def test_mcp_server_path_is_plugin_root_anchored(self):
         # The whole bug class in one assertion: a repo-relative path here resolves into the USER'S
         # project at runtime, because that is what the working directory is.
-        with open(PLUGINS / "alignment-core" / ".mcp.json", encoding="utf-8") as fh:
-            entry = json.load(fh)["mcpServers"]["codebase-alignment"]
+        with open(PLUGINS / "keel-core" / ".mcp.json", encoding="utf-8") as fh:
+            entry = json.load(fh)["mcpServers"]["keel"]
         self.assertEqual(entry["command"], "uv", "zero-install depends on uv resolving PEP 723")
         joined = " ".join(entry["args"])
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", joined)
@@ -111,11 +111,11 @@ class TestRunsFromAnInstalledLocation(unittest.TestCase):
         cls.userproj = os.path.join(cls.tmp, "userproj")  # stands in for the user's repo
         os.makedirs(cls.cache)
         os.makedirs(cls.userproj)
-        # The MCP server ships in alignment-core; the workflow skill ships beside it. Copy both:
+        # The MCP server ships in keel-core; the workflow skill ships beside it. Copy both:
         # the server + its runtime is what must run, the skill is what must name no dead CLI path.
-        shutil.copytree(PLUGINS / "alignment-core", os.path.join(cls.cache, "alignment-core"))
+        shutil.copytree(PLUGINS / "keel-core", os.path.join(cls.cache, "keel-core"))
         shutil.copytree(PLUGINS / "codebase-rescue", os.path.join(cls.cache, "codebase-rescue"))
-        cls.mcp = os.path.join(cls.cache, "alignment-core", "mcp")
+        cls.mcp = os.path.join(cls.cache, "keel-core", "mcp")
 
     @classmethod
     def tearDownClass(cls):

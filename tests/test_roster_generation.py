@@ -24,9 +24,9 @@ ROOT = Path(__file__).resolve().parent.parent
 PLUGINS = ROOT / "plugins"
 ROSTER = ROOT / "src" / "core" / "agents.md"
 AUTHORED = ROOT / "src" / "agents"
-CLAUDE = PLUGINS / "alignment-core" / "agents"
-OPENCODE = PLUGINS / "alignment-core" / "adapters" / "opencode" / "agent"
-CODEX = PLUGINS / "alignment-core" / "adapters" / "codex" / "agents"
+CLAUDE = PLUGINS / "keel-core" / "agents"
+OPENCODE = PLUGINS / "keel-core" / "adapters" / "opencode" / "agent"
+CODEX = PLUGINS / "keel-core" / "adapters" / "codex" / "agents"
 
 PERM = re.compile(r"^- ((?:`[\w-]+`(?:, )?)+)\s*→\s*\*\*edit: (deny|allow)\*\*", re.M)
 ROLE = re.compile(r"`([\w-]+)`")

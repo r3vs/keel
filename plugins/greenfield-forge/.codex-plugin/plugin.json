@@ -1,15 +1,18 @@
 {
   "name": "greenfield-forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Preventive: build a new project aligned from the first commit. Elects the design in a compressed interview before any code exists, then generates every layer from one contract so they cannot drift.",
   "keywords": [
     "skills",
+    "vibe-coding",
+    "ai-generated-code",
     "codebase",
     "rescue",
     "greenfield",
     "architecture",
     "cross-layer-contract",
     "decisions-ledger",
+    "spec-driven-development",
     "refactoring",
     "tdd"
   ],

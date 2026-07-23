@@ -69,11 +69,16 @@ SRC = ROOT / "src"
 CORE, RUNTIME, TOOLS, SKILLS = SRC / "core", SRC / "runtime", SRC / "tools", SRC / "skills"
 OUT = ROOT / "plugins"
 
-VERSION = "0.1.0"
+# The ONE version string: every plugin manifest, every marketplace entry, and both plugin-manifest
+# flavours are stamped from here. Bump it whenever `plugins/` content changes, because a host
+# compares this STRING and nothing else — see `tests/test_plugin_version.py`, which is what makes
+# that sentence a gate rather than a hope.
+VERSION = "0.2.0"
 AUTHOR = {"name": "r3vs"}
-HOMEPAGE = "https://github.com/r3vs/codebase-rescue"
-KEYWORDS = ["skills", "codebase", "rescue", "greenfield", "architecture", "cross-layer-contract",
-            "decisions-ledger", "refactoring", "tdd"]
+HOMEPAGE = "https://github.com/r3vs/keel"
+KEYWORDS = ["skills", "vibe-coding", "ai-generated-code", "codebase", "rescue", "greenfield",
+            "architecture", "cross-layer-contract", "decisions-ledger",
+            "spec-driven-development", "refactoring", "tdd"]
 
 # Repo-development artifacts that live beside authored skill content but are not product: a build
 # checklist and an eval harness are ours, not the user's.
@@ -148,7 +153,7 @@ CODEX_EFFORTS = {"minimal", "low", "medium", "high"}
 MCP_REQUIRED = re.compile(r"^- `([\w-]+)` → \*\*http\*\* `(\S+)`", re.M)
 
 PLUGINS = {
-    "alignment-core": {
+    "keel-core": {
         "description": (
             "The spine: the decisions-ledger MCP server (contract diff, blast radius, interview "
             "funnel, wave scheduler, findings gate), the researcher/brainstorm/executor/reviewer/"
@@ -166,7 +171,7 @@ PLUGINS = {
             "derive the to-be from an elected interview, close the gap."
         ),
         "skills": ["codebase-rescue"], "commands": ["rescue"],
-        "dependencies": ["alignment-core"],
+        "dependencies": ["keel-core"],
     },
     "greenfield-forge": {
         "description": (
@@ -175,9 +180,9 @@ PLUGINS = {
             "contract so they cannot drift."
         ),
         "skills": ["greenfield-forge"], "commands": ["forge"],
-        "dependencies": ["alignment-core"],
+        "dependencies": ["keel-core"],
     },
-    "alignment-helpers": {
+    "keel-kit": {
         "description": (
             "Composable helpers, each useful on its own and each bound to the decisions ledger: the "
             "engineering loop (test-driven-development, systematic-debugging, code-review, "
@@ -199,7 +204,7 @@ PLUGINS = {
         # `grounded-research` IS the Context7/DeepWiki doctrine as a skill, and core is where those
         # servers are declared. This used to say `dependencies: []` and "no runtime dependency" —
         # which read well and shipped a skill that orders the agent to use a server it never got.
-        "dependencies": ["alignment-core"],
+        "dependencies": ["keel-core"],
     },
 }
 
@@ -615,7 +620,7 @@ def mcp_json() -> str:
     which is not installing a plugin. The delivery is the install, or it does not exist.
     """
     servers = {
-        "codebase-alignment": {
+        "keel": {
             "type": "stdio",
             "command": "uv",
             # The host expands this; a repo-relative path would resolve into the USER'S project.
@@ -680,7 +685,7 @@ const SERVER = resolve(dirname(fileURLToPath(import.meta.url)), "../../../mcp/se
 
 export const McpServers: Plugin = async () => ({{
   config: (cfg: any) => {{
-    // Playwright MCP is a capability server (browser verification), delivered like codebase-alignment.
+    // Playwright MCP is a capability server (browser verification), delivered like keel.
     // opencode's local `command` is an array; it connects via npx with no container/key (unlike the
     // opt-in servers), degrading only on a browser action without `npx playwright install`.
     const ours: Record<string, unknown> = {{ ...REMOTE, playwright: {{ type: "local", command: ["npx", "-y", "@playwright/mcp@latest"] }} }}
@@ -688,7 +693,7 @@ export const McpServers: Plugin = async () => ({{
     // than linked into it, our server is unreachable — declaring it anyway would hand the user a
     // broken entry. The doctrine's remote servers still land.
     if (existsSync(SERVER)) {{
-      ours["codebase-alignment"] = {{ type: "local", command: ["uv", "run", "--script", SERVER] }}
+      ours["keel"] = {{ type: "local", command: ["uv", "run", "--script", SERVER] }}
     }}
     cfg.mcp = {{ ...ours, ...(cfg.mcp ?? {{}}) }}
   }},
@@ -698,8 +703,12 @@ export const McpServers: Plugin = async () => ({{
 
 def marketplace() -> str:
     return json.dumps({
-        "name": "codebase-alignment", "version": VERSION,
-        "description": "Curative + preventive codebase-alignment plugins on a shared decisions-ledger core.",
+        "name": "keel", "version": VERSION,
+        "description": (
+            "Keel — make your layers agree. Cross-layer contract reconciliation (DB/ORM/API/client) "
+            "on an append-only decisions ledger: curative for a codebase that already drifted, "
+            "preventive for one that hasn't been written yet."
+        ),
         "owner": AUTHOR,
         # Every entry is OURS, and `tests/test_codex_manifest.py` holds that shut. The catalog used
         # to carry a `superpowers` entry under the banner "generic engineering skills are COMPOSED,
