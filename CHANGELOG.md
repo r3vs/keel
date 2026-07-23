@@ -5,6 +5,18 @@ spine has started; versions track design + packaging + runtime together.
 
 ## [Unreleased]
 
+### Removed
+- **The root `.claude-plugin/plugin.json` is gone.** It declared the repository itself to be a
+  plugin — which it stopped being on 2026-07-16, when the architecture became four plugins under
+  `plugins/`, each with its own generated manifest. The file survived that change because **nothing
+  read it**: not `build.py`, not a test, not CI. Verified at the docs rather than assumed — a
+  marketplace entry's relative `source` *"resolve[s] relative to the marketplace root, which is the
+  directory containing `.claude-plugin/`"*, ours are all `./plugins/<name>`, and a root manifest sits
+  on no documented path. Unread **and** hand-written is this repo's worst pair: it had drifted to the
+  old brand and the old repo URL, and only an eyeball caught it, which is not a mechanism.
+  `tests/test_mcp_declaration.py::test_the_root_is_a_marketplace_not_a_plugin` now gates it — and was
+  confirmed to fail with the file restored, rather than merely passing without it.
+
 ### Changed
 - **The project is named `Keel`, and for the first time every surface agrees on it.** There used to
   be three answers to "what is this called": the repo was `codebase-rescue`, the marketplace was
