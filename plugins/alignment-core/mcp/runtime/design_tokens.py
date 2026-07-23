@@ -19,14 +19,21 @@ variables, diff against the DTCG source — a correct generator round-trips to *
 round-trip is the design twin of `contract_diff`, and it is what the CI drift-check runs.
 
 **Scope of this floor.** Stdlib-only; the web targets (CSS variables, Tailwind v4, DESIGN.md
-frontmatter), and the scalar token types a UI is styled from: `color`, `fontFamily`, and `dimension`
-(radii / font-sizes / spacing). DTCG **composite** types (`typography` / `border` / `shadow`, whose
-`$value` is an object) are **not projected** — they are skipped, never emitted as a broken CSS value;
-handling them is additive. Style Dictionary / Terrazzo are the mature standard DTCG generators and add
-more targets (iOS / Android / …); a project that uses one consumes the **same DTCG contract**, so they
-are compatible with this floor, not replaced by it. This module **neither detects nor shells them** —
-delegating to a present Style Dictionary would be an additive extension, not implemented here (do not
-read this as a tree-sitter-style "prefer when present" code path; there is none).
+frontmatter). Both scalar token types (`color` / `fontFamily` / `dimension`) and DTCG **composite**
+types are projected — see `_expand`: `shadow` and `border` compose into their CSS shorthand (a shadow
+list joins with commas, as CSS does), and `typography` (and any other object value) expands into one
+variable per sub-property, the flattening Style Dictionary also performs. A composite is never dumped
+into a stylesheet as JSON. `typography` earns a second projection: its `{fontFamily, fontSize}` IS the
+shape of a DESIGN.md typography **role**, so a composite maps onto the contract Impeccable enforces
+more directly than separate tokens do.
+
+Style Dictionary / Terrazzo are the mature standard DTCG generators and add more targets (iOS /
+Android / …); a project that uses one consumes the **same DTCG contract**, so they are compatible with
+this floor, not replaced by it. This module **neither detects nor shells them**, deliberately: a
+project already on Style Dictionary runs it in its own build, and delegating would make it ambiguous
+which artifact is authoritative and which one `tokens_diff` is checking. Our job is the ledger-bound
+contract and the drift-check, not being someone's build tool. (So: no tree-sitter-style "prefer when
+present" code path here — by design, not by omission.)
 
 **DTCG → DESIGN.md role mapping is read from the contract's own structure, never guessed.** A token's
 `$type` decides most of it (`color` → `colors`, `fontFamily` → a typography family). The one genuine
@@ -149,11 +156,38 @@ def _leaf(path: str) -> str:
     return path.rsplit(".", 1)[-1] if path else path
 
 
-def _scalar_tokens(ts: "TokenSet") -> list:
-    """Tokens whose value is a single CSS-emittable scalar (string / number / a fontFamily list) —
-    NOT a DTCG composite (`typography` / `border` / `shadow`, whose `$value` is an object). A composite
-    cannot be one `--var: value;`, so the web generators skip it rather than emit invalid CSS."""
-    return [t for t in ts.tokens if not isinstance(t["value"], dict)]
+# CSS shorthand orders for the composite types that HAVE one. Deterministic composition, not a guess:
+# these are the property orders CSS itself defines.
+_SHADOW_ORDER = ("offsetX", "offsetY", "blur", "spread", "color")
+_BORDER_ORDER = ("width", "style", "color")
+
+
+def _compose(order: tuple, obj: dict) -> str:
+    return " ".join(str(obj[k]) for k in order if obj.get(k) not in (None, ""))
+
+
+def _expand(tok: dict) -> list:
+    """A token → the `(css-variable-stem, value)` pairs it projects to.
+
+    A scalar (or a fontFamily list) is one variable. A DTCG **composite** is projected, never skipped
+    and never JSON-dumped into a stylesheet:
+      - `shadow` → the CSS `box-shadow` shorthand (a list of shadows joins with commas, as CSS does);
+      - `border` → the CSS `border` shorthand;
+      - any other object (notably `typography`) → one variable per sub-property (`…-font-family`,
+        `…-font-size`, …), the same flattening Style Dictionary performs.
+    """
+    path, val, typ = tok["path"], tok["value"], tok.get("type")
+    stem = _kebab(path)
+    if typ == "shadow":
+        items = val if isinstance(val, list) else [val]
+        parts = [p for p in (_compose(_SHADOW_ORDER, s) for s in items if isinstance(s, dict)) if p]
+        return [(stem, ", ".join(parts))] if parts else []
+    if typ == "border" and isinstance(val, dict):
+        return [(stem, _compose(_BORDER_ORDER, val))] if _compose(_BORDER_ORDER, val) else []
+    if isinstance(val, dict):
+        return [(f"{stem}-{_kebab(k)}", str(v)) for k, v in val.items()
+                if isinstance(v, (str, int, float))]
+    return [(stem, _fmt_value(tok))]
 
 
 # ── generators (one DTCG contract → each design layer) ──────────────────────
@@ -162,8 +196,9 @@ def to_css_vars(ts: TokenSet, selector: str = ":root") -> str:
     """DTCG → CSS custom properties. The exact, lossless projection — every token becomes one
     `--<kebab-path>` variable; this is the layer the drift-check round-trips against."""
     lines = [f"/* {_BANNER} */", f"{selector} {{"]
-    for t in _scalar_tokens(ts):
-        lines.append(f"  --{_kebab(t['path'])}: {_fmt_value(t)};")
+    for t in ts.tokens:
+        for name, value in _expand(t):
+            lines.append(f"  --{name}: {value};")
     lines.append("}")
     return "\n".join(lines) + "\n"
 
@@ -173,8 +208,15 @@ def to_tailwind(ts: TokenSet) -> str:
     `@theme`, so this is the same projection as `to_css_vars` in Tailwind's namespaced form
     (`--color-*`, `--font-*`, `--radius-*`, `--text-*`) — token names Tailwind turns into utilities."""
     lines = [f"/* {_BANNER} */", "@theme {"]
-    for t in _scalar_tokens(ts):
-        lines.append(f"  --{_tw_name(t)}: {_fmt_value(t)};")
+    for t in ts.tokens:
+        pairs = _expand(t)
+        # a single-variable token keeps Tailwind's type namespace; an expanded composite keeps its
+        # own sub-property names (Tailwind has no namespace for a flattened typography role).
+        if len(pairs) == 1 and pairs[0][0] == _kebab(t["path"]):
+            lines.append(f"  --{_tw_name(t)}: {pairs[0][1]};")
+        else:
+            for name, value in pairs:
+                lines.append(f"  --{name}: {value};")
     lines.append("}")
     return "\n".join(lines) + "\n"
 
@@ -205,29 +247,40 @@ def to_design_md(ts: TokenSet) -> str:
     """DTCG → a `DESIGN.md` (Google Stitch format) Impeccable enforces membership against.
 
     Only the three surfaces Impeccable's detector reads are populated from typed tokens: `colors`
-    (every `color` token), `typography` (each `fontFamily` token → a role; each font-size `dimension`
-    → a `scale` step), and `rounded` (each radius `dimension`). The role/scale/radius split is read
+    (every `color` token), `typography` (a `typography` COMPOSITE → a role with its `fontFamily` +
+    `fontSize`; a bare `fontFamily` token → a role's family; each font-size `dimension` → a `scale`
+    step), and `rounded` (each radius `dimension`). The role/scale/radius split is read
     from `$type` + top-level group (see module docstring), never guessed. A dimension in an
     unrecognized group is intentionally NOT projected here (it lives in CSS only) rather than
     misfiled into the contract."""
-    colors, families, scale, rounded = {}, {}, {}, {}
+    colors, roles, scale, rounded = {}, {}, {}, {}
     for t in ts.tokens:
         typ, group, leaf = t["type"], _top_group(t["path"]), _leaf(t["path"])
         if typ == "color":
             colors[leaf] = _fmt_value(t)
         elif typ == "fontFamily":
-            families[leaf] = _fmt_value(t)
+            roles.setdefault(leaf, {})["fontFamily"] = _fmt_value(t)
+        elif typ == "typography" and isinstance(t["value"], dict):
+            # A DTCG typography composite IS a DESIGN.md role: {fontFamily, fontSize}. This maps onto
+            # the contract Impeccable enforces more directly than two separate tokens do.
+            v = t["value"]
+            if isinstance(v.get("fontFamily"), (str, list)):
+                roles.setdefault(leaf, {})["fontFamily"] = _fmt_value({"value": v["fontFamily"]})
+            if isinstance(v.get("fontSize"), (str, int, float)):
+                roles.setdefault(leaf, {})["fontSize"] = str(v["fontSize"])
         elif typ == "dimension" and group in _RADIUS_GROUPS:
             rounded[leaf] = _fmt_value(t)
         elif typ == "dimension" and group in _FONTSIZE_GROUPS:
             scale[leaf] = _fmt_value(t)
 
     fm = ["---"]
-    if families or scale:
+    if roles or scale:
         fm.append("typography:")
-        for name, fam in families.items():
+        for name, role in roles.items():
             fm.append(f"  {name}:")
-            fm.append(f"    fontFamily: {_yaml_scalar(fam)}")
+            for prop in ("fontFamily", "fontSize"):
+                if prop in role:
+                    fm.append(f"    {prop}: {_yaml_scalar(role[prop])}")
         if scale:
             fm.append("  scale:")
             for name, size in scale.items():
@@ -314,7 +367,7 @@ def drift_check(ts: TokenSet, css: str) -> dict:
     """Diff a CSS layer's variables against the DTCG contract. Every mismatch is a drift finding
     (`confidence: extracted` — a value comparison is a fact). Missing/extra/changed are all surfaced;
     a correct generated layer produces `{"drift": []}` (the executable alignment guarantee)."""
-    want = {f"--{_kebab(t['path'])}": _fmt_value(t) for t in _scalar_tokens(ts)}
+    want = {f"--{name}": value for t in ts.tokens for name, value in _expand(t)}
     have = {f"--{k}": v for k, v in extract_css_vars(css).items()}
     drift = []
     for var, val in want.items():

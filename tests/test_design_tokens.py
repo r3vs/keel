@@ -102,9 +102,9 @@ class TestGenerators(unittest.TestCase):
         # a font stack must be quoted so Impeccable's frontmatter parser reads it
         self.assertIn('"Avenir Next, sans-serif"', md)
 
-    def test_composite_token_is_skipped_not_emitted_as_broken_css(self):
-        # a DTCG composite (typography/border/shadow) has an OBJECT $value — it cannot be one CSS
-        # variable, so the web generators skip it rather than dump JSON into the stylesheet
+    def test_typography_composite_expands_and_becomes_a_design_md_role(self):
+        # a DTCG typography composite IS the shape of a DESIGN.md role — it must reach the contract
+        # Impeccable enforces, and expand (never JSON-dump) into CSS
         contract = {
             "type": {"$type": "typography",
                      "heading": {"$value": {"fontFamily": "Georgia", "fontSize": "24px"}}},
@@ -112,10 +112,31 @@ class TestGenerators(unittest.TestCase):
         }
         ts = dt.TokenSet.from_obj(contract)
         css = dt.to_css_vars(ts)
+        self.assertIn("--type-heading-font-family: Georgia;", css)   # expanded per sub-property
+        self.assertIn("--type-heading-font-size: 24px;", css)
         self.assertIn("--color-ink: #111111;", css)
-        self.assertNotIn("fontFamily", css)                     # the object never leaks into CSS
-        self.assertNotIn("fontSize", css)
-        self.assertEqual(dt.drift_check(ts, css)["drift"], [])  # no phantom drift against itself
+        self.assertNotIn('{"', css)                                  # never a JSON blob in a stylesheet
+        self.assertEqual(dt.drift_check(ts, css)["drift"], [])       # round-trips to zero
+        md = dt.to_design_md(ts)
+        self.assertIn("  heading:", md)                              # the role Impeccable reads
+        self.assertIn("fontFamily: Georgia", md)
+        self.assertIn("fontSize: 24px", md)
+
+    def test_shadow_and_border_compose_into_css_shorthand(self):
+        contract = {
+            "shadow": {"$type": "shadow", "md": {"$value": [
+                {"offsetX": "0", "offsetY": "1px", "blur": "3px", "color": "rgba(0,0,0,.1)"},
+                {"offsetX": "0", "offsetY": "4px", "blur": "8px", "color": "rgba(0,0,0,.06)"},
+            ]}},
+            "border": {"$type": "border",
+                       "hairline": {"$value": {"width": "1px", "style": "solid", "color": "#ddd"}}},
+        }
+        ts = dt.TokenSet.from_obj(contract)
+        css = dt.to_css_vars(ts)
+        # CSS's own property order, and a shadow LIST joins with commas exactly as box-shadow does
+        self.assertIn("--shadow-md: 0 1px 3px rgba(0,0,0,.1), 0 4px 8px rgba(0,0,0,.06);", css)
+        self.assertIn("--border-hairline: 1px solid #ddd;", css)
+        self.assertEqual(dt.drift_check(ts, css)["drift"], [])
 
     def test_design_md_excludes_unmapped_spacing(self):
         # space.gap is a dimension in no recognized group → CSS-only, never force-fit into the contract
