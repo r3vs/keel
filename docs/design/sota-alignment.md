@@ -432,3 +432,37 @@ Uno per blocco, e sono la parte che il piano non poteva contenere.
 - **Il gate delle ipotesi guarda solo il livello modulo.** Un default tarato in una firma di funzione
   non viene preso. È un buco reale, dichiarato nel docstring dello script: meglio di un gate che
   copre in silenzio meno di quanto il nome promette.
+
+---
+
+## 11. La potatura — perché il piano finisce con meno tool di quanti ne aggiunge
+
+Obiezione di Pietro a lavoro finito: *"tutti questi tool mcp servono tutti?"*. La misura ha dato
+ragione a lui: **8.761 token caricati in ogni sessione** solo per le descrizioni dei tool, pagati
+anche quando nessuna skill si attiva.
+
+> **La descrizione di un tool è affitto pagato a ogni sessione; il suo valore si incassa solo quando
+> il tool viene chiamato.** La soglia per un tool non è "è utile", è "è utile abbastanza spesso da
+> battere ~600 token di affitto permanente".
+
+Il check che lo ha reso decidibile è quello che il repo già sa fare su sé stesso — *"twelve playbooks
+invoke the runtime zero times"*, puntato sulla lista dei tool: **6 tool che nessun playbook, skill o
+agente nominava**.
+
+| Tolto | Dove è finito | Perché non doveva essere un tool |
+|---|---|---|
+| `ledger_set_governance` | automatico in `_open_or_create` | il server conosce la propria root e versione. Affittava 250 token per un bottone che nessuno premeva **e** faceva dipendere la completezza del trail dalla memoria di un agente. *Un fatto che la macchina può stabilire non è mai una domanda da porre a un modello.* |
+| `docs_publication_gate` | un `mode` di `docs_claims` | stesso motore girato dall'altra parte: due tool = due descrizioni per un'idea |
+| `premortem_gaps` | dentro `agent_ready` | quella lista `agent_ready` la calcolava già |
+| `skill_integrity` | **cancellato**, con `verify_skills`/`pin_skills` | `build.py --check` copre i nostri byte al build; l'unico valore residuo è post-install e nessun host offre un posto economico dove girare. *Una funzione senza chiamante non è copertura, è decorazione che si legge come copertura.* Il motivo sta in `governance.py` perché nessuno la ricostruisca |
+
+Più 19 descrizioni tagliate alla parte che serve a **decidere se chiamare** il tool. La regola:
+la descrizione risponde a *quando lo chiamo e con cosa*; il *perché* vive nel playbook che lo nomina,
+letto una volta.
+
+**52 → 48 tool · 8.761 → 6.741 token/sessione (−23%) · zero tool non nominati da nessun playbook.**
+
+La distinzione che rende la regola applicabile e che mi era sfuggita: i docstring dei moduli in
+`src/runtime/*.py` **non entrano mai** nel contesto di un agente — li legge un umano nel codice, e lì
+la prosa densa è giusta. I docstring in `src/mcp/server.py` **sono** le descrizioni inviate al
+modello. Stessa scrittura, costo opposto.
