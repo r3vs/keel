@@ -97,9 +97,21 @@ essere il percorso di bootstrap della verità. La modalità `understand` è stru
 
 ---
 
-## Blocco 1 — Architettura · **QUEUED**
+## Blocco 1 — Architettura
 
-### 1.1 Landing-Zone Readiness Gate + edge `hardens` — *l'item con più leva del piano*
+### 1.1 Landing-Zone Readiness Gate + edge `hardens` — **COSTRUITO** (spec v0.8, `345b0e0`)
+
+Costruito senza aggiungere un tipo di edge: i prerequisiti di hardening sono normali voci di
+`depends_on`, quindi lo scheduler a onde li ordina senza meccanismo nuovo e la regola esistente
+(*solo `resolved`/`accepted` chiude un edge*) significa già che il cambiamento non parte finché il
+terreno non è davvero riparato. `runtime/readiness.py` calcola la zona e i quattro carrier `D0`;
+il verdetto è `D2` e l'oggetto registra **entrambi i livelli** invece di fonderli. Due rifiuti invece
+di due degradi (grafo stale, anchor irrisolvibile) e due discipline di cui **una è meccanica**
+(change-justified: un pin ancorato fuori zona viene rifiutato dal ledger).
+
+Dottrina: [src/core/landing-zone.md](../../src/core/landing-zone.md).
+
+<details><summary>Il piano originale, per confronto</summary>
 
 Prima di pianificare un cambiamento su una zona esistente: audit **scopato al solo blast radius di
 quel cambiamento** → verdict `ready` / `harden_first` / `redesign`. Se `harden_first`, la remediation
@@ -116,6 +128,19 @@ su quelle metriche, e va etichettato così.
 Perché conta: è il **ponte mancante fra `codebase-rescue` e `greenfield-forge`**. Oggi due skill
 separate; con questo un solo DAG in cui i pin di rescue sono prerequisiti dei BuildItem di forge.
 È l'unico item che cambia la *forma* del pacchetto invece di aggiungerci sopra.
+
+</details>
+
+### Difetto trovato e chiuso mentre costruivo 1.1
+
+`correctness_unknown` (Blocco 0) era **un buco nero**: non compariva né in `interview_view()` né in
+`buildloop.ready()`. Uno stato che blocca la chiusura e non appare su nessuna superficie non è un
+gate, è lavoro perso. Ora porta la forcella a cinque opzioni ed entra nell'interview, dove un
+blocker non verificabile ordina **sopra** l'information gain: il fan-out ordina domande ancora
+aperte, un blocker non verificabile non è una domanda da sequenziare bene, è una da non saltare.
+
+Lezione per gli item rimanenti: **ogni stato nuovo va cercato su tutte le superfici prima del
+commit**, non solo testato in isolamento.
 
 ### 1.2 Agent-Ready Gate — due strati, tenuti distinti
 
