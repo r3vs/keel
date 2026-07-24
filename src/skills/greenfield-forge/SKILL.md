@@ -141,6 +141,12 @@ Two jobs:
    features → polish), not hardcoded — same as rescue. Build thin **vertical slices** (one
    feature end-to-end through all layers), never horizontal layers, so there is always a running
    system. Full procedure: `references/phase-3-contract-roadmap.md`.
+3. **Write the elected design into the file agents actually load.** `generate_instructions` projects
+   the ledger into a managed region of the new project's `AGENTS.md` (plus the `CLAUDE.md` bridge,
+   since Claude Code does not read `AGENTS.md`), and marks the generated layers never-hand-edit. This
+   is part of the paved road, not a release step: Phase 4 runs every `BuildItem` in a **fresh
+   context**, so an executor inherits the decisions only if they are already in the carrier — nothing
+   loads `ledger.json` on its own. See `references/core/instruction-files.md`.
 
 ### Phase 4 — Build loop (TDD-driven, restartable)
 

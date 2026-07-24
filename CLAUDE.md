@@ -93,7 +93,8 @@ the stdlib parsers when absent), `generate.py` (contract generators,
 round-trip to zero drift), `findings.py` (SARIF/OSV + fp-check gate), `interview.py` +
 `assets/decision-catalog.json` (frame + funnel), `challenger.py`, `buildloop.py` (Phase-4 wave
 scheduler), `map.py` (self-contained visual map), `graph.py` (graph anchoring + blast-radius over
-the `graph.json`, staleness-gated), and the `understand`-mode comprehension family (`graph_build.py`
+the `graph.json`, staleness-gated), `instructions.py` (the ledger projected into the user's
+`AGENTS.md` — see below), and the `understand`-mode comprehension family (`graph_build.py`
 — the tree-sitter-native graph backbone — plus `understand.py`, `explain.py`, `query.py`, `tours.py`,
 `impact.py`, `domain.py`, `graphmap.py`, `fingerprint.py`, `docs_claims.py`). Plus the eval harness (`scripts/run_evals.py`), the
 consistency linters under `scripts/`, and rescue's ast-grep rule pack. What remains is
@@ -186,6 +187,18 @@ are all unified under this one principle — which is why there is deliberately 
   grounding, confidence, and untrusted-input discipline; and how an agent surfaces its **own** forced
   assumptions as vetoable pins instead of encoding them silently (the anti-slop rule turned on the
   agent itself).
+- **The ledger reaches a fresh agent only through `AGENTS.md`** (`src/core/instruction-files.md`,
+  engine `runtime/instructions.py` / `mcp:generate_instructions`). The ledger is the single source of
+  truth and **no host loads it**; each one loads exactly one file unprompted, so the elected design is
+  *projected* into a fenced managed region of the user's `AGENTS.md` — generated, drift-checked, and
+  written **only** between its markers. Same shape as `generate.py` and `design_tokens.py`: one
+  source, generated projections, a round-trip that proves alignment. Two host facts decide the design
+  and were verified at each loader, not from memory: **no import syntax is portable** (only Claude
+  Code parses `@path`, which is also why it needs a `CLAUDE.md` bridge — it does not read
+  `AGENTS.md`), and **length is a correctness constraint** (Codex truncates by bytes, Claude Code
+  loses adherence past ~200 lines), so the region is a budgeted index whose every clip is declared.
+  This is what finally killed the claim that a root `MEMORY.md` is "always-on context via
+  `AGENTS.md`" — it is loaded by nobody, on any of the four hosts.
 - **The shared doctrine is authored once in `src/core/` and vendored into each SHIPPED skill
   (Model B).** The copies exist only in `plugins/` — `build.py` materializes them (following the
   `core→core` dependency closure), rewrites `` `core/x.md` `` to `` `references/core/x.md` ``, and

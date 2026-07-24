@@ -176,6 +176,12 @@ Compute `gap = diff(to-be, as-is)` per pin, then sequence remediation by `depend
 before fixing logic" falls out of the graph. Output: a sequenced roadmap of
 `RemediationItem`s, each pointing back to its pin. See `references/phase-3-roadmap.md`.
 
+Then **write the elected to-be into the repo's `AGENTS.md`** with `generate_instructions` (plus the
+`CLAUDE.md` bridge — Claude Code does not read `AGENTS.md`). A rescued codebase is one an agent will
+keep working on, and no host loads `ledger.json`; without the carrier every Phase-4 executor starts
+from the same blank slate that produced the mess. It writes only inside its markers, so a repo that
+already has an `AGENTS.md` keeps every word of it. See `references/core/instruction-files.md`.
+
 ### Phase 4 — Remediation loop (TDD-driven, restartable)
 
 A restartable, context-resetting loop over the **Phase-3 roadmap** — NOT over "all findings".

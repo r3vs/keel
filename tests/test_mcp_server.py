@@ -32,9 +32,11 @@ EXPECTED_TOOLS = {
     # comprehension / understand-mode (the structural-graph family)
     "build_graph", "understand_codebase", "explain_node", "graph_query", "guided_tour",
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
+    # the instruction-file carrier — the ledger projected into the file every host actually loads
+    "generate_instructions", "instructions_diff",
 }
 WRITE_TOOLS = {
-    "generate_layers", "render_map",
+    "generate_layers", "render_map", "generate_instructions",
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",

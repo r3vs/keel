@@ -160,6 +160,17 @@
       "produces": ["reopen_event"],
       "notes": "Runs the shared feedback loop (core/feedback-loop.md): evaluates flip_signals against the signal manifest's telemetry and, on a fired signal, emits a ReopenEvent and moves the affected pin (+ genuine dependents) back to needs_input, handing it to the interview via slice. Reopens, never decides. The evolve mode; scheduled or incident-triggered.",
       "reference": "references/phase-7-operate-evolve.md"
+    },
+    {
+      "id": "agent-instructions",
+      "phase": 3,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "engine": "mcp:generate_instructions",
+      "tools": [],
+      "produces": ["scaffold", "configure"],
+      "notes": "Projects the elected ledger into the new project's AGENTS.md — the only file every host loads unprompted (Claude Code via the CLAUDE.md bridge, since it does not read AGENTS.md). Part of the paved road, not release: Phase 4 runs each BuildItem in a fresh context, so an executor inherits the decisions only if the carrier already holds them. Writes only inside its markers; instructions_diff round-trips an unchanged ledger to zero drift and separates a hand-edited region (a decision written into the projection) from a merely stale one.",
+      "reference": "references/core/instruction-files.md"
     }
   ]
 }

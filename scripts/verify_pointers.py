@@ -30,7 +30,13 @@ PTR = re.compile(r"`([\w\-./]+\.md)`")
 # Mentioning either is not a cross-reference to a playbook, so resolving it against this repo is a
 # category error — same spirit as check_consistency's BUILD_POLICY_CORE exception. Keep this set tiny
 # and justified; it is not a place to silence real drift.
-ARTIFACT_MD = {"DESIGN.md", "google-labs-code/design.md"}
+#
+# (3) **host instruction filenames.** `core/instruction-files.md` documents what each coding agent
+# loads, so it names files that exist in the USER's project on a given host — never here. Same
+# category as (1). (`AGENTS.md` and `CLAUDE.md` are absent from this set only because this repo
+# happens to have both at its root, so they resolve on their own.)
+ARTIFACT_MD = {"DESIGN.md", "google-labs-code/design.md",
+               "CLAUDE.local.md", ".claude/CLAUDE.md", "AGENTS.override.md"}
 
 
 def skill_root(f: Path) -> Path:

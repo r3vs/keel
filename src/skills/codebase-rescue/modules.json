@@ -411,6 +411,17 @@
       "produces": "impact_overlay",
       "notes": "C2. Blast radius for a concrete diff: which nodes the touched files reach, and which touched files the graph does not know about ('unmapped'). Feeds Phase-3 sequencing and Phase-5 validation, where the unmapped set is the honest admission that the graph is not total.",
       "reference": "references/phase-3-roadmap.md"
+    },
+    {
+      "id": "agent-instructions",
+      "phase": 3,
+      "kind": "infrastructure",
+      "type": "deterministic",
+      "engine": "mcp:generate_instructions",
+      "tools": [],
+      "produces": "agent_instruction_carrier",
+      "notes": "Projects the elected to-be into the repo's AGENTS.md (plus the CLAUDE.md bridge) once Phase 2 has elected and Phase 3 has sequenced. A rescued codebase keeps being worked on by agents, and no host loads ledger.json — without the carrier every Phase-4 executor restarts from the blank slate that produced the mess. Writes only inside its markers, so an existing AGENTS.md survives word for word; instructions_diff reports absent / stale / hand_edited.",
+      "reference": "references/core/instruction-files.md"
     }
   ]
 }

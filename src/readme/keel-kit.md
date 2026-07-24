@@ -131,17 +131,26 @@ rather than reporting clean.
 *Use when: analyzing, refactoring, or validating code.*
 
 ### `project-memory`
-Three layers, cheapest first, with a clear rule about what belongs where:
+Four channels, cheapest first — and they are **not interchangeable**: each has a different writer, a
+different scope, and a different answer to *"does a fresh subagent see this?"*
 
 - **Decision memory = the ledger.** Every elected truth is already durable, append-only, and carries
-  its `flip_criteria`. Do **not** duplicate decisions here — point at the ledger.
+  its `flip_criteria`. Do **not** duplicate decisions here — point at the ledger. It is also the only
+  channel that reaches a fresh agent unprompted, because `generate_instructions` projects it into
+  `AGENTS.md`.
 - **Project memory = `MEMORY.md`** at the repo root: a short, git-tracked list of durable facts the
   ledger doesn't hold — conventions, gotchas (*"Y looks wrong but is intentional"*), environment
-  quirks, preferences. Always-on context. Edited deliberately; never a dumping ground.
+  quirks, preferences. **Read on demand, not always-on** — no host auto-loads it, and only Claude
+  Code parses imports at all. Edited deliberately; never a dumping ground.
+- **Host auto-memory** *(e.g. Claude Code's)* — notes the **agent** writes itself. Good for
+  per-machine friction; wrong for anything shared, because it is machine-local, never git, **not
+  inherited by subagents**, and its writes pass no gate. Never put a decision there.
 - **Graph memory = the `cognee` MCP** *(optional)* — a queryable, self-editing knowledge graph for
   associative recall when `MEMORY.md` isn't enough. Deliberate writes only, so it stays curated.
   **Deliberately not wired for you**: it runs its own LLM extraction and needs a Docker container
   plus an API key, so declaring it by default would hand every user a server that fails to connect.
+
+The ladder runs one way: host memory → `MEMORY.md` → a pin. Nothing flows back down.
 
 *Use when: recording something worth remembering, or recalling project context at the start of a task.*
 
