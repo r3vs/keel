@@ -184,6 +184,11 @@ The gate is what turns rule #1 from prose into a mechanism. Its behavior, precis
   invisible. Being invisible when it doesn't apply is what earns it the right to block when it does.
 - **Unresolved blocker/high pins in `needs_input`** → **deny** edits to product code. The to-be for
   that area isn't knowable yet; anything built on it is a guess wearing a decision's clothes.
+- **A write into the host's agent-written memory, same condition** → **ask**, never deny. That store
+  is the one write path nothing else guards: the agent picks what to persist, it is machine-local and
+  never reviewed in a PR, and no host emits a memory hook event. Asking costs one prompt and turns a
+  silent write into a visible one; denying would put the gate in the business of blocking prose,
+  which it promises it never does. Where memory lives is read from `autoMemoryDirectory`, not guessed.
 - **Otherwise** → allow. Once the load-bearing questions are elected, writing code is the point.
 
 It **never** blocks tests (TDD writes the failing test first), the ledger and its artifacts, or

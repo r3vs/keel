@@ -115,6 +115,73 @@ class TestBlocksPrematureCode(GateHarness):
         self.assertRegex(reason, r"[Tt]est", "must say tests are still allowed")
 
 
+class TestHostMemoryAsksInsteadOfBlocking(GateHarness):
+    """The one branch that neither allows nor denies.
+
+    Auto-memory is the package's one unguarded write path: the agent chooses what to persist, the
+    store is machine-local and never reviewed, and no host emits a memory-specific hook event. All
+    three legs were observed 2026-07-24 — including that this gate used to let it straight through,
+    because every memory file is `.md` and the prose exemption swallowed it.
+    """
+
+    def mem(self, name="notes.md"):
+        return os.path.join(os.path.expanduser("~"), ".claude", "projects",
+                            "C--Users-x-proj", "memory", name)
+
+    def test_asks_when_a_blocker_is_open(self):
+        self.write_ledger([_pin(severity="blocker")])
+        out = self.run_gate(path=self.mem())
+        self.assertEqual(out["permissionDecision"], "ask",
+                         "must ask, never deny — denying would put this gate in the business of "
+                         "blocking prose, which it promises it never does")
+
+    def test_the_prose_exemption_no_longer_swallows_it(self):
+        """The exact hole this closes: `.md` is exempt everywhere else, and every memory file is `.md`."""
+        self.write_ledger([_pin()])
+        self.assertIsNone(self.run_gate(path=os.path.join(self.cwd, "docs", "notes.md")))
+        self.assertEqual(self.run_gate(path=self.mem())["permissionDecision"], "ask")
+
+    def test_silent_when_nothing_is_blocking(self):
+        # Same rule as the rest of the gate: invisible when it does not apply. This is what earns
+        # the right to interrupt when it does.
+        self.write_ledger([_pin(state="decided")])
+        self.assertIsNone(self.run_gate(path=self.mem()))
+
+    def test_silent_with_no_ledger_at_all(self):
+        self.assertIsNone(self.run_gate(path=self.mem()))
+
+    def test_the_prompt_names_the_honest_alternative(self):
+        # An "ask" that only says no gets clicked through. It must say where the thing belongs.
+        self.write_ledger([_pin(title="which role set is canonical?")])
+        reason = self.run_gate(path=self.mem())["permissionDecisionReason"]
+        self.assertIn("which role set is canonical?", reason, "must name what is blocking")
+        self.assertIn("ledger_add_pin", reason, "must name where a decision belongs instead")
+        self.assertIn("ledger", reason.lower())
+
+    def test_a_configured_autoMemoryDirectory_is_read_from_the_carrier(self):
+        """Where memory lives is read from `autoMemoryDirectory`, not guessed from a layout."""
+        elsewhere = os.path.join(self.cwd, "custom-mem")
+        os.makedirs(os.path.join(self.cwd, ".claude"), exist_ok=True)
+        with open(os.path.join(self.cwd, ".claude", "settings.json"), "w", encoding="utf-8") as fh:
+            json.dump({"autoMemoryDirectory": elsewhere}, fh)
+        self.write_ledger([_pin()])
+        out = self.run_gate(path=os.path.join(elsewhere, "MEMORY.md"))
+        self.assertEqual(out["permissionDecision"], "ask")
+
+    def test_a_broken_settings_file_degrades_to_the_default(self):
+        os.makedirs(os.path.join(self.cwd, ".claude"), exist_ok=True)
+        with open(os.path.join(self.cwd, ".claude", "settings.json"), "w", encoding="utf-8") as fh:
+            fh.write("{ not json")
+        self.write_ledger([_pin()])
+        self.assertEqual(self.run_gate(path=self.mem())["permissionDecision"], "ask")
+        self.assertIsNone(self.run_gate(path=os.path.join(self.cwd, "docs", "x.md")))
+
+    def test_product_code_still_denies(self):
+        """The new branch must not soften the original one."""
+        self.write_ledger([_pin()])
+        self.assertEqual(self.run_gate()["permissionDecision"], "deny")
+
+
 class TestFailsOpen(GateHarness):
     """A gate that can wedge a session is worse than no gate: a missed block costs one bad edit
     the reviewer catches; a false block costs the whole session."""

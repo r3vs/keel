@@ -36,8 +36,12 @@ a different scope, and a different answer to "does a fresh subagent see this?".
     artifact even deliberately;
   - **subagents do not inherit it** (only a fork does) — so in a workflow built out of fresh-context
     phases and a read-only roster, it is invisible to almost every agent that would need it;
-  - **its writes pass no gate** — there is no memory hook event, so nothing enforces "memory records
-    facts, never elects a decision".
+  - **the host enforces nothing on its writes** — there is no memory-specific hook event anywhere.
+    What there *is*: the write travels as an ordinary `Write`/`Edit` tool call, and Claude Code does
+    emit `PreToolUse` for it with no path exemption (both observed, not assumed). So this package's
+    own `ledger-gate.py` picks it up and **asks** — never denies — when blocker/high pins are still
+    awaiting the user. One prompt, and a silent write becomes a visible one; the other three hosts
+    have no equivalent, so the discipline below is the only thing holding there.
 
   So: never put a decision or a team fact there. If one landed there anyway, **promote it**.
 - **Graph memory (optional) = the `cognee` MCP** (`cognee/cognee-mcp`): a queryable, self-editing

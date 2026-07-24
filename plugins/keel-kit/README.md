@@ -146,7 +146,8 @@ different scope, and a different answer to *"does a fresh subagent see this?"*
   Code parses imports at all. Edited deliberately; never a dumping ground.
 - **Host auto-memory** *(e.g. Claude Code's)* — notes the **agent** writes itself. Good for
   per-machine friction; wrong for anything shared, because it is machine-local, never git, **not
-  inherited by subagents**, and its writes pass no gate. Never put a decision there.
+  inherited by subagents**, and no host enforces anything on its writes. Never put a decision there —
+  on Claude Code the ledger gate now **asks** when one is attempted mid-interview.
 - **Graph memory = the `cognee` MCP** *(optional)* — a queryable, self-editing knowledge graph for
   associative recall when `MEMORY.md` isn't enough. Deliberate writes only, so it stays curated.
   **Deliberately not wired for you**: it runs its own LLM extraction and needs a Docker container
