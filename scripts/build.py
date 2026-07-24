@@ -109,6 +109,11 @@ PY_BANNER = ("# GENERATED FILE - do not edit. Source: src/runtime/{name} at the 
              "# regenerate with: python scripts/build.py\n")
 TS_BANNER = ("/**\n * GENERATED FILE - do not edit. Source: the MCP table in "
              "src/core/knowledge-sources.md;\n * regenerate with: python scripts/build.py\n *")
+# An HTML comment, so it is invisible where the file is actually read: GitHub renders a directory's
+# README.md when you browse into it, and a plugin directory is exactly where someone who clicked
+# through from the marketplace lands.
+README_BANNER = ("<!-- GENERATED FILE - do not edit. Source: src/readme/{name}.md at the repo root; "
+                 "regenerate with: python scripts/build.py -->\n\n")
 
 # --- the agent roster, generated per host -----------------------------------------------------
 # The write verb lives in exactly ONE place: the roster table in src/core/agents.md. It used to
@@ -536,6 +541,16 @@ def plugin_payload(name: str, spec: dict) -> dict:
             f"---\ndescription: {fields.get('description', '')}\nagent: researcher\n---\n{body}"
         )
 
+    # The README a user lands on. The manifest `description` is one sentence, and one sentence
+    # cannot document a plugin that ships 32 MCP tools, six agents and nine skills — "it's explained
+    # in the root README" is the same deferral this package exists to find in other people's repos.
+    # Authored under src/readme/ so the one rule still holds: src/ by hand, plugins/ by build.
+    src_readme = SRC / "readme" / f"{name}.md"
+    if src_readme.exists():
+        out["README.md"] = README_BANNER.format(name=name) + read(src_readme)
+    else:
+        problems.append(f"src/readme/{name}.md is absent — plugin `{name}` would ship undocumented")
+
     out[".claude-plugin/plugin.json"] = manifest(name, spec)
     out[".codex-plugin/plugin.json"] = codex_manifest(name, spec)
     return out
@@ -762,6 +777,12 @@ def build(check: bool):
             continue
         if not any(skill in s["skills"] for s in PLUGINS.values()):
             problems.append(f"{skill}: authored but assigned to no plugin — it would never ship")
+
+    # The mirror of the absent-README problem: a readme whose plugin was renamed away is prose
+    # nobody reads and the linters would never open again.
+    for r in sorted((SRC / "readme").glob("*.md")) if (SRC / "readme").is_dir() else []:
+        if r.stem not in PLUGINS:
+            problems.append(f"src/readme/{r.stem}.md matches no plugin — it would never ship")
 
     produced = set()
     for name, spec in PLUGINS.items():
