@@ -73,7 +73,7 @@ OUT = ROOT / "plugins"
 # flavours are stamped from here. Bump it whenever `plugins/` content changes, because a host
 # compares this STRING and nothing else — see `tests/test_plugin_version.py`, which is what makes
 # that sentence a gate rather than a hope.
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 AUTHOR = {"name": "r3vs"}
 HOMEPAGE = "https://github.com/r3vs/keel"
 KEYWORDS = ["skills", "vibe-coding", "ai-generated-code", "codebase", "rescue", "greenfield",

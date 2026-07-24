@@ -1,6 +1,6 @@
 {
   "name": "codebase-rescue",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Curative: rescue a large, misaligned, often AI-generated codebase \u2014 reconcile backend, frontend and database into an aligned state. Runs the diff backward: as-is exists, derive the to-be from an elected interview, close the gap.",
   "keywords": [
     "skills",

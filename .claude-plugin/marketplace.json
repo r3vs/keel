@@ -1,6 +1,6 @@
 {
   "name": "keel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Keel \u2014 make your layers agree. Cross-layer contract reconciliation (DB/ORM/API/client) on an append-only decisions ledger: curative for a codebase that already drifted, preventive for one that hasn't been written yet.",
   "owner": {
     "name": "r3vs"
@@ -9,7 +9,7 @@
     {
       "name": "keel-core",
       "description": "The spine: the decisions-ledger MCP server (contract diff, blast radius, interview funnel, wave scheduler, findings gate), the researcher/brainstorm/executor/reviewer/challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. Installed automatically as a dependency of codebase-rescue and greenfield-forge.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "./plugins/keel-core",
       "category": "development",
       "author": {
@@ -19,7 +19,7 @@
     {
       "name": "codebase-rescue",
       "description": "Curative: rescue a large, misaligned, often AI-generated codebase \u2014 reconcile backend, frontend and database into an aligned state. Runs the diff backward: as-is exists, derive the to-be from an elected interview, close the gap.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "./plugins/codebase-rescue",
       "category": "development",
       "author": {
@@ -29,7 +29,7 @@
     {
       "name": "greenfield-forge",
       "description": "Preventive: build a new project aligned from the first commit. Elects the design in a compressed interview before any code exists, then generates every layer from one contract so they cannot drift.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "./plugins/greenfield-forge",
       "category": "development",
       "author": {
@@ -39,7 +39,7 @@
     {
       "name": "keel-kit",
       "description": "Composable helpers, each useful on its own and each bound to the decisions ledger: the engineering loop (test-driven-development, systematic-debugging, code-review, verification-before-completion, branch-lifecycle), plus grounded-research (cite current sources, never stale memory), static-first-analysis (strongest deterministic signal before judgment), project-memory (durable facts), and learning-layer (senior-grade output while the operator levels up).",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "./plugins/keel-kit",
       "category": "development",
       "author": {

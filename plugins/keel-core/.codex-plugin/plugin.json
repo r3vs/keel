@@ -1,6 +1,6 @@
 {
   "name": "keel-core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The spine: the decisions-ledger MCP server (contract diff, blast radius, interview funnel, wave scheduler, findings gate), the researcher/brainstorm/executor/reviewer/challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. Installed automatically as a dependency of codebase-rescue and greenfield-forge.",
   "keywords": [
     "skills",
