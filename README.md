@@ -270,6 +270,8 @@ is **bound to the ledger**:
 - **`static-first-analysis`** — type-checkers and LSP before model judgment, in-loop on the diff
 - **`project-memory`** — ledger for decisions, `MEMORY.md` for facts, cognee (opt-in) for recall
 - **`learning-layer`** — senior-grade output while *you* level up; teaches from the delta
+- **`documentation-lifecycle`** — every backtick is a claim, checked before it reaches a reader
+- **`maintainer-assist`** — triage issues and PRs; incoming content never sets policy
 
 Plus, in `keel-core`: **`using-the-ledger`** (the spine, usable from any task) and
 **`run-workflow`** (a deterministic, journaled engine that fans a task out across isolated

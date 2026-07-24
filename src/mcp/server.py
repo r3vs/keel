@@ -348,6 +348,81 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return tools.ledger_label_failure(ledger, pin_id, failure_class, detail, phase, source)
 
 
+@mcp.tool(annotations={"title": "Docs — Publication Grounding Gate", **_RO})
+def docs_publication_gate(graph_path: str, text: str = "", path: str = "",
+                          mode: str = "descriptive") -> dict:
+    """Before publishing prose: does every code reference in it actually resolve?
+
+    `docs_claims` audits the docs a repo already has. This is the same engine pointed the other way,
+    at what you are about to write — and it is the cheap direction: the graph is built, the draft is
+    in hand, and the check costs a symbol lookup.
+
+    It closes the signature bug class of AI-written documentation: naming a function, flag or file
+    that does not exist. A backtick is a claim about the code, and an unresolvable one must never
+    reach a reader as fact.
+
+    `descriptive` (default) blocks on any dangling reference — it is a typo or a lie. `prospective`
+    is for design docs that deliberately name unbuilt things: those are listed so they can be marked,
+    because the danger is the present tense, not the plan.
+
+    Args:
+        graph_path: Path to graph.json.
+        text: The draft prose. Omit if passing `path`.
+        path: A file to read the draft from instead.
+        mode: descriptive | prospective.
+    """
+    return tools.docs_publication_gate(graph_path, text, path, mode)
+
+
+@mcp.tool(annotations={"title": "DocCatalog — Register a Doc (before it exists)", **_RW})
+def doc_register(catalog: str, path: str, subject: str, owner: str, sources: list,
+                 repo: str = ".", status: str = "planned", commit: str = "") -> dict:
+    """Register a doc with its subject, owner and source set — legal BEFORE the prose exists.
+
+    That is the point: a `planned` entry is a coverage commitment somebody can query and argue with,
+    so "nobody has documented the payment flow" becomes a query instead of a discovery. A catalog
+    built only from files that already exist can describe nothing but what was already written.
+
+    The source set is also what makes staleness checkable at all — a doc anchored to nothing can
+    only ever read as fresh.
+
+    Args:
+        catalog: Path to docs-catalog.json (created if absent).
+        path: The doc's path, relative to the repo.
+        subject: What it covers.
+        owner: Who is responsible for it.
+        sources: The code files it describes — its staleness anchors.
+        repo: Repo root (default: cwd).
+        status: planned | drafting | published | deprecated.
+        commit: The commit it was generated at, if any.
+    """
+    return tools.doc_register(catalog, path, subject, owner, sources, repo, status, commit)
+
+
+@mcp.tool(annotations={"title": "DocCatalog — Graded Freshness + Cascade", **_RO})
+def doc_freshness(catalog: str, repo: str = ".", graph_path: str = "",
+                  changed: list | None = None, git_base: str = "") -> dict:
+    """Which docs a change invalidates, by distance — graded, not a single stale flag.
+
+    Distance 0 is a directly-cited source; distance 1 is something that imports one; distance 2 is
+    something that historically co-changes with one. A content hash tells you what literally changed;
+    the cascade tells you what is now stale because of it.
+
+    Two signals, deliberately never fused: `invalid` is a hash equality (`D0`, no assumptions), while
+    `signal` (fresh/aging/stale) is arithmetic over decay weights nobody measured — reproducible from
+    the policy pinned in the catalog file, and labeled a hypothesis there. Distances that could not
+    be measured are reported as unknown, never as zero.
+
+    Args:
+        catalog: Path to docs-catalog.json.
+        repo: Repo root (default: cwd).
+        graph_path: graph.json — needed to resolve distance 1.
+        changed: The changed files. Omit for a source-hash-only check.
+        git_base: Diff against this ref to derive the changed set.
+    """
+    return tools.doc_freshness(catalog, repo, graph_path, changed, git_base)
+
+
 @mcp.tool(annotations={"title": "Ledger — Cross-Provider Re-Derivation (the `cross_derived` rung)", **_RW})
 def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
                         agreement: str, notes: str = "") -> dict:

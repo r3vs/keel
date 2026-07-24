@@ -59,7 +59,8 @@ package exists to find, sitting in its own front door.
   *observed*, not when the code was written), `branch-lifecycle` (a worktree per scope makes the
   executor's "one scope at a time" enforceable instead of promised).
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
-  `static-first-analysis`, `project-memory`, `learning-layer`), a memory subsystem (ledger +
+  `static-first-analysis`, `project-memory`, `learning-layer`, `documentation-lifecycle`,
+  `maintainer-assist`), a memory subsystem (ledger +
   `MEMORY.md` + cognee MCP), and MCP servers (`context7`/`deepwiki`/`cognee`; `github` opt-in).
   `writing-skills` is **dev-only** — it documents contributing to this repo and never ships.
 

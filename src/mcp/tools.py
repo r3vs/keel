@@ -176,6 +176,45 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return {"event": event, "foresight": led.foresight(pin_id)}
 
 
+def docs_publication_gate(graph_path: str, text: str = "", path: str = "",
+                          mode: str = "descriptive") -> dict:
+    import docs_claims
+    if not text and not path:
+        raise RuntimeError("pass the draft `text` or a `path` to it")
+    if not text:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return docs_claims.publication_gate(text, docs_claims.load(graph_path),
+                                        source=path or "<draft>", mode=mode)
+
+
+def doc_register(catalog: str, path: str, subject: str, owner: str, sources: list,
+                 repo: str = ".", status: str = "planned", commit: str = "") -> dict:
+    import doccatalog
+    cat = doccatalog.load(catalog)
+    entry = doccatalog.register(cat, path, subject, owner, sources, repo=repo,
+                                status=status, commit=commit)
+    doccatalog.save(cat, catalog)
+    return {"registered": entry, "total": len(cat["docs"])}
+
+
+def doc_freshness(catalog: str, repo: str = ".", graph_path: str = "",
+                  changed: list | None = None, git_base: str = "") -> dict:
+    import doccatalog
+    import impact
+    cat = doccatalog.load(catalog)
+    graph_data = impact.load(graph_path) if graph_path else None
+    files = list(changed) if changed is not None else (
+        impact.changed_files_from_git(repo, git_base) if git_base else None)
+    out = doccatalog.cascade(cat, files or [], repo=repo, graph_data=graph_data) \
+        if files is not None else {
+            "rows": [doccatalog.freshness(cat, d, repo=repo, graph_data=graph_data)
+                     for d in cat.get("docs", [])],
+            "policy": cat.get("policy"),
+        }
+    out["coverage"] = doccatalog.coverage(cat)
+    return out
+
+
 def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
                         agreement: str, notes: str = "") -> dict:
     led = _open_existing(ledger)
