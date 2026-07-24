@@ -282,8 +282,18 @@ class Ledger:
     # -- brainstorm (neutral by schema) --------------------------------------
 
     def add_proposals(self, pin_id: str, proposals: list[dict], notes: str = "") -> dict:
-        """The brainstorm writes proposals[] with tradeoffs — it can never decide."""
+        """The brainstorm writes proposals[] with tradeoffs — it can never decide.
+
+        A proposal may be marked `recommended` (v0.9). Recommending is what a brainstorm is *for*;
+        deciding is what it may never do, and the neutrality check below is unchanged. At most one,
+        because the whole value of the mark is that it becomes comparable to what the human then
+        elects — the gap between the two is the single best learning signal in the ledger, and two
+        recommendations make it uncomputable (`runtime/learning.py`).
+        """
         pin = self.pin(pin_id)
+        _require(sum(1 for p in proposals if p.get("recommended")) <= 1,
+                 "at most one proposal may be `recommended` — two make the recommendation "
+                 "uncomparable to what the human elects, which is the point of marking it")
         for prop in proposals:
             _require(bool(prop.get("summary")), "a proposal needs a summary")
             _require(prop.get("effort") in EFFORTS if "effort" in prop else True,

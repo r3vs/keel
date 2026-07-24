@@ -348,6 +348,32 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return tools.ledger_label_failure(ledger, pin_id, failure_class, detail, phase, source)
 
 
+@mcp.tool(annotations={"title": "Learning — Divergences, Clusters, and the Graduation Gate", **_RO})
+def learning_report(ledger: str, min_cluster: int = 2, candidates: list | None = None) -> dict:
+    """What the ledger already recorded about being wrong — and whether a lesson can become a check.
+
+    Reads four signals that are already persisted, none of them new instrumentation: the gap between
+    the option the brainstorm **recommended** and the one the human **elected**, upheld challenges,
+    labeled failures, and production reopens. Rare, human, adversarially verified — worth far more
+    than "five observed instances", and nothing here counts silence as agreement.
+
+    Then the gate that makes this different from every "continuous learning" design: a candidate rule
+    is promoted only if it can be expressed as an ast_grep matcher, a shape rule, a lint rule, a
+    flip_criteria predicate, or a test. **You do not memorize the belief, you memorize the check the
+    belief implies.** One that cannot be expressed that way is not rejected — it stays a standing
+    proposal, visible with its evidence and never enforced.
+
+    Graduated rules are generators, so demotion runs on the measured false-positive rate rather than
+    a confidence counter drifting down. Nothing here is applied; only the interview elects.
+
+    Args:
+        ledger: Path to ledger.json.
+        min_cluster: How many divergences of one class before it is worth proposing a rule.
+        candidates: [{id, evidence[], carrier: {kind, expression}}] to run through the gate.
+    """
+    return tools.learning_report(ledger, min_cluster, candidates)
+
+
 @mcp.tool(annotations={"title": "Ledger — Pin the Governing Rules (policy_hash)", **_RW})
 def ledger_set_governance(ledger: str, roster: str = "", spec_version: str = "",
                           skill_version: str = "", permissions: str = "") -> dict:

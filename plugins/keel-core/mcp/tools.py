@@ -176,6 +176,11 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return {"event": event, "foresight": led.foresight(pin_id)}
 
 
+def learning_report(ledger: str, min_cluster: int = 2, candidates: list | None = None) -> dict:
+    import learning
+    return learning.report(_open_existing(ledger), min_cluster=min_cluster, candidates=candidates)
+
+
 def ledger_set_governance(ledger: str, roster: str = "", spec_version: str = "",
                           skill_version: str = "", permissions: str = "") -> dict:
     import governance

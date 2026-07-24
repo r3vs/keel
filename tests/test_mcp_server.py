@@ -60,6 +60,8 @@ EXPECTED_TOOLS = {
     "docs_publication_gate", "doc_register", "doc_freshness",
     # hygiene: which rules were in force, whether a skill drifted, whether a rule keeps being wrong
     "ledger_set_governance", "skill_integrity", "generator_observe", "generator_screen",
+    # learning that only ever produces checks, never stored beliefs
+    "learning_report",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",

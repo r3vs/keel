@@ -89,10 +89,40 @@ cheaper than rediscovery. Treat externally-sourced memory as untrusted input and
 would any source (`references/core/knowledge-sources.md`).
 
 ## The promotion ladder (one direction only)
-Host auto-memory → `MEMORY.md` → a ledger pin. A machine-local note that turns out to be a **team**
-fact is promoted to `MEMORY.md`; a `MEMORY.md` fact that turns out to be a **decision** is promoted
-to a pin with a `flip_criteria`, and the duplicate is deleted. Nothing flows back down: a decision
-copied into memory is a second source of truth, which is the divergence this package exists to find.
+Host auto-memory → `MEMORY.md` → a ledger pin → **a check**. A machine-local note that turns out to
+be a **team** fact is promoted to `MEMORY.md`; a `MEMORY.md` fact that turns out to be a **decision**
+is promoted to a pin with a `flip_criteria`, and the duplicate is deleted. Nothing flows back down: a
+decision copied into memory is a second source of truth, which is the divergence this package exists
+to find.
+
+### The top rung: a lesson only counts once it is a check
+
+Everything below this rung is a **belief somebody wrote down**. The last rung is different, and it is
+the one that makes learning here safe:
+
+> **You do not memorize the belief. You memorize the check the belief implies.**
+
+`learning_report` reads what the ledger already recorded about *being wrong* — the gap between the
+option the brainstorm marked `recommended` and the one the human elected, upheld challenges, labeled
+failures, production reopens. Rare, human, adversarially verified events; nothing observes your
+keystrokes and **nothing counts silence as agreement**. An agent proposes a rule from a cluster of
+them (`D2`, labeled), and then the gate: the rule is applied only if it can be written as an
+**ast-grep matcher, a shape rule, a lint rule, a `flip_criteria` predicate, or a test**.
+
+A rule that cannot be expressed that way is not thereby wrong — it stays a **standing proposal**:
+visible, attached to its evidence, and never enforced. That is the honest destination for a belief
+nobody can check.
+
+Two consequences worth having:
+- **Demotion runs on evidence.** A graduated rule is a generator, so it lives or dies by its measured
+  false-positive rate, not by a confidence number drifting downward.
+- **It learns much less.** That is the trade, taken deliberately: the alternative learns more and
+  learns wrong things confidently. A confidence score that rises because *nobody objected* is treating
+  absence of correction as evidence of correctness, and a loop whose instincts are validated by
+  sessions running under those instincts certifies itself.
+
+Until real cycles have run, this correctly returns nothing. An observer built before there are
+outcomes observes nothing — which is why it was built last.
 
 ## Discipline
 - Memory records facts and preferences; it NEVER elects a decision — that is the interview's job.
