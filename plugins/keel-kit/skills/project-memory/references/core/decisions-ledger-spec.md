@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.8
+# Decisions Ledger — Spec v0.9
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -54,6 +54,7 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "question": null,              // Question | null — option shape discriminated by kind
   "brainstorm": null,            // { proposals: [...], notes } | null
   "decision": null,              // { event_id, outcome } | null — only from interview
+  "premortem": null,             // v0.9 — { failure_modes[], guardrails[], abort_criteria[], paper_tigers[] } | null
   "depends_on": [],              // DECISION 6
   "remediation": []              // [ RemediationItem ]
 }
@@ -522,3 +523,63 @@ Without bounds this gate becomes an open-ended rewrite, so:
 ### Why this is the bridge between the two skills
 
 Rescue derives the to-be backward from existing code; forge elects it forward and builds. They have always shared the ledger, but they were still two workflows meeting at a handoff. The `hardens` edge makes them **one DAG**: a rescue pin becomes a *blocking prerequisite* of a forge `BuildItem`, ordered by the same scheduler, closed by the same evidence rule. *Make the change easy, then make the easy change* — and a zone that hardens itself is also the zone that has earned the ability to be verified, which is the same thing `correctness_unknown` asks for one step later.
+
+---
+
+## v0.9 — One failure vocabulary, and the challenger's second mode
+
+Two additions that are really one: a closed set of words for how work fails, and the exercise that uses those words *before* the work rather than after.
+
+### `FAILURE_CLASSES` — a superset of the challenge classes, not a second list
+
+```
+unfalsifiable · inconsistent · unsatisfiable · unfounded_infeasibility ·
+unstated_assumption · ignored_fanout · other                    ← the v0.6 challenge classes
+contract_drift · missing_capability · environment · untested_path ·
+scope_creep · stale_carrier · nondeterminism · external_change  ← added in v0.9
+```
+
+The containment is the design, not a convenience. A challenge *is* a failure mode of the oracle, foreseen before the work starts — so the words must be the same words. Two vocabularies for one concept is precisely the divergence this package exists to find in other people's codebases, and shipping it in our own schema would have been the front-door version of that bug. A test asserts `CHALLENGE_CLASSES ⊂ FAILURE_CLASSES`, so they cannot drift apart later.
+
+The **vocabulary** is `D0` — it is an enum, and membership is checked. The **classification** is `D2`: deciding that this failure was `stale_carrier` rather than `environment` is judgment, and the spec says so instead of letting the enum's crispness imply otherwise.
+
+### `premortem` on the pin — the challenger's second mode
+
+The challenger's first mode refutes the oracle: *is the elected criterion sound?* The premortem grants the criterion and asks a different question: *assume this already failed — what killed it?* Same role, same read-only posture, so **the roster stays at six**. A seventh member would have been ceremony; a second mode is the same reviewer looking the other way.
+
+```jsonc
+"premortem": {
+  "failure_modes": [
+    { "class": "stale_carrier", "description": "the graph predates the migration, so the zone is wrong" }
+  ],
+  "guardrails": ["rebuild the graph and re-assess before planning"],
+  "abort_criteria": ["the zone still resolves fewer than all anchors after a rebuild"],
+  "paper_tigers": [
+    { "risk": "concurrent writes corrupt the ledger",
+      "evidence": "writes are atomic via tempfile+replace (runtime/ledger.py save)" }
+  ],
+  "determinism": "D2",
+  "source": "challenge:challenger"
+}
+```
+
+Two refusals keep it from decaying into a worry list:
+
+- **failures with no response are rejected** — at least one guardrail or abort criterion. Naming what could go wrong and stopping there is the ritual version of the exercise.
+- **a `paper_tiger` must carry its evidence.** A paper tiger is a risk that *looks* grave and is already mitigated; the field exists to suppress noise, so admitting one without proof of mitigation would let it generate the noise instead. Without evidence it is not a dismissed risk, it is an ignored one.
+
+When a premortem is **owed** is `D0`, and derived only from carriers the ledger already holds — the `blocker|high` threshold, a landing-zone verdict of `harden_first`/`redesign`, a recorded history of this pin being reopened, or inbound fan-out at the same threshold `ignored_fanout` already uses. No new tuned number enters the schema.
+
+### `FailureEvent` — the same words, after the fact
+
+```jsonc
+{ "id": "fal_0001", "pin_id": "pin_0007", "class": "untested_path",
+  "detail": "the refund path had no test; the regression only appeared in staging",
+  "phase": "review", "source": "measurer", "timestamp": "…" }
+```
+
+Append-only like every other event, and it **changes no state**: labeling is observation, and the response — reopen, challenge, re-plan — stays a separate, explicit act. `phase` is one of `plan | build | evidence | review | production`.
+
+Because both ends share the vocabulary, they join: `foresight(pin)` returns `anticipated` (feared and happened), `unrealized` (feared, did not), and `surprises` (happened, nobody saw it coming). That is a set comparison — `D0`, no scoring. There is deliberately **no hit-rate metric**: these events are rare, human and few, and a percentage computed over them would be a statistic with no population, which is exactly the kind of number the trust-axes doc refuses.
+
+The surprises are the interesting column. A premortem that anticipates everything is either very good or written after the fact, and only the immutable timestamps can tell you which.

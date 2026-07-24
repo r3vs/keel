@@ -21,6 +21,15 @@ not re-decide order.
 > next is how an item gets built ahead of the decision it depends on, which is the one mistake this
 > phase cannot absorb.
 
+**Unblocked is not the same as ready.** `build_waves` answers one question — are this item's
+dependencies closed — and a vague item passes it without friction. `agent_ready` answers the other:
+does the item have an elected check, a known landing site, an assessed terrain, and a premortem where
+one is owed. It reports **two layers that never merge** — presence is computed (`D0`), quality is the
+challenger's judgment (`D2`) — because a single fused "ready: true" would put a green badge on half a
+judgment. It is advisory by construction: it does not shrink the queue, it hands each unready item
+back to a named owner (`needs_interview` / `needs_research` / `needs_hardening` / `needs_challenge` /
+`human_only`). Take the route; do not start the item and discover the gap at the evidence gate.
+
 ## Context management: reset, don't accumulate
 
 The state-of-the-art way to handle a codebase too large to hold in context is not a smarter
@@ -93,6 +102,7 @@ records which copy became truth; call sites rewrite to it; divergent copies are 
 
 ```
 for item in roadmap.ordered_item_ids:      # fresh invocation each
+  0. agent_ready(pin) — handable, or routed back to a named owner? route ≠ ready → stop here
   1. load item + pin + graph neighborhood + to_be     # minimal context
   2. if touching working code → Track B characterization test
   3. if item has a decision → Track A red test from to_be
@@ -163,6 +173,13 @@ Stop at each wave boundary from the Phase-3 roadmap — especially after **Wave 
   oracle was never satisfiable (upstream — it was wrong when it was born). A `flip_signal` with no
   telemetry degrades to a `manual_checkpoint` question you may legitimately ask here — *"did X
   happen?"* — and that is still the downstream arc, not this one.
+
+- **Label what actually went wrong, in the words the premortem used.** Every failed evidence gate,
+  every REJECT, every reopen gets a `ledger_label_failure` from the shared taxonomy
+  (`references/core/decisions-ledger-spec.md` v0.9). Then read `foresight` on the pin: `anticipated`
+  is what the challenger's premortem saw coming, `surprises` is what nobody did. The surprises are
+  the column worth reading — a premortem that anticipated everything is either excellent or was
+  written afterwards, and only the timestamps distinguish those.
 
 A fully autonomous start-to-finish loop on slop is over-confident. A loop that pauses at
 dependency (wave) boundaries is cautious at exactly the right points.

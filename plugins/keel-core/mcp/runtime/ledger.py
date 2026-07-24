@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.8). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.9). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -15,7 +15,10 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   decided `depends_on` dependents (transitively), nothing else;
 - v0.7 `correctness_unknown` + the `verification` envelope: when a claim states how hard it
   was checked, that statement binds — `resolved` requires the `observed` rung, so a pin whose
-  correctness could not be established lands in an honest state instead of a green close.
+  correctness could not be established lands in an honest state instead of a green close;
+- v0.9 one closed failure vocabulary (`FAILURE_CLASSES`, a strict superset of the challenge
+  classes) used by the challenger's premortem *before* the work and by `label_failure` *after*
+  it, so "what we feared" and "what happened" are comparable instead of two prose piles.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -28,13 +31,13 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.8"
+SCHEMA_VERSION = "0.9"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
 # would strand the one artifact the whole package treats as durable truth. Reading an older file
 # upgrades its `version` in memory; the upgrade lands on disk at the next `save()`.
-READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8")
+READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9")
 
 KINDS = {
     "contract_mismatch",
@@ -63,6 +66,23 @@ CHALLENGE_CLASSES = (
     "unstated_assumption", "ignored_fanout", "other",
 )
 CHALLENGE_TARGETS = ("acceptance_criterion", "to_be", "policy", "decision")
+
+# v0.9 — ONE closed vocabulary for how work fails, shared by the prospective premortem, the
+# retrospective label, and recovery. It is a strict superset of CHALLENGE_CLASSES rather than a
+# second list beside it: a challenge is a failure mode of the *oracle*, foreseen before the work,
+# so the words must be the same words. Two vocabularies for one concept is precisely the divergence
+# this package exists to find — `test_failure_taxonomy_contains_the_challenge_classes` holds it shut.
+FAILURE_CLASSES = CHALLENGE_CLASSES + (
+    "contract_drift",      # layers disagreed about a shape — this package's own thesis
+    "missing_capability",  # the work needed something that does not exist (tool, API, fixture)
+    "environment",         # toolchain, runtime, network, permission — outside the code
+    "untested_path",       # the change hit a path nothing exercised
+    "scope_creep",         # the work exceeded its declared boundary
+    "stale_carrier",       # a trusted artifact (graph, doc, lockfile, cache) described a dead state
+    "nondeterminism",      # the outcome did not reproduce — flake, ordering, time, concurrency
+    "external_change",     # a third party moved: dependency, upstream API, remote repo
+)
+FAILURE_PHASES = ("plan", "build", "evidence", "review", "production")
 REMEDIATION_ACTIONS = ("consolidate", "implement", "refactor", "delete", "align")
 BUILD_ACTIONS = ("scaffold", "implement", "wire", "configure", "instrument")  # v0.5 adds instrument
 EFFORTS = ("S", "M", "L")
@@ -493,6 +513,118 @@ class Ledger:
             self._reopen_minimal(pin, substate="challenged")
         return event
 
+    def premortem(
+        self,
+        pin_id: str,
+        failure_modes: list[dict],
+        guardrails: Optional[list] = None,
+        abort_criteria: Optional[list] = None,
+        paper_tigers: Optional[list[dict]] = None,
+        source: str = "challenge:challenger",
+    ) -> dict:
+        """v0.9 — the challenger's SECOND mode: assume the plan already failed, work backwards.
+
+        The first mode refutes the oracle (*is the criterion sound?*); this one grants the criterion
+        and asks how the work dies anyway. Same read-only role, same neutrality — it writes
+        guardrails and abort criteria, never a decision and never a state change. The roster stays
+        at six because this is a mode, not a member.
+
+        Two rules keep it from becoming a worry list:
+        - a premortem that names failures and no response is not a premortem, so at least one
+          guardrail or abort criterion is required;
+        - a `paper_tiger` (a risk that looks grave and is already mitigated) must carry the
+          **evidence** of its mitigation. Without that it is not a dismissed risk, it is a risk
+          somebody decided to feel calm about — and the field would become the noise it exists
+          to remove.
+        """
+        pin = self.pin(pin_id)
+        _require(isinstance(failure_modes, list) and bool(failure_modes),
+                 "a premortem needs at least one failure mode — 'nothing will go wrong' is the "
+                 "belief the exercise exists to break")
+        for fm in failure_modes:
+            _require(isinstance(fm, dict), "each failure mode must be an object")
+            _require(fm.get("class") in FAILURE_CLASSES,
+                     f"failure mode class must be one of {FAILURE_CLASSES}")
+            _require(fm.get("class") != "other" or bool(fm.get("detail")),
+                     "class 'other' requires detail (the open escape hatch is named, not blank)")
+            _require(bool(str(fm.get("description", "")).strip()),
+                     "each failure mode needs a description of how it kills the work")
+        guardrails = [str(g) for g in (guardrails or []) if str(g).strip()]
+        abort_criteria = [str(a) for a in (abort_criteria or []) if str(a).strip()]
+        _require(bool(guardrails or abort_criteria),
+                 "name at least one guardrail or abort criterion — failures without responses "
+                 "are a worry list, not a premortem")
+        tigers = []
+        for pt in paper_tigers or []:
+            _require(isinstance(pt, dict) and bool(str(pt.get("risk", "")).strip()),
+                     "each paper_tiger needs the risk it names")
+            _require(bool(str(pt.get("evidence", "")).strip()),
+                     "a paper_tiger needs the EVIDENCE that it is already mitigated — without it "
+                     "this is not a dismissed risk, it is an ignored one")
+            tigers.append({"risk": str(pt["risk"]), "evidence": str(pt["evidence"])})
+        pin["premortem"] = {
+            "failure_modes": failure_modes,
+            "guardrails": guardrails,
+            "abort_criteria": abort_criteria,
+            "paper_tigers": tigers,
+            "determinism": "D2",     # imagining how it dies is judgment, and says so
+            "source": source,
+            "timestamp": _now(),
+        }
+        return pin["premortem"]
+
+    def label_failure(self, pin_id: str, failure_class: str, detail: str,
+                      phase: str, source: str = "measurer") -> dict:
+        """v0.9 — label a failure that ACTUALLY happened, in the same words the premortem used.
+
+        Appends an immutable FailureEvent. It changes no state: labeling is observation, and the
+        response (reopen, challenge, re-plan) stays a separate, explicit act. Sharing the vocabulary
+        with the premortem is the whole point — it is what lets 'what we feared' and 'what happened'
+        be compared at all, instead of being two prose piles nobody can join.
+        """
+        self.pin(pin_id)
+        _require(failure_class in FAILURE_CLASSES, f"class must be one of {FAILURE_CLASSES}")
+        _require(failure_class != "other" or bool(detail),
+                 "class 'other' requires detail (the open escape hatch is named, not blank)")
+        _require(phase in FAILURE_PHASES, f"phase must be one of {FAILURE_PHASES}")
+        _require(bool(str(detail).strip()), "a failure label needs what actually happened")
+        event = {
+            "id": self._next_id("fal_", self.data["decision_log"]),
+            "pin_id": pin_id,
+            "timestamp": _now(),
+            "class": failure_class,
+            "detail": str(detail).strip(),
+            "phase": phase,
+            "source": source,
+        }
+        self.data["decision_log"].append(event)
+        return event
+
+    def foresight(self, pin_id: str) -> dict:
+        """What was feared vs what happened, joined on the shared vocabulary.
+
+        `anticipated` are classes the premortem named and that then occurred; `surprises` are classes
+        that occurred and nobody foresaw; `paper_tigers_held` are dismissed risks that stayed
+        dismissed. D0 — a set comparison over recorded events, no scoring: the numbers are small,
+        rare and human, and a rate computed over them would be a statistic with no population.
+        """
+        pin = self.pin(pin_id)
+        foreseen = {fm.get("class") for fm in (pin.get("premortem") or {}).get("failure_modes", [])}
+        happened = [e for e in self.data["decision_log"]
+                    if e.get("pin_id") == pin_id and e["id"].startswith("fal_")]
+        occurred = {e["class"] for e in happened}
+        tigers = {pt["risk"] for pt in (pin.get("premortem") or {}).get("paper_tigers", [])}
+        return {
+            "pin": pin_id,
+            "has_premortem": bool(pin.get("premortem")),
+            "anticipated": sorted(foreseen & occurred),
+            "unrealized": sorted(foreseen - occurred),
+            "surprises": sorted(occurred - foreseen),
+            "paper_tigers_named": sorted(tigers),
+            "failures": happened,
+            "determinism": "D0",
+        }
+
     def reopen(self, pin_id: str, reason: str, fired: str = "flip_signal",
                source: str = "feedback:metrics") -> dict:
         """v0.5 downstream arc: production falsified the decision — reopen, don't decide."""
@@ -699,6 +831,12 @@ class Ledger:
         by_state: dict[str, int] = {}
         for p in self.data["pins"]:
             by_state[p["state"]] = by_state.get(p["state"], 0) + 1
+        # v0.9: failures surface here or they surface nowhere. An event class that only exists in
+        # the log is the same black hole `correctness_unknown` was before it reached the interview.
+        by_failure: dict[str, int] = {}
+        for e in self.data["decision_log"]:
+            if e["id"].startswith("fal_"):
+                by_failure[e["class"]] = by_failure.get(e["class"], 0) + 1
         return {
             "version": self.data["version"],
             "pins": len(self.data["pins"]),
@@ -706,6 +844,8 @@ class Ledger:
             "events": len(self.data["decision_log"]),
             "policies": len(self.data["policies"]),
             "open_questions": len(self.interview_view()),
+            "failures_by_class": by_failure,
+            "premortems": sum(1 for p in self.data["pins"] if p.get("premortem")),
         }
 
 

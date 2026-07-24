@@ -19,6 +19,13 @@ The judgment classes (`inconsistent`, `unsatisfiable`, `unstated_assumption`) ar
 agent, which calls `ledger.challenge(...)` with its argument — the same sink this module uses.
 Everything here only proposes challenges; `ledger.challenge(upheld=True)` is what reopens, and only
 the interview ever commits.
+
+**Second mode — premortem (v0.9).** Refutation asks whether the oracle is sound; the premortem
+grants it and asks how the work dies anyway. Same role, same read-only posture, so the roster stays
+at six: `premortem_required()` answers *is one owed here* from carriers the ledger already holds
+(D0), and `ledger.premortem()` is where the imagined failures land (D2, labeled). The imagining
+itself is the agent's — a script cannot invent a way for a plan to die, and pretending otherwise
+would be the fake determinism `core/trust-axes.md` forbids.
 """
 from __future__ import annotations
 
@@ -78,6 +85,51 @@ def scan(ledger) -> list[dict]:
                             "yet it was resolved as a silent proposed_default rather than asked",
                 "severity": "high"})
     return proposals
+
+
+def premortem_required(ledger, pin: dict) -> dict:
+    """Is a premortem obligatory for this pin? `{required, because[]}` — D0, presence only.
+
+    The obligation is derived from carriers the ledger already holds, never from a new tuned
+    number. Each reason below is a fact somebody recorded, so the gate cannot quietly become a
+    threshold nobody can defend:
+
+    - `blocker|high` — the v0.3 severity threshold, already load-bearing everywhere else;
+    - a landing-zone verdict of `harden_first`/`redesign` — the terrain is *known* bad (v0.8);
+    - the pin has been reopened before — a recorded history of being wrong about this one;
+    - inbound fan-out at the existing `_FANOUT_THRESHOLD` — the same constant the `ignored_fanout`
+      class already uses, declared once and reused rather than invented twice.
+
+    Whether the premortem is any *good* is judgment and stays with the agent; this only answers
+    whether one is owed.
+    """
+    because = []
+    if pin.get("severity") in ("blocker", "high"):
+        because.append(f"severity {pin['severity']} — never handled silently")
+    verdict = (pin.get("readiness") or {}).get("verdict")
+    if verdict in ("harden_first", "redesign"):
+        because.append(f"landing zone is {verdict} — the ground is already known to be weak")
+    if any(e.get("pin_id") == pin["id"] and (e["id"].startswith("chl_") or e["id"].startswith("rev_"))
+           for e in ledger.data["decision_log"]):
+        because.append("this pin has been reopened before")
+    fanout = _inbound_fanout(ledger, pin["id"])
+    if fanout >= _FANOUT_THRESHOLD:
+        because.append(f"{fanout} decisions depend on it")
+    return {"required": bool(because), "because": because, "determinism": "D0"}
+
+
+def premortem_gaps(ledger) -> list[dict]:
+    """Pins that owe a premortem and do not have one. The challenger's own queue — and the
+    `needs_challenge` route of the agent-ready card (`agentready.py`)."""
+    out = []
+    for pin in ledger.data["pins"]:
+        if pin["state"] in ("resolved", "accepted", "deferred") or pin.get("premortem"):
+            continue
+        req = premortem_required(ledger, pin)
+        if req["required"]:
+            out.append({"pin_id": pin["id"], "title": pin.get("title"),
+                        "because": req["because"]})
+    return out
 
 
 def run(ledger, apply: bool = True) -> list[dict]:

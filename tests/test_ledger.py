@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
-from ledger import Ledger, LedgerError  # noqa: E402
+from ledger import SCHEMA_VERSION, Ledger, LedgerError  # noqa: E402
 
 
 def make_ledger() -> Ledger:
@@ -417,7 +417,7 @@ class TestHonestVerification(unittest.TestCase):
             fh.seek(0)
             json.dump(data, fh)
             fh.truncate()
-        self.assertEqual(Ledger(led.path).data["version"], "0.8")   # upgraded on read
+        self.assertEqual(Ledger(led.path).data["version"], SCHEMA_VERSION)  # upgraded on read
 
 
 class TestViewsAndPersistence(unittest.TestCase):
@@ -448,7 +448,7 @@ class TestViewsAndPersistence(unittest.TestCase):
         led.save()
         with open(led.path, encoding="utf-8") as fh:
             data = json.load(fh)
-        self.assertEqual(data["version"], "0.8")
+        self.assertEqual(data["version"], SCHEMA_VERSION)
         self.assertIn("però", data["pins"][0]["title"])
 
     def test_version_mismatch_rejected(self):

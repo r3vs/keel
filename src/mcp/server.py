@@ -299,6 +299,90 @@ def ledger_mark_correctness_unknown(
         ledger, pin_id, blocked_by, attempted, determinism, rung)
 
 
+@mcp.tool(annotations={"title": "Ledger — Premortem (the challenger's second mode)", **_RW})
+def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
+                     guardrails: list | None = None, abort_criteria: list | None = None,
+                     paper_tigers: list | None = None) -> dict:
+    """Assume the plan already failed; work backwards to guardrails and abort criteria.
+
+    The challenger's first mode refutes the ORACLE (is the criterion sound?). This one grants the
+    criterion and asks how the work dies anyway — the terrain, the tooling, the assumptions nobody
+    wrote down. Read-only in the sense that matters: it changes no pin state and elects nothing.
+
+    Two refusals keep it from degrading into a worry list: failures with no response are rejected
+    (name a guardrail or an abort criterion), and a `paper_tiger` — a risk that looks grave and is
+    already mitigated — must carry the EVIDENCE of its mitigation, or it is a risk somebody decided
+    to feel calm about.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin whose plan is being pre-mortemed.
+        failure_modes: [{class, description, detail?}] — class from the shared failure taxonomy.
+        guardrails: What prevents each mode, in flight.
+        abort_criteria: What makes you stop rather than push on.
+        paper_tigers: [{risk, evidence}] — grave-looking risks already mitigated, with proof.
+    """
+    return tools.ledger_premortem(ledger, pin_id, failure_modes, guardrails,
+                                  abort_criteria, paper_tigers)
+
+
+@mcp.tool(annotations={"title": "Ledger — Label a Failure That Happened", **_RW})
+def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: str,
+                         phase: str, source: str = "measurer") -> dict:
+    """Record what actually went wrong, in the same vocabulary the premortem used.
+
+    One closed taxonomy serves the premortem (before), this label (after) and recovery — so "what we
+    feared" and "what happened" can be joined instead of being two prose piles. Returns the join for
+    this pin: anticipated, unrealized, and the surprises nobody foresaw.
+
+    Labeling changes no state. The response — reopen, challenge, re-plan — stays a separate act.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin the failure happened on.
+        failure_class: One of the shared failure classes (superset of the challenge classes).
+        detail: What actually happened (required).
+        phase: plan | build | evidence | review | production.
+        source: Who observed it (default: measurer).
+    """
+    return tools.ledger_label_failure(ledger, pin_id, failure_class, detail, phase, source)
+
+
+@mcp.tool(annotations={"title": "Agent-Ready Gate — two layers, kept apart", **_RO})
+def agent_ready(ledger: str, pin_id: str = "") -> dict:
+    """Is this item handable to an executor, or merely unblocked? Preconditions (D0) + quality (D2).
+
+    `build_waves` answers "are the dependencies closed". This answers "is the item actually
+    specified": does it have an elected check, a known landing site, an assessed terrain, and a
+    premortem where one is owed. Each precondition reads a carrier that already exists — nothing new
+    to fill in — and the premortem's guardrails and abort criteria ARE the rollback and stop
+    conditions the gate wants.
+
+    The two layers are reported side by side and NEVER merged: presence is computed, quality is
+    judged by the challenger, and a single fused verdict would put a deterministic badge on a
+    judgment. Failures route back to a named owner (needs_interview / needs_research /
+    needs_hardening / needs_challenge / human_only) instead of silently blocking.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: One pin's card; omit for every currently-ready pin, grouped by route.
+    """
+    return tools.agent_ready(ledger, pin_id)
+
+
+@mcp.tool(annotations={"title": "Challenger — Pins That Owe a Premortem", **_RO})
+def premortem_gaps(ledger: str) -> dict:
+    """Pins where a premortem is obligatory and absent — the challenger's own queue.
+
+    The obligation comes from carriers the ledger already holds (severity threshold, a weak landing
+    zone, a history of being reopened, inbound fan-out), never from a new tuned number.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.premortem_gaps(ledger)
+
+
 @mcp.tool(annotations={"title": "Ledger — Defer a Pin", **_RW})
 def ledger_defer(ledger: str, pin_id: str) -> dict:
     """Mark a pin out of scope now (YAGNI at spec level) — it stays as future backlog.

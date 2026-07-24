@@ -34,7 +34,7 @@ person decides.
 | **executor** | **yes (the one writer)** | Implements ONE closed scope (a `RemediationItem`/`BuildItem`) via two-track TDD in fresh context; opens a PR; **never merges**. Serialized. | rescue P4 · greenfield P4 build, P6 release |
 | **measurer** | no (read-only) | Data/evidence verdict, and the **first** gate on a finished item: kind-specific proof that the gap closed (re-diff to zero drift, mutants killed, behavior reachable, static signal green). Deterministic and cheap. Also evaluates `flip_signal`s in the feedback loop. Never guesses, never writes. | rescue P4 gate → P5 · greenfield P4 gate → P5, P7 evolve |
 | **reviewer** | no (read-only) | Adversarial pre-merge **judgment** gate, running *after* the measurer — it reads the recorded evidence and never re-derives it. Two stages: (1) is the oracle satisfied **honestly** — no test-gaming, no special-casing, no criterion met by its letter (the thing evidence cannot see) → (2) code quality. Verdict `MERGE`/`ADJUST`/`REJECT`; ADJUST/REJECT restart the item. A rejection **teaches** (see below). | rescue P4 · greenfield P4 |
-| **challenger** | no (challenges only) | Adversarial red-team of the elected **oracle** — the reviewer's upstream twin. The reviewer enforces the `to_be`; the challenger doubts it. Refutes `acceptance_criterion`/`to_be`/`Policy` as unfalsifiable / inconsistent / unsatisfiable / falsely infeasible / resting on an unstated assumption / ignoring fan-out; emits a `ChallengeEvent` that reopens the pin (`challenged`). **The one reopen path at the wave checkpoint.** Neutral: challenges, never decides. | rescue P2→P4 · greenfield P2→P4 |
+| **challenger** | no (challenges only) | Adversarial red-team of the elected **oracle** — the reviewer's upstream twin. The reviewer enforces the `to_be`; the challenger doubts it. Refutes `acceptance_criterion`/`to_be`/`Policy` as unfalsifiable / inconsistent / unsatisfiable / falsely infeasible / resting on an unstated assumption / ignoring fan-out; emits a `ChallengeEvent` that reopens the pin (`challenged`). **The one reopen path at the wave checkpoint.** Second mode (v0.9): the **premortem** — grant the oracle, assume the plan already failed, name what killed it plus guardrails and abort criteria. Neutral: challenges, never decides. | rescue P2→P4 · greenfield P2→P4 |
 
 ### Why the gates run in that order, and why each owns one object
 
@@ -74,6 +74,20 @@ reopening directly would silently perform T3 work at T2 — the half-applied con
 against everywhere else. It also gives the reopen a record: the challenger's `ChallengeEvent`
 carries the `argument`, and an append-only ledger whose reopens have no *why* is a ledger that has
 stopped doing the one thing it is for.
+
+**The challenger has two modes, and the second one is why the roster is still six.** Mode 1 is
+refutation: *is the elected oracle sound?* Mode 2 is the **premortem**: grant the oracle, assume the
+work already failed, and say what killed it — terrain, tooling, an assumption nobody wrote down.
+The obvious move would have been a seventh role for it. That would be wrong twice: the object is
+identical (the plan, before it runs), and the posture is identical (read-only, reopens or warns,
+never decides). A second mode of one reviewer beats a second reviewer.
+
+Both modes write into the same closed vocabulary as the `measurer`'s post-hoc failure label
+(`core/decisions-ledger-spec.md` v0.9), so *what we feared* and *what happened* can be joined
+instead of accumulating as two prose piles. Whether a premortem is **owed** is deterministic —
+severity threshold, a weak landing zone, a history of being reopened, inbound fan-out — while the
+premortem itself is `D2` and labeled so. A script cannot invent a way for a plan to die, and one
+pretending to would be the fake determinism `core/trust-axes.md` forbids.
 
 ## Permissions — **the source of truth; the build reads this table**
 

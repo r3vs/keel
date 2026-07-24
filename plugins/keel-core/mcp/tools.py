@@ -157,6 +157,38 @@ def ledger_mark_correctness_unknown(
             "verification": pin["verification"]}
 
 
+def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
+                     guardrails: list | None = None, abort_criteria: list | None = None,
+                     paper_tigers: list | None = None) -> dict:
+    led = _open_existing(ledger)
+    pm = led.premortem(pin_id, failure_modes, guardrails=guardrails,
+                       abort_criteria=abort_criteria, paper_tigers=paper_tigers)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin_id, "premortem": pm}
+
+
+def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: str,
+                         phase: str, source: str = "measurer") -> dict:
+    led = _open_existing(ledger)
+    event = led.label_failure(pin_id, failure_class, detail, phase, source=source)
+    led.save()
+    return {"event": event, "foresight": led.foresight(pin_id)}
+
+
+def agent_ready(ledger: str, pin_id: str = "") -> dict:
+    import agentready
+    led = _open_existing(ledger)
+    return agentready.card(led, pin_id) if pin_id else agentready.gate(led)
+
+
+def premortem_gaps(ledger: str) -> dict:
+    import challenger as chl
+    led = _open_existing(ledger)
+    gaps = chl.premortem_gaps(led)
+    return {"gaps": gaps, "count": len(gaps), "determinism": "D0"}
+
+
 def ledger_defer(ledger: str, pin_id: str) -> dict:
     led = _open_existing(ledger)
     pin = led.defer(pin_id)

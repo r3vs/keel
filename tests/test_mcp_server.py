@@ -52,12 +52,15 @@ EXPECTED_TOOLS = {
     "spend_report",
     # landing-zone readiness: D0 evidence (read-only) + the D2 verdict (write)
     "readiness_assess",
+    # v0.9 — the agent-ready gate (D0 presence) and the challenger's premortem queue
+    "agent_ready", "premortem_gaps", "ledger_premortem", "ledger_label_failure",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
+    "ledger_premortem", "ledger_label_failure",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
