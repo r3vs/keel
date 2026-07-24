@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.6). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.7). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -335,6 +335,62 @@ class TestRemediation(unittest.TestCase):
         self.assertEqual(led.resolve(pin["id"])["state"], "resolved")
 
 
+class TestHonestVerification(unittest.TestCase):
+    """v0.7: `resolved` means observed, so a claim that could not be observed needs somewhere
+    honest to land. Without `correctness_unknown` every pressure pointed at a false `resolved`."""
+
+    def _done(self, led):
+        pin = add_simple_pin(led)
+        led.decide(pin["id"], "opt_a", "r", "flip")
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2, canonical_target="db")
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        return pin
+
+    def test_self_check_rung_cannot_resolve(self):
+        led = make_ledger()
+        pin = self._done(led)
+        pin["verification"] = {"rung": "self_check"}
+        with self.assertRaises(LedgerError):
+            led.resolve(pin["id"])
+        pin["verification"]["rung"] = "observed"
+        self.assertEqual(led.resolve(pin["id"])["state"], "resolved")
+
+    def test_cross_derived_also_resolves(self):
+        led = make_ledger()
+        pin = self._done(led)
+        pin["verification"] = {"rung": "cross_derived"}
+        self.assertEqual(led.resolve(pin["id"])["state"], "resolved")
+
+    def test_unknown_records_what_was_tried_and_what_blocked(self):
+        led = make_ledger()
+        pin = self._done(led)
+        out = led.mark_correctness_unknown(
+            pin["id"], blocked_by="no runnable env for the payments path",
+            attempted=["tests", "typecheck", "smoke_probe"], determinism="D1", rung="re_read")
+        self.assertEqual(out["state"], "correctness_unknown")
+        self.assertEqual(out["verification"]["attempted"], ["tests", "typecheck", "smoke_probe"])
+
+    def test_unknown_refuses_a_shrug(self):
+        led = make_ledger()
+        pin = self._done(led)
+        with self.assertRaises(LedgerError):                       # nothing was attempted
+            led.mark_correctness_unknown(pin["id"], blocked_by="dunno", attempted=[])
+        with self.assertRaises(LedgerError):                       # no reason given
+            led.mark_correctness_unknown(pin["id"], blocked_by="  ", attempted=["tests"])
+
+    def test_older_ledger_is_readable_not_stranded(self):
+        """An additive schema that rejects its own older files strands the one durable artifact."""
+        led = make_ledger()
+        led.save()
+        with open(led.path, "r+", encoding="utf-8") as fh:
+            data = json.load(fh)
+            data["version"] = "0.5"
+            fh.seek(0)
+            json.dump(data, fh)
+            fh.truncate()
+        self.assertEqual(Ledger(led.path).data["version"], "0.7")   # upgraded on read
+
+
 class TestViewsAndPersistence(unittest.TestCase):
     def test_interview_orders_by_information_gain(self):
         led = make_ledger()
@@ -363,7 +419,7 @@ class TestViewsAndPersistence(unittest.TestCase):
         led.save()
         with open(led.path, encoding="utf-8") as fh:
             data = json.load(fh)
-        self.assertEqual(data["version"], "0.6")
+        self.assertEqual(data["version"], "0.7")
         self.assertIn("però", data["pins"][0]["title"])
 
     def test_version_mismatch_rejected(self):

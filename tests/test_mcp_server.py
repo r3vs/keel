@@ -40,6 +40,7 @@ EXPECTED_TOOLS = {
     # non-electing ledger writes; decide/accept stay human-only and are deliberately NOT here
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
+    "ledger_mark_correctness_unknown",
     # comprehension / understand-mode (the structural-graph family)
     "build_graph", "understand_codebase", "explain_node", "graph_query", "guided_tour",
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
@@ -54,6 +55,7 @@ WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
+    "ledger_mark_correctness_unknown",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS

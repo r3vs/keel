@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.6
+# Decisions Ledger — Spec v0.7
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -47,7 +47,8 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "anchors": [                   // DECISION 1 — cross-layer list
     { "node_id": "n_412", "layer": "db", "role": "db_source", "loc": "migrations/003.sql:12" }
   ],
-  "state": "needs_input",        // detected | needs_input | brainstorming | decided | deferred | resolved | accepted
+  "state": "needs_input",        // detected | needs_input | brainstorming | decided | correctness_unknown | deferred | resolved | accepted
+  "verification": null,          // v0.7 — { determinism, rung, evidence[] } | null. Set when a claim is checked.
   "as_is": { },                  // DISCRIMINATED by kind ↓
   "to_be": null,                 // DISCRIMINATED by kind ↓ — derived (Decision 7)
   "question": null,              // Question | null — option shape discriminated by kind
@@ -197,11 +198,14 @@ detected ──(generates question)──▶ needs_input ──(opens brainstorm
                           (user commits in interview)
                                      ▼
                                   decided ──(spawn remediation)──▶ resolved
-                                     │
-                              (or deferred / accepted)
+                                     │           │        ▲
+                              (or deferred /     │        │ (behavior finally observed)
+                                  accepted)      ▼        │
+                                        correctness_unknown
+                                       (work done, correctness NOT establishable)
 ```
 
-`brainstorming` is transient/optional. `deferred` = out of scope now (YAGNI at the spec level). `accepted` = acknowledged, intentionally left as-is (the legitimate outcome of a `design_concern`).
+`brainstorming` is transient/optional. `deferred` = out of scope now (YAGNI at the spec level). `accepted` = acknowledged, intentionally left as-is (the legitimate outcome of a `design_concern`). `correctness_unknown` (v0.7) = the work was done and the behavior could **not** be observed with the available evidence — see below.
 
 ---
 
@@ -419,3 +423,50 @@ Precondition of the challenge, and an anti-slop rule in its own right: when an a
 ### Why this is the missing arc
 
 The feedback loop closes the loop *downstream* (production falsifies the decision → reopen). The challenger closes the loop *upstream* (the oracle is incoherent/untestable/unsatisfiable → reopen **before** building). Together they cover the two ways an elected truth can be wrong: wrong *become* (reality changed) and wrong *born*. Both arcs **reopen and do not decide** — neutrality is the same anti-divergence property that holds the whole ledger together.
+
+---
+
+## v0.7 — Honest verification: `correctness_unknown` and the three trust axes
+
+Both arcs above assume the verdict on a *closed* pin is binary: it was fixed, or it was not. On a legacy repo that is a lie the schema was forcing. Tests may not exist, the path may be unreachable locally, the effect may only be visible in an environment nobody has. The doctrine already said the right thing in prose — *"an unverifiable claim reported as verified is worse than an open one"* — but with only `resolved` on offer, the honest outcome had nowhere to go, and every pressure pointed at a false `resolved`.
+
+v0.7 gives that sentence a state, and gives every checked claim the three-axis envelope from `core/trust-axes.md`. Additive: no existing variant changes.
+
+### New state: `correctness_unknown`
+
+Between `decided` and `resolved`. It means: **the work was done, and the correctness of the outcome could not be established from the available evidence.** It is not a failure and not a defect — it is the honest report of a missing oracle.
+
+Reaching it is disciplined, not a shrug: it is only legitimate **after** the evidence stack has actually been walked, best signal first — existing tests → static checks (type-check, constraints) → a generated smoke probe or behavioral observation → diff-risk review. `correctness_unknown` is what remains when all of those were tried and none could speak.
+
+```jsonc
+"state": "correctness_unknown",
+"verification": {
+  "determinism": "D1",              // D0 | D1 | D2 — how the check reproduces
+  "rung": "re_read",                // self_check | re_read | observed | cross_derived
+  "attempted": ["tests", "typecheck", "smoke_probe"],   // the stack that was walked
+  "blocked_by": "no runnable environment for the payments path",
+  "evidence": [{ "kind": "typecheck", "ref": "tsc --noEmit", "outcome": "pass" }]
+}
+```
+
+The state **blocks closure** and forces an explicit next move, recorded as a `DecisionEvent` like any other: retry with more context · add the missing check (a new `acceptance_criterion` pin, which is how the zone *earns* the ability to be verified next time) · request manual takeover · narrow the scope · accept the risk explicitly (`accepted`, with the unknown named). What it may never do is decay into `resolved` because time passed.
+
+Threshold rule, consistent with the rest of the spec: `severity: blocker | high` in `correctness_unknown` is **always** `asked` — never a proposed default, never batch-skimmed. An unverifiable blocker is exactly the thing that must reach a human.
+
+### The `verification` envelope — three axes, never one number
+
+Any pin that carries a checked claim may carry `verification`. The three axes are **orthogonal** and are reported together; the posture is their **conjunction, never the most flattering one**:
+
+| Field | Answers | Values |
+|---|---|---|
+| `determinism` | how does the result reproduce? | `D0` carrier computation · `D1` reconstructible from a pinned artifact · `D2` model judgment on the path |
+| `rung` | how hard was the claim checked? | `self_check` · `re_read` (over the full diff, not the output) · `observed` (behavior exercised and seen) · `cross_derived` (re-derived by a different provider) |
+| review burden | what review does the risk demand? | the existing `severity` × blast radius — **no new field** |
+
+Two consequences the schema now makes checkable. A pin may not be `resolved` at rung `self_check`: `resolved` means `observed`, which is the verification skill's rule restated as data. And a `D2` finding does not inherit the `extracted` confidence or the `fp-check` bypass that a `D0` carrier finding earns — the discount belongs to the carrier, not to the label.
+
+`cross_derived` is the rung that turns the mixed-provider roster into a safety signal: for irreversible or high-severity claims the claim is re-derived by a model from a **different provider**, agreement is the pass, and **divergence forces human review rather than a tie-break**. A single-provider hallucination rarely reproduces cross-provider, so the disagreement *is* the finding.
+
+### Why this is not more ceremony
+
+Every other state in this spec exists to stop a decision being made by nobody. `correctness_unknown` stops a *verification* being claimed by nobody — the same anti-divergence property applied to the last step, where until now the schema quietly rewarded the confident report.

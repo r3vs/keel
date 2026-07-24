@@ -112,6 +112,24 @@ def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
+def ledger_mark_correctness_unknown(
+    ledger: str,
+    pin_id: str,
+    blocked_by: str,
+    attempted: list,
+    determinism: str | None = None,
+    rung: str | None = None,
+) -> dict:
+    led = _open_existing(ledger)
+    pin = led.mark_correctness_unknown(
+        pin_id, blocked_by=blocked_by, attempted=attempted,
+        determinism=determinism, rung=rung)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin["id"], "state": pin["state"],
+            "verification": pin["verification"]}
+
+
 def ledger_defer(ledger: str, pin_id: str) -> dict:
     led = _open_existing(ledger)
     pin = led.defer(pin_id)

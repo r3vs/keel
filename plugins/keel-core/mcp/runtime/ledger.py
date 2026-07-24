@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.6). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.7). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -12,7 +12,10 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 - `provenance: agent_assumption` — a forced assumption enters as a vetoable pin with
   `confidence: inferred|ambiguous`, never as a silent default;
 - minimal reopen: an upheld challenge / fired flip signal reopens the pin plus only its
-  decided `depends_on` dependents (transitively), nothing else.
+  decided `depends_on` dependents (transitively), nothing else;
+- v0.7 `correctness_unknown` + the `verification` envelope: when a claim states how hard it
+  was checked, that statement binds — `resolved` requires the `observed` rung, so a pin whose
+  correctness could not be established lands in an honest state instead of a green close.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -25,7 +28,13 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.6"
+SCHEMA_VERSION = "0.7"
+
+# Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
+# event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
+# would strand the one artifact the whole package treats as durable truth. Reading an older file
+# upgrades its `version` in memory; the upgrade lands on disk at the next `save()`.
+READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7")
 
 KINDS = {
     "contract_mismatch",
@@ -40,7 +49,13 @@ KINDS = {
 }
 SEVERITIES = ("blocker", "high", "medium", "low")
 CONFIDENCES = ("extracted", "inferred", "ambiguous")
-STATES = ("detected", "needs_input", "brainstorming", "decided", "deferred", "resolved", "accepted")
+STATES = (
+    "detected", "needs_input", "brainstorming", "decided",
+    "correctness_unknown",  # v0.7 — work done, correctness NOT establishable from available evidence
+    "deferred", "resolved", "accepted",
+)
+DETERMINISM = ("D0", "D1", "D2")                                  # v0.7 — how a result reproduces
+VERIFICATION_RUNGS = ("self_check", "re_read", "observed", "cross_derived")  # v0.7 — how hard checked
 RESOLUTION_MODES = ("asked", "policy_default", "proposed_default")
 CHALLENGE_CLASSES = (
     "unfalsifiable", "inconsistent", "unsatisfiable", "unfounded_infeasibility",
@@ -89,8 +104,11 @@ class Ledger:
         if os.path.exists(path):
             with open(path, encoding="utf-8") as fh:
                 self.data = json.load(fh)
-            _require(self.data.get("version") == SCHEMA_VERSION,
-                     f"ledger schema {self.data.get('version')!r} != {SCHEMA_VERSION}")
+            found = self.data.get("version")
+            _require(found in READABLE_VERSIONS,
+                     f"ledger schema {found!r} is not readable by this runtime "
+                     f"(known: {', '.join(READABLE_VERSIONS)})")
+            self.data["version"] = SCHEMA_VERSION
         else:
             self.data = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [], "policies": []}
 
@@ -492,11 +510,57 @@ class Ledger:
         _require(len(pin["remediation"]) > 0,
                  "resolve without remediation is a silent close — record what closed the gap")
         # v0.6 'resolved = observed': the evidence is what was OBSERVED to close the gap,
-        # not merely that the code was written. The CLI makes it mandatory (see main()).
+        # not merely that the code was written.
         if evidence is not None:
             _require(bool(str(evidence).strip()), "evidence, when given, must not be blank")
             pin["evidence"] = evidence
+        # v0.7: when the pin states how hard its claim was checked, that statement binds. A pin
+        # verified only by the agent re-reading its own output has not been observed, and `resolved`
+        # means observed — so the honest destination is `correctness_unknown`, not a green close.
+        rung = (pin.get("verification") or {}).get("rung")
+        if rung is not None:
+            _require(rung in ("observed", "cross_derived"),
+                     f"resolve needs rung 'observed' or 'cross_derived', not {rung!r} — a claim "
+                     "checked only by self-check or re-read belongs in correctness_unknown")
         pin["state"] = "resolved"
+        return pin
+
+    def mark_correctness_unknown(
+        self,
+        pin_id: str,
+        blocked_by: str,
+        attempted: Optional[list] = None,
+        determinism: Optional[str] = None,
+        rung: Optional[str] = None,
+    ) -> dict:
+        """v0.7 — the work was done and correctness could NOT be established.
+
+        Not a failure and not a defect: the honest report of a missing oracle. It is legitimate only
+        after the evidence stack was actually walked (tests -> static checks -> smoke probe ->
+        diff-risk review), which is why `attempted` and `blocked_by` are recorded rather than
+        optional decoration. The state blocks closure; the next move is an explicit decision.
+        """
+        pin = self.pin(pin_id)
+        _require(pin["state"] in ("decided", "resolved") or pin["kind"] == "defect",
+                 "correctness_unknown applies to work that was actually done")
+        _require(bool(str(blocked_by).strip()),
+                 "correctness_unknown must say what blocked verification — an unexplained unknown "
+                 "is the confident report wearing a humble label")
+        attempted = list(attempted or [])
+        _require(bool(attempted),
+                 "record the evidence stack that was walked (tests, typecheck, smoke_probe, "
+                 "diff_review) — reaching for this state without trying is a shrug, not a finding")
+        if determinism is not None:
+            _require(determinism in DETERMINISM, f"determinism must be one of {DETERMINISM}")
+        if rung is not None:
+            _require(rung in VERIFICATION_RUNGS, f"rung must be one of {VERIFICATION_RUNGS}")
+        pin["verification"] = {
+            "determinism": determinism,
+            "rung": rung,
+            "attempted": attempted,
+            "blocked_by": str(blocked_by).strip(),
+        }
+        pin["state"] = "correctness_unknown"
         return pin
 
     # -- views (the surfaces hold no state of their own) ------------------------

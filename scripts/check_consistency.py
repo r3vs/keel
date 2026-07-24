@@ -40,6 +40,13 @@ CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 # playbook free-ride on one runnable mention — and grepping prose for correspondence is the very
 # heuristic this repo forbids. The check is per-module and deterministic: the engine is declared, and
 # an `mcp:` tool is checked to actually exist on the server (the carrier, never a second list).
+#
+# The engine must also be COHERENT with the declared type, which the first version of this gate never
+# checked: it verified that *an* engine was named, so `type: deterministic` + `engine: agent:*` passed
+# — a model on the path wearing a deterministic label. Four greenfield modules shipped that way. An
+# agent engine is D2 whatever the module says, and a fake-deterministic label is worse than an honest
+# judgment one, because a wrong D0 finding gets believed where a wrong D2 finding gets argued with
+# (core/trust-axes.md).
 MCP_ENGINE_RE = re.compile(r"^mcp:(\w+)$")
 
 
@@ -129,7 +136,14 @@ for skill, rel in SKILLS.items():
                             f"[{skill}] module '{m.get('id', '?')}' names engine '{engine}' but "
                             f"src/mcp/server.py advertises no `{mm.group(1)}` tool"
                         )
-                elif not (engine.startswith("external:") or engine.startswith("agent:")):
+                elif engine.startswith("agent:"):
+                    errors.append(
+                        f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but its "
+                        f"engine '{engine}' reasons — an agent on the path is D2 however the module "
+                        "is labeled. Declare it type=judgment; `agent:<how>` stays a legitimate "
+                        "engine, just not a deterministic one (core/trust-axes.md)"
+                    )
+                elif not engine.startswith("external:"):
                     errors.append(
                         f"[{skill}] module '{m.get('id', '?')}' engine '{engine}' is not a "
                         "recognized form (mcp:<tool> | external:<tool> | agent:<how>)"

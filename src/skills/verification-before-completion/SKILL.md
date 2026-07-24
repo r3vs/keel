@@ -70,13 +70,47 @@ skill (`browser-verification`).
   the **honest exit** every gate must leave open: when the agent cannot satisfy the verification, it
   says so *in the ledger* rather than fabricating an observation or quietly stopping. A gate that
   blocks without leaving this exit does not prevent the shortcut — it forces it.
+- **Unverifiable is a different state from partially verified, and it also has a ledger form.**
+  Partial means part of the work was observed. `correctness_unknown` (spec v0.7) means the work was
+  *done* and its correctness could not be established at all — no test exists, the path is
+  unreachable locally, the effect only shows in an environment nobody has. On a legacy codebase this
+  is the common case, not the exception, and until it had a state the schema quietly rewarded a false
+  `resolved`.
+
+## When the oracle is missing: `correctness_unknown`
+
+Reaching this state is disciplined, not a shrug. Walk the evidence stack first, strongest signal
+first, and record what you tried:
+
+```
+existing tests → static checks (typecheck, constraints) → a generated smoke probe
+  → behavioral observation → diff-risk review
+```
+
+`correctness_unknown` is what remains when **all** of those were attempted and none could speak. It
+blocks closure and forces an explicit next move: retry with more context · add the missing check (a
+new `acceptance_criterion` — which is how a zone *earns* the ability to be verified next time) ·
+request manual takeover · narrow the scope · accept the risk explicitly with the unknown named. What
+it may never do is decay into `resolved` because time passed.
+
+Say what blocked you, in the pin — an unexplained unknown is the confident report wearing a humble
+label. And a `blocker`/`high` pin sitting in `correctness_unknown` is always surfaced to the human,
+never batch-skimmed: an unverifiable blocker is exactly the thing that must reach a person.
+
+**The rung binds.** `references/core/trust-axes.md` names how hard a claim was checked —
+`self_check` · `re_read` · `observed` · `cross_derived`. `resolved` requires `observed` or better,
+and the ledger enforces it: a pin whose verification says `self_check` cannot close, because
+re-reading your own output is not observing the behavior. For an irreversible or high-severity claim
+the rung to reach for is `cross_derived` — the claim re-derived by a model from a *different
+provider*, where agreement is the pass and **divergence forces human review rather than a tie-break**.
 
 ## Binding to the ledger
 
 Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
 cwd (see `using-the-ledger`). Call `ledger_resolve` ONLY after observing: the tool demands the
 `evidence`, so a criterion cannot close on "code written" — then `ledger_summary` to confirm nothing
-the scope claimed is still open.
+the scope claimed is still open. When the observation could not be made at all, the call is
+`ledger_mark_correctness_unknown` instead, carrying what you attempted and what blocked you.
 
 An `acceptance_criterion` is the testable outcome, so it is also the verification target: what you
 exercise in step 2 is exactly what the criterion states. That is why the criterion has to be

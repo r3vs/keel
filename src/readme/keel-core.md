@@ -21,7 +21,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **34** | the deterministic engine, typed and discoverable |
+| MCP tools | **35** | the deterministic engine, typed and discoverable |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
 | Skills | **2** | `using-the-ledger`, `run-workflow` |
@@ -30,13 +30,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 34 MCP tools
+## The 35 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (8)
+### Ledger — the single source of truth (9)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -50,6 +50,7 @@ holds no state of its own; it projects this file.
 | `ledger_add_remediation` | attach a `RemediationItem` (rescue) or `BuildItem` (forge) to a decided pin | ✎ |
 | `ledger_set_remediation_status` | `todo → in_progress → done` | ✎ |
 | `ledger_resolve` | close a pin **with the observed evidence** — refuses while any item is open | ✎ |
+| `ledger_mark_correctness_unknown` | the work was done and correctness could **not** be established — blocks closure, forces a next move | ✎ |
 | `ledger_defer` | out of scope for now; stays as backlog, never silently dropped | ✎ |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview
@@ -227,7 +228,7 @@ manifest points at the same file; opencode gets the same table from a `config()`
 
 | Server | Transport | Why |
 |---|---|---|
-| `keel` | stdio (`uv run --script`) | the 34 tools above |
+| `keel` | stdio (`uv run --script`) | the 35 tools above |
 | `context7` | http | **current** library docs — beats the model's training cutoff |
 | `deepwiki` | http | how a real repo actually solved it |
 | `playwright` | stdio (`npx`) | rendered-DOM extraction for the design/frontend layer |
@@ -239,7 +240,7 @@ needs a container and a key, so it stays opt-in.
 
 ## Shared doctrine
 
-`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.6), the interview
+`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.7), the interview
 funnel, the brainstorm protocol, the field-shape engine, contract testing, the feedback loop, the
 static-analysis and knowledge-source doctrines, the assumption-surfacing rule, the agent roster, the
 model tiers, and the self-model.

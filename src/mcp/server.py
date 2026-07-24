@@ -217,6 +217,35 @@ def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
     return tools.ledger_resolve(ledger, pin_id, evidence)
 
 
+@mcp.tool(annotations={"title": "Ledger — Correctness Unknown (the honest exit)", **_RW})
+def ledger_mark_correctness_unknown(
+    ledger: str,
+    pin_id: str,
+    blocked_by: str,
+    attempted: list,
+    determinism: str | None = None,
+    rung: str | None = None,
+) -> dict:
+    """The work was DONE and its correctness could not be established. Blocks closure; forces a next move.
+
+    Use when the evidence stack was actually walked — existing tests, then static checks, then a
+    smoke probe or behavioral observation, then diff-risk review — and none of them could speak. On a
+    legacy codebase this is the common case, and it is not a failure: it is the honest report of a
+    missing oracle. Reporting it as `resolved` instead is the exact "claiming vs doing" failure this
+    package exists to find.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin whose correctness could not be established.
+        blocked_by: What prevented verification (required — an unexplained unknown is a shrug).
+        attempted: The evidence stack you walked, e.g. ["tests", "typecheck", "smoke_probe"].
+        determinism: Optional D0 | D1 | D2 — how the checks you did run reproduce.
+        rung: Optional self_check | re_read | observed | cross_derived — how far you got.
+    """
+    return tools.ledger_mark_correctness_unknown(
+        ledger, pin_id, blocked_by, attempted, determinism, rung)
+
+
 @mcp.tool(annotations={"title": "Ledger — Defer a Pin", **_RW})
 def ledger_defer(ledger: str, pin_id: str) -> dict:
     """Mark a pin out of scope now (YAGNI at spec level) — it stays as future backlog.
