@@ -38,7 +38,7 @@ Three rules fall out, and only the first is obvious:
 
 The instruction file is the **user's**. We own a fence and nothing else:
 
-```
+```html
 <!-- keel:begin v1 sha256=… -->   ← generated: policies · elected pins · NOT-decided pins · generated files
 <!-- keel:end -->
 ```

@@ -63,6 +63,7 @@ one bad edit the reviewer catches; the cost of a false block is an agent that ca
 Contract: stdin = PreToolUse JSON; stdout = a permission decision; exit 0 either way.
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -75,9 +76,12 @@ ALLOWED_SUFFIXES = (".md", ".txt", ".rst")
 ALLOWED_PARTS = (".audit", "ledger.json", "graph.json")
 TEST_MARKERS = ("test_", "_test.", "/tests/", "\\tests\\", ".test.", ".spec.", "__tests__")
 
-# The documented default auto-memory store: ~/.claude/projects/<project>/memory/. Matched as an
-# ordered pair of path segments so a project directory of any name sits between them.
+# The documented default auto-memory store: ~/.claude/projects/<project>/memory/. One segment of any
+# name sits between the two fixed parts — spelled out, so this matches the documented layout rather
+# than anything that merely contains both pieces somewhere.
 MEMORY_DEFAULT_PARTS = ("/.claude/projects/", "/memory/")
+_DEFAULT_LAYOUT_RE = re.compile(
+    re.escape(MEMORY_DEFAULT_PARTS[0]) + r"[^/]+" + re.escape(MEMORY_DEFAULT_PARTS[1]))
 # Settings files that may relocate it via `autoMemoryDirectory` (user scope first, then project).
 SETTINGS_FILES = ("~/.claude/settings.json", ".claude/settings.json", ".claude/settings.local.json")
 
@@ -144,9 +148,10 @@ def _is_host_memory(path: str, cwd: str) -> bool:
     low = path.replace("\\", "/").lower()
     if any(low.startswith(d) for d in _configured_memory_dirs(cwd)):
         return True
-    head, tail = MEMORY_DEFAULT_PARTS
-    i = low.find(head)
-    return i != -1 and low.find(tail, i + len(head)) != -1
+    # Exactly ONE segment between the two — the project directory. `[^/]+` is what makes that
+    # literal instead of approximate: a `find` for the tail anywhere after the head would also
+    # swallow `…/projects/a/b/c/memory/`, which is not the documented layout and not ours to claim.
+    return _DEFAULT_LAYOUT_RE.search(low) is not None
 
 
 def main() -> None:

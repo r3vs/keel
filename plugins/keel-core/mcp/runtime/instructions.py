@@ -74,6 +74,22 @@ VERSION = 1
 #: default line budget for the managed region (see module docstring — this is a host limit, not taste)
 MAX_LINES = 60
 
+#: The region's header. Always emitted: a block of rules in someone's file with no statement of where
+#: it came from, who may change it, and what to do when it does not answer the question is worse than
+#: no block at all. `{ledger}` is the only substitution.
+_HEAD_TEMPLATE = (
+    "## Elected design — generated from the decisions ledger by Keel",
+    "",
+    "This project's decisions live in `{ledger}`, the single source of truth; each one",
+    "carries a `flip_criteria` saying when to reopen it. Read it with the `ledger_summary` MCP",
+    "tool before changing anything below. **Only the human's interview elects a decision.** If",
+    "this section does not answer your question, do not decide it silently — surface a vetoable",
+    "assumption pin (`ledger_surface_assumption`) and keep going.",
+)
+#: Header + a heading + one item + its clip note. Below this a budget cannot be honoured at all, and
+#: overrunning it silently is the exact failure the budget exists to prevent — so it is refused.
+_MIN_LINES = len(_HEAD_TEMPLATE) + 4
+
 _SEVERITY_RANK = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
 #: states in which the human has committed something — these are the elected truth
 _ELECTED = ("decided", "accepted", "resolved")
@@ -132,20 +148,21 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
 
     `generated` is passed in rather than read from the ledger: the paths come from what
     `generate_layers` / `generate_tokens` reported writing. A file list is a fact about a write that
-    happened, not a decision, so it does not belong in the ledger schema.
+    happened, not a decision, so it does not belong in the ledger schema. It is recovered across runs
+    from the previous region (`extract_generated`), so a regeneration that does not re-state it does
+    not silently drop it — see the note there.
     """
+    if max_lines < _MIN_LINES:
+        raise ValueError(
+            f"max_lines={max_lines} cannot be honoured: the header alone is {len(_HEAD_TEMPLATE)} "
+            f"lines and a region without it would be an unattributed block of rules in someone's "
+            f"file. Minimum {_MIN_LINES}. Refusing rather than silently overrunning the budget — an "
+            f"exceeded cap that reports success is the failure this budget exists to prevent."
+        )
     pins = list(data.get("pins") or [])
     policies = list(data.get("policies") or [])
 
-    head = [
-        "## Elected design — generated from the decisions ledger by Keel",
-        "",
-        f"This project's decisions live in `{ledger_path}`, the single source of truth; each one",
-        "carries a `flip_criteria` saying when to reopen it. Read it with the `ledger_summary` MCP",
-        "tool before changing anything below. **Only the human's interview elects a decision.** If",
-        "this section does not answer your question, do not decide it silently — surface a vetoable",
-        "assumption pin (`ledger_surface_assumption`) and keep going.",
-    ]
+    head = [line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
 
     elected = sorted((p for p in pins if p.get("state") in _ELECTED), key=_order)
     openp = sorted((p for p in pins if p.get("state") in _OPEN), key=_order)
@@ -191,6 +208,39 @@ def extract(text: str) -> Optional[dict]:
         return None
     body = text[begin.end():end.start()].lstrip("\n")
     return {"body": body, "recorded": begin.group("sha"), "start": begin.start(), "end": end.end()}
+
+
+_GENERATED_HEADING = "### Generated — never hand-edit"
+_BULLET_PATH_RE = re.compile(r"^- `([^`]+)`\s*$")
+
+
+def extract_generated(text: Optional[str]) -> list:
+    """The generated-file list recorded in an existing region, so a regeneration can carry it forward.
+
+    Without this the list is transient input, and a caller that regenerates for any other reason —
+    a pin was decided, a policy changed — silently drops the "never hand-edit" section while the
+    Claude-only rule file keeps asserting it. Two carriers of one fact, disagreeing, with the
+    drift-check reporting `in_sync` because it was asked the same incomplete question. That is the
+    precise failure this whole module exists to prevent, so the region stores its own answer.
+
+    Clearing stays possible and stays explicit: pass `[]`, not "omit the argument".
+
+    One honest limit: if the section was clipped by the line budget, only the listed paths come back
+    — the clip note is not a path and is skipped. The clip is declared in the region either way, so
+    this loses nothing that was not already declared missing, but a caller holding the full list
+    should pass it rather than rely on recovery.
+    """
+    found = extract(text or "")
+    if not found:
+        return []
+    out, inside = [], False
+    for line in found["body"].splitlines():
+        if line.startswith("### "):
+            inside = line.strip() == _GENERATED_HEADING
+            continue
+        if inside and (m := _BULLET_PATH_RE.match(line.strip())):
+            out.append(m.group(1))
+    return out
 
 
 def apply(text: Optional[str], body: str) -> str:

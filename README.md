@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-409%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-444%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -208,6 +208,11 @@ Drizzle · Prisma · Django · SQLAlchemy · GraphQL · TypeScript · Pydantic.
 `generate_layers` (DB + ORM + API + client) · `generate_tokens` (W3C DTCG → CSS/Tailwind/DESIGN.md) ·
 `extract_tokens`
 
+**Instruction carrier (2)** — the ledger projected into the file every host actually loads, because
+none of them loads `ledger.json`.
+`generate_instructions` (→ a managed region of `AGENTS.md` + the `CLAUDE.md` bridge) ·
+`instructions_diff` (`in_sync` / `stale` / `hand_edited` / `absent`)
+
 **Comprehension graph (9)** — tree-sitter native, real grammars, not regex.
 `build_graph` · `understand_codebase` · `explain_node` · `graph_query` · `guided_tour` ·
 `domain_view` · `graph_map` · `blast_radius` (staleness-gated) · `impact_overlay`
@@ -294,7 +299,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 11 composable ones, with the runtime **largely
-implemented**: 24 modules, 34 MCP tools, **428 tests green in CI**, 4 hosts.
+implemented**: 24 modules, 34 MCP tools, **444 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

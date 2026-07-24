@@ -394,58 +394,84 @@ def docs_claims(graph_path: str, docs: list) -> dict:
     return DC.analyze(list(docs), DC.load(graph_path))
 
 
+def _agents_md(root: str) -> Path:
+    return Path(root) / "AGENTS.md"
+
+
+def _read(path: Path) -> str | None:
+    return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
 def _instructions_render(ledger: str, root: str, max_lines: int, generated: list | None):
     """Shared by the generate/diff pair so the two can never disagree about what the region SHOULD be
-    — the same failure mode as a linter that reimplements its formatter."""
+    — the same failure mode as a linter that reimplements its formatter. That sharing is also what
+    makes the generated-file recovery below correct in both: ask the same question, get the same
+    answer.
+
+    `generated=None` means "keep whatever the region already records" — recovered from the region
+    itself, so a regeneration triggered by anything else (a pin decided, a policy added) cannot
+    silently drop the never-hand-edit list. `[]` clears it, explicitly.
+    """
     import instructions as INS
     led = _open_existing(ledger)
+    if generated is None:
+        generated = INS.extract_generated(_read(_agents_md(root)))
     try:
         rel = str(Path(ledger).resolve().relative_to(Path(root).resolve()))
     except ValueError:                      # ledger outside the project root — name it as given
         rel = ledger
     return INS, INS.render(led.data, max_lines=max_lines or INS.MAX_LINES,
-                           ledger_path=rel.replace("\\", "/"), generated=generated)
+                           ledger_path=rel.replace("\\", "/"), generated=generated), generated
 
 
 def generate_instructions(ledger: str, root: str = ".", generated: list | None = None,
                           generated_from: str = "", generated_by: str = "",
                           max_lines: int = 0, bridge: bool = True) -> dict:
-    INS, body = _instructions_render(ledger, root, max_lines, generated)
+    INS, body, effective = _instructions_render(ledger, root, max_lines, generated)
     base = Path(root)
-    agents = base / "AGENTS.md"
-    before = agents.read_text(encoding="utf-8") if agents.is_file() else None
+    agents = _agents_md(root)
     agents.parent.mkdir(parents=True, exist_ok=True)
-    agents.write_text(INS.apply(before, body), encoding="utf-8", newline="\n")
+    agents.write_text(INS.apply(_read(agents), body), encoding="utf-8", newline="\n")
     written = {"agents_md": str(agents)}
 
     if bridge:
         claude = base / "CLAUDE.md"
-        text = claude.read_text(encoding="utf-8") if claude.is_file() else None
-        bridged = INS.claude_bridge(text)
+        bridged = INS.claude_bridge(_read(claude))
         if bridged is not None:
             claude.write_text(bridged, encoding="utf-8", newline="\n")
             written["claude_md"] = str(claude)
 
-    if generated:
-        rule = base / ".claude" / "rules" / "keel-generated-files.md"
+    # The Claude-only rule is a projection of the SAME list the region carries, so it is rewritten
+    # and removed in lockstep with it. Letting it outlive an emptied list would leave two carriers
+    # of one fact disagreeing — the drift this module exists to make impossible.
+    rule = base / ".claude" / "rules" / "keel-generated-files.md"
+    if effective:
         rule.parent.mkdir(parents=True, exist_ok=True)
         rule.write_text(
-            INS.rule_generated_files(list(generated), generated_from or "the contract",
+            INS.rule_generated_files(list(effective), generated_from or "the contract",
                                      generated_by or "generate_layers"),
             encoding="utf-8", newline="\n")
         written["claude_rule"] = str(rule)
+    elif rule.is_file():
+        rule.unlink()
+        written["claude_rule_removed"] = str(rule)
 
-    return {"written": written, "region_lines": len(body.splitlines())}
+    return {"written": written, "region_lines": len(body.splitlines()),
+            "generated": sorted(str(g) for g in effective)}
 
 
 def instructions_diff(ledger: str, root: str = ".", generated: list | None = None,
-                      max_lines: int = 0) -> dict:
-    INS, body = _instructions_render(ledger, root, max_lines, generated)
-    agents = Path(root) / "AGENTS.md"
-    text = agents.read_text(encoding="utf-8") if agents.is_file() else None
-    out = INS.drift_check(text, body)
-    claude = Path(root) / "CLAUDE.md"
-    ctext = claude.read_text(encoding="utf-8") if claude.is_file() else None
-    out["claude_bridge"] = "present" if (ctext and INS.claude_bridge(ctext) is None) else "missing"
+                      max_lines: int = 0, bridge: bool = True) -> dict:
+    INS, body, effective = _instructions_render(ledger, root, max_lines, generated)
+    agents = _agents_md(root)
+    out = INS.drift_check(_read(agents), body)
+    ctext = _read(Path(root) / "CLAUDE.md")
+    if not bridge:
+        # The caller opted out of the bridge; reporting it "missing" would describe a deliberate
+        # choice as a defect, and a status nobody can ever clear gets ignored on sight.
+        out["claude_bridge"] = "not_requested"
+    else:
+        out["claude_bridge"] = "present" if (ctext and INS.claude_bridge(ctext) is None) else "missing"
     out["path"] = str(agents)
+    out["generated"] = sorted(str(g) for g in effective)
     return out

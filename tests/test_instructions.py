@@ -77,6 +77,16 @@ class TestRender(unittest.TestCase):
         self.assertLessEqual(len(body.splitlines()), 30)
         self.assertRegex(body, r"\(\+\d+ more")
 
+    def test_an_unhonourable_budget_is_refused_not_silently_overrun(self):
+        """A cap that reports success while exceeding itself is the failure the cap exists to
+        prevent — so a budget below the header is a ValueError, not a best effort."""
+        for n in (0, 5, ins._MIN_LINES - 1):
+            with self.subTest(max_lines=n):
+                with self.assertRaises(ValueError):
+                    ins.render(LEDGER, max_lines=n)
+        self.assertLessEqual(len(ins.render(LEDGER, max_lines=ins._MIN_LINES).splitlines()),
+                             ins._MIN_LINES)
+
     def test_render_is_stable(self):
         self.assertEqual(ins.render(LEDGER), ins.render(LEDGER))
 
@@ -133,6 +143,26 @@ class TestDriftCheck(unittest.TestCase):
         out = ins.drift_check(text, body)
         self.assertEqual(out["status"], "hand_edited")
         self.assertIn("ledger", out["detail"])
+
+
+class TestGeneratedListSurvivesRegeneration(unittest.TestCase):
+    """The region records its own generated-file list, so a regeneration triggered by something else
+    cannot silently drop it. Without this, `AGENTS.md` loses the never-hand-edit section while the
+    Claude-only rule keeps asserting it — two carriers of one fact, disagreeing."""
+
+    def test_recovered_from_an_existing_region(self):
+        text = ins.apply(None, ins.render(LEDGER, generated=["src/types.ts", "db/001.sql"]))
+        self.assertEqual(ins.extract_generated(text), ["db/001.sql", "src/types.ts"])
+
+    def test_nothing_to_recover_is_empty_not_an_error(self):
+        self.assertEqual(ins.extract_generated(None), [])
+        self.assertEqual(ins.extract_generated("# just prose\n"), [])
+        self.assertEqual(ins.extract_generated(ins.apply(None, ins.render(LEDGER))), [])
+
+    def test_only_the_generated_section_is_harvested(self):
+        """Pin lines are also backticked bullets — a looser reader would harvest pin ids as paths."""
+        text = ins.apply(None, ins.render(LEDGER, generated=["a.ts"]))
+        self.assertEqual(ins.extract_generated(text), ["a.ts"])
 
 
 class TestClaudeBridge(unittest.TestCase):

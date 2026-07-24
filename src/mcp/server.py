@@ -640,6 +640,9 @@ def generate_instructions(ledger: str, root: str = ".", generated: list[str] | N
         ledger: Path to ledger.json — the source this region is a projection of.
         root: Project root that owns AGENTS.md (the USER's repo, not the skill's).
         generated: Paths that a generator wrote, to be marked never-hand-edit (from generate_layers).
+            OMIT to keep whatever the region already records — a regeneration triggered by anything
+            else must not silently drop the list. Pass `[]` to clear it (which also removes the
+            Claude-only rule file, so the two never disagree).
         generated_from: The contract those files were generated from (named in the warning).
         generated_by: The tool that generated them.
         max_lines: Line budget for the region; 0 = the default 60. Two hosts penalize length, so any
@@ -652,7 +655,7 @@ def generate_instructions(ledger: str, root: str = ".", generated: list[str] | N
 
 @mcp.tool(annotations={"title": "Instructions Drift (AGENTS.md region vs the ledger)", **_RO})
 def instructions_diff(ledger: str, root: str = ".", generated: list[str] | None = None,
-                      max_lines: int = 0) -> dict:
+                      max_lines: int = 0, bridge: bool = True) -> dict:
     """Is the AGENTS.md managed region still what the ledger projects? WRITES NO FILE.
 
     Four outcomes, and the distinction between two of them is the point: `hand_edited` (the region's
@@ -664,10 +667,14 @@ def instructions_diff(ledger: str, root: str = ".", generated: list[str] | None 
     Args:
         ledger: Path to ledger.json.
         root: Project root holding AGENTS.md / CLAUDE.md.
-        generated: Same generated-file list passed to generate_instructions (else it reads as stale).
+        generated: Omit to use whatever the region records (the same recovery generate_instructions
+            does, so asking both the same question gets the same answer); pass a list to check
+            against it instead.
         max_lines: Same budget passed to generate_instructions; 0 = the default 60.
+        bridge: Set False if the CLAUDE.md bridge was deliberately skipped, so it reports
+            `not_requested` rather than flagging a deliberate choice as `missing`.
     """
-    return tools.instructions_diff(ledger, root, generated, max_lines)
+    return tools.instructions_diff(ledger, root, generated, max_lines, bridge)
 
 
 if __name__ == "__main__":
