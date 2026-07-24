@@ -20,8 +20,19 @@ import unittest
 
 SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py")
 
-# The set the adapter must advertise. If a tool silently stops being registered, the capability
-# becomes invisible to the agent again — which is the whole gap this server exists to close.
+# The COMPLETE inventory of what the adapter advertises. If a tool silently stops being registered,
+# the capability becomes invisible to the agent again — which is the whole gap this server exists to
+# close.
+#
+# Asserted as set EQUALITY, not containment, and that is the load-bearing part. As a subset this list
+# guarded only the tools someone remembered to add: five (`spend_report`, `design_scan`,
+# `generate_tokens`, `tokens_diff`, `extract_tokens`) were advertised by the server for months with no
+# guard at all, because nothing forced the list to grow. Equality makes adding a tool here part of
+# adding a tool — the small friction is the mechanism, not a side effect of it.
+#
+# Safe to assert because registration is unconditional: all 34 `@mcp.tool` decorations sit at module
+# level in server.py, so `tools/list` is deterministic. A tool registered behind an `if` would have to
+# be handled explicitly rather than by loosening this back to a subset.
 EXPECTED_TOOLS = {
     "ledger_summary", "interview_next", "contract_diff", "reconcile_layers", "blast_radius",
     "generate_layers", "findings_gate", "build_waves", "challenge_oracle", "render_map",
@@ -34,9 +45,13 @@ EXPECTED_TOOLS = {
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
     # the instruction-file carrier — the ledger projected into the file every host actually loads
     "generate_instructions", "instructions_diff",
+    # design contract (DTCG) + the frontend/design scanner
+    "generate_tokens", "tokens_diff", "extract_tokens", "design_scan",
+    # cost & token telemetry — the measurer's surface
+    "spend_report",
 }
 WRITE_TOOLS = {
-    "generate_layers", "render_map", "generate_instructions",
+    "generate_layers", "render_map", "generate_instructions", "generate_tokens",
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
@@ -107,8 +122,19 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
             if msg.get("id") == cls._id:   # skip any notifications interleaved on the wire
                 return msg
 
-    def test_every_registered_tool_is_advertised(self):
-        self.assertEqual(EXPECTED_TOOLS - set(self.tools), set(), "tools missing from tools/list")
+    def test_the_advertised_set_is_exactly_the_inventory(self):
+        """Both directions, because they are different bugs.
+
+        Missing = a capability went invisible to the agent (the regression this file exists for).
+        Extra = a tool was added and the inventory was not, so it silently has no guard — which is
+        how five of them went unguarded until someone read this comment against the server.
+        """
+        advertised = set(self.tools)
+        self.assertEqual(EXPECTED_TOOLS - advertised, set(),
+                         "registered tools missing from tools/list — the agent can no longer see them")
+        self.assertEqual(advertised - EXPECTED_TOOLS, set(),
+                         "server.py advertises tools this inventory does not list. Add them to "
+                         "EXPECTED_TOOLS (and to WRITE_TOOLS if they write), so they are guarded too")
 
     def test_every_tool_carries_a_description_and_object_schema(self):
         for name in sorted(EXPECTED_TOOLS):
