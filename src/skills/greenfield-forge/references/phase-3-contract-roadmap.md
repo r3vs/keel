@@ -70,6 +70,17 @@ rollback, instrumentation, and the signal manifest — are `BuildItem`s too (`ac
 the later waves and are executed in Phases 6–7 (`references/phase-6-release.md`,
 `references/phase-7-operate-evolve.md`).
 
+## Last step — the paved road includes the instruction carrier
+
+Once the contract is propagated and the backlog sequenced, run `generate_instructions` (ledger → a
+managed region of the new project's `AGENTS.md`, plus the `CLAUDE.md` bridge, plus the
+never-hand-edit list for whatever `generate_layers` / `generate_tokens` just wrote). This belongs in
+Wave 1, not at release: **no host loads `ledger.json`**, and every Phase-4 `BuildItem` runs in a
+fresh context, so an executor inherits the elected design only if the carrier already holds it. A
+new project is the one case where there is no prose to preserve — but the tool still writes only
+between its markers, so anything the user adds later survives. Doctrine:
+`references/core/instruction-files.md`.
+
 ## Guardrail
 
 Only **decided** pins yield `BuildItem`s. `deferred` and undecided pins produce nothing — no

@@ -39,6 +39,16 @@ The topology almost always produces this shape — present it this way, but let 
 > emerges — it is not the answer. Typing it out as if it were is how a hardcoded order sneaks back
 > in wearing "emergent" as a costume.
 
+## Last step — write the elected to-be where an agent will actually read it
+
+Once the roadmap is sequenced, run `generate_instructions` (ledger → a managed region of the repo's
+`AGENTS.md`, plus the `CLAUDE.md` bridge). Not cosmetic: **no host loads `ledger.json`**, and every
+Phase-4 item runs in a fresh context, so without the carrier each executor restarts from the same
+blank slate that produced the mess. It writes only between its own markers, so an existing
+`AGENTS.md` survives word for word. Re-run it whenever a pin is decided, reopened or resolved;
+`instructions_diff` reports `absent` / `stale` / `hand_edited`. Doctrine:
+`references/core/instruction-files.md`.
+
 ## Guardrail
 Never schedule a rewrite. Every item is minimum-change (the Phase-4 ladder enforces this).
 "Rewrite module X" appears ONLY if the user explicitly opted a `design_concern` into a rewrite
