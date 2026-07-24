@@ -30,6 +30,7 @@ import collections
 import subprocess
 from typing import Iterable, Optional
 
+import cochange
 import graph as graphmod
 
 _DONE_STATES = ("resolved", "accepted")
@@ -106,39 +107,16 @@ def _churn(repo: str, files: Iterable[str], since: str = "") -> dict:
     return dict(counts)
 
 
-def cochanged_outside(repo: str, files: Iterable[str], min_commits: int = 3,
-                      limit: int = 500) -> list[dict]:
+def cochanged_outside(repo: str, files: Iterable[str],
+                      min_commits: int = cochange.DEFAULT_MIN_COMMITS,
+                      limit: int = cochange.DEFAULT_WINDOW) -> list[dict]:
     """Files that historically change WITH the zone but sit outside it.
 
-    A second, independent carrier for the same thesis the shape engine serves: cross-layer drift.
-    The shapes compare declared structure; this compares recorded behaviour — what the team has
-    actually had to edit together. Two carriers agreeing is strong; two disagreeing is itself the
-    finding, which is why this never merges into the shape signal.
+    Delegates to `cochange.outside` — the same primitive the standalone omission check uses, because
+    two implementations of "what moves together" would eventually disagree, and a package that hunts
+    divergence cannot ship its own. This wrapper exists only to name the landing-zone reading of it.
     """
-    log = _run_git(["log", f"-{limit}", "--format=%H", "--name-only"], repo)
-    if not log:
-        return []
-    zone = set(files)
-    pair: dict[str, int] = collections.Counter()
-    current: list[str] = []
-    commits: list[list[str]] = []
-    for line in log.splitlines() + [""]:
-        line = line.strip()
-        if not line:
-            if current:
-                commits.append(current)
-            current = []
-        elif "/" in line or "." in line:
-            current.append(line)
-    for touched in commits:
-        tset = set(touched)
-        if not (tset & zone):
-            continue
-        for f in tset - zone:
-            pair[f] += 1
-    return [{"file": f, "co_commits": n}
-            for f, n in sorted(pair.items(), key=lambda kv: (-kv[1], kv[0]))
-            if n >= min_commits]
+    return cochange.outside(repo, files, min_commits=min_commits, limit=limit)
 
 
 def _test_files(g: graphmod.Graph) -> set:

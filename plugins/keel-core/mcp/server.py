@@ -348,6 +348,83 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return tools.ledger_label_failure(ledger, pin_id, failure_class, detail, phase, source)
 
 
+@mcp.tool(annotations={"title": "Ledger — Cross-Provider Re-Derivation (the `cross_derived` rung)", **_RW})
+def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
+                        agreement: str, notes: str = "") -> dict:
+    """Re-derive one high-stakes claim with a DIFFERENT provider; disagreement is the signal.
+
+    A single-provider hallucination is stubborn under repetition and fragile under substitution —
+    ask the same model twice and it reproduces its own error, ask a different family and it rarely
+    invents the same wrong thing. Agreement earns the `cross_derived` rung. Disagreement moves the
+    pin to `needs_input` (`contested`) with both derivations as options, because a claim two
+    independent providers disagree about is exactly the one a human must look at.
+
+    Enforced deterministically: at least two derivations from at least two DISTINCT providers. Two
+    runs of one model are repetition wearing an independence badge. Whether the answers *mean* the
+    same thing is your judgment, and is stored as such.
+
+    Not mandatory at any severity — that trade should be elected with a measured number in hand.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin carrying the claim.
+        claim: The specific claim re-derived (not the whole pin).
+        derivations: [{provider, model, result, reasoning?}] — two or more, distinct providers.
+        agreement: agree | disagree | partial.
+        notes: Where they diverged, if they did.
+    """
+    return tools.ledger_cross_derive(ledger, pin_id, claim, derivations, agreement, notes)
+
+
+@mcp.tool(annotations={"title": "Co-Change — the other half of this edit", **_RO})
+def cochange_omissions(changed: list | None = None, repo: str = ".", git_base: str = "",
+                       min_commits: int = 3, window: int = 500) -> dict:
+    """Files this diff historically would have touched and did not — cross-layer drift from git.
+
+    A second, independent carrier for the thesis the field-shape engine already serves. Shapes
+    compare *declared structure* and miss coupling that lives in config, fixtures, docs and
+    convention; history compares *recorded behaviour* and catches exactly that. Two carriers
+    agreeing is a strong finding — two disagreeing is itself the finding, which is why this is never
+    merged into the shape signal.
+
+    Frequencies only, no verdict: a deliberate omission looks identical to a forgotten one from
+    here. `ubiquity` travels with every row so a lockfile that changes in every commit is discounted
+    by you rather than filtered by a rule you cannot see. Renames are not followed.
+
+    Args:
+        changed: The changed files. Omit only if passing git_base.
+        repo: Repo root (default: cwd).
+        git_base: Diff against this ref to derive the changed set.
+        min_commits: Declared hypothesis — shared commits before a pair is worth reporting.
+        window: How many commits back to read.
+    """
+    return tools.cochange_omissions(changed, repo, git_base, min_commits, window)
+
+
+@mcp.tool(annotations={"title": "Scope Check — declared blast radius vs actual diff", **_RO})
+def scope_check(ledger: str, pin_id: str, changed: list | None = None, repo: str = ".",
+                git_base: str = "") -> dict:
+    """Did the change stay inside the boundary it declared? A post-execution set difference.
+
+    The boundary is not invented here: it is the landing zone the pin already recorded, falling back
+    to its anchors' files — so the work is measured against something a human saw, never against a
+    line drawn afterwards. Files outside it are candidate `scope_creep`. Boundary files left
+    untouched are NOT a finding: a blast radius is what could be affected, and the minimum-change
+    ladder aims below it by design.
+
+    When no boundary was ever declared it says `checked: false` and why. An unchecked scope must
+    never read as a clean one.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin whose work is being checked.
+        changed: The changed files. Omit only if passing git_base.
+        repo: Repo root (default: cwd).
+        git_base: Diff against this ref to derive the changed set.
+    """
+    return tools.scope_check(ledger, pin_id, changed, repo, git_base)
+
+
 @mcp.tool(annotations={"title": "Agent-Ready Gate — two layers, kept apart", **_RO})
 def agent_ready(ledger: str, pin_id: str = "") -> dict:
     """Is this item handable to an executor, or merely unblocked? Preconditions (D0) + quality (D2).

@@ -176,6 +176,42 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return {"event": event, "foresight": led.foresight(pin_id)}
 
 
+def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
+                        agreement: str, notes: str = "") -> dict:
+    led = _open_existing(ledger)
+    record = led.cross_derive(pin_id, claim, derivations, agreement, notes)
+    led.save()
+    _refresh_live_maps(ledger)
+    pin = led.pin(pin_id)
+    return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
+            "verification": pin.get("verification")}
+
+
+def cochange_omissions(changed: list | None = None, repo: str = ".", git_base: str = "",
+                       min_commits: int = 3, window: int = 500) -> dict:
+    import cochange
+    import impact
+    files = list(changed or [])
+    if not files and git_base:
+        files = impact.changed_files_from_git(repo, git_base)
+    if not files:
+        raise RuntimeError(
+            "no changed files — pass `changed` explicitly or a `git_base` to diff against; "
+            "an empty diff would report zero omissions, and that would read as clean"
+        )
+    return cochange.omissions(repo, files, min_commits=min_commits, limit=window)
+
+
+def scope_check(ledger: str, pin_id: str, changed: list | None = None, repo: str = ".",
+                git_base: str = "") -> dict:
+    import impact
+    led = _open_existing(ledger)
+    files = list(changed or [])
+    if not files and git_base:
+        files = impact.changed_files_from_git(repo, git_base)
+    return impact.declared_vs_actual(led.pin(pin_id), files)
+
+
 def agent_ready(ledger: str, pin_id: str = "") -> dict:
     import agentready
     led = _open_existing(ledger)

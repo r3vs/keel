@@ -42,6 +42,19 @@ different evidence path, not by none.
 single-provider hallucination is unlikely to reproduce cross-provider, so **the disagreement itself is
 the safety signal** — a divergence is not a tie to be broken by picking one, it is a finding.
 
+**A rung is earned, not declared**, and the top one now has a mechanism (`ledger_cross_derive`). The
+asymmetry it rests on is worth stating plainly: a model's error is *stubborn under repetition and
+fragile under substitution*. Re-running one model reproduces its own mistake, which is why
+same-provider repetition is refused — that is repetition wearing an independence badge, and it would
+buy a green rung for nothing. What can be checked mechanically is checked (two derivations, two
+distinct providers, `D0`); whether the two answers *mean the same thing* is judgment and stays `D2`.
+The provider split itself comes off the existing profile D (`core/model-tiers.md`), which was wired
+and green long before anything used it as a safety signal.
+
+Deliberately optional at every severity. Making the rung obligatory above a threshold roughly doubles
+the cost of the most expensive pins, and a package that refuses tuned constants elsewhere does not
+get to invent one here — that trade is elected with a measured number in hand.
+
 ## The dial — when determinism is a win, and when it is a lie
 
 Determinism is a **per-step dial, not a property of a module**. The governing rule:

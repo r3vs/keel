@@ -573,6 +573,77 @@ class Ledger:
         }
         return pin["premortem"]
 
+    def cross_derive(self, pin_id: str, claim: str, derivations: list[dict],
+                     agreement: str, notes: str = "") -> dict:
+        """v0.9 — the `cross_derived` rung: the same claim re-derived by a DIFFERENT provider.
+
+        A single-provider hallucination is stubborn under repetition and fragile under substitution:
+        ask the same model twice and it reproduces its own error, ask a different family and it
+        rarely invents the same wrong thing. So agreement is a genuine strengthening and
+        **disagreement is the signal**, not a nuisance to average away.
+
+        What is deterministic here is narrow and checked: at least two derivations, and at least two
+        **distinct providers** — two runs of one model are a repetition wearing an independence
+        badge. Whether two answers *mean* the same thing is judgment, so `agreement` is supplied by
+        the caller and stored as the D2 it is.
+
+        Divergence does not silently mark the pin weaker: it moves it to `needs_input`
+        (`contested`), because a claim two independent derivations disagree about is exactly the one
+        a human must look at. It does **not** cascade to dependents the way an upheld challenge
+        does — nobody yet knows which side is wrong, and reopening the neighbourhood on an unresolved
+        disagreement would be churn, not caution.
+
+        Deliberately not mandatory at any severity: making it obligatory above a threshold doubles
+        the cost of the most expensive pins, and that trade should be elected with a measured number
+        in hand rather than assumed here.
+        """
+        pin = self.pin(pin_id)
+        _require(agreement in ("agree", "disagree", "partial"),
+                 "agreement must be agree | disagree | partial")
+        _require(bool(str(claim).strip()), "name the claim being re-derived")
+        derivations = list(derivations or [])
+        _require(len(derivations) >= 2,
+                 "cross-derivation needs at least two derivations — one is just the original claim")
+        for d in derivations:
+            _require(isinstance(d, dict), "each derivation must be an object")
+            for field in ("provider", "model", "result"):
+                _require(bool(str(d.get(field, "")).strip()),
+                         f"each derivation needs a non-blank {field}")
+        providers = {str(d["provider"]).strip().lower() for d in derivations}
+        _require(len(providers) >= 2,
+                 "at least two DISTINCT providers — re-running one model reproduces its own error, "
+                 "so same-provider repetition is not independent evidence "
+                 "(see core/model-tiers.md, profile D)")
+        record = {
+            "claim": str(claim).strip(),
+            "derivations": derivations,
+            "providers": sorted(providers),
+            "agreement": agreement,
+            "agreement_determinism": "D2",   # 'do these mean the same thing' is judgment
+            "independence_determinism": "D0",  # 'were the providers distinct' is checked
+            "notes": notes,
+            "timestamp": _now(),
+        }
+        pin.setdefault("cross_derivations", []).append(record)
+        if agreement == "agree":
+            verification = pin.get("verification") or {}
+            verification["rung"] = "cross_derived"
+            verification["cross_derived_by"] = sorted(providers)
+            pin["verification"] = verification
+        elif pin["state"] != "accepted":
+            pin["question"] = {
+                "prompt": (f"Two independent providers disagree on: {record['claim']}. "
+                           "Which derivation holds?"),
+                "options": [{"id": f"d{i}", "label": f"{d['provider']}/{d['model']}: {d['result']}"}
+                            for i, d in enumerate(derivations)]
+                           + [{"id": "neither", "label": "Neither — the claim itself is wrong"}],
+                "allow_freeform": True,
+            }
+            pin["state"] = "needs_input"
+            pin["substate"] = "contested"
+            pin["resolution_mode"] = "asked"   # a contested claim is never re-defaulted silently
+        return record
+
     def label_failure(self, pin_id: str, failure_class: str, detail: str,
                       phase: str, source: str = "measurer") -> dict:
         """v0.9 — label a failure that ACTUALLY happened, in the same words the premortem used.

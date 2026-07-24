@@ -37,6 +37,20 @@ never a change or a guess.
   graph node (`unmapped_files`) are new or renamed code the graph does not know yet — flag them for
   incremental re-analysis before the wave is declared done, so a fix does not silently introduce
   un-audited surface.
+- **Check the change against its own declared boundary** (`scope_check`). `impact_overlay` says what
+  the diff *reaches*; this says whether it stayed inside the zone the pin already recorded — a
+  boundary a human saw and accepted, not one drawn afterwards. Files outside it are candidate
+  `scope_creep` in the shared failure vocabulary. Files inside it and untouched are **not** a
+  finding: a blast radius is what could be affected, and the ladder aims below it by design. No
+  declared boundary at all reports `checked: false`, because an unchecked scope must never read as
+  a clean one.
+- **Ask git what this diff usually touches** (`cochange_omissions`). A second, independent carrier
+  for the same cross-layer thesis the field-shape engine serves: shapes compare *declared structure*
+  and miss coupling that lives in config, fixtures, docs and convention; history compares *recorded
+  behaviour* and catches exactly that. When both point at the same file, the finding is strong.
+  **When they disagree, that is itself the finding** — so never merge them into one score. The
+  output is frequencies and candidates, never a verdict: a deliberate omission and a forgotten one
+  look identical from git.
 - **Record the evidence, and record what it was run against.** Write the validation evidence into
   the pin (auditable) together with the diff/commit it covers: the two-stage review reads this
   record instead of re-deriving it, and evidence it cannot tie to the diff in front of it is not

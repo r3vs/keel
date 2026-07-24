@@ -581,3 +581,27 @@ Append-only like every other event, and it **changes no state**: labeling is obs
 Because both ends share the vocabulary, they join: `foresight(pin)` returns `anticipated` (feared and happened), `unrealized` (feared, did not), and `surprises` (happened, nobody saw it coming). That is a set comparison — `D0`, no scoring. There is deliberately **no hit-rate metric**: these events are rare, human and few, and a percentage computed over them would be a statistic with no population, which is exactly the kind of number the trust-axes doc refuses.
 
 The surprises are the interesting column. A premortem that anticipates everything is either very good or written after the fact, and only the immutable timestamps can tell you which.
+
+### `cross_derivations` — the `cross_derived` rung, earned rather than declared
+
+The verification ladder's top rung (v0.7) had no mechanism: anything could claim it. Now it is earned by re-deriving one claim with a **different provider**.
+
+```jsonc
+"cross_derivations": [{
+  "claim": "lib X still supports streaming in v4",
+  "derivations": [
+    { "provider": "anthropic", "model": "…", "result": "yes, see docs §…" },
+    { "provider": "openai",    "model": "…", "result": "no — removed in v4" }
+  ],
+  "providers": ["anthropic", "openai"],
+  "agreement": "disagree",
+  "independence_determinism": "D0",   // were the providers distinct? checked
+  "agreement_determinism": "D2"       // do the answers MEAN the same? judged
+}]
+```
+
+The reason this works at all is asymmetric: a single-provider hallucination is **stubborn under repetition and fragile under substitution**. Ask the same model twice and it reproduces its own error; ask a different family and it rarely invents the same wrong thing. So the schema enforces the only part that is checkable — at least two derivations from at least two *distinct* providers — and refuses same-provider repetition, which is repetition wearing an independence badge.
+
+Agreement sets `verification.rung = "cross_derived"`. **Disagreement is the signal, not a nuisance**: the pin moves to `needs_input` with substate `contested` and both derivations become options, because a claim two independent providers disagree about is exactly the one a human must look at. It deliberately does **not** cascade to dependents the way an upheld challenge does — nobody yet knows which side is wrong, and reopening the neighbourhood on an unresolved disagreement is churn, not caution.
+
+The rung is **not mandatory at any severity**. Making it obligatory above a threshold roughly doubles the cost of the most expensive pins, and that trade should be elected with a measured number in hand rather than assumed by a schema.

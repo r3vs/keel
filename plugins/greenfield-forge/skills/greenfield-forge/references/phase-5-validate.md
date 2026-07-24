@@ -36,6 +36,15 @@ built* work instead of *closed gaps*.
   passes for the right reason. Never set `resolved` from this gate alone.
 - Mutation results gate whether a Track-A test is trustworthy: a test that does not kill mutants is
   not accepted as validation.
+- **Check the slice against its own declared boundary** (`scope_check`) once the tree stops being
+  empty. Files outside the zone the pin recorded are candidate `scope_creep`; files inside and
+  untouched are not a finding. In `forge` mode on a fresh tree there is often no boundary to check
+  against, and it says `checked: false` rather than reporting a clean pass — unchecked is not clean.
+- **Once there is history, ask git what this diff usually touches** (`cochange_omissions`). It is
+  worth less here than in rescue and worth stating why: a young project has little recorded
+  behaviour, so the carrier is thin by construction. It grows exactly as `slice` and `evolve` mode
+  accumulate the coupling that generation was supposed to prevent — which makes it the honest check
+  on whether the contract really is the single carrier the forge claims it is.
 
 ## Convergence check (greenfield-specific)
 

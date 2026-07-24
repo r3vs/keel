@@ -93,5 +93,64 @@ def overlay(data: dict, changed_files: Iterable[str], *, depth: int = 1) -> dict
     }
 
 
+def declared_vs_actual(pin: dict, changed_files: Iterable[str]) -> dict:
+    """Did the change stay inside the boundary it declared? A set difference, post-execution.
+
+    The declared boundary is not invented for this check: it is the landing zone the pin already
+    recorded (`readiness.zone.files`, v0.8), falling back to the files its anchors name. So the
+    executor is measured against a boundary a human saw and accepted, never against one this
+    function made up afterwards.
+
+    Two directions, and only one of them is a finding:
+
+    - `outside_declared` — files edited that the boundary did not cover. Candidate `scope_creep`,
+      in the shared failure vocabulary (`ledger.FAILURE_CLASSES`).
+    - `declared_untouched` — boundary files never edited. **Not** a finding. A blast radius is what
+      *could* be affected; touching less than all of it is the ladder working.
+
+    Deterministic, and it states no verdict for the same reason the readiness evidence does not:
+    a widened scope can be discipline failing or the zone having been wrong, and only a reader can
+    tell those apart. When no boundary was ever declared it says so — an unchecked scope must never
+    read as a clean one (`core/static-analysis.md`, the degrade rule).
+    """
+    actual = {_norm(f) for f in changed_files}
+    zone = ((pin.get("readiness") or {}).get("zone") or {}).get("files") or []
+    source = "readiness.zone"
+    if not zone:
+        zone = [(a.get("loc") or "").split(":")[0] for a in pin.get("anchors", [])]
+        zone = [z for z in zone if z]
+        source = "anchors"
+    declared = {_norm(f) for f in zone}
+    if not declared:
+        return {
+            "pin": pin.get("id"), "checked": False, "determinism": "D0",
+            "why": "no landing zone and no anchors — this change declared no boundary, so there is "
+                   "nothing to compare against. Unchecked is not clean.",
+            "changed_files": sorted(actual),
+        }
+    outside_declared = sorted(actual - declared)
+    return {
+        "pin": pin.get("id"),
+        "checked": True,
+        "determinism": "D0",
+        "declared_from": source,
+        "declared": sorted(declared),
+        "changed_files": sorted(actual),
+        "outside_declared": outside_declared,
+        "declared_untouched": sorted(declared - actual),
+        "candidates": [{
+            "failure_class": "scope_creep",
+            "confidence": "extracted",
+            "provenance": "blast_radius_declared_vs_actual",
+            "files": outside_declared,
+            "as_is": f"{len(outside_declared)} file(s) edited outside the declared boundary",
+            "question": "Did the scope legitimately widen (re-declare the zone), or did the work "
+                        "spread past what was approved?",
+        }] if outside_declared else [],
+        "note": "Touching less than the declared zone is not a finding — a blast radius is what "
+                "COULD be affected, and the minimum-change ladder aims below it by design.",
+    }
+
+
 def load(path: str | pathlib.Path) -> dict:
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))

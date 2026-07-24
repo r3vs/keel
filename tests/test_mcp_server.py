@@ -54,13 +54,15 @@ EXPECTED_TOOLS = {
     "readiness_assess",
     # v0.9 — the agent-ready gate (D0 presence) and the challenger's premortem queue
     "agent_ready", "premortem_gaps", "ledger_premortem", "ledger_label_failure",
+    # new carriers: git history as an independent signal, and the cross_derived rung
+    "cochange_omissions", "scope_check", "ledger_cross_derive",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
-    "ledger_premortem", "ledger_label_failure",
+    "ledger_premortem", "ledger_label_failure", "ledger_cross_derive",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
