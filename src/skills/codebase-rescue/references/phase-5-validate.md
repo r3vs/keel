@@ -1,6 +1,7 @@
 # Phase 5 — Validate (data decides) — the loop's evidence gate
 
-Step 6 of the remediation loop. A fix is not done because the build is green — prove the gap
+Step 5 of the remediation loop — the **first** gate on a finished item, before any review judgment
+is spent. A fix is not done because the build is green — prove the gap
 closed, with evidence specific to the pin kind. Read-only: the validator produces a verdict,
 never a change or a guess.
 
@@ -36,8 +37,15 @@ never a change or a guess.
   graph node (`unmapped_files`) are new or renamed code the graph does not know yet — flag them for
   incremental re-analysis before the wave is declared done, so a fix does not silently introduce
   un-audited surface.
-- **Only on evidence** set `pin.state = resolved` and record the validation evidence in the pin
-  (auditable). Otherwise return the item to Phase 4 with the failing evidence attached — a
-  local retry of that item, NOT a global restart.
+- **Record the evidence, and record what it was run against.** Write the validation evidence into
+  the pin (auditable) together with the diff/commit it covers: the two-stage review reads this
+  record instead of re-deriving it, and evidence it cannot tie to the diff in front of it is not
+  evidence. On failure return the item to Phase 4 with the failing evidence attached — a local
+  retry of that item, NOT a global restart — and the review never runs on it.
+- **Evidence is necessary, not sufficient.** `pin.state = resolved` requires the evidence **and** a
+  `MERGE` from the two-stage review that follows. This gate proves the oracle *passes*; it cannot
+  see whether it passes for the right reason — a Track-A test that special-cases its own input is
+  green here and is exactly what the reviewer exists to catch. Never set `resolved` from this gate
+  alone.
 - Mutation results from `module-test-validity` gate whether a Track-A test is trustworthy: a
   test that does not kill mutants is not accepted as validation.

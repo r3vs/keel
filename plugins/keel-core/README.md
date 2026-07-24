@@ -131,13 +131,24 @@ report that reads as clean.
 | Agent | Writes? | Tier | Role |
 |---|---|---|---|
 | `researcher` | ✗ read-only | T0 | comprehension, finding, grounded research — fans out wide |
-| `measurer` | ✗ read-only | T0 | the data verdict: Phase-5 validation, `flip_signal` evaluation |
+| `measurer` | ✗ read-only | T0 | the **evidence** gate — deterministic proof the gap closed; also `flip_signal` evaluation |
 | `executor` | ✎ **the single writer** | T1 | one closed scope, two-track TDD, fresh context, opens a PR — never merges |
 | `brainstorm` | ✗ read-only | T2 | 2–3 options with tradeoffs for ONE pinned fork, cited |
-| `reviewer` | ✗ read-only | T2 | adversarial pre-merge gate: spec compliance, then code quality |
-| `challenger` | ✗ read-only | T3 | refutes the elected oracle **upstream**, before a line is written |
+| `reviewer` | ✗ read-only | T2 | the **judgment** gate — is the oracle satisfied honestly, then code quality |
+| `challenger` | ✗ read-only | T3 | refutes the elected **oracle**; the one reopen path at a wave checkpoint |
 
-Three of those roles may only ever **reopen** a decision, never make one — `brainstorm` proposes,
+**One object each, and evidence before judgment.** The measurer owns evidence, the reviewer owns the
+code, the challenger owns the oracle. The cheap deterministic gate runs first, so review judgment is
+never spent on a change that doesn't close the gap — the package's own static-first doctrine applied
+to its own roster. The reviewer reads the measurer's record instead of re-running it (a
+deterministic check cannot disagree with itself on a second run) and adds what evidence structurally
+cannot see: a criterion can be green and still met for the wrong reason. `resolved` needs both.
+
+A reviewer that suspects the *decision* rather than the change does not reopen it — refuting an
+oracle is the T3 job, and it must leave a `ChallengeEvent` carrying the argument. An append-only
+ledger whose reopens have no *why* has stopped doing the one thing it is for.
+
+Three roles may only ever **reopen** a decision, never make one — `brainstorm` proposes,
 `challenger` refutes, and the feedback loop reopens on production signal. Read-only is enforced by
 the `tools:` allowlist with `disallowedTools` as a backstop, not by a paragraph asking nicely.
 

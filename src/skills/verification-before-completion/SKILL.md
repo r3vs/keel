@@ -85,9 +85,15 @@ gap opens back in the interview, not here.
 
 **Green is the executor's claim, not the measurer's evidence.** An `acceptance_criterion` the
 executor both writes and codes against is a target it can build *to* — a passing suite proves the code
-matches the test, not that it matches the intent. So the `measurer` (and the wave `reviewer`)
-**independently re-exercise the behavior** against the elected criterion and **never accept the
-executor's self-report** in its place: "it passes" is a claim to check, exactly like green CI —
-evidence about the change, not of the outcome. This is independent re-execution, *not* a hidden
-criterion: the ledger is one shared source of truth, so it is the same elected oracle, run by a role
-that did not write the code.
+matches the test, not that it matches the intent. So the `measurer` **independently re-exercises the
+behavior** against the elected criterion and **never accepts the executor's self-report** in its
+place: "it passes" is a claim to check, exactly like green CI — evidence about the change, not of the
+outcome. This is independent re-execution, *not* a hidden criterion: the ledger is one shared source
+of truth, so it is the same elected oracle, run by a role that did not write the code.
+
+**Independence is from the author, not from every other gate.** The `reviewer` that follows reads the
+measurer's record rather than running the deterministic checks a third time — that is still
+independent of the executor, because the measurer is who ran them, and a deterministic check re-run
+cannot disagree with itself. What the reviewer adds is the thing re-execution cannot: the criterion
+can be genuinely green and still met for the wrong reason (a test special-cased to its own input, a
+symptom relocated). Evidence proves it passes; judgment asks why.

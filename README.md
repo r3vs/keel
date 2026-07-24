@@ -138,8 +138,10 @@ resume tomorrow.
    for you — and no agent may commit a decision you didn't make.
 3. **Challenge** — a read-only `challenger` red-teams what you just elected, *before* anything is
    built on it. An oracle that is unfalsifiable or unsatisfiable is worse than none: it fossilizes.
-4. **Roadmap → TDD → validate** — the gap closes one item at a time, each fix red-first, each
-   decision carrying its **`flip_criteria`**: the condition under which it reopens itself later.
+4. **Roadmap → TDD → two gates** — the gap closes one item at a time, each fix red-first, then
+   **evidence before judgment**: a deterministic gate proves the criterion passes, and only then does
+   a reviewer judge whether it passes for the *right reason*. Every decision carries its
+   **`flip_criteria`**: the condition under which it reopens itself later.
 
 And the twist most tools skip: the agent must declare its **own** forced assumptions as vetoable
 pins. When the input is vague, high effort means making the gaps explicit — not guessing
@@ -225,18 +227,25 @@ dangling ones)
 
 **Serialized writing, parallel reading.**
 
-| Agent | Writes | Role |
-|---|---|---|
-| `researcher` | ✗ | comprehension, finding, grounded research — fans out wide |
-| `measurer` | ✗ | the data verdict: validation and `flip_signal` evaluation |
-| `executor` | ✎ | **the single writer** — one scope, fresh context, opens a PR, never merges |
-| `brainstorm` | ✗ | 2–3 cited options for ONE pinned fork |
-| `reviewer` | ✗ | adversarial pre-merge gate: spec compliance, then code quality |
-| `challenger` | ✗ | refutes the elected oracle **upstream**, before a line is written |
+| Agent | Writes | Owns | Role |
+|---|---|---|---|
+| `researcher` | ✗ | — | comprehension, finding, grounded research — fans out wide |
+| `measurer` | ✗ | **evidence** | deterministic proof the gap closed; also `flip_signal` evaluation |
+| `executor` | ✎ | the change | **the single writer** — one scope, fresh context, opens a PR, never merges |
+| `brainstorm` | ✗ | — | 2–3 cited options for ONE pinned fork |
+| `reviewer` | ✗ | **the code** | is the oracle satisfied *honestly*, then code quality |
+| `challenger` | ✗ | **the oracle** | refutes what you elected, **upstream**, before a line rests on it |
 
-Three of those roles may only ever *reopen* a decision, never make one. Read-only is enforced by the
-tool allowlist, not by a paragraph. Each role carries a **tier**, resolved to a concrete model per
-host profile — nothing hardcodes a model.
+**One object each, and evidence before judgment.** The cheap deterministic gate runs first, so review
+judgment is never spent on a change that doesn't close the gap — this package's own static-first
+doctrine applied to its own roster. The reviewer reads the measurer's record instead of re-running it
+(a deterministic check cannot disagree with itself twice) and adds what evidence structurally cannot
+see: a criterion can be green and still met for the wrong reason. `resolved` needs both.
+
+Three roles may only ever *reopen* a decision, never make one — and a reviewer that suspects the
+*decision* rather than the change hands it to the challenger rather than reopening it, so the reopen
+always carries a recorded argument. Read-only is enforced by the tool allowlist, not by a paragraph.
+Each role carries a **tier**, resolved to a concrete model per host profile — nothing hardcodes one.
 
 **Only your committed interview answer elects anything.** A `PreToolUse` hook denies product-code
 edits while blocker/high pins sit unanswered — and it fails open, never wedging your session.

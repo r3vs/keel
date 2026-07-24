@@ -1,6 +1,7 @@
 # Phase 5 — Validate (data decides) — the loop's evidence gate
 
-Step 6 of the build loop. A slice is not done because the build is green — prove it realizes the
+Step 5 of the build loop — the **first** gate on a finished item, before any review judgment is
+spent. A slice is not done because the build is green — prove it realizes the
 elected `to_be`, with evidence specific to the item kind. Read-only: the validator produces a
 verdict, never a change or a guess. This is rescue's Phase 5 with the checks pointed at *newly
 built* work instead of *closed gaps*.
@@ -26,9 +27,13 @@ built* work instead of *closed gaps*.
 
 - **Green build ≠ done.** Require the specific evidence above per kind. For decision-bearing items
   the Track-A test is the oracle — the same test that drove the build is the evidence.
-- **Only on evidence** set `pin.state = resolved` and record the evidence in the pin (auditable).
-  Otherwise return the item to Phase 4 with the failing evidence attached — a local retry of that
-  item, NOT a global restart.
+- **Record the evidence, and record what it was run against** — write it into the pin (auditable)
+  together with the diff/commit it covers, because the two-stage review that follows reads this
+  record instead of re-deriving it. On failure return the item to Phase 4 with the failing evidence
+  attached — a local retry of that item, NOT a global restart — and the review never runs on it.
+- **Evidence is necessary, not sufficient.** `pin.state = resolved` requires the evidence **and** a
+  `MERGE` from the two-stage review. This gate proves the oracle *passes*; it cannot see whether it
+  passes for the right reason. Never set `resolved` from this gate alone.
 - Mutation results gate whether a Track-A test is trustworthy: a test that does not kill mutants is
   not accepted as validation.
 

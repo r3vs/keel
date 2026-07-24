@@ -195,19 +195,24 @@ after any interruption.
 
 Inside "implement the minimum", the **ponytail ladder** decides the smallest intervention and
 logs the rung (rung 2 amended for slop = consolidate onto a canonical copy, never an N+1th).
-Two-stage review (spec compliance → code quality) gates each item; ADJUST/REJECT restart that
-item. **Wave checkpoints**: pause at each roadmap wave boundary (especially Wave 1, contracts)
-for human review — if aligning contracts revealed an elected truth was wrong, reopen the
-dependent pins instead of building on a bad foundation. Never run fully autonomous end-to-end.
+Each item then passes **two gates in a fixed order — evidence, then judgment**: the Phase-5
+evidence gate first (deterministic and cheap), and only if it holds, the two-stage review (is the
+oracle satisfied *honestly* → code quality); ADJUST/REJECT restart that item. **Wave checkpoints**:
+pause at each roadmap wave boundary (especially Wave 1, contracts) for human review — if aligning
+contracts revealed an elected truth was wrong, hand that build evidence to the `challenger`, which
+owns the one reopen path there. Never run fully autonomous end-to-end.
 See `references/phase-4-remediation.md`.
 
 ### Phase 5 — Validate (data decides) — the loop's evidence gate
 
-Step 6 of the loop. A fix is not done because the build is green. Validate the gap closed with
-kind-specific evidence: re-diff contract shapes at the anchors, re-query the graph, confirm the
-Track-A test kills mutants (Track-B still green for refactors). Read-only verdict — never
-guesses, never writes. Set `pin.state = resolved` only on evidence; on failure the item returns
-to Phase 4 (a local retry, not a global restart). See `references/phase-5-validate.md`.
+Step 5 of the loop, and the **first** gate on a finished item. A fix is not done because the build
+is green. Validate the gap closed with kind-specific evidence: re-diff contract shapes at the
+anchors, re-query the graph, confirm the Track-A test kills mutants (Track-B still green for
+refactors). Read-only verdict — never guesses, never writes. It runs before the review so judgment
+is never spent on a change that does not close the gap, and it records what it ran against so the
+review reads that record rather than re-deriving it. **Evidence is necessary, not sufficient**:
+`pin.state = resolved` needs this evidence *and* a MERGE. On failure the item returns to Phase 4 (a
+local retry, not a global restart). See `references/phase-5-validate.md`.
 
 ## Brainstorm (parallel, on-demand)
 

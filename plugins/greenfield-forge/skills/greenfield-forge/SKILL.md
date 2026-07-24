@@ -154,21 +154,26 @@ feature's behavior is a red test derived from the decision, written before any i
 Track B (characterization) applies only when EXTENDING an already-built slice (protect what the
 last wave built). The **ponytail ladder** enforces YAGNI *by construction*: build only the
 minimum a decision committed to — never speculative scaffolding (that is how slop is born); log
-the rung. Two-stage review (spec compliance → code quality) gates each item; ADJUST/REJECT
-restart it.
+the rung. Each item then passes **two gates in a fixed order — evidence, then judgment**: the
+Phase-5 evidence gate first (deterministic and cheap), and only if it holds, the two-stage review
+(is the oracle satisfied *honestly* → code quality); ADJUST/REJECT restart it.
 
 **Wave checkpoints**: pause at each wave boundary — especially after Wave 1 (the contract) — run
 the generated layers, confirm the contract holds end-to-end, and if building revealed a decision
-was wrong, **reopen the dependent `open_decision` pins** (`flip_criteria` fired) instead of
-building on a bad foundation. Never run fully autonomous end-to-end. See `references/phase-4-build.md`.
+was wrong, hand that evidence to the **`challenger`**, which owns the one reopen path there and
+records the argument in a `ChallengeEvent`. That is the *upstream* arc — the oracle was never
+satisfiable — and it is not a fired `flip_criteria`, which is production falsifying a decision that
+*was* sound. Never run fully autonomous end-to-end. See `references/phase-4-build.md`.
 
 ### Phase 5 — Validate (data decides) — the loop's evidence gate
 
-Step 6 of the loop. A slice is not done because the build is green. Validate with kind-specific
-evidence: re-extract the shapes across the generated layers and confirm **zero drift** (aligned
-by construction); the Track-A test kills mutants; the built behavior is reachable from an entry
-point; the paved road actually runs. Read-only verdict — never guesses, never writes. Set
-`pin.state = resolved` only on evidence; on failure the item returns to Phase 4 (a local retry).
+Step 5 of the loop, and the **first** gate on a finished item. A slice is not done because the build
+is green. Validate with kind-specific evidence: re-extract the shapes across the generated layers
+and confirm **zero drift** (aligned by construction); the Track-A test kills mutants; the built
+behavior is reachable from an entry point; the paved road actually runs. Read-only verdict — never
+guesses, never writes. It runs before the review so judgment is never spent on a slice that does not
+hold. **Evidence is necessary, not sufficient**: `pin.state = resolved` needs this evidence *and* a
+MERGE. On failure the item returns to Phase 4 (a local retry).
 The convergence check is the completeness traffic-light: resolved slices flip ghost→solid and the
 gap shrinks toward zero. See `references/phase-5-validate.md`.
 

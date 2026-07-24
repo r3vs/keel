@@ -75,12 +75,23 @@ for item in roadmap.ordered_item_ids:      # fresh invocation each
   2. if extending an already-built slice → Track B characterization test
   3. if item has a decision → Track A red test from to_be
   4. build the minimum that passes; ladder decides how; log the rung
-  5. two-stage review: (a) spec compliance vs to_be → (b) code quality
+  5. EVIDENCE gate — Phase 5 on the item (see phase-5-validate.md): zero drift across the
+     generated layers, mutants killed, behavior reachable. Deterministic, cheap, and FIRST.
+     On failure the item returns to step 4 with the failing evidence and step 6 never runs.
+  6. JUDGMENT gate — two-stage review: (a) is the oracle satisfied HONESTLY (reads the
+     recorded evidence, never re-derives it) → (b) code quality
         verdict MERGE | ADJUST | REJECT ; ADJUST/REJECT restart THIS item
-  6. Phase 5 validates on evidence (see phase-5-validate.md) → pin.state = resolved
-     on failure: item returns here with failing evidence (not a global restart)
-  7. clear context → next item
+  7. pin.state = resolved  — requires BOTH the evidence and a MERGE
+  8. clear context → next item
 ```
+
+**Why evidence precedes judgment.** The static-analysis doctrine applied to the roster
+(`references/core/agents.md`): the evidence gate runs a parse, a diff and a test suite; the review
+gate runs a mind. Cheap and deterministic first, so review judgment is never spent on a slice that
+does not hold. And the two answer different questions — the evidence gate proves **the oracle
+passes**, the review gate judges **whether it passes for the right reason** (a test that
+special-cases its own input, a criterion met in letter and defeated in spirit). Both are required
+for `resolved`; neither re-runs the other.
 
 ## Static signal, in-loop
 
@@ -95,16 +106,23 @@ Stop at each wave boundary — especially after **Wave 1 (contract & paved road)
 checkpoint:
 - Run the generated layers end-to-end; confirm the contract holds and the drift-check is green.
 - Re-validate downstream `depends_on` assumptions. **Building sometimes falsifies a decision** you
-  made on thin information — the elected shape turns out wrong once real code runs against it. When
-  it does, the pin's `flip_criteria` has fired: **reopen the dependent `open_decision` pins** (back
-  to `needs_input`) rather than building on a foundation you now know is wrong. This is the loop's
+  made on thin information — the elected shape turns out wrong once real code runs against it.
+  **Collect that evidence; do not reopen on it here.** The reviewer doubts the code; doubting the
+  *oracle* is the challenger's object, and routing it there is what gives the reopen a recorded
+  argument instead of a silent state change.
+- Re-run the **`challenger`** (`references/core/agents.md`) on the wave's decisions, handing it that
+  evidence — the Phase-2 upstream arc, now with what the build showed. It is cheapest to catch an
+  `unsatisfiable` `to_be` or an `unstated_assumption` here, before the contract propagates it into
+  another layer; a sustained `ChallengeEvent` reopens the pin (`challenged`) — **the one reopen path
+  at this checkpoint** (`references/core/decisions-ledger-spec.md` v0.6). Reopen the minimum: the
+  challenged pin plus only the dependents that rested on the falsified oracle. This is the loop's
   self-correction, and it is why greenfield is not fire-and-forget.
-- Re-run the **`challenger`** (`references/core/agents.md`) on the wave's decisions — the Phase-2
-  upstream arc, now with build evidence. It is cheapest to catch an `unsatisfiable` `to_be` or an
-  `unstated_assumption` here, before the contract propagates it into another layer; a sustained
-  `ChallengeEvent` reopens the pin (`challenged`) (`references/core/decisions-ledger-spec.md` v0.6).
-  A `flip_criteria` firing is production falsifying a decision downstream; a `ChallengeEvent` is the
-  build falsifying the oracle at the boundary — same reopen, opposite end of the lifecycle.
+- Do not call this a fired `flip_criteria`. The two arcs are decided by different evidence and
+  repaired differently: `flip_criteria` firing is **production** falsifying a decision that *was*
+  sound (downstream — reality moved, so re-decide with the new information); a `ChallengeEvent` is
+  the **build** showing the oracle was never satisfiable (upstream — it was wrong when it was born).
+  A `flip_signal` with no telemetry degrades to a `manual_checkpoint` question you may legitimately
+  ask at this boundary — *"did X happen?"* — and that one is still the downstream arc.
 
 A fully autonomous idea-to-app loop is how you get confident slop. A loop that pauses at wave
 boundaries is cautious at exactly the dependency points that matter.

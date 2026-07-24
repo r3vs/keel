@@ -128,17 +128,24 @@ applies only when extending an already-built slice.
 The **ponytail ladder** enforces YAGNI *by construction*: build only the minimum a decision
 committed to — never speculative scaffolding, which is exactly how slop is born.
 
+Then **two gates, in a fixed order: evidence, then judgment.** The evidence gate (Phase 5) is
+deterministic and cheap and runs first; the two-stage review runs second, reads that record rather
+than re-deriving it, and adds what evidence cannot see — is the criterion satisfied **honestly**, or
+special-cased into passing? A pin resolves only on evidence **and** a `MERGE`.
+
 **Wave checkpoints**: it pauses at each wave boundary — especially after Wave 1, the contract — runs
 the generated layers, confirms the contract holds end to end, and if building revealed a decision
-was wrong, **reopens the dependent pins** instead of building on a bad foundation. It never runs
-fully autonomous end-to-end.
+was wrong, hands that evidence to the **`challenger`**, which owns the one reopen path there. That
+is the *upstream* arc — the oracle was never satisfiable — as opposed to a fired `flip_criteria`,
+which is production falsifying a decision that *was* sound. It never runs fully autonomous
+end-to-end.
 
 ### Phase 5 — Validate (data decides)
 A slice is not done because the build is green. Re-extract the shapes across the generated layers
 and confirm **zero drift**; confirm the Track-A test kills mutants; confirm the behavior is
-reachable from a real entry point; confirm the paved road actually runs. Read-only verdict — a pin
-becomes `resolved` only on evidence. The convergence check is the completeness traffic-light:
-resolved slices flip ghost → solid and the gap shrinks toward zero.
+reachable from a real entry point; confirm the paved road actually runs. Read-only verdict, run by a
+role that did not write the code. The convergence check is the completeness traffic-light: resolved
+slices flip ghost → solid and the gap shrinks toward zero.
 
 ### Phase 6 — Release (ship the slice safely)
 The **codebase-facing** slice of release, not the CD platform: migration scripts, version,

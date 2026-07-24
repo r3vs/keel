@@ -139,18 +139,25 @@ pin, the graph neighborhood and its tests.
   didn't break what worked. Never apply red-TDD to structure-only changes.
 
 The **ponytail ladder** picks the smallest intervention that works and logs the rung — for slop,
-rung 2 means consolidating onto a canonical copy, never adding an N+1th. Two-stage review (spec
-compliance → code quality) gates every item.
+rung 2 means consolidating onto a canonical copy, never adding an N+1th.
+
+Then **two gates, in a fixed order: evidence, then judgment.** The evidence gate (Phase 5) is
+deterministic and cheap, so it runs first and a change that doesn't close the gap never costs review
+judgment. The two-stage review runs second and reads that record rather than re-deriving it — what
+it adds is the part evidence cannot see: is the criterion satisfied **honestly**, or special-cased
+into passing? A pin resolves only on evidence **and** a `MERGE`.
 
 **Wave checkpoints**: it pauses at each roadmap wave boundary — especially Wave 1, contracts — for
-human review. If aligning contracts revealed that an elected truth was wrong, the dependent pins
-reopen instead of getting built on. **It never runs fully autonomous end-to-end.**
+human review. If aligning contracts revealed that an elected truth was wrong, that evidence goes to
+the `challenger`, which owns the one reopen path there and records the argument. **It never runs
+fully autonomous end-to-end.**
 
 ### Phase 5 — Validate (data decides)
 A fix is not done because the build is green. The gap must be shown closed with kind-specific
 evidence: re-diff the contract shapes at the anchors, re-query the graph, confirm the Track-A test
-kills mutants. Read-only verdict. A pin becomes `resolved` **only on observed evidence**; on failure
-the item returns to Phase 4 as a local retry, not a global restart.
+kills mutants. Read-only verdict, run by a role that did not write the code — the executor's "it
+passes" is a claim to check, never evidence. On failure the item returns to Phase 4 as a local
+retry, not a global restart.
 
 ---
 

@@ -30,9 +30,48 @@ person decides.
 | **researcher** | no (read-only) | Comprehension & finding; catalog/threat research; grounding per the knowledge-sources doctrine. Fans out. | rescue P1 · greenfield P1 (frame, threat-model) |
 | **brainstorm** | no (proposals only) | Proposes 2–3 options with tradeoffs to `pin.brainstorm.proposals[]`, grounded and cited; never decides. | on-demand · greenfield P2 hard forks |
 | **executor** | **yes (the one writer)** | Implements ONE closed scope (a `RemediationItem`/`BuildItem`) via two-track TDD in fresh context; opens a PR; **never merges**. Serialized. | rescue P4 · greenfield P4 build, P6 release |
-| **reviewer** | no (read-only) | Adversarial pre-merge gate. Two stages: spec-compliance vs `to_be` → code quality. Verdict `MERGE`/`ADJUST`/`REJECT`; ADJUST/REJECT restart the item. Also the wave-checkpoint reviewer. A rejection **teaches** (see below). | rescue P4 · greenfield P4 |
-| **challenger** | no (challenges only) | Adversarial red-team of the elected **oracle** — the reviewer's upstream twin. The reviewer enforces the `to_be`; the challenger doubts it. Refutes `acceptance_criterion`/`to_be`/`Policy` as unfalsifiable / inconsistent / unsatisfiable / falsely infeasible / resting on an unstated assumption / ignoring fan-out; emits a `ChallengeEvent` that reopens the pin (`challenged`). Neutral: challenges, never decides. | rescue P2→P4 · greenfield P2→P4 |
-| **measurer** | no (read-only) | Data/evidence verdict: Phase-5 validation, and evaluating `flip_signal`s in the feedback loop. Never guesses, never writes. | rescue P5 · greenfield P5, P7 evolve |
+| **measurer** | no (read-only) | Data/evidence verdict, and the **first** gate on a finished item: kind-specific proof that the gap closed (re-diff to zero drift, mutants killed, behavior reachable, static signal green). Deterministic and cheap. Also evaluates `flip_signal`s in the feedback loop. Never guesses, never writes. | rescue P4 gate → P5 · greenfield P4 gate → P5, P7 evolve |
+| **reviewer** | no (read-only) | Adversarial pre-merge **judgment** gate, running *after* the measurer — it reads the recorded evidence and never re-derives it. Two stages: (1) is the oracle satisfied **honestly** — no test-gaming, no special-casing, no criterion met by its letter (the thing evidence cannot see) → (2) code quality. Verdict `MERGE`/`ADJUST`/`REJECT`; ADJUST/REJECT restart the item. A rejection **teaches** (see below). | rescue P4 · greenfield P4 |
+| **challenger** | no (challenges only) | Adversarial red-team of the elected **oracle** — the reviewer's upstream twin. The reviewer enforces the `to_be`; the challenger doubts it. Refutes `acceptance_criterion`/`to_be`/`Policy` as unfalsifiable / inconsistent / unsatisfiable / falsely infeasible / resting on an unstated assumption / ignoring fan-out; emits a `ChallengeEvent` that reopens the pin (`challenged`). **The one reopen path at the wave checkpoint.** Neutral: challenges, never decides. | rescue P2→P4 · greenfield P2→P4 |
+
+### Why the gates run in that order, and why each owns one object
+
+The three read-only gates used to overlap enough that two of them ran the same commands on the same
+item back to back, and three of them could reopen a pin. Two rules remove the overlap without
+removing a gate.
+
+**Deterministic evidence before model judgment.** This is the `static-analysis` doctrine turned on
+the roster itself: the `measurer` is T0 and runs a parse, a diff and a test suite; the `reviewer` is
+T2 and runs a mind. Spending T2 on a change that does not even close the gap is the same waste as
+asking a model what a type-checker already knows. So the measurer gates first, and a failing
+evidence gate returns the item to the executor **before** any judgment is spent.
+
+What is left for the reviewer is not a weaker version of the same check — it is the part evidence
+structurally cannot reach. The measurer proves *the oracle passes*; the reviewer judges *whether it
+passes for the right reason*. A Track-A test satisfied by special-casing its own input, a criterion
+met in letter and defeated in spirit, a fix that moves the symptom: all of these are green. That is
+a judgment job, and it is why the reviewer is T2.
+
+Consequently **`resolved` needs both**: recorded evidence *and* a `MERGE`. Neither alone is
+sufficient, and neither gate re-runs the other's work.
+
+This does not weaken the anti-cheat property it looks adjacent to. The rule that matters is
+**independence from the author**: an `acceptance_criterion` the `executor` both writes and codes
+against is a target it can build *to*, so the behavior must be re-exercised by a role that did not
+write the code, and the executor's self-report is never accepted in its place. The `measurer` is
+that role. A `reviewer` reading the measurer's record is reading an *independent* re-execution, not
+the author's claim — and running a deterministic check a second time buys nothing, since determinism
+means the second run cannot disagree with the first. Deduplicate the mechanical proof; never
+deduplicate the judgment.
+
+**One object each, so the reopen path is single.** The `measurer` owns evidence, the `reviewer` owns
+the code, the `challenger` owns the oracle. A reviewer that suspects the *decision* rather than the
+change does not reopen it — it hands the build evidence to the `challenger`, which already runs at
+every wave checkpoint. That is not bureaucracy: refuting an oracle is the **T3** job, and a reviewer
+reopening directly would silently perform T3 work at T2 — the half-applied config this repo gates
+against everywhere else. It also gives the reopen a record: the challenger's `ChallengeEvent`
+carries the `argument`, and an append-only ledger whose reopens have no *why* is a ledger that has
+stopped doing the one thing it is for.
 
 ## Permissions — **the source of truth; the build reads this table**
 
@@ -88,7 +127,7 @@ runtime decision on evidence, never baked into an adapter. Full policy + the fou
 ## Mapping notes
 
 - The two-stage review the phase playbooks describe **is** the `reviewer`; the "data decides"
-  Phase-5 gate **is** the `measurer`; the brainstorm agent **is** `brainstorm`; the
+  evidence gate **is** the `measurer`; the brainstorm agent **is** `brainstorm`; the
   comprehension/finding pass **is** the `researcher`; the remediation/build loop **is** the
   `executor`. This roster names what the phases already imply, and adds the explicit
   single-writer/parallel-reader orchestration.

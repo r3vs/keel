@@ -97,18 +97,33 @@ for item in roadmap.ordered_item_ids:      # fresh invocation each
   2. if touching working code → Track B characterization test
   3. if item has a decision → Track A red test from to_be
   4. implement the minimum that passes; ladder decides how; log the rung
-  5. two-stage review: (a) spec compliance vs to_be → (b) code quality
+  5. EVIDENCE gate — Phase 5 on the item (see phase-5-validate.md): kind-specific proof the
+     gap closed. Deterministic, cheap, and FIRST. On failure the item returns to step 4 with
+     the failing evidence (a local retry, not a global restart) and step 6 never runs.
+  6. JUDGMENT gate — two-stage review: (a) is the oracle satisfied HONESTLY (reads the
+     recorded evidence, never re-derives it) → (b) code quality
         verdict MERGE | ADJUST | REJECT ; ADJUST/REJECT restart THIS item
-  6. Phase 5 validates on evidence (see phase-5-validate.md) → pin.state = resolved
-     on failure: item returns here with failing evidence (not a global restart)
-  7. clear context → next item
+  7. pin.state = resolved  — requires BOTH the evidence and a MERGE
+  8. clear context → next item
 ```
+
+**Why evidence precedes judgment.** This is the static-analysis doctrine applied to the roster
+(`references/core/agents.md`): the evidence gate runs a parse, a diff and a test suite; the review
+gate runs a mind. Spending review judgment on a change that does not close the gap is the same waste
+as asking a model what a type-checker already knows — so the cheap deterministic gate goes first and
+the expensive one never sees a change that failed it.
+
+The two are not the same check at different strengths. The evidence gate proves **the oracle
+passes**; the review gate judges **whether it passes for the right reason** — a Track-A test that
+special-cases its own input, a criterion met in letter and defeated in spirit, a fix that relocates
+the symptom. Those are green, and only a skeptical reader catches them. Neither gate re-runs the
+other's work, and `resolved` needs both.
 
 ## Static signal, in-loop (not just the Phase-1 batch)
 
 Run the deterministic static checks **on the diff, as you edit** — the type-checker,
 LSP-assisted refactor, and architecture-fitness — not only in the Phase-1 scan. A type error or a
-boundary violation caught in-loop is fixed before the two-stage review, at `extracted` confidence
+boundary violation caught in-loop is fixed before either gate, at `extracted` confidence
 and without spending fp-check budget. See `references/core/static-analysis.md`.
 
 For a **UI** diff, `design_scan` is the same kind of in-loop signal — a token off the DESIGN.md is a
@@ -123,7 +138,7 @@ careful**, so the loud checks fire per-edit and the long tail waits for the boun
 When a fix touches a library, dependency, or CVE, ground it via `references/core/knowledge-sources.md` —
 Context7 for the dependency's current API, the registry / advisory for the safe version and the
 migration path — rather than training-cutoff memory. Cited, with confidence set by the source; the
-fix still passes the two-stage review and Phase-5 evidence gate.
+fix still passes the evidence gate and then the two-stage review.
 
 ## Wave checkpoints (do not run fully autonomous end-to-end)
 
@@ -131,15 +146,23 @@ Stop at each wave boundary from the Phase-3 roadmap — especially after **Wave 
 (truths & contracts)** — for a human checkpoint before proceeding:
 - Surface the aligned state to the user.
 - Re-validate downstream `depends_on` assumptions. Aligning the contracts sometimes reveals an
-  elected truth was wrong; you only see it once the aligned contracts run. If so, **reopen the
-  dependent pins** (back to `needs_input`) rather than building on a bad foundation.
-- Re-run the **`challenger`** (`references/core/agents.md`) on the wave's decisions — the same
-  upstream arc as Phase 2, now armed with build evidence. Building can expose an oracle as
-  `unsatisfiable` (the elected shape can't meet what the code really needs) or resting on an
-  `unstated_assumption` visible only now. A sustained `ChallengeEvent` reopens the pin (`challenged`)
-  before the next wave compounds the error (`references/core/decisions-ledger-spec.md` v0.6). Distinct
-  from a fired `flip_criteria`: that is production falsifying a decision *downstream*; this is the
-  build falsifying the oracle *at the boundary*.
+  elected truth was wrong; you only see it once the aligned contracts run. **Collect that build
+  evidence — do not act on it here.** The reviewer doubts the code; doubting the *oracle* is the
+  challenger's object, and routing it there is what gives the reopen a recorded argument instead of
+  a silent state change.
+- Re-run the **`challenger`** (`references/core/agents.md`) on the wave's decisions, handing it that
+  evidence — the same upstream arc as Phase 2, now armed with what the build showed. Building can
+  expose an oracle as `unsatisfiable` (the elected shape can't meet what the code really needs) or
+  resting on an `unstated_assumption` visible only now. A sustained `ChallengeEvent` reopens the pin
+  (`challenged`) — **the one reopen path at this checkpoint** — before the next wave compounds the
+  error (`references/core/decisions-ledger-spec.md` v0.6). Reopen the minimum: the challenged pin
+  plus only the dependents that rested on the falsified oracle.
+- Distinguish the two arcs, because they are decided by different evidence and repaired differently:
+  a fired `flip_criteria` is **production** falsifying a decision that *was* sound (downstream —
+  reality moved, re-decide with the new information); a `ChallengeEvent` is the **build** showing the
+  oracle was never satisfiable (upstream — it was wrong when it was born). A `flip_signal` with no
+  telemetry degrades to a `manual_checkpoint` question you may legitimately ask here — *"did X
+  happen?"* — and that is still the downstream arc, not this one.
 
 A fully autonomous start-to-finish loop on slop is over-confident. A loop that pauses at
 dependency (wave) boundaries is cautious at exactly the right points.

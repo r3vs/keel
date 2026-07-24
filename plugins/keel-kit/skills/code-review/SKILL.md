@@ -21,11 +21,20 @@ primed. State the claim as a question, or state nothing.
 Include: the pins in scope, how you verified it, and what you are unsure about. Uncertainty is the
 most useful thing you can pass on and the easiest thing to omit.
 
-Withholding the conclusion is half of it; the other half is on the reviewer. Re-running the tests the
-author already passed proves nothing an author building *to* those tests could not have staged — so
-where the stakes justify it, the reviewer **exercises the behavior itself** against the elected
-criterion, rather than trusting the author's own run. Withholding your conclusion keeps the review
-honest; verifying the behavior, not the artifact built to pass, keeps it real.
+Withholding the conclusion is half of it; the other half is independence from the author. Re-running
+the tests the author already passed proves nothing an author building *to* those tests could not
+have staged — so the behavior is **exercised against the elected criterion by a role that did not
+write the code**, never trusted from the author's own run.
+
+In the full workflow that role is the `measurer`, which runs its evidence gate *before* review
+precisely so the deterministic proof is independent and paid for once
+(`references/core/agents.md`). A reviewer reading that record is **not** accepting the author's
+self-report — it is reading an independent re-execution — and re-running a deterministic check a
+second time buys nothing, because determinism means the second run cannot disagree. What does not
+duplicate is judgment: the evidence proves the criterion *passes*, and the reviewer judges whether
+it passes **for the right reason**. Reviewing standalone, with no measurer in the loop? Then
+exercising the behavior yourself is on you — the independence requirement is on the *role that ran
+it*, not on which name it wears.
 
 ## Giving a review — precedence, first match wins
 
@@ -69,6 +78,11 @@ not write it.
   that restarts the item; the same neutrality the `brainstorm` and `challenger` hold: it surfaces, it
   never elects. (The roles that *reopen* an elected decision are the `challenger` upstream and the
   feedback loop downstream — not the reviewer.)
-- If review reveals the *elected decision* was wrong rather than the code, that reopen runs through
-  the feedback loop (`references/core/feedback-loop.md`). Patching code to satisfy an unsound decision
-  hides the finding that actually mattered.
+- If review reveals the *elected decision* was wrong rather than the code, hand the evidence to the
+  **`challenger`** (`references/core/agents.md`) — that is the **upstream** arc: the oracle was
+  never satisfiable, and the build is what exposed it. Do not route it through the feedback loop
+  (`references/core/feedback-loop.md`), which is the *downstream* arc for a decision that **was**
+  sound until production moved. Same reopen, opposite ends of the lifecycle, different evidence and
+  different repair — and only the challenger's `ChallengeEvent` records the argument, so a reopen
+  taken here would land in an append-only ledger with no *why*. Patching code to satisfy an unsound
+  decision hides the finding that actually mattered.
