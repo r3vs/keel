@@ -156,5 +156,52 @@ def analyze(doc_paths: list[str], data: dict) -> dict:
     }
 
 
+def publication_gate(text: str, data: dict, source: str = "<draft>",
+                     mode: str = "descriptive") -> dict:
+    """The same engine, pointed the other way: audit what we are about to PUBLISH.
+
+    `analyze` reads the docs a target repo already has and asks whether the code backs them. This
+    asks the mirror question about prose *this package is writing*, and it is the cheaper direction
+    by far — the graph is already built, the draft is already in hand, and the check costs a symbol
+    lookup. Case 1 of the determinism dial: the carrier exists, so calling a model here would be
+    both slower and worse.
+
+    It closes this repo's own signature bug class. Naming a function, flag or file that does not
+    exist is the exact failure that shipped `python runtime/ledger.py` for months and that put a
+    nonexistent MCP tool into a SKILL.md earlier in this very plan. A backtick is a *claim about the
+    code*, and an unresolvable one must never reach a reader as fact.
+
+    Two modes, because the honest answer differs:
+
+    - `descriptive` (default) — prose about code that exists. A dangling reference **blocks**: it is
+      either a typo or a lie, and both are fixed before publication.
+    - `prospective` — a design doc or plan that names things deliberately not built yet. Dangling
+      references do not block, but they are **listed so they can be marked**, because the danger is
+      not writing them, it is writing them in the present tense.
+
+    Deterministic, and it states no verdict about *meaning*: whether a resolvable symbol is described
+    correctly stays a judgment, exactly as in the inbound direction.
+    """
+    if mode not in ("descriptive", "prospective"):
+        raise ValueError("mode must be 'descriptive' or 'prospective'")
+    checked = check_claims(extract_claims(text, source), data)
+    dangling = [{"line": c["line"], "text": c["text"], "refs": c["dangling"]}
+                for c in checked if c["dangling"]]
+    return {
+        "source": source,
+        "mode": mode,
+        "determinism": "D0",
+        "claims": len(checked),
+        "dangling": dangling,
+        "publishable": not dangling if mode == "descriptive" else True,
+        "action": ("fix or drop every reference below — a backtick is a claim about the code"
+                   if mode == "descriptive" and dangling else
+                   "mark these as not-yet-built; the danger is the present tense, not the plan"
+                   if dangling else "clear"),
+        "note": "Resolution only. Whether a symbol that DOES resolve is described correctly is a "
+                "judgment, and is not claimed here.",
+    }
+
+
 def load(path: str | pathlib.Path) -> dict:
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))

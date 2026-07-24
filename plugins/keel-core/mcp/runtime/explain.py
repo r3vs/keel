@@ -23,6 +23,8 @@ _CHECKLIST = [
     "Patterns — the idioms/abstractions it uses (and why).",
     "Gotchas — the non-obvious constraints, edge cases, or foot-guns.",
 ]
+# HYPOTHESIS, tunable — how much source to inline before an explanation stops being an explanation
+# and becomes a paste. No measurement backs 80; it is a legibility choice.
 _MAX_SOURCE_LINES = 80
 
 

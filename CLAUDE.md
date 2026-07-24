@@ -59,7 +59,8 @@ package exists to find, sitting in its own front door.
   *observed*, not when the code was written), `branch-lifecycle` (a worktree per scope makes the
   executor's "one scope at a time" enforceable instead of promised).
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
-  `static-first-analysis`, `project-memory`, `learning-layer`), a memory subsystem (ledger +
+  `static-first-analysis`, `project-memory`, `learning-layer`, `documentation-lifecycle`,
+  `maintainer-assist`), a memory subsystem (ledger +
   `MEMORY.md` + cognee MCP), and MCP servers (`context7`/`deepwiki`/`cognee`; `github` opt-in).
   `writing-skills` is **dev-only** — it documents contributing to this repo and never ships.
 
@@ -112,6 +113,7 @@ running an app.
 python scripts/build.py               # src/ -> plugins/. The ONE generation step; the only thing that ships.
 python scripts/check_consistency.py   # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
 python scripts/verify_pointers.py     # every *.md cross-reference resolves; exits 1 on dangling
+python scripts/check_hypotheses.py    # every tuned number in the runtime is declared (AST, not grep)
 python scripts/verify_commands.py     # every agent-facing COMMAND resolves after install; exits 1 on drift
 python -m unittest discover -s tests  # ledger runtime, MCP tools + server, ledger gate, installed package
 bash src/tools/bootstrap.sh           # toolchain + uv (idempotent, best-effort, never hard-fails)

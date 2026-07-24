@@ -31,10 +31,16 @@ mutation. Three high-value static signals are commonly under-used:
 - **In-loop / incremental, not just batch.** Run static tools **on the diff while editing**
   (Phase-4 build/remediation), via the language server where possible — not only in the Phase-1
   batch scan. Fast local feedback catches a regression the moment it's introduced.
-- **Confidence from determinism.** A deterministic static finding (type error, failed constraint,
-  dead symbol) is high-confidence — feed the ledger's `confidence` tags accordingly, and it can
-  **skip the heavy `fp-check`** (it is not an AI over-report). Reserve fp-check budget for the
-  judgment findings that actually need it.
+- **Confidence from determinism — where the determinism is real.** A deterministic static finding
+  (type error, failed constraint, dead symbol) is high-confidence: it computes over a carrier the
+  language already defines. Feed the ledger's `confidence` tags accordingly, and let it **skip the
+  heavy `fp-check`** (it is not an AI over-report), reserving that budget for the judgment findings
+  that need it.
+  The caveat is the whole reason `core/trust-axes.md` exists: this discount is earned by the
+  *carrier*, not by the label. A check that greps prose for a concept, or an "engine" that is
+  actually an agent reasoning, is `D2` however it is catalogued — and it must not inherit the
+  fp-check bypass or the `extracted` confidence. **Never de-agent a step that needs judgment in
+  order to earn the discount**, and never call a model for something the carrier already answers.
 - **Right tool per phase:**
   - **Comprehension / finding** (rescue Phase 1): type-check + LSP/SCIP index + architecture-fitness
     alongside the existing finders; type errors and constraint violations become high-confidence pins.
@@ -56,6 +62,11 @@ mutation. Three high-value static signals are commonly under-used:
   found *nothing*. The gap then flows through the interview like any pin — closed (install the tool +
   re-run) or accepted (out of scope) — never defaulted away. **Never hard-fail; never hide the hole
   either** — that silent fallback is the package's own "claiming vs doing" failure turned inward.
+  This is the toolchain instance of a rule that binds **every** seam — an MCP server, a provider, an
+  external host: degrading is permitted, *pretending* is not, and the danger is precisely that
+  graceful degradation looks like success. The general form lives in `core/trust-axes.md`, together
+  with the corollary that matters here: an unrun check contributes no verification, so no claim
+  inherits a rung it did not earn.
 
 ## Prefer the checkable formulation (a selection heuristic)
 

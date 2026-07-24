@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.6
+# Decisions Ledger — Spec v0.9
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -47,12 +47,14 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "anchors": [                   // DECISION 1 — cross-layer list
     { "node_id": "n_412", "layer": "db", "role": "db_source", "loc": "migrations/003.sql:12" }
   ],
-  "state": "needs_input",        // detected | needs_input | brainstorming | decided | deferred | resolved | accepted
+  "state": "needs_input",        // detected | needs_input | brainstorming | decided | correctness_unknown | deferred | resolved | accepted
+  "verification": null,          // v0.7 — { determinism, rung, evidence[] } | null. Set when a claim is checked.
   "as_is": { },                  // DISCRIMINATED by kind ↓
   "to_be": null,                 // DISCRIMINATED by kind ↓ — derived (Decision 7)
   "question": null,              // Question | null — option shape discriminated by kind
   "brainstorm": null,            // { proposals: [...], notes } | null
   "decision": null,              // { event_id, outcome } | null — only from interview
+  "premortem": null,             // v0.9 — { failure_modes[], guardrails[], abort_criteria[], paper_tigers[] } | null
   "depends_on": [],              // DECISION 6
   "remediation": []              // [ RemediationItem ]
 }
@@ -197,11 +199,14 @@ detected ──(generates question)──▶ needs_input ──(opens brainstorm
                           (user commits in interview)
                                      ▼
                                   decided ──(spawn remediation)──▶ resolved
-                                     │
-                              (or deferred / accepted)
+                                     │           │        ▲
+                              (or deferred /     │        │ (behavior finally observed)
+                                  accepted)      ▼        │
+                                        correctness_unknown
+                                       (work done, correctness NOT establishable)
 ```
 
-`brainstorming` is transient/optional. `deferred` = out of scope now (YAGNI at the spec level). `accepted` = acknowledged, intentionally left as-is (the legitimate outcome of a `design_concern`).
+`brainstorming` is transient/optional. `deferred` = out of scope now (YAGNI at the spec level). `accepted` = acknowledged, intentionally left as-is (the legitimate outcome of a `design_concern`). `correctness_unknown` (v0.7) = the work was done and the behavior could **not** be observed with the available evidence — see below.
 
 ---
 
@@ -419,3 +424,206 @@ Precondition of the challenge, and an anti-slop rule in its own right: when an a
 ### Why this is the missing arc
 
 The feedback loop closes the loop *downstream* (production falsifies the decision → reopen). The challenger closes the loop *upstream* (the oracle is incoherent/untestable/unsatisfiable → reopen **before** building). Together they cover the two ways an elected truth can be wrong: wrong *become* (reality changed) and wrong *born*. Both arcs **reopen and do not decide** — neutrality is the same anti-divergence property that holds the whole ledger together.
+
+---
+
+## v0.7 — Honest verification: `correctness_unknown` and the three trust axes
+
+Both arcs above assume the verdict on a *closed* pin is binary: it was fixed, or it was not. On a legacy repo that is a lie the schema was forcing. Tests may not exist, the path may be unreachable locally, the effect may only be visible in an environment nobody has. The doctrine already said the right thing in prose — *"an unverifiable claim reported as verified is worse than an open one"* — but with only `resolved` on offer, the honest outcome had nowhere to go, and every pressure pointed at a false `resolved`.
+
+v0.7 gives that sentence a state, and gives every checked claim the three-axis envelope from `core/trust-axes.md`. Additive: no existing variant changes.
+
+### New state: `correctness_unknown`
+
+Between `decided` and `resolved`. It means: **the work was done, and the correctness of the outcome could not be established from the available evidence.** It is not a failure and not a defect — it is the honest report of a missing oracle.
+
+Reaching it is disciplined, not a shrug: it is only legitimate **after** the evidence stack has actually been walked, best signal first — existing tests → static checks (type-check, constraints) → a generated smoke probe or behavioral observation → diff-risk review. `correctness_unknown` is what remains when all of those were tried and none could speak.
+
+```jsonc
+"state": "correctness_unknown",
+"verification": {
+  "determinism": "D1",              // D0 | D1 | D2 — how the check reproduces
+  "rung": "re_read",                // self_check | re_read | observed | cross_derived
+  "attempted": ["tests", "typecheck", "smoke_probe"],   // the stack that was walked
+  "blocked_by": "no runnable environment for the payments path",
+  "evidence": [{ "kind": "typecheck", "ref": "tsc --noEmit", "outcome": "pass" }]
+}
+```
+
+The state **blocks closure** and forces an explicit next move, recorded as a `DecisionEvent` like any other: retry with more context · add the missing check (a new `acceptance_criterion` pin, which is how the zone *earns* the ability to be verified next time) · request manual takeover · narrow the scope · accept the risk explicitly (`accepted`, with the unknown named). What it may never do is decay into `resolved` because time passed.
+
+Because it forces a move, it **carries the fork that asks for one**: entering the state writes that five-option `question` onto the pin, and the pin joins the **interview view** alongside `needs_input`. The two states await a human for different reasons — `needs_input` means the decision was never made, `correctness_unknown` means it was made and the *verification* failed — but both await one, and a state that blocks closure while appearing on no surface is a black hole, not a gate. A `blocker`/`high` pin here sorts **above** information gain: fan-out is how you order questions that are still open, and an unverifiable blocker is not a question to sequence well, it is one that must not be skimmed past.
+
+It also does not satisfy a dependent: only `resolved` and `accepted` close a `depends_on` edge, so downstream work cannot build on an outcome nobody could verify.
+
+Threshold rule, consistent with the rest of the spec: `severity: blocker | high` in `correctness_unknown` is **always** `asked` — never a proposed default, never batch-skimmed. An unverifiable blocker is exactly the thing that must reach a human.
+
+### The `verification` envelope — three axes, never one number
+
+Any pin that carries a checked claim may carry `verification`. The three axes are **orthogonal** and are reported together; the posture is their **conjunction, never the most flattering one**:
+
+| Field | Answers | Values |
+|---|---|---|
+| `determinism` | how does the result reproduce? | `D0` carrier computation · `D1` reconstructible from a pinned artifact · `D2` model judgment on the path |
+| `rung` | how hard was the claim checked? | `self_check` · `re_read` (over the full diff, not the output) · `observed` (behavior exercised and seen) · `cross_derived` (re-derived by a different provider) |
+| review burden | what review does the risk demand? | the existing `severity` × blast radius — **no new field** |
+
+Two consequences the schema now makes checkable. A pin may not be `resolved` at rung `self_check`: `resolved` means `observed`, which is the verification skill's rule restated as data. And a `D2` finding does not inherit the `extracted` confidence or the `fp-check` bypass that a `D0` carrier finding earns — the discount belongs to the carrier, not to the label.
+
+`cross_derived` is the rung that turns the mixed-provider roster into a safety signal: for irreversible or high-severity claims the claim is re-derived by a model from a **different provider**, agreement is the pass, and **divergence forces human review rather than a tie-break**. A single-provider hallucination rarely reproduces cross-provider, so the disagreement *is* the finding.
+
+### Why this is not more ceremony
+
+Every other state in this spec exists to stop a decision being made by nobody. `correctness_unknown` stops a *verification* being claimed by nobody — the same anti-divergence property applied to the last step, where until now the schema quietly rewarded the confident report.
+
+---
+
+## v0.8 — Landing-zone readiness: the premortem of the terrain
+
+The challenger doubts the **oracle**; the wave checkpoint doubts the **build**. Neither asks the question that comes before both when work lands on code that already exists: *can this ground bear the change at all?* Adding a feature to a fragile, untested, heavily-coupled zone is not a planning problem, it is a **terrain** problem, and planning around it produces a correct plan that fails anyway.
+
+v0.8 adds the gate that asks it, and the dependency wiring that acts on the answer. Additive: no existing variant changes, and — deliberately — **no new edge type**. The hardening prerequisites are ordinary `depends_on` entries, so the wave scheduler orders them with no new mechanism and the existing rule that only `resolved`/`accepted` close an edge already means a change cannot start until the ground is really fixed.
+
+### The `readiness` object
+
+```jsonc
+"readiness": {
+  "verdict": "harden_first",        // ready | harden_first | redesign
+  "determinism": "D2",              // the VERDICT is judgment...
+  "evidence_determinism": "D0",     // ...over deterministic evidence. Never merged into one score.
+  "zone": { "files": ["src/pay/charge.ts", "..."], "nodes": 34 },
+  "evidence": {
+    "open_pins_in_zone": [{ "pin": "pin_0012", "severity": "blocker", "state": "needs_input" }],
+    "untested_files": ["src/pay/charge.ts"],
+    "churn": { "src/pay/charge.ts": 41 },
+    "coupled_outside_zone": [{ "file": "src/billing/invoice.ts", "co_commits": 7 }]
+  },
+  "hardens": ["pin_0012"],          // prerequisites — also appended to depends_on
+  "rationale": "the charge path carries an unresolved blocker and no test reaches it"
+}
+```
+
+The **zone** is the blast radius of the planned change: the pins' anchors plus what transitively depends on them. The **evidence** is four carriers, all `D0` — the ledger's own unresolved pins whose anchors land in the zone (the cheapest signal there is: you are about to build on ground this ledger already says is broken), files no test file reaches through a graph edge, `git log` churn, and files that historically co-change with the zone from *outside* it.
+
+That last one is a second, independent carrier for the thesis the shape engine already serves. Shapes compare **declared structure**; co-change compares **recorded behaviour** — what the team has actually had to edit together. Two carriers agreeing is a strong finding; two disagreeing is itself the finding, which is why they are reported separately and never merged into one score.
+
+### The verdict is judgment, and says so
+
+`ready` / `harden_first` / `redesign` is a `D2` conclusion over `D0` evidence, and the object records both determinism levels rather than blending them (`core/trust-axes.md`). Inventing a threshold here — *"coupling above 0.6 means harden"* — would be a number with no carrier wearing a green badge, which is precisely what this schema now forbids elsewhere. The runtime computes facts and **refuses to conclude**; the agent concludes; the human elects what to do about it.
+
+### The two disciplines, one of them mechanical
+
+Without bounds this gate becomes an open-ended rewrite, so:
+
+- **blast-radius-scoped** — evidence counts only what lies *inside* the zone. A hotspot elsewhere is not this change's problem and never enters the bundle.
+- **change-justified** — a pin may become a hardening prerequisite **only if its own anchors land in the zone**, and this one is *enforced*, not promised: the ledger refuses the edge otherwise. Remediation is admitted because it reduces *this* change's risk, never because the code is imperfect elsewhere. (A cycle check refuses the mirror error: hardening something that already depends on the change.)
+
+`harden_first` with no prerequisites named is rejected as well — that is a worry, not a verdict.
+
+### Why this is the bridge between the two skills
+
+Rescue derives the to-be backward from existing code; forge elects it forward and builds. They have always shared the ledger, but they were still two workflows meeting at a handoff. The `hardens` edge makes them **one DAG**: a rescue pin becomes a *blocking prerequisite* of a forge `BuildItem`, ordered by the same scheduler, closed by the same evidence rule. *Make the change easy, then make the easy change* — and a zone that hardens itself is also the zone that has earned the ability to be verified, which is the same thing `correctness_unknown` asks for one step later.
+
+---
+
+## v0.9 — One failure vocabulary, and the challenger's second mode
+
+Two additions that are really one: a closed set of words for how work fails, and the exercise that uses those words *before* the work rather than after.
+
+### `FAILURE_CLASSES` — a superset of the challenge classes, not a second list
+
+```
+unfalsifiable · inconsistent · unsatisfiable · unfounded_infeasibility ·
+unstated_assumption · ignored_fanout · other                    ← the v0.6 challenge classes
+contract_drift · missing_capability · environment · untested_path ·
+scope_creep · stale_carrier · nondeterminism · external_change  ← added in v0.9
+```
+
+The containment is the design, not a convenience. A challenge *is* a failure mode of the oracle, foreseen before the work starts — so the words must be the same words. Two vocabularies for one concept is precisely the divergence this package exists to find in other people's codebases, and shipping it in our own schema would have been the front-door version of that bug. A test asserts `CHALLENGE_CLASSES ⊂ FAILURE_CLASSES`, so they cannot drift apart later.
+
+The **vocabulary** is `D0` — it is an enum, and membership is checked. The **classification** is `D2`: deciding that this failure was `stale_carrier` rather than `environment` is judgment, and the spec says so instead of letting the enum's crispness imply otherwise.
+
+### `premortem` on the pin — the challenger's second mode
+
+The challenger's first mode refutes the oracle: *is the elected criterion sound?* The premortem grants the criterion and asks a different question: *assume this already failed — what killed it?* Same role, same read-only posture, so **the roster stays at six**. A seventh member would have been ceremony; a second mode is the same reviewer looking the other way.
+
+```jsonc
+"premortem": {
+  "failure_modes": [
+    { "class": "stale_carrier", "description": "the graph predates the migration, so the zone is wrong" }
+  ],
+  "guardrails": ["rebuild the graph and re-assess before planning"],
+  "abort_criteria": ["the zone still resolves fewer than all anchors after a rebuild"],
+  "paper_tigers": [
+    { "risk": "concurrent writes corrupt the ledger",
+      "evidence": "writes are atomic via tempfile+replace (runtime/ledger.py save)" }
+  ],
+  "determinism": "D2",
+  "source": "challenge:challenger"
+}
+```
+
+Two refusals keep it from decaying into a worry list:
+
+- **failures with no response are rejected** — at least one guardrail or abort criterion. Naming what could go wrong and stopping there is the ritual version of the exercise.
+- **a `paper_tiger` must carry its evidence.** A paper tiger is a risk that *looks* grave and is already mitigated; the field exists to suppress noise, so admitting one without proof of mitigation would let it generate the noise instead. Without evidence it is not a dismissed risk, it is an ignored one.
+
+When a premortem is **owed** is `D0`, and derived only from carriers the ledger already holds — the `blocker|high` threshold, a landing-zone verdict of `harden_first`/`redesign`, a recorded history of this pin being reopened, or inbound fan-out at the same threshold `ignored_fanout` already uses. No new tuned number enters the schema.
+
+### `FailureEvent` — the same words, after the fact
+
+```jsonc
+{ "id": "fal_0001", "pin_id": "pin_0007", "class": "untested_path",
+  "detail": "the refund path had no test; the regression only appeared in staging",
+  "phase": "review", "source": "measurer", "timestamp": "…" }
+```
+
+Append-only like every other event, and it **changes no state**: labeling is observation, and the response — reopen, challenge, re-plan — stays a separate, explicit act. `phase` is one of `plan | build | evidence | review | production`.
+
+Because both ends share the vocabulary, they join: `foresight(pin)` returns `anticipated` (feared and happened), `unrealized` (feared, did not), and `surprises` (happened, nobody saw it coming). That is a set comparison — `D0`, no scoring. There is deliberately **no hit-rate metric**: these events are rare, human and few, and a percentage computed over them would be a statistic with no population, which is exactly the kind of number the trust-axes doc refuses.
+
+The surprises are the interesting column. A premortem that anticipates everything is either very good or written after the fact, and only the immutable timestamps can tell you which.
+
+### `cross_derivations` — the `cross_derived` rung, earned rather than declared
+
+The verification ladder's top rung (v0.7) had no mechanism: anything could claim it. Now it is earned by re-deriving one claim with a **different provider**.
+
+```jsonc
+"cross_derivations": [{
+  "claim": "lib X still supports streaming in v4",
+  "derivations": [
+    { "provider": "anthropic", "model": "…", "result": "yes, see docs §…" },
+    { "provider": "openai",    "model": "…", "result": "no — removed in v4" }
+  ],
+  "providers": ["anthropic", "openai"],
+  "agreement": "disagree",
+  "independence_determinism": "D0",   // were the providers distinct? checked
+  "agreement_determinism": "D2"       // do the answers MEAN the same? judged
+}]
+```
+
+The reason this works at all is asymmetric: a single-provider hallucination is **stubborn under repetition and fragile under substitution**. Ask the same model twice and it reproduces its own error; ask a different family and it rarely invents the same wrong thing. So the schema enforces the only part that is checkable — at least two derivations from at least two *distinct* providers — and refuses same-provider repetition, which is repetition wearing an independence badge.
+
+Agreement sets `verification.rung = "cross_derived"`. **Disagreement is the signal, not a nuisance**: the pin moves to `needs_input` with substate `contested` and both derivations become options, because a claim two independent providers disagree about is exactly the one a human must look at. It deliberately does **not** cascade to dependents the way an upheld challenge does — nobody yet knows which side is wrong, and reopening the neighbourhood on an unresolved disagreement is churn, not caution.
+
+The rung is **not mandatory at any severity**. Making it obligatory above a threshold roughly doubles the cost of the most expensive pins, and that trade should be elected with a measured number in hand rather than assumed by a schema.
+
+### `governance` + `policy_hash` — under which rules was this decided?
+
+An append-only log answers *what* was decided and *why*. It has never answered a third question that matters just as much when something later goes wrong: **under which rules?** Between two decisions the roster can change, a permission can widen, this schema can gain a state, and a skill's prose can be edited. A trail that cannot show that is a trail somebody will one day read wrongly, with total confidence.
+
+```jsonc
+"governance": {
+  "policy_hash": "…",
+  "components": { "roster": "…", "permissions": "…", "spec_version": "…", "skill_version": "…" },
+  "missing": []
+}
+```
+
+Every event appended afterwards carries that `policy_hash`, stamped **before the outcome takes effect**. So a widened permission becomes a *visible hash delta in the trail* instead of an invisible change of meaning.
+
+Three properties, each chosen against a plausible alternative:
+
+- **It is a join key, not a security device.** Its only job is to make *"these two decisions were taken under different rules"* answerable. Treating it as tamper-evidence would be a claim the artifact cannot support — anyone who can edit the ledger can edit the hash.
+- **The components travel with the digest.** A bare hash tells you two decisions differ; the components tell you *which rule* changed, which is the only form of the answer anybody can act on.
+- **Absence is recorded, not implied.** An ungoverned ledger stamps `policy_hash: null` explicitly on every event. A missing field would read as fine, and an input that cannot be resolved lands in `missing` rather than being dropped — a fingerprint over three of four inputs is not a smaller fingerprint, it is a misleading one.

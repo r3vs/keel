@@ -40,6 +40,7 @@ EXPECTED_TOOLS = {
     # non-electing ledger writes; decide/accept stay human-only and are deliberately NOT here
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
+    "ledger_mark_correctness_unknown", "ledger_set_readiness",
     # comprehension / understand-mode (the structural-graph family)
     "build_graph", "understand_codebase", "explain_node", "graph_query", "guided_tour",
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
@@ -49,11 +50,26 @@ EXPECTED_TOOLS = {
     "generate_tokens", "tokens_diff", "extract_tokens", "design_scan",
     # cost & token telemetry — the measurer's surface
     "spend_report",
+    # landing-zone readiness: D0 evidence (read-only) + the D2 verdict (write)
+    "readiness_assess",
+    # v0.9 — the agent-ready gate (D0 presence) and the challenger's premortem queue
+    "agent_ready", "ledger_premortem", "ledger_label_failure",
+    # new carriers: git history as an independent signal, and the cross_derived rung
+    "cochange_omissions", "scope_check", "ledger_cross_derive",
+    # docs as a governed surface: the publication direction + the catalog
+    "doc_register", "doc_freshness",
+    # hygiene: which rules were in force, whether a skill drifted, whether a rule keeps being wrong
+    "generator_observe", "generator_screen",
+    # learning that only ever produces checks, never stored beliefs
+    "learning_report",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
+    "ledger_mark_correctness_unknown", "ledger_set_readiness",
+    "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
+    "generator_observe",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS

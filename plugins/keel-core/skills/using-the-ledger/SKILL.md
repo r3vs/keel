@@ -42,11 +42,16 @@ what the spec says it means.
 | add a finding / defect / `open_decision` | `ledger_add_pin` |
 | plan & close the gap | `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` |
 | surface a forced assumption | `ledger_surface_assumption` |
+| the work was done but correctness is not establishable | `ledger_mark_correctness_unknown` |
+| out of scope for now, without dropping it | `ledger_defer` |
 
 The reads are automatable **and so is every non-electing write** — add a finding, plan its
 remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidence` (what you
 *observed* closed the gap, not that code was written): the tool itself enforces `resolved =
-observed`. What stays off-limits to every agent is the one **electing** write — only the human's
+observed`. Its two honest exits matter as much: `ledger_mark_correctness_unknown` when the evidence
+stack was walked and nothing could speak, and `ledger_defer` when the work is out of scope — a pin
+that leaves the loop by either door is still on the ledger, which is the difference between scoping
+and forgetting. What stays off-limits to every agent is the one **electing** write — only the human's
 committed interview answer sets `state: decided` and appends a `DecisionEvent`, so there is
 deliberately no `ledger_decide` tool.
 

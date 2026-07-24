@@ -17,6 +17,16 @@ cheapest sufficient source, and go outward only when the local signal can't answ
 4 neural / general web (Exa, web search)                 — open-ended SOTA / novel problems
 ```
 
+**Rung 1 is the code, not prose about the code.** A doc an agent wrote is a *derived* artifact: it may
+be read later, but it is never the bootstrap path for truth, and it never outranks the carrier it was
+derived from. The failure it guards against is a closed loop — write a summary of the codebase,
+re-ingest that summary as evidence, and reason from a generated narration as if it were the source.
+That is how a "reverse-PRD" becomes ground truth without anyone electing it, and the second pass has
+no way to notice: the doc reads as authoritative precisely because the agent wrote it confidently.
+Concretely: found docs are **claims to check against the code**, never facts (`docs_claims` exists for
+this); generated docs carry per-claim provenance back to the carrier; and when a doc and the code
+disagree, the code wins and the disagreement becomes a pin.
+
 ## Which source, for what, in which phase
 
 | Source | Best for | Where it earns its keep |
@@ -62,9 +72,13 @@ word-match would "find" a server nobody declared. Correspondence comes from a de
 - **Freshness beats memory.** When the question is about a specific library / API / version,
   prefer the live source over training knowledge — *even when you think you know*. This is the
   whole point.
-- **Degrade gracefully.** If a source or MCP is unavailable, fall back to the next-cheapest source
-  or to model judgment, and note the gap. Never hard-fail on a missing source (same posture as the
-  toolchain).
+- **Degrade gracefully — visibly.** If a source or MCP is unavailable, fall back to the next-cheapest
+  source or to model judgment, and never hard-fail (same posture as the toolchain). But the fallback
+  is **recorded, not swallowed**: the unreachable seam becomes a fact on the pin's `provenance`, and
+  the claim keeps the confidence its *actual* source earns — a Context7 answer that never arrived
+  does not lend `extracted` confidence to the web result that replaced it. Degrading is permitted;
+  pretending is not, and the danger is that graceful degradation looks like success
+  (`references/core/trust-axes.md`).
 
 ## Output
 

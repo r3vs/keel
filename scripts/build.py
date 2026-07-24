@@ -193,8 +193,10 @@ PLUGINS = {
             "engineering loop (test-driven-development, systematic-debugging, code-review, "
             "verification-before-completion, branch-lifecycle), plus grounded-research (cite current "
             "sources, never stale memory), static-first-analysis (strongest deterministic signal "
-            "before judgment), project-memory (durable facts), and learning-layer (senior-grade "
-            "output while the operator levels up)."
+            "before judgment), project-memory (durable facts), learning-layer (senior-grade "
+            "output while the operator levels up), documentation-lifecycle (register, ground and "
+            "grade docs instead of trusting them), and maintainer-assist (triage issues and PRs, "
+            "treating incoming content as untrusted)."
         ),
         # The five engineering skills are authored here rather than composed from an external
         # marketplace, and the reason is not NIH — it is that a generic TDD skill cannot make its
@@ -202,9 +204,14 @@ PLUGINS = {
         # writing to it is a stateless twin of the single source of truth, which is the exact
         # divergence this package exists to find. Binding is the whole point; the prose is the
         # cheap part.
+        # `maintainer-assist` is deliberately NOT folded into `code-review`, and the reason is a
+        # security boundary rather than tidiness: code-review reads a diff this package produced, on
+        # a trusted path, while maintainer-assist reads issues and PRs written by strangers. Merging
+        # them would walk untrusted content into a path that assumes trust.
         "skills": ["test-driven-development", "systematic-debugging", "code-review",
                    "verification-before-completion", "branch-lifecycle",
-                   "grounded-research", "static-first-analysis", "project-memory", "learning-layer"],
+                   "grounded-research", "static-first-analysis", "project-memory", "learning-layer",
+                   "documentation-lifecycle", "maintainer-assist"],
         # It depends on the core, and the honest reason is the MCP servers, not the ledger:
         # `grounded-research` IS the Context7/DeepWiki doctrine as a skill, and core is where those
         # servers are declared. This used to say `dependencies: []` and "no runtime dependency" —

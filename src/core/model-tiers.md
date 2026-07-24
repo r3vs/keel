@@ -123,13 +123,15 @@ OpenAI model-ids arrive via the opencode codex-auth plugin and may lag native So
 | Host | Profile | Delivered by | Granularity |
 |------|---------|--------------|-------------|
 | Claude Code | **A** | the plugin's `agents/<role>.md` frontmatter (marketplace install) | per-role |
-| Codex | **B** | `scripts/install.sh` → `~/.codex/agents/<role>.toml` (auto-discovered) — a Codex plugin manifest **cannot** carry agents | per-role |
-| opencode | **C** | `scripts/install.sh` → `~/.config/opencode/agent/<role>.md` | per-role |
+| Codex | **B** | the repo's installer → `~/.codex/agents/<role>.toml` (auto-discovered) — a Codex plugin manifest **cannot** carry agents | per-role |
+| opencode | **C** | the repo's installer → `~/.config/opencode/agent/<role>.md` | per-role |
 | Pi | — | **session-level only**: Pi's core is *"no sub-agents"*, so the roster runs in-session — set `defaultModel` + `defaultThinkingLevel` to the orchestrator tier | session |
 
 Only Claude Code delivers per-role models through the marketplace plugin itself. Codex and opencode
-ride `install.sh` (their plugin/host formats can't carry agents), and **Pi has no first-class subagents
-at all** — there the profile is guidance for the session model, not a per-role adapter.
+ride the repo's installer script (their plugin/host formats can't carry agents) — which is run from a
+clone of the package, not from your project, so nothing here is a path you execute where you are; the
+per-host procedure lives in the packaging doc. **Pi has no first-class subagents at all** — there the
+profile is guidance for the session model, not a per-role adapter.
 
 `C` is the opencode default (one $10 Go sub — the safe floor). **`D` (mixed) is recommended if you
 have both subs**: strictly more powerful (cross-family gating + quota split), applied via the override

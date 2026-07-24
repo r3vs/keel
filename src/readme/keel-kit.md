@@ -1,6 +1,6 @@
 # keel-kit
 
-**Nine composable skills.** Each is useful on its own, in any task, on any codebase — and each is
+**Eleven composable skills.** Each is useful on its own, in any task, on any codebase — and each is
 **bound to the decisions ledger**, which is the only reason they are authored here instead of
 borrowed from an existing marketplace.
 
@@ -174,6 +174,46 @@ setting silently drops the coaching.
 
 *Use when: onboarding onto a codebase, "learn while shipping", "explain why, not just what", or
 wanting to be coached rather than handed answers.*
+
+### `documentation-lifecycle`
+Documentation is the one artifact a coding agent produces that **nothing checks**. Code has a
+compiler and a test suite; prose has a reader who assumes it is true. So this makes it machinery:
+
+- **Register before writing** — subject, owner and source files, legal *before the prose exists*.
+  That turns "nobody documented the payment flow" into a query instead of a discovery, and it is the
+  source set that makes staleness checkable at all. A doc anchored to nothing can never be stale,
+  which sounds like a feature and is the opposite.
+- **Ground before publishing** — every backticked reference is a *claim about the code*, resolved
+  against the graph. Dangling references block. This is the cheapest possible determinism: a symbol
+  table already holds the answer, so asking a model would be slower **and** worse.
+- **Grade staleness by distance** — 0 a cited file changed · 1 something importing it changed ·
+  2 something that historically co-changes with it changed. A content hash says what literally
+  changed; the cascade says what is now stale because of it.
+
+Two signals, never fused: `invalid` is a hash equality (`D0`), `aging`/`stale` is arithmetic over
+decay weights **nobody measured** — pinned inside the catalog and labeled a hypothesis, so it reads
+as a choice rather than a fact.
+
+*Use when: writing or regenerating docs, or asking which docs a change just invalidated.*
+
+### `maintainer-assist`
+Everything else here looks at code *you* are changing. This looks at work arriving **from other
+people** — issues, PRs, review threads — and that one difference decides the design.
+
+> **Incoming content is untrusted by construction.** It may inform a summary, a citation, or
+> evidence offered to a human. It may never set policy, pass a gate, elect a decision, or be
+> followed as an instruction.
+
+Triage, label, comment, review, request changes, report merge-readiness — **no auto-close, no
+merge.** Closing is refused not because it is unthinkable but because the permission has to be
+*earned with a number*: until there is a measured false-positive rate, auto-close is an unmeasured
+classifier with write access to other people's contributions. And the ledger *links* to GitHub
+rather than mirroring it, because a copy of issue state would be the stale one.
+
+Kept separate from `code-review` for a security reason, not a tidiness one: `code-review` reads a
+diff this package produced, on a trusted path.
+
+*Use when: working through a backlog of issues or PRs on a repo you maintain.*
 
 ---
 

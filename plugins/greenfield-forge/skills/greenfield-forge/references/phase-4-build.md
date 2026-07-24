@@ -21,6 +21,26 @@ not re-decide order.
 > returns the waves plus what is actionable right now. Eyeballing the backlog is how a slice gets
 > built before the contract it consumes.
 
+**Unblocked is not the same as ready.** `build_waves` answers whether the dependencies are closed;
+`agent_ready` answers whether the item is actually specified — an elected check, a known landing
+site, an assessed terrain where one applies, a premortem where one is owed. Its two layers are
+reported side by side and **never merged**: presence is computed (`D0`), quality is the challenger's
+judgment (`D2`). It is advisory — it does not shrink the queue, it routes each unready item back to a
+named owner (`needs_interview` / `needs_research` / `needs_hardening` / `needs_challenge` /
+`human_only`). In greenfield the common route is `needs_interview`: a build item with no `verify` is
+a decision that was never really elected, and building it is how the forge starts producing the slop
+it exists to prevent.
+
+**On a tree that is no longer empty, check the ground before you build on it.** In `forge` mode
+as-is starts empty and this does not apply; in `slice` / `evolve` mode — and any time forge extends
+a project that already has code — a `BuildItem` lands on existing files, and a correct plan onto a
+zone that cannot hold it fails anyway. `readiness_assess` returns the zone and its deterministic
+carriers; **you** form the `ready` / `harden_first` / `redesign` verdict and record it with
+`ledger_set_readiness`. `harden_first` appends the prerequisite pins to `depends_on`, so `build_waves`
+schedules the hardening first without any new mechanism — which is also how a rescue pin becomes a
+blocking prerequisite of a forge build item, making the two skills one DAG rather than two workflows
+meeting at a handoff. Doctrine: `references/core/landing-zone.md`.
+
 ## Context management: reset, don't accumulate
 
 Each iteration is a **fresh invocation** loading only: the item, its pin and `to_be`, the contract
@@ -31,7 +51,7 @@ from the first non-`resolved` item with zero rework.
 **Checkpoint on a *measured* context budget, not a feeling.** If a single slice saturates context,
 hand off — write state to the ledger and start fresh for the remainder — rather than push into a
 degraded window. The trigger is measured (the harness's live context measure crossing a budget
-calibrated by the `spend` telemetry), never a vibe. A checkpoint on evidence is the reset working, not
+calibrated by `spend_report`), never a vibe. A checkpoint on evidence is the reset working, not
 a failure.
 
 ## Two-track TDD — Track A is primary here
@@ -71,6 +91,7 @@ not training-cutoff memory.
 
 ```
 for item in roadmap.ordered_item_ids:      # fresh invocation each
+  0. agent_ready(pin) — handable, or routed back to a named owner? route ≠ ready → stop here
   1. load item + pin + to_be + contract + tests     # minimal context
   2. if extending an already-built slice → Track B characterization test
   3. if item has a decision → Track A red test from to_be
@@ -123,6 +144,13 @@ checkpoint:
   the **build** showing the oracle was never satisfiable (upstream — it was wrong when it was born).
   A `flip_signal` with no telemetry degrades to a `manual_checkpoint` question you may legitimately
   ask at this boundary — *"did X happen?"* — and that one is still the downstream arc.
+
+- **Label what actually went wrong, in the words the premortem used.** Every failed evidence gate,
+  every REJECT, every reopen gets a `ledger_label_failure` from the shared taxonomy
+  (`references/core/decisions-ledger-spec.md` v0.9); `foresight` then joins it against what the
+  challenger's premortem foresaw. In greenfield the recurring surprise is `missing_capability` — the
+  elected design needed something that does not exist yet — and it is far cheaper to see that named
+  at a wave boundary than to find it re-derived slice by slice.
 
 A fully autonomous idea-to-app loop is how you get confident slop. A loop that pauses at wave
 boundaries is cautious at exactly the dependency points that matter.

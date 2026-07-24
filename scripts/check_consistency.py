@@ -40,6 +40,13 @@ CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 # playbook free-ride on one runnable mention — and grepping prose for correspondence is the very
 # heuristic this repo forbids. The check is per-module and deterministic: the engine is declared, and
 # an `mcp:` tool is checked to actually exist on the server (the carrier, never a second list).
+#
+# The engine must also be COHERENT with the declared type, which the first version of this gate never
+# checked: it verified that *an* engine was named, so `type: deterministic` + `engine: agent:*` passed
+# — a model on the path wearing a deterministic label. Four greenfield modules shipped that way. An
+# agent engine is D2 whatever the module says, and a fake-deterministic label is worse than an honest
+# judgment one, because a wrong D0 finding gets believed where a wrong D2 finding gets argued with
+# (core/trust-axes.md).
 MCP_ENGINE_RE = re.compile(r"^mcp:(\w+)$")
 
 
@@ -129,7 +136,14 @@ for skill, rel in SKILLS.items():
                             f"[{skill}] module '{m.get('id', '?')}' names engine '{engine}' but "
                             f"src/mcp/server.py advertises no `{mm.group(1)}` tool"
                         )
-                elif not (engine.startswith("external:") or engine.startswith("agent:")):
+                elif engine.startswith("agent:"):
+                    errors.append(
+                        f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but its "
+                        f"engine '{engine}' reasons — an agent on the path is D2 however the module "
+                        "is labeled. Declare it type=judgment; `agent:<how>` stays a legitimate "
+                        "engine, just not a deterministic one (core/trust-axes.md)"
+                    )
+                elif not engine.startswith("external:"):
                     errors.append(
                         f"[{skill}] module '{m.get('id', '?')}' engine '{engine}' is not a "
                         "recognized form (mcp:<tool> | external:<tool> | agent:<how>)"
@@ -224,6 +238,46 @@ for m in (".claude-plugin/marketplace.json",):
         json.loads(read(p))
     except json.JSONDecodeError as e:
         errors.append(f"{m} is invalid JSON: {e}")
+
+# ── frontmatter must PARSE, because of how it fails ────────────────────────────────────────────
+# A YAML plain scalar cannot contain ": ". Write `description: Second mode: the premortem` and the
+# whole block fails to parse — and the failure is silent and severe: the agent loads with EMPTY
+# metadata, so `tools:` and `disallowedTools:` are dropped and a read-only role runs unrestricted.
+# The permission table in core/agents.md would still *say* `edit: deny` while nothing enforced it.
+#
+# `claude plugin validate --strict` catches this, but only in CI on the generated output, which is
+# both late and one repo away from the line somebody edited. This catches it at the source, on the
+# authored file, before the build even runs. No YAML dependency: the rule being checked is exactly
+# the one plain scalars have, so it is a parse of the same shape rather than a guess about it.
+def _frontmatter_scalar_problems(path: Path) -> list:
+    text = read(path)
+    if not text.startswith("---"):
+        return []
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return [f"{path.relative_to(ROOT).as_posix()}: frontmatter opened with --- and never closed"]
+    out = []
+    for line in parts[1].splitlines():
+        m = re.match(r"^([A-Za-z0-9_-]+):\s+(.*)$", line)
+        if not m:
+            continue
+        key, value = m.group(1), m.group(2).strip()
+        if value[:1] in "\"'" or value[:1] in "[{|>":     # quoted / flow / block scalars are fine
+            continue
+        if ": " in value or value.endswith(":"):
+            out.append(
+                f"{path.relative_to(ROOT).as_posix()}: `{key}` is an unquoted YAML scalar "
+                f"containing ': ' — the frontmatter will NOT parse, and it fails silently: the "
+                f"agent/skill loads with empty metadata, so any `tools:` allowlist is dropped and a "
+                f"read-only role runs unrestricted. Rephrase without the colon, or quote the value."
+            )
+    return out
+
+
+for _md in sorted((ROOT / "src" / "agents").glob("*.md")) + \
+        sorted((ROOT / "src" / "skills").rglob("SKILL.md")) + \
+        sorted((ROOT / "src" / "commands").glob("*.md")):
+    errors.extend(_frontmatter_scalar_problems(_md))
 
 roster = sorted(f.stem for f in (ROOT / "src" / "agents").glob("*.md")) if (ROOT / "src" / "agents").is_dir() else []
 claude_cmds = sorted(f.stem for f in (ROOT / "src" / "commands").glob("*.md")) if (ROOT / "src" / "commands").is_dir() else []

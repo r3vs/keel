@@ -57,9 +57,38 @@ def interview_next(ledger: str) -> dict:
 
 def _open_or_create(path: str):
     """Load a ledger for a WRITE. Unlike the read path, a missing file is created here — this is how
-    the first pin lands. Reads refuse a missing path; writes bootstrap it."""
+    the first pin lands. Reads refuse a missing path; writes bootstrap it.
+
+    Also stamps the governance record when one is absent. This used to be an agent-facing tool, and
+    that was wrong twice: it rented ~250 tokens of description in every session to expose a button no
+    playbook ever pressed, and it made the trail's completeness depend on an agent remembering to
+    press it. The server already knows its own root and version, so it can answer "under which rules"
+    without being asked. A fact the machine can establish should never be a question put to a model.
+    """
     from ledger import Ledger
-    return Ledger(path)
+    led = Ledger(path)
+    if not led.data.get("governance"):
+        led.set_governance(_governance_record())
+    return led
+
+
+def _governance_record() -> dict:
+    """The policy fingerprint from what this process can see: the vendored roster and the spec
+    version it ships with. Unresolvable inputs land in `missing` rather than being dropped."""
+    import governance
+    from ledger import SCHEMA_VERSION
+    roster = next((str(c) for c in (_HERE / "core" / "agents.md",
+                                    _HERE.parent / "core" / "agents.md") if c.is_file()), "")
+    version = ""
+    for manifest in (_HERE.parent / ".claude-plugin" / "plugin.json",
+                     _HERE.parent.parent / ".claude-plugin" / "plugin.json"):
+        if manifest.is_file():
+            try:
+                version = json.loads(manifest.read_text(encoding="utf-8")).get("version", "")
+            except (OSError, ValueError):
+                version = ""
+            break
+    return governance.record(roster=roster, spec_version=SCHEMA_VERSION, skill_version=version)
 
 
 def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence: str,
@@ -110,6 +139,163 @@ def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
     led.save()
     _refresh_live_maps(ledger)
     return {"pin_id": pin["id"], "state": pin["state"]}
+
+
+def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
+                     max_depth: int = 2, head: str = "") -> dict:
+    import readiness
+    led = _open_existing(ledger)
+    pin = led.pin(pin_id)
+    head = head or _git_head()
+    if not head:
+        raise RuntimeError(
+            "cannot resolve HEAD (not a git repo, or git unavailable) — pass `head` explicitly; "
+            "without it the staleness gate cannot run, and a zone from a stale graph describes "
+            "ground that has since moved"
+        )
+    return readiness.assess(graph_path, led.data, pin.get("anchors", []),
+                            repo=repo, max_depth=max_depth, head=head)
+
+
+def ledger_set_readiness(ledger: str, pin_id: str, verdict: str, zone: dict, evidence: dict,
+                         hardens: list | None = None, rationale: str = "") -> dict:
+    led = _open_existing(ledger)
+    pin = led.set_readiness(pin_id, verdict, zone, evidence,
+                            hardens=hardens, rationale=rationale)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin["id"], "readiness": pin["readiness"],
+            "depends_on": pin["depends_on"]}
+
+
+def ledger_mark_correctness_unknown(
+    ledger: str,
+    pin_id: str,
+    blocked_by: str,
+    attempted: list,
+    determinism: str | None = None,
+    rung: str | None = None,
+) -> dict:
+    led = _open_existing(ledger)
+    pin = led.mark_correctness_unknown(
+        pin_id, blocked_by=blocked_by, attempted=attempted,
+        determinism=determinism, rung=rung)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin["id"], "state": pin["state"],
+            "verification": pin["verification"]}
+
+
+def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
+                     guardrails: list | None = None, abort_criteria: list | None = None,
+                     paper_tigers: list | None = None) -> dict:
+    led = _open_existing(ledger)
+    pm = led.premortem(pin_id, failure_modes, guardrails=guardrails,
+                       abort_criteria=abort_criteria, paper_tigers=paper_tigers)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin_id, "premortem": pm}
+
+
+def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: str,
+                         phase: str, source: str = "measurer") -> dict:
+    led = _open_existing(ledger)
+    event = led.label_failure(pin_id, failure_class, detail, phase, source=source)
+    led.save()
+    return {"event": event, "foresight": led.foresight(pin_id)}
+
+
+def learning_report(ledger: str, min_cluster: int = 2, candidates: list | None = None) -> dict:
+    import learning
+    return learning.report(_open_existing(ledger), min_cluster=min_cluster, candidates=candidates)
+
+
+def generator_observe(registry: str, generator: str, outcome: str) -> dict:
+    import generators
+    reg = generators.load(registry)
+    rec = generators.observe(reg, generator, outcome)
+    generators.save(reg, registry)
+    return {"generator": generator, "record": rec,
+            "verdict": generators.health(reg)}
+
+
+def generator_screen(registry: str, findings: list, bump_run: bool = False) -> dict:
+    import generators
+    reg = generators.load(registry)
+    if bump_run:
+        reg["runs"] = reg.get("runs", 0) + 1
+        generators.save(reg, registry)
+    return generators.screen(reg, findings)
+
+
+def doc_register(catalog: str, path: str, subject: str, owner: str, sources: list,
+                 repo: str = ".", status: str = "planned", commit: str = "") -> dict:
+    import doccatalog
+    cat = doccatalog.load(catalog)
+    entry = doccatalog.register(cat, path, subject, owner, sources, repo=repo,
+                                status=status, commit=commit)
+    doccatalog.save(cat, catalog)
+    return {"registered": entry, "total": len(cat["docs"])}
+
+
+def doc_freshness(catalog: str, repo: str = ".", graph_path: str = "",
+                  changed: list | None = None, git_base: str = "") -> dict:
+    import doccatalog
+    import impact
+    cat = doccatalog.load(catalog)
+    graph_data = impact.load(graph_path) if graph_path else None
+    files = list(changed) if changed is not None else (
+        impact.changed_files_from_git(repo, git_base) if git_base else None)
+    out = doccatalog.cascade(cat, files or [], repo=repo, graph_data=graph_data) \
+        if files is not None else {
+            "rows": [doccatalog.freshness(cat, d, repo=repo, graph_data=graph_data)
+                     for d in cat.get("docs", [])],
+            "policy": cat.get("policy"),
+        }
+    out["coverage"] = doccatalog.coverage(cat)
+    return out
+
+
+def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
+                        agreement: str, notes: str = "") -> dict:
+    led = _open_existing(ledger)
+    record = led.cross_derive(pin_id, claim, derivations, agreement, notes)
+    led.save()
+    _refresh_live_maps(ledger)
+    pin = led.pin(pin_id)
+    return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
+            "verification": pin.get("verification")}
+
+
+def cochange_omissions(changed: list | None = None, repo: str = ".", git_base: str = "",
+                       min_commits: int = 3, window: int = 500) -> dict:
+    import cochange
+    import impact
+    files = list(changed or [])
+    if not files and git_base:
+        files = impact.changed_files_from_git(repo, git_base)
+    if not files:
+        raise RuntimeError(
+            "no changed files — pass `changed` explicitly or a `git_base` to diff against; "
+            "an empty diff would report zero omissions, and that would read as clean"
+        )
+    return cochange.omissions(repo, files, min_commits=min_commits, limit=window)
+
+
+def scope_check(ledger: str, pin_id: str, changed: list | None = None, repo: str = ".",
+                git_base: str = "") -> dict:
+    import impact
+    led = _open_existing(ledger)
+    files = list(changed or [])
+    if not files and git_base:
+        files = impact.changed_files_from_git(repo, git_base)
+    return impact.declared_vs_actual(led.pin(pin_id), files)
+
+
+def agent_ready(ledger: str, pin_id: str = "") -> dict:
+    import agentready
+    led = _open_existing(ledger)
+    return agentready.card(led, pin_id) if pin_id else agentready.gate(led)
 
 
 def ledger_defer(ledger: str, pin_id: str) -> dict:
@@ -389,9 +575,20 @@ def impact_overlay(graph_path: str, changed: list | None = None, git_base: str =
     return impact.overlay(impact.load(graph_path), files, depth=depth)
 
 
-def docs_claims(graph_path: str, docs: list) -> dict:
+def docs_claims(graph_path: str, docs: list | None = None, draft: str = "",
+                mode: str = "audit") -> dict:
+    """Audit docs that exist, or gate a draft before publishing. One engine, two directions —
+    two tools would have been two descriptions for one idea."""
     import docs_claims as DC
-    return DC.analyze(list(docs), DC.load(graph_path))
+    data = DC.load(graph_path)
+    if mode == "audit":
+        return DC.analyze(list(docs or []), data)
+    if not draft and docs:
+        draft = Path(docs[0]).read_text(encoding="utf-8", errors="replace")
+    if not draft:
+        raise RuntimeError("publishing modes need `draft` text, or a `docs` path to read it from")
+    pub_mode = "prospective" if mode == "publish_prospective" else "descriptive"
+    return DC.publication_gate(draft, data, source=(docs or ["<draft>"])[0], mode=pub_mode)
 
 
 def _agents_md(root: str) -> Path:

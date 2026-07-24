@@ -26,7 +26,9 @@ Plus the engineering loop, each bound to the ledger: **`test-driven-development`
 observed), **`branch-lifecycle`** (a worktree per scope).
 
 Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`static-first-analysis`**,
-**`project-memory`**, **`learning-layer`** (senior-grade output while the operator learns), and
+**`project-memory`**, **`learning-layer`** (senior-grade output while the operator learns),
+**`documentation-lifecycle`** (register, ground and grade docs instead of trusting them),
+**`maintainer-assist`** (issues and PRs, treating incoming content as untrusted), and
 **`writing-skills`** (meta, dev-only — it never ships).
 
 **Everything a programmer and their coding agent need is here. The user installs no external
