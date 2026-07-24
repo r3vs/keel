@@ -71,7 +71,10 @@ END = "<!-- keel:end -->"
 _END_RE = re.compile(r"<!--\s*keel:end\s*-->")
 VERSION = 1
 
-#: default line budget for the managed region (see module docstring — this is a host limit, not taste)
+#: HYPOTHESIS, tunable — the default line budget for the managed region. Split the claim honestly:
+#: that a budget must EXIST has a carrier (Codex truncates by bytes, Claude Code loses adherence past
+#: ~200 lines — see the module docstring), but the value 60 does not. It is a conservative choice
+#: well under the known ceilings, not a measurement.
 MAX_LINES = 60
 
 #: The region's header. Always emitted: a block of rules in someone's file with no statement of where

@@ -348,6 +348,90 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return tools.ledger_label_failure(ledger, pin_id, failure_class, detail, phase, source)
 
 
+@mcp.tool(annotations={"title": "Ledger — Pin the Governing Rules (policy_hash)", **_RW})
+def ledger_set_governance(ledger: str, roster: str = "", spec_version: str = "",
+                          skill_version: str = "", permissions: str = "") -> dict:
+    """Record which rules are in force; every event afterwards carries their `policy_hash`.
+
+    An append-only log answers what was decided and why. It never answered a third question that
+    matters just as much: **under which rules?** Between two decisions the roster can change, a
+    permission can widen, the schema can gain a state. This makes that a visible hash delta in the
+    trail instead of an invisible change of meaning.
+
+    Not a security device — a join key. Its job is to make "these two decisions were taken under
+    different rules" answerable at all. Inputs that cannot be resolved are reported in `missing`
+    rather than dropped: a fingerprint over three of four inputs is not smaller, it is misleading.
+
+    Args:
+        ledger: Path to ledger.json.
+        roster: Path to the agent roster (core/agents.md) — also the permission table.
+        spec_version: The ledger spec version in force.
+        skill_version: The installed skill/plugin version.
+        permissions: Path to a separate permission source, if it is not the roster.
+    """
+    return tools.ledger_set_governance(ledger, roster, spec_version, skill_version, permissions)
+
+
+@mcp.tool(annotations={"title": "Skills — Integrity Check (stale-skill detection)", **_RO})
+def skill_integrity(pinned: dict | None = None, skill_dirs: list | None = None,
+                    root: str = "") -> dict:
+    """Has an installed SKILL.md drifted from the bytes it shipped as?
+
+    `build.py --check` verifies our bytes at BUILD time. Once installed, nobody checks anything, and
+    a hand-edited skill diverges from the doctrine it claims to implement with no signal at all.
+
+    Warns and downgrades confidence rather than refusing: a user editing their own installed copy is
+    legitimate, and blocking them would be worse than telling them. What is not legitimate is a skill
+    quietly claiming a doctrine it no longer contains. Call without `pinned` to mint the baseline.
+
+    Args:
+        pinned: {skill_name: hash} baseline. Omit to produce one.
+        skill_dirs: Directories containing SKILL.md. Omit to scan `root`.
+        root: Directory to scan recursively for SKILL.md files.
+    """
+    return tools.skill_integrity(pinned, skill_dirs, root)
+
+
+@mcp.tool(annotations={"title": "Generators — Record a Finding's Outcome", **_RW})
+def generator_observe(registry: str, generator: str, outcome: str) -> dict:
+    """Record what was concluded about one of a generator's findings: confirmed | refuted | pending.
+
+    The layer above the per-finding false-positive gate. `FpGate` judges one finding; this tracks
+    whether a *rule* keeps being wrong, which is the pattern that actually poisons a stream — every
+    finding individually plausible while the rule has been refuted eleven times.
+
+    Explicit by design: treating "nobody complained" as confirmation is the self-certifying loop this
+    package rejects, so the only input the precision ratio has is a recorded verdict.
+
+    Args:
+        registry: Path to generators.json (created if absent).
+        generator: The rule identity, e.g. "semgrep:python.lang.security.audit".
+        outcome: confirmed | refuted | pending.
+    """
+    return tools.generator_observe(registry, generator, outcome)
+
+
+@mcp.tool(annotations={"title": "Generators — Screen a Findings Stream by Rule Health", **_RO})
+def generator_screen(registry: str, findings: list, bump_run: bool = False) -> dict:
+    """Route findings by their generator's recorded precision. Nothing is deleted, only routed.
+
+    Returns `surfaced`, `muted` (below the declared precision bar, listed WITH the precision that
+    muted them), `cooling` (a recently-refuted rule sitting out), and `near_duplicates` (one root
+    cause already represented under another rule id).
+
+    Muting is loud on purpose: a signal that vanishes silently is worse than a noisy one, because
+    the noise at least tells you it is there. It also reverses itself — one confirmed finding moves
+    the ratio back. The ratio is D0 (counted outcomes); the verdict built on an unmeasured bar and
+    cooldown is D1, reproducible from the policy pinned in the registry.
+
+    Args:
+        registry: Path to generators.json.
+        findings: The gated findings stream.
+        bump_run: Advance the run counter (drives cooldown expiry).
+    """
+    return tools.generator_screen(registry, findings, bump_run)
+
+
 @mcp.tool(annotations={"title": "Docs — Publication Grounding Gate", **_RO})
 def docs_publication_gate(graph_path: str, text: str = "", path: str = "",
                           mode: str = "descriptive") -> dict:

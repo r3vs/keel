@@ -16,8 +16,9 @@ from typing import Optional
 
 import graph as graphmod
 
-# Field weights, in the spirit of a weighted fuzzy index: a name hit outranks a summary hit, which
-# outranks a path hit. Tuned to be legible, not magical.
+# HYPOTHESIS, tunable — field weights, in the spirit of a weighted fuzzy index: a name hit outranks
+# a summary hit, which outranks a path hit. The ORDER has a rationale; the specific numbers do not,
+# and nothing measured them. Legible, not magical — and labeled so they are never quoted as tuned.
 _WEIGHTS = {"name": 4.0, "tags": 3.0, "summary": 2.0, "source_file": 2.0, "layer": 1.0}
 _TYPE_RANK = {"file": 0, "class": 1, "function": 2, "method": 3}
 

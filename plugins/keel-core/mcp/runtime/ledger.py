@@ -161,6 +161,23 @@ class Ledger:
         n = 1 + sum(1 for item in collection if str(item.get(key, "")).startswith(prefix))
         return f"{prefix}{n:04d}"
 
+    # -- governance (v0.9) ---------------------------------------------------
+
+    def set_governance(self, record: Optional[dict]) -> Optional[dict]:
+        """Pin which rules are in force. Every event appended afterwards carries its `policy_hash`.
+
+        Built by `governance.record(...)` over the roster, the permission table, the spec version and
+        the skill version. Changing any of them changes the hash, so a widened permission becomes a
+        visible delta in the trail instead of an invisible change of meaning.
+        """
+        self.data["governance"] = record
+        return record
+
+    def _policy_hash(self) -> Optional[str]:
+        """The hash in force, or None. `None` is written explicitly onto every event: an ungoverned
+        decision must read as ungoverned, and an absent field would read as fine."""
+        return (self.data.get("governance") or {}).get("policy_hash")
+
     # -- pins ---------------------------------------------------------------
 
     def add_pin(
@@ -322,6 +339,7 @@ class Ledger:
                 "rationale": rationale,
                 "flip_criteria": flip_criteria,
                 "source": source,
+                "policy_hash": self._policy_hash(),
             }
             if flip_signal is not None:
                 event["flip_signal"] = dict(flip_signal)
@@ -507,6 +525,7 @@ class Ledger:
             "severity": severity,
             "upheld": upheld,
             "source": source,
+            "policy_hash": self._policy_hash(),
         }
         self.data["decision_log"].append(event)
         if upheld:
@@ -667,6 +686,7 @@ class Ledger:
             "detail": str(detail).strip(),
             "phase": phase,
             "source": source,
+            "policy_hash": self._policy_hash(),
         }
         self.data["decision_log"].append(event)
         return event
@@ -707,6 +727,7 @@ class Ledger:
             "reason": reason,
             "fired": fired,
             "source": source,
+            "policy_hash": self._policy_hash(),
         }
         self.data["decision_log"].append(event)
         self._reopen_minimal(pin, substate="reopened")

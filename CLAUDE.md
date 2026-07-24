@@ -113,6 +113,7 @@ running an app.
 python scripts/build.py               # src/ -> plugins/. The ONE generation step; the only thing that ships.
 python scripts/check_consistency.py   # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
 python scripts/verify_pointers.py     # every *.md cross-reference resolves; exits 1 on dangling
+python scripts/check_hypotheses.py    # every tuned number in the runtime is declared (AST, not grep)
 python scripts/verify_commands.py     # every agent-facing COMMAND resolves after install; exits 1 on drift
 python -m unittest discover -s tests  # ledger runtime, MCP tools + server, ledger gate, installed package
 bash src/tools/bootstrap.sh           # toolchain + uv (idempotent, best-effort, never hard-fails)

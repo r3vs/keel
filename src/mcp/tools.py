@@ -176,6 +176,49 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
     return {"event": event, "foresight": led.foresight(pin_id)}
 
 
+def ledger_set_governance(ledger: str, roster: str = "", spec_version: str = "",
+                          skill_version: str = "", permissions: str = "") -> dict:
+    import governance
+    led = _open_existing(ledger)
+    rec = governance.record(roster=roster, spec_version=spec_version,
+                            skill_version=skill_version, permissions=permissions)
+    led.set_governance(rec)
+    led.save()
+    return {"governance": rec}
+
+
+def skill_integrity(pinned: dict | None = None, skill_dirs: list | None = None,
+                    root: str = "") -> dict:
+    import governance
+    dirs = list(skill_dirs or [])
+    if not dirs and root:
+        base = Path(root)
+        dirs = [str(p.parent) for p in sorted(base.rglob("SKILL.md"))]
+    if not dirs:
+        raise RuntimeError("pass `skill_dirs`, or a `root` to scan for SKILL.md files")
+    if pinned is None:
+        return {"pinned": governance.pin_skills(dirs), "note": "baseline only — no comparison made"}
+    return governance.verify_skills(pinned, dirs)
+
+
+def generator_observe(registry: str, generator: str, outcome: str) -> dict:
+    import generators
+    reg = generators.load(registry)
+    rec = generators.observe(reg, generator, outcome)
+    generators.save(reg, registry)
+    return {"generator": generator, "record": rec,
+            "verdict": generators.health(reg)}
+
+
+def generator_screen(registry: str, findings: list, bump_run: bool = False) -> dict:
+    import generators
+    reg = generators.load(registry)
+    if bump_run:
+        reg["runs"] = reg.get("runs", 0) + 1
+        generators.save(reg, registry)
+    return generators.screen(reg, findings)
+
+
 def docs_publication_gate(graph_path: str, text: str = "", path: str = "",
                           mode: str = "descriptive") -> dict:
     import docs_claims

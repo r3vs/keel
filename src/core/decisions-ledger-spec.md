@@ -605,3 +605,23 @@ The reason this works at all is asymmetric: a single-provider hallucination is *
 Agreement sets `verification.rung = "cross_derived"`. **Disagreement is the signal, not a nuisance**: the pin moves to `needs_input` with substate `contested` and both derivations become options, because a claim two independent providers disagree about is exactly the one a human must look at. It deliberately does **not** cascade to dependents the way an upheld challenge does — nobody yet knows which side is wrong, and reopening the neighbourhood on an unresolved disagreement is churn, not caution.
 
 The rung is **not mandatory at any severity**. Making it obligatory above a threshold roughly doubles the cost of the most expensive pins, and that trade should be elected with a measured number in hand rather than assumed by a schema.
+
+### `governance` + `policy_hash` — under which rules was this decided?
+
+An append-only log answers *what* was decided and *why*. It has never answered a third question that matters just as much when something later goes wrong: **under which rules?** Between two decisions the roster can change, a permission can widen, this schema can gain a state, and a skill's prose can be edited. A trail that cannot show that is a trail somebody will one day read wrongly, with total confidence.
+
+```jsonc
+"governance": {
+  "policy_hash": "…",
+  "components": { "roster": "…", "permissions": "…", "spec_version": "…", "skill_version": "…" },
+  "missing": []
+}
+```
+
+Every event appended afterwards carries that `policy_hash`, stamped **before the outcome takes effect**. So a widened permission becomes a *visible hash delta in the trail* instead of an invisible change of meaning.
+
+Three properties, each chosen against a plausible alternative:
+
+- **It is a join key, not a security device.** Its only job is to make *"these two decisions were taken under different rules"* answerable. Treating it as tamper-evidence would be a claim the artifact cannot support — anyone who can edit the ledger can edit the hash.
+- **The components travel with the digest.** A bare hash tells you two decisions differ; the components tell you *which rule* changed, which is the only form of the answer anybody can act on.
+- **Absence is recorded, not implied.** An ungoverned ledger stamps `policy_hash: null` explicitly on every event. A missing field would read as fine, and an input that cannot be resolved lands in `missing` rather than being dropped — a fingerprint over three of four inputs is not a smaller fingerprint, it is a misleading one.

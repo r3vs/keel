@@ -58,6 +58,8 @@ EXPECTED_TOOLS = {
     "cochange_omissions", "scope_check", "ledger_cross_derive",
     # docs as a governed surface: the publication direction + the catalog
     "docs_publication_gate", "doc_register", "doc_freshness",
+    # hygiene: which rules were in force, whether a skill drifted, whether a rule keeps being wrong
+    "ledger_set_governance", "skill_integrity", "generator_observe", "generator_screen",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
@@ -65,6 +67,7 @@ WRITE_TOOLS = {
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
     "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
+    "ledger_set_governance", "generator_observe",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS

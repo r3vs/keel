@@ -31,7 +31,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-# a pin at or above this inbound-fan-out, defaulted rather than asked, is an ignored_fanout smell
+# HYPOTHESIS, tunable — a pin at or above this inbound fan-out, defaulted rather than asked, is an
+# ignored_fanout smell. Nothing measured 2; it is the smallest count where "several decisions rest
+# on this" is literally true. Declared here rather than hidden, and reused by premortem_required so
+# the package has one fan-out notion instead of two.
 _FANOUT_THRESHOLD = 2
 
 
