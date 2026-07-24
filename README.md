@@ -91,10 +91,10 @@ those are the manuals.
 
 | Plugin | What it is | Ships |
 |---|---|---|
-| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **37 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
+| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **52 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
 | **[`codebase-rescue`](plugins/codebase-rescue/README.md)** | **curative** — align a codebase that already drifted | 5 modes · 5 phases · 28 analysis modules · `/rescue` |
 | **[`greenfield-forge`](plugins/greenfield-forge/README.md)** | **preventive** — build one that can't drift | 5 modes · 7 phases · 15 modules · `/forge` |
-| **[`keel-kit`](plugins/keel-kit/README.md)** | the composable engineering loop, each skill bound to the ledger | 9 skills |
+| **[`keel-kit`](plugins/keel-kit/README.md)** | the composable engineering loop, each skill bound to the ledger | 11 skills |
 
 **Nothing external, ever.** A CI gate enforces that no source may point outside this repo — you
 install Keel, and you have everything a programmer and their coding agent need.
@@ -187,19 +187,22 @@ so *why* survives, not just *what*.
 carry high confidence and skip the false-positive gate. Model judgment is *labelled as such*, every
 time. If Keel can't prove something, it says so instead of sounding confident.
 
-### The engine: 24 modules, 6.2k lines, Python stdlib only — reaching your agent as 34 typed MCP tools
+### The engine: 32 modules, 8.4k lines, Python stdlib only — reaching your agent as 52 typed MCP tools
 
 Your agent **discovers** these. It is never told a file path. Full signatures and semantics:
 [`keel-core`](plugins/keel-core/README.md).
 
 <details>
-<summary><b>All 37 tools</b></summary>
+<summary><b>All 52 tools</b></summary>
 
-**Ledger (8)** — the append-only source of truth. None of these elect anything.
+**Ledger (15)** — the append-only source of truth. None of these elect anything.
 `ledger_summary` · `interview_next` · `ledger_add_pin` · `ledger_surface_assumption` ·
 `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` (refuses while any
 item is open) · `ledger_mark_correctness_unknown` (the honest exit when correctness cannot be
-established) · `ledger_defer`
+established) · `ledger_defer` · `ledger_set_readiness` · `ledger_premortem` (assume it already
+failed) · `ledger_label_failure` (the same words, afterwards) · `ledger_cross_derive` (two
+providers; disagreement is the signal) · `ledger_set_governance` (`policy_hash` — under which
+rules) · `agent_ready` (handable, or merely unblocked?)
 
 **Cross-layer contract (2)** — 8 stacks reduced to one field descriptor, then diffed: Postgres DDL ·
 Drizzle · Prisma · Django · SQLAlchemy · GraphQL · TypeScript · Pydantic.
@@ -218,14 +221,19 @@ none of them loads `ledger.json`.
 `build_graph` · `understand_codebase` · `explain_node` · `graph_query` · `guided_tour` ·
 `domain_view` · `graph_map` · `blast_radius` (staleness-gated) · `impact_overlay`
 
-**Findings & quality (5)**
+**Findings & quality (10)**
 `findings_gate` (SARIF/OSV → false-positive gate) · `coverage_gaps` (what did **not** run) ·
 `design_scan` (frontend slop / a11y) · `tokens_diff` · `docs_claims` (docs as claims; flag the
-dangling ones)
+dangling ones) · `docs_publication_gate` (the same check on what *we* write) · `doc_register` ·
+`doc_freshness` (graded by distance, not a flag) · `generator_observe` · `generator_screen`
+(a rule that keeps being wrong gets muted — loudly)
 
-**Workflow & interview (5)**
-`challenge_oracle` · `build_waves` (DAG → parallel waves) · `render_map` (live HTML) ·
-`fingerprint_scan` (the resume baseline) · `spend_report` (token/cost telemetry)
+**Workflow, learning & interview (11)**
+`challenge_oracle` · `premortem_gaps` · `build_waves` (DAG → parallel waves) · `render_map` (live
+HTML) · `fingerprint_scan` (the resume baseline) · `spend_report` (token/cost telemetry) ·
+`readiness_assess` (can the ground bear it — states no verdict) · `cochange_omissions` (git history
+as a second carrier) · `scope_check` (declared radius vs actual diff) · `learning_report` (a lesson
+counts once it is a check) · `skill_integrity`
 
 </details>
 
@@ -301,8 +309,8 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 
 ## Status — stated honestly, because that's the whole point
 
-Design-complete across 2 methodology skills + 11 composable ones, with the runtime **largely
-implemented**: 24 modules, 37 MCP tools, **465 tests green in CI**, 4 hosts.
+Design-complete across 2 methodology skills + 13 composable ones, with the runtime **largely
+implemented**: 32 modules, 52 MCP tools, **551 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

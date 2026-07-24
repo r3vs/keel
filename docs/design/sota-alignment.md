@@ -1,6 +1,10 @@
 # SOTA alignment — piano di build
 
-> **Stato: ELETTO in sessione (2026-07-24).** L'input è lo studio del corpus PRD di VibraFlow
+> **Stato: COSTRUITO INTEGRALMENTE (2026-07-24).** Tutti i blocchi 0–5 sono in `sota-alignment`,
+> sette commit, 551 test verdi e cinque gate puliti. Le deviazioni dal piano originale sono marcate
+> **[deviazione]** dove sono avvenute, con il motivo — non riscritte via.
+>
+> **Stato originale: ELETTO in sessione (2026-07-24).** L'input è lo studio del corpus PRD di VibraFlow
 > (`docs/prd/*`, 11 file, commit `95ff71c`) più l'analisi di `affaan-m/ECC continuous-learning-v2`.
 > Branch: `sota-alignment` off `main`.
 >
@@ -142,7 +146,7 @@ aperte, un blocker non verificabile non è una domanda da sequenziare bene, è u
 Lezione per gli item rimanenti: **ogni stato nuovo va cercato su tutte le superfici prima del
 commit**, non solo testato in isolamento.
 
-### 1.2 Agent-Ready Gate — due strati, tenuti distinti
+### 1.2 Agent-Ready Gate — due strati, tenuti distinti · **COSTRUITO** (`bf53ec2`)
 
 `buildloop.ready()` oggi controlla solo la chiusura delle dipendenze: un item vago passa senza attrito.
 
@@ -154,7 +158,18 @@ commit**, non solo testato in isolamento.
 I due strati restano **separati nella card**, mai fusi in un verdict unico. Instrada indietro invece
 di bloccare: `needs_interview` / `needs_research` / `needs_hardening` / `human_only`.
 
-### 1.3 Premortem come seconda modalità del `challenger`
+**[deviazione — una rotta in più]** Il piano ne nominava quattro e poi introduceva uno strato di
+qualità di proprietà del `challenger` **senza un posto dove mandarlo**. Era un buco: infilarlo in
+`needs_research` (un ruolo diverso) lo avrebbe nascosto invece di chiuderlo. Quindi `needs_challenge`.
+
+**[deviazione — nessun campo nuovo]** «rollback? stop conditions?» sembravano precondizioni separate
+da un oggetto `preflight` da inventare. Sono esattamente i `guardrails` e gli `abort_criteria` che il
+premortem già produce: **il premortem È il preflight**. Precondizioni finali: `oracle` · `scope` ·
+`terrain` · `premortem`, ognuna su un carrier che esiste già. Il gate è **advisory**: non toglie
+niente da `ready()`, perché un item che sparisce senza destinatario è lo stesso buco nero di uno
+stato che non compare da nessuna parte.
+
+### 1.3 Premortem come seconda modalità del `challenger` · **COSTRUITO** (`bf53ec2`)
 
 Il challenger refuta **l'oracolo** (il criterio è sano?); il premortem assume che **il piano** sia già
 fallito e lavora a ritroso verso guardrail, precheck e criteri di abort. Stesso ruolo read-only,
@@ -162,14 +177,20 @@ seconda modalità — **il roster resta a sei**. Obbligatorio sopra blast radius
 side-effect, sui retry. Il campo `paper_tigers[]` (rischi che sembravano gravi ma sono già mitigati,
 **con evidenza**) è il meccanismo anti-rumore. `D2` puro, ed è giusto così.
 
-### 1.4 Tassonomia chiusa dei fallimenti
+**[deviazione — obbligatorietà senza numero nuovo]** «sopra blast radius medio» avrebbe richiesto una
+soglia inventata. `premortem_required()` la deriva invece da quattro carrier che il ledger ha già:
+severità `blocker|high`, un verdetto landing-zone debole, una storia registrata di riaperture, e il
+`_FANOUT_THRESHOLD` che `ignored_fanout` usa già — dichiarato una volta e riusato, non inventato due
+volte.
+
+### 1.4 Tassonomia chiusa dei fallimenti · **COSTRUITO** (`bf53ec2`)
 
 Vocabolario unico che premortem, labeling post-run e recovery condividono, invece di tre. Il
 vocabolario è `D0` (è una enum); **la classificazione è `D2`** e va detto, non nascosto.
 
 ---
 
-## Blocco 2 — Carrier nuovi · **QUEUED**
+## Blocco 2 — Carrier nuovi · **COSTRUITO** (`5f397dd`)
 
 Qui il determinismo è una vittoria vera: il carrier esiste già e nessuno lo legge.
 
@@ -180,10 +201,20 @@ dal diff**, segnala l'omissione. È la tesi del pacchetto — la deriva cross-la
 **carrier indipendente**: la storia git invece delle field shape. Due carrier che concordano su un
 finding valgono molto più di uno; **due che discordano sono essi stessi il segnale.**
 
+**[nota]** `readiness.cochanged_outside` ora **delega** a `cochange.outside`: due implementazioni di
+«cosa si muove insieme» sarebbero divergenti, e un pacchetto che caccia la divergenza non può
+spedirne una propria.
+
 ### 2.2 Blast radius dichiarato vs effettivo (`D0`)
 
 Post-esecuzione: se il diff reale supera il raggio dichiarato dall'item, emetti un finding. Prende lo
 scope creep dell'executor senza chiedere niente a nessuno.
+
+**[deviazione — una direzione sola è un finding]** Il confine è la landing zone che il pin ha **già
+registrato**, cioè qualcosa che un umano ha visto e accettato, mai una linea tracciata dopo. Toccare
+*meno* della zona non è un finding: un blast radius è ciò che *potrebbe* essere colpito e la scala
+minima punta sotto per costruzione. Zero confine dichiarato → `checked: false`, perché non
+controllato non deve mai leggersi come pulito.
 
 ### 2.3 Ri-derivazione cross-provider sui claim ad alto rischio (`D2` × 2)
 
@@ -195,7 +226,7 @@ di §0.1.
 
 ---
 
-## Blocco 3 — Superfici nuove · **QUEUED**
+## Blocco 3 — Superfici nuove · **COSTRUITO** (`c2651b0`)
 
 ### 3.1 Docs: grounding gate in direzione di pubblicazione (`D0`)
 
@@ -234,7 +265,7 @@ Due regole rendono onesta l'intera cosa:
 
 ---
 
-## Blocco 4 — Igiene · **QUEUED**
+## Blocco 4 — Igiene · **COSTRUITO** (`4501520`)
 
 - **`policy_hash` su ogni decisione**, persistito *prima* che l'esito abbia effetto: hash di roster
   agenti + permessi + versione spec ledger + versione skill. Un cambio di permessi diventa **un delta
@@ -254,7 +285,7 @@ Due regole rendono onesta l'intera cosa:
 
 ---
 
-## Blocco 5 — Apprendimento con carrier · **QUEUED, e ultimo di proposito**
+## Blocco 5 — Apprendimento con carrier · **COSTRUITO** (`6f194e4`), e ultimo di proposito
 
 Valutazione di `continuous-learning-v2` (ECC): **la metà osservativa è giusta, la metà inferenziale è
 quella che questo repo ha già demolito due volte** (`learner.json` declassato nel red-team,
@@ -361,3 +392,43 @@ Marcate come `agent_assumption` — se una è sbagliata, l'item che dipende da l
 4. **`maintainer_assist` è una skill nuova, non un'estensione di `code-review`.** Direzione opposta:
    `code-review` guarda un diff che il pacchetto ha prodotto, `maintainer_assist` guarda contenuto in
    arrivo da terzi. Fonderli farebbe entrare contenuto non fidato in un percorso che oggi è fidato.
+
+---
+
+## 10. Consuntivo — cosa è cambiato rispetto al piano
+
+Sette commit su `sota-alignment`, tutti i blocchi chiusi. Le deviazioni sono marcate in loco;
+qui restano le tre che hanno cambiato una *decisione*, non un dettaglio.
+
+| Deviazione | Perché |
+|---|---|
+| `FAILURE_CLASSES` è un **superset** di `CHALLENGE_CLASSES`, non una lista accanto | una challenge *è* un modo di fallire dell'oracolo previsto prima del lavoro. Due vocabolari per un concetto è la divergenza che il pacchetto caccia — spedirla nel nostro schema sarebbe stata la versione dal portone d'ingresso |
+| il gate agent-ready ha **cinque** rotte, non quattro | il piano introduceva uno strato di qualità di proprietà del `challenger` e non gli dava dove atterrare. `needs_challenge` chiude il buco invece di nasconderlo dentro `needs_research` |
+| `maintainer-assist` gira su **`gh`**, non sull'MCP `github` | richiesta di Pietro a metà build, ed è giusta: `gh` è già autenticato, e soprattutto la superficie permessa diventa **nominabile** — i comandi di lettura, quelli di scrittura, e quelli rifiutati, uno per uno. Una capacità che puoi enumerare è una che puoi verificare |
+
+### Difetti trovati mentre costruivo, non prima
+
+Uno per blocco, e sono la parte che il piano non poteva contenere.
+
+1. **`correctness_unknown` era un buco nero** (Blocco 0, trovato costruendo 1.1) — bloccava la
+   chiusura senza comparire su nessuna superficie. Da lì la regola operativa applicata a ogni
+   aggiunta successiva: *uno stato nuovo va cercato su tutte le superfici prima del commit.*
+2. **Il gate delle ipotesi ha trovato il proprio bug** (Blocco 4) — `2 in {2.0}` è `True` in Python,
+   quindi un'esenzione strutturale scritta come float esentava in silenzio **ogni** intero 2 del
+   runtime, incluso un vero fan-out threshold. Il linter ha trovato 7 costanti non dichiarate solo
+   dopo che il linter è stato aggiustato.
+3. **4 moduli greenfield erano `type: deterministic` con `engine: agent:*`** (Blocco 0) — il gate
+   esistente verificava che *un* engine fosse nominato, mai la coerenza fra tipo ed engine.
+
+### Cosa resta aperto, di proposito
+
+- **Il Blocco 5 non produce nulla finché non girano dei cicli.** È corretto: un osservatore
+  costruito prima che esistano esiti osserva il vuoto. Il meccanismo c'è, i segnali arrivano dopo.
+- **`cross_derived` non è obbligatorio a nessuna severità** (assunzione 3, invariata). Renderlo tale
+  raddoppia il costo dei pin più cari e va eletto con un numero in mano.
+- **Nessun auto-close in `maintainer-assist`.** Il permesso si guadagna con un tasso di falsi
+  positivi misurato — e ora la macchina per misurarlo esiste (`generator_observe`), quindi
+  l'obiezione è diventata una condizione verificabile invece che un rinvio.
+- **Il gate delle ipotesi guarda solo il livello modulo.** Un default tarato in una firma di funzione
+  non viene preso. È un buco reale, dichiarato nel docstring dello script: meglio di un gate che
+  copre in silenzio meno di quanto il nome promette.

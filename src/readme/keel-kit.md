@@ -1,6 +1,6 @@
 # keel-kit
 
-**Nine composable skills.** Each is useful on its own, in any task, on any codebase — and each is
+**Eleven composable skills.** Each is useful on its own, in any task, on any codebase — and each is
 **bound to the decisions ledger**, which is the only reason they are authored here instead of
 borrowed from an existing marketplace.
 

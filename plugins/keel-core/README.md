@@ -32,13 +32,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 37 MCP tools
+## The 52 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (10)
+### Ledger — the single source of truth (15)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -55,6 +55,11 @@ holds no state of its own; it projects this file.
 | `ledger_mark_correctness_unknown` | the work was done and correctness could **not** be established — blocks closure, forces a next move | ✎ |
 | `ledger_set_readiness` | the landing-zone verdict (D2) + wires `harden_first` prerequisites into `depends_on` | ✎ |
 | `ledger_defer` | out of scope for now; stays as backlog, never silently dropped | ✎ |
+| `ledger_premortem` | the challenger's second mode — assume the plan already failed; guardrails and abort criteria required, and a dismissed risk must carry its evidence | ✎ |
+| `ledger_label_failure` | what actually went wrong, in the **same closed vocabulary** the premortem used, so the two can be joined | ✎ |
+| `ledger_cross_derive` | the `cross_derived` rung: two derivations, two **distinct** providers. Agreement lifts the rung; disagreement contests the pin | ✎ |
+| `ledger_set_governance` | pin which rules are in force; every later event carries their `policy_hash`, so a widened permission is a visible delta | ✎ |
+| `agent_ready` | is this item *handable*, or merely unblocked? Preconditions (D0) and quality (D2), reported apart, routed to a named owner | — |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview
 answer. The write tools record; they do not decide.
@@ -114,7 +119,7 @@ and tables are nodes; imports and calls are edges.
 Staleness-gated means: if the graph was built at a different commit than `HEAD`, it says so instead
 of answering confidently from a stale index.
 
-### Findings, quality & spend (5)
+### Findings, quality & spend (10)
 
 | Tool | Does |
 |---|---|
@@ -123,11 +128,16 @@ of answering confidently from a stale index.
 | `design_scan` | frontend AI-slop tells, design quality, a11y, drift from the design contract |
 | `tokens_diff` | a CSS layer's `--variables` vs the DTCG contract |
 | `docs_claims` | treat docs as **claims** about the code and flag the dangling ones |
+| `docs_publication_gate` | the same engine pointed at what you are about to **write** — a dangling reference never reaches a reader as fact |
+| `doc_register` | register a doc with subject, owner and sources **before the prose exists** |
+| `doc_freshness` | graded staleness by distance (0 cited · 1 importer · 2 co-change), `invalid` D0 apart from `stale` D1 |
+| `generator_observe` | record whether a rule's finding was confirmed or refuted — silence never counts |
+| `generator_screen` | route findings by their generator's measured precision; muting is **loud** and reverses itself |
 
 `coverage_gaps` is the anti-overclaim tool: a report that doesn't say what it *couldn't* check is a
 report that reads as clean.
 
-### Workflow & interview (6)
+### Workflow, learning & interview (9)
 
 | Tool | Does |
 |---|---|
@@ -137,6 +147,11 @@ report that reads as clean.
 | `fingerprint_scan` | signature-level per-file fingerprints — the resume / incremental baseline |
 | `spend_report` | token and (with a price sheet) cost telemetry over the host's session transcript |
 | `readiness_assess` | can the ground bear this change — zone + 4 deterministic carriers, **states no verdict** |
+| `premortem_gaps` | pins that **owe** a premortem, derived from carriers the ledger already holds |
+| `cochange_omissions` | what this diff historically would have touched and did not — git history as a second, independent carrier |
+| `scope_check` | the declared blast radius vs the actual diff; outside it is candidate `scope_creep`, inside-and-untouched is not a finding |
+| `learning_report` | divergences the ledger already recorded, and the gate that only promotes a lesson once it is a **check** |
+| `skill_integrity` | has an installed `SKILL.md` drifted from the bytes it shipped as? Warns and downgrades, never blocks |
 
 ---
 
@@ -232,7 +247,7 @@ manifest points at the same file; opencode gets the same table from a `config()`
 
 | Server | Transport | Why |
 |---|---|---|
-| `keel` | stdio (`uv run --script`) | the 37 tools above |
+| `keel` | stdio (`uv run --script`) | the 52 tools above |
 | `context7` | http | **current** library docs — beats the model's training cutoff |
 | `deepwiki` | http | how a real repo actually solved it |
 | `playwright` | stdio (`npx`) | rendered-DOM extraction for the design/frontend layer |
