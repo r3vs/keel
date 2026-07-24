@@ -37,7 +37,7 @@ A pipeline that writes docs and then re-ingests them to answer questions has bui
 confirms itself, and its confidence will rise exactly as its accuracy falls. Rung 1 is the code
 (`references/core/knowledge-sources.md`).
 
-## 3. Ground it before publishing (`docs_publication_gate`)
+## 3. Ground it before publishing (`docs_claims`, `mode: publish`)
 
 Every backticked reference is a **claim about the code**, and it is checked against the graph before
 the prose reaches anyone. A reference that does not resolve is dropped, fixed, or explicitly marked —
@@ -48,12 +48,14 @@ encodes the answer, so asking a model would be slower *and* worse. It is also th
 needed on itself — a `SKILL.md` naming an MCP tool that did not exist yet is the same bug, one layer
 up.
 
-Two modes, because the honest answer differs:
-- **`descriptive`** (default) — prose about code that exists. A dangling reference **blocks**: it is
-  a typo or a lie.
-- **`prospective`** — a design doc or plan that deliberately names unbuilt things. Dangling
+Two publishing modes, because the honest answer differs:
+- **`publish`** — prose about code that exists. A dangling reference **blocks**: it is a typo or a
+  lie.
+- **`publish_prospective`** — a design doc or plan that deliberately names unbuilt things. Dangling
   references are listed to be marked, not banned. The danger there is the *present tense*, not the
   plan.
+
+(The third mode, `audit`, is the inbound direction: the docs a repo already has.)
 
 The gate resolves references and claims nothing about meaning. Whether a symbol that *does* resolve
 is described correctly is judgment, and stays with you.

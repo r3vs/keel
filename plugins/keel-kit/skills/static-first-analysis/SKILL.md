@@ -22,3 +22,14 @@ cheap, deterministic, and high-confidence — reach for it before model judgment
 - **Confidence from determinism**: deterministic findings skip the heavy fp-check — reserve that
   budget for the judgment findings that actually need it.
 - **Degrade gracefully**: no checker for a language → fall back to grep/graph and note the gap.
+
+## When a whole RULE keeps being wrong
+
+`findings_gate` judges one finding at a time and is blind to the pattern that actually poisons a
+stream: a rule that is wrong over and over, every instance individually plausible. Record each
+verdict with `generator_observe` (`confirmed` / `refuted` — silence is never confirmation), then run
+`generator_screen` to route by measured precision.
+
+A rule below the declared bar is **muted, loudly**: its findings still appear, carrying the
+precision that muted them, and one confirmed finding moves the ratio back. A signal that vanishes
+silently is worse than a noisy one, because at least the noise tells you it is there.

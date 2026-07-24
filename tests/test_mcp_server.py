@@ -53,13 +53,13 @@ EXPECTED_TOOLS = {
     # landing-zone readiness: D0 evidence (read-only) + the D2 verdict (write)
     "readiness_assess",
     # v0.9 — the agent-ready gate (D0 presence) and the challenger's premortem queue
-    "agent_ready", "premortem_gaps", "ledger_premortem", "ledger_label_failure",
+    "agent_ready", "ledger_premortem", "ledger_label_failure",
     # new carriers: git history as an independent signal, and the cross_derived rung
     "cochange_omissions", "scope_check", "ledger_cross_derive",
     # docs as a governed surface: the publication direction + the catalog
-    "docs_publication_gate", "doc_register", "doc_freshness",
+    "doc_register", "doc_freshness",
     # hygiene: which rules were in force, whether a skill drifted, whether a rule keeps being wrong
-    "ledger_set_governance", "skill_integrity", "generator_observe", "generator_screen",
+    "generator_observe", "generator_screen",
     # learning that only ever produces checks, never stored beliefs
     "learning_report",
 }
@@ -69,7 +69,7 @@ WRITE_TOOLS = {
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
     "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
-    "ledger_set_governance", "generator_observe",
+    "generator_observe",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS

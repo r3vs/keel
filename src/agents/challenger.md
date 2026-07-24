@@ -49,7 +49,8 @@ Refutation asks whether the oracle is sound. The premortem **grants** it and ask
 question: *this already failed — what killed it?* Same object, same read-only posture, so it is your
 second mode rather than a seventh role.
 
-- `premortem_gaps` lists the pins that **owe** you one. The obligation is deterministic and comes
+- `agent_ready` returns `premortems_owed` — the pins that **owe** you one. The obligation is
+  deterministic and comes
   from carriers the ledger already holds — a `blocker|high` severity, a landing zone assessed as
   `harden_first`/`redesign`, a pin with a history of being reopened, high inbound fan-out — so
   neither of us invents a threshold.

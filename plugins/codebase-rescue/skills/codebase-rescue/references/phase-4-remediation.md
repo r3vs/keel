@@ -46,7 +46,7 @@ large codebase that resilience is not a luxury.
 (a wide blast radius, a long generated diff). When the working context crosses a threshold, **stop and
 hand off** — write the state to the ledger and start a fresh invocation for the remainder — rather than
 push into a degraded window where quality silently drops. The trigger is measured: the harness's live
-context measure crosses the budget, calibrated against what past scopes actually cost (the `spend`
+context measure crosses the budget, calibrated against what past scopes actually cost (`spend_report`,
 telemetry). This is the executor's version of the whole doctrine — surface the limit and reset, never
 work past it and hope. A checkpoint fired on evidence is not a failure; it is the reset working.
 

@@ -57,9 +57,38 @@ def interview_next(ledger: str) -> dict:
 
 def _open_or_create(path: str):
     """Load a ledger for a WRITE. Unlike the read path, a missing file is created here — this is how
-    the first pin lands. Reads refuse a missing path; writes bootstrap it."""
+    the first pin lands. Reads refuse a missing path; writes bootstrap it.
+
+    Also stamps the governance record when one is absent. This used to be an agent-facing tool, and
+    that was wrong twice: it rented ~250 tokens of description in every session to expose a button no
+    playbook ever pressed, and it made the trail's completeness depend on an agent remembering to
+    press it. The server already knows its own root and version, so it can answer "under which rules"
+    without being asked. A fact the machine can establish should never be a question put to a model.
+    """
     from ledger import Ledger
-    return Ledger(path)
+    led = Ledger(path)
+    if not led.data.get("governance"):
+        led.set_governance(_governance_record())
+    return led
+
+
+def _governance_record() -> dict:
+    """The policy fingerprint from what this process can see: the vendored roster and the spec
+    version it ships with. Unresolvable inputs land in `missing` rather than being dropped."""
+    import governance
+    from ledger import SCHEMA_VERSION
+    roster = next((str(c) for c in (_HERE / "core" / "agents.md",
+                                    _HERE.parent / "core" / "agents.md") if c.is_file()), "")
+    version = ""
+    for manifest in (_HERE.parent / ".claude-plugin" / "plugin.json",
+                     _HERE.parent.parent / ".claude-plugin" / "plugin.json"):
+        if manifest.is_file():
+            try:
+                version = json.loads(manifest.read_text(encoding="utf-8")).get("version", "")
+            except (OSError, ValueError):
+                version = ""
+            break
+    return governance.record(roster=roster, spec_version=SCHEMA_VERSION, skill_version=version)
 
 
 def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence: str,
@@ -181,31 +210,6 @@ def learning_report(ledger: str, min_cluster: int = 2, candidates: list | None =
     return learning.report(_open_existing(ledger), min_cluster=min_cluster, candidates=candidates)
 
 
-def ledger_set_governance(ledger: str, roster: str = "", spec_version: str = "",
-                          skill_version: str = "", permissions: str = "") -> dict:
-    import governance
-    led = _open_existing(ledger)
-    rec = governance.record(roster=roster, spec_version=spec_version,
-                            skill_version=skill_version, permissions=permissions)
-    led.set_governance(rec)
-    led.save()
-    return {"governance": rec}
-
-
-def skill_integrity(pinned: dict | None = None, skill_dirs: list | None = None,
-                    root: str = "") -> dict:
-    import governance
-    dirs = list(skill_dirs or [])
-    if not dirs and root:
-        base = Path(root)
-        dirs = [str(p.parent) for p in sorted(base.rglob("SKILL.md"))]
-    if not dirs:
-        raise RuntimeError("pass `skill_dirs`, or a `root` to scan for SKILL.md files")
-    if pinned is None:
-        return {"pinned": governance.pin_skills(dirs), "note": "baseline only — no comparison made"}
-    return governance.verify_skills(pinned, dirs)
-
-
 def generator_observe(registry: str, generator: str, outcome: str) -> dict:
     import generators
     reg = generators.load(registry)
@@ -222,17 +226,6 @@ def generator_screen(registry: str, findings: list, bump_run: bool = False) -> d
         reg["runs"] = reg.get("runs", 0) + 1
         generators.save(reg, registry)
     return generators.screen(reg, findings)
-
-
-def docs_publication_gate(graph_path: str, text: str = "", path: str = "",
-                          mode: str = "descriptive") -> dict:
-    import docs_claims
-    if not text and not path:
-        raise RuntimeError("pass the draft `text` or a `path` to it")
-    if not text:
-        text = Path(path).read_text(encoding="utf-8", errors="replace")
-    return docs_claims.publication_gate(text, docs_claims.load(graph_path),
-                                        source=path or "<draft>", mode=mode)
 
 
 def doc_register(catalog: str, path: str, subject: str, owner: str, sources: list,
@@ -303,13 +296,6 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     import agentready
     led = _open_existing(ledger)
     return agentready.card(led, pin_id) if pin_id else agentready.gate(led)
-
-
-def premortem_gaps(ledger: str) -> dict:
-    import challenger as chl
-    led = _open_existing(ledger)
-    gaps = chl.premortem_gaps(led)
-    return {"gaps": gaps, "count": len(gaps), "determinism": "D0"}
 
 
 def ledger_defer(ledger: str, pin_id: str) -> dict:
@@ -589,9 +575,20 @@ def impact_overlay(graph_path: str, changed: list | None = None, git_base: str =
     return impact.overlay(impact.load(graph_path), files, depth=depth)
 
 
-def docs_claims(graph_path: str, docs: list) -> dict:
+def docs_claims(graph_path: str, docs: list | None = None, draft: str = "",
+                mode: str = "audit") -> dict:
+    """Audit docs that exist, or gate a draft before publishing. One engine, two directions —
+    two tools would have been two descriptions for one idea."""
     import docs_claims as DC
-    return DC.analyze(list(docs), DC.load(graph_path))
+    data = DC.load(graph_path)
+    if mode == "audit":
+        return DC.analyze(list(docs or []), data)
+    if not draft and docs:
+        draft = Path(docs[0]).read_text(encoding="utf-8", errors="replace")
+    if not draft:
+        raise RuntimeError("publishing modes need `draft` text, or a `docs` path to read it from")
+    pub_mode = "prospective" if mode == "publish_prospective" else "descriptive"
+    return DC.publication_gate(draft, data, source=(docs or ["<draft>"])[0], mode=pub_mode)
 
 
 def _agents_md(root: str) -> Path:

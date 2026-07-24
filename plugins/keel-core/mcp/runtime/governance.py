@@ -14,12 +14,12 @@ two decisions were taken under different rules" answerable at all.
 **Absence is recorded, not implied.** A ledger with no governance record stamps `policy_hash: null`
 explicitly, so ungoverned reads as ungoverned. A missing field would read as fine.
 
-Second job, same carrier: **stale-skill detection at runtime.** `build.py --check` verifies the
-shipped bytes at *build* time; once installed, nobody checks anything, and a hand-edited `SKILL.md`
-diverges from the doctrine it claims to implement with no signal at all. `verify_skills` recomputes
-the hashes and reports drift — it warns and downgrades confidence rather than refusing, because a
-user editing their own installed copy is legitimate and blocking them would be worse than telling
-them.
+**What this module deliberately does NOT do: stale-skill detection.** It was built here and then
+removed, and the reason is worth keeping. `build.py --check` already verifies our shipped bytes at
+build time, so the only unique value would be post-install — and no host gives us a cheap place to
+run it (SessionStart is a shell banner; hashing every skill on every `PreToolUse` costs more than
+the drift it would catch). A function with no caller is not coverage, it is decoration that reads
+as coverage. If a host ever exposes a cheap session-level Python hook, this is ~20 lines away.
 
 Stdlib-only.
 """
@@ -28,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
-from typing import Iterable, Optional
+from typing import Optional
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -80,38 +80,3 @@ def record(roster: str = "", spec_version: str = "", skill_version: str = "",
     }
     inputs.update(extra or {})
     return fingerprint(inputs)
-
-
-def pin_skills(skill_dirs: Iterable[str]) -> dict:
-    """Pin the current hash of every `SKILL.md` — the baseline `verify_skills` compares against."""
-    pinned = {}
-    for d in skill_dirs:
-        p = pathlib.Path(d) / "SKILL.md"
-        h = _hash_file(p)
-        if h:
-            pinned[pathlib.Path(d).name] = h
-    return pinned
-
-
-def verify_skills(pinned: dict, skill_dirs: Iterable[str]) -> dict:
-    """Recompute and compare. Reports `drifted` / `missing` / `unpinned`; never raises.
-
-    Deliberately a warning, not a refusal. `build.py --check` is the hard gate for *our* bytes at
-    build time; this runs on an *installed* copy, where a user editing their own skill is legitimate.
-    What is not legitimate is a skill quietly claiming a doctrine it no longer contains — so the
-    result downgrades confidence in that skill's output and says which file to look at.
-    """
-    current = pin_skills(skill_dirs)
-    drifted = sorted(k for k, v in current.items() if k in pinned and pinned[k] != v)
-    missing = sorted(k for k in pinned if k not in current)
-    unpinned = sorted(k for k in current if k not in pinned)
-    return {
-        "ok": not (drifted or missing),
-        "drifted": drifted,
-        "missing": missing,
-        "unpinned": unpinned,
-        "confidence": "downgraded" if drifted else "unchanged",
-        "note": ("A drifted SKILL.md no longer matches the doctrine it was built from. Treat that "
-                 "skill's output as inferred rather than extracted until it is rebuilt or "
-                 "re-pinned." if drifted else "every pinned skill matches its shipped bytes"),
-    }

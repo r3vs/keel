@@ -168,6 +168,10 @@ def gate(ledger) -> dict:
         "cards": cards,
         "by_route": by_route,
         "handable_now": by_route.get("ready", []),
+        # The challenger's whole queue, not only the part that is ready to build. It rides along
+        # here rather than in a tool of its own: an MCP description is rent paid every session, and
+        # a second tool for a list this one already had to compute is rent for nothing.
+        "premortems_owed": challenger.premortem_gaps(ledger),
         "note": "Advisory: `buildloop.ready()` is unchanged. This says which of those items an "
                 "executor can actually take, and hands the rest back to a named owner.",
     }

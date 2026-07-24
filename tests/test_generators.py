@@ -99,23 +99,5 @@ class TestScreening(unittest.TestCase):
         self.assertTrue(generators.new_registry()["policy"]["hypothesis"])
 
 
-class TestSkillIntegrity(unittest.TestCase):
-    def test_a_hand_edited_skill_is_reported_and_downgraded_not_blocked(self):
-        import pathlib
-        import tempfile
-
-        import governance
-        tmp = tempfile.mkdtemp()
-        sdir = pathlib.Path(tmp) / "myskill"
-        sdir.mkdir()
-        (sdir / "SKILL.md").write_text("original", encoding="utf-8")
-        pinned = governance.pin_skills([str(sdir)])
-        (sdir / "SKILL.md").write_text("edited by the user", encoding="utf-8")
-        out = governance.verify_skills(pinned, [str(sdir)])
-        self.assertEqual(out["drifted"], ["myskill"])
-        self.assertEqual(out["confidence"], "downgraded")
-        self.assertFalse(out["ok"])
-
-
 if __name__ == "__main__":
     unittest.main()

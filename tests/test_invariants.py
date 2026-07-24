@@ -105,7 +105,8 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         "assign_resolution_modes": "runs inside the interview funnel",
         "reopen": "the feedback loop's downstream arc, driven by a fired flip_signal",
         "challenge": "exposed as challenge_oracle, which applies upheld ChallengeEvents",
-        "set_governance": "exposed as ledger_set_governance",
+        "set_governance": "stamped automatically by tools._open_or_create — the server knows its "
+                          "own root and version, so this is never a question put to a model",
         "save": "persistence, not a state transition",
     }
 
