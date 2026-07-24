@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.7). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.8). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -378,6 +378,35 @@ class TestHonestVerification(unittest.TestCase):
         with self.assertRaises(LedgerError):                       # no reason given
             led.mark_correctness_unknown(pin["id"], blocked_by="  ", attempted=["tests"])
 
+    def test_unknown_is_not_a_black_hole(self):
+        """It blocks closure, so it must ask someone something. A state on no surface is lost work."""
+        led = make_ledger()
+        pin = self._done(led)
+        led.mark_correctness_unknown(pin["id"], blocked_by="no env", attempted=["tests"])
+        view = [p["id"] for p in led.interview_view()]
+        self.assertIn(pin["id"], view)
+        self.assertIn("What now?", led.pin(pin["id"])["question"]["prompt"])
+
+    def test_unverifiable_blocker_outranks_information_gain(self):
+        led = make_ledger()
+        hub = add_simple_pin(led, title="hub", severity="medium")           # high fan-out
+        for _ in range(3):
+            add_simple_pin(led, severity="low")["depends_on"].append(hub["id"])
+        pin = self._done(led)
+        led.mark_correctness_unknown(pin["id"], blocked_by="no env", attempted=["tests"])
+        self.assertEqual(led.interview_view()[0]["id"], pin["id"])
+
+    def test_unknown_does_not_satisfy_a_dependent(self):
+        """A dependent may not build on work whose correctness was never established."""
+        import buildloop
+        led = make_ledger()
+        upstream = self._done(led)
+        led.mark_correctness_unknown(upstream["id"], blocked_by="no env", attempted=["tests"])
+        downstream = add_simple_pin(led)
+        downstream["depends_on"].append(upstream["id"])
+        led.decide(downstream["id"], "opt_a", "r", "flip")
+        self.assertNotIn(downstream["id"], [p["id"] for p in buildloop.ready(led)])
+
     def test_older_ledger_is_readable_not_stranded(self):
         """An additive schema that rejects its own older files strands the one durable artifact."""
         led = make_ledger()
@@ -388,7 +417,7 @@ class TestHonestVerification(unittest.TestCase):
             fh.seek(0)
             json.dump(data, fh)
             fh.truncate()
-        self.assertEqual(Ledger(led.path).data["version"], "0.7")   # upgraded on read
+        self.assertEqual(Ledger(led.path).data["version"], "0.8")   # upgraded on read
 
 
 class TestViewsAndPersistence(unittest.TestCase):
@@ -419,7 +448,7 @@ class TestViewsAndPersistence(unittest.TestCase):
         led.save()
         with open(led.path, encoding="utf-8") as fh:
             data = json.load(fh)
-        self.assertEqual(data["version"], "0.7")
+        self.assertEqual(data["version"], "0.8")
         self.assertIn("però", data["pins"][0]["title"])
 
     def test_version_mismatch_rejected(self):

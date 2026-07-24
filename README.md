@@ -91,7 +91,7 @@ those are the manuals.
 
 | Plugin | What it is | Ships |
 |---|---|---|
-| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **35 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
+| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **37 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
 | **[`codebase-rescue`](plugins/codebase-rescue/README.md)** | **curative** — align a codebase that already drifted | 5 modes · 5 phases · 28 analysis modules · `/rescue` |
 | **[`greenfield-forge`](plugins/greenfield-forge/README.md)** | **preventive** — build one that can't drift | 5 modes · 7 phases · 15 modules · `/forge` |
 | **[`keel-kit`](plugins/keel-kit/README.md)** | the composable engineering loop, each skill bound to the ledger | 9 skills |
@@ -193,7 +193,7 @@ Your agent **discovers** these. It is never told a file path. Full signatures an
 [`keel-core`](plugins/keel-core/README.md).
 
 <details>
-<summary><b>All 35 tools</b></summary>
+<summary><b>All 37 tools</b></summary>
 
 **Ledger (8)** — the append-only source of truth. None of these elect anything.
 `ledger_summary` · `interview_next` · `ledger_add_pin` · `ledger_surface_assumption` ·
@@ -300,7 +300,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 11 composable ones, with the runtime **largely
-implemented**: 24 modules, 35 MCP tools, **449 tests green in CI**, 4 hosts.
+implemented**: 24 modules, 37 MCP tools, **465 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

@@ -112,6 +112,33 @@ def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
+def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
+                     max_depth: int = 2, head: str = "") -> dict:
+    import readiness
+    led = _open_existing(ledger)
+    pin = led.pin(pin_id)
+    head = head or _git_head()
+    if not head:
+        raise RuntimeError(
+            "cannot resolve HEAD (not a git repo, or git unavailable) — pass `head` explicitly; "
+            "without it the staleness gate cannot run, and a zone from a stale graph describes "
+            "ground that has since moved"
+        )
+    return readiness.assess(graph_path, led.data, pin.get("anchors", []),
+                            repo=repo, max_depth=max_depth, head=head)
+
+
+def ledger_set_readiness(ledger: str, pin_id: str, verdict: str, zone: dict, evidence: dict,
+                         hardens: list | None = None, rationale: str = "") -> dict:
+    led = _open_existing(ledger)
+    pin = led.set_readiness(pin_id, verdict, zone, evidence,
+                            hardens=hardens, rationale=rationale)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin["id"], "readiness": pin["readiness"],
+            "depends_on": pin["depends_on"]}
+
+
 def ledger_mark_correctness_unknown(
     ledger: str,
     pin_id: str,

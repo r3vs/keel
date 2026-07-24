@@ -217,6 +217,59 @@ def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
     return tools.ledger_resolve(ledger, pin_id, evidence)
 
 
+@mcp.tool(annotations={"title": "Landing-Zone Readiness — Evidence (D0, states no verdict)", **_RO})
+def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
+                     max_depth: int = 2, head: str = "") -> dict:
+    """Can the ground bear this change? Deterministic evidence for one landing zone — NO verdict.
+
+    The premortem of the *terrain*, distinct from the challenger's premortem of the plan. The zone is
+    the pin's anchors plus what transitively depends on them; the evidence is four carriers: the
+    ledger's own unresolved pins whose anchors land in the zone, zone files no test reaches, git
+    churn, and files that historically co-change with the zone from OUTSIDE it.
+
+    It refuses on a stale graph rather than degrading — the zone is a blast radius, and one computed
+    at another commit describes ground that has since moved.
+
+    You form the `ready` / `harden_first` / `redesign` verdict from this and record it with
+    `ledger_set_readiness`, where it is stored as the D2 judgment it is. Do not expect a threshold
+    here: a number with no carrier would be fake determinism.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin whose planned change defines the zone.
+        graph_path: Path to graph.json.
+        repo: Repo root for git history (default: cwd).
+        max_depth: Reverse-reachability depth defining the zone (default 2).
+        head: HEAD commit for the staleness gate; resolved from git when omitted.
+    """
+    return tools.readiness_assess(ledger, pin_id, graph_path, repo, max_depth, head)
+
+
+@mcp.tool(annotations={"title": "Ledger — Record the Readiness Verdict (D2) + wire hardening", **_RW})
+def ledger_set_readiness(ledger: str, pin_id: str, verdict: str, zone: dict, evidence: dict,
+                         hardens: list | None = None, rationale: str = "") -> dict:
+    """Record the landing-zone verdict; `harden_first` wires prerequisites into depends_on.
+
+    The verdict is judgment over deterministic evidence, and is stored saying so. `harden_first`
+    means the named pins BLOCK the change: they join `depends_on`, so the wave scheduler orders them
+    first with no new mechanism, and only `resolved`/`accepted` closes that edge.
+
+    Two guards, both refusals rather than warnings: a hardening pin whose anchors lie outside the
+    zone is rejected (remediation must be justified by THIS change, not by the code being imperfect
+    elsewhere), and `harden_first` with no prerequisites is rejected (that is a worry, not a verdict).
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin whose landing zone was assessed.
+        verdict: ready | harden_first | redesign.
+        zone: The `zone` object from readiness_assess.
+        evidence: The `evidence` object from readiness_assess.
+        hardens: Pin ids that must land first (required for harden_first, forbidden otherwise).
+        rationale: One line: why this verdict, from that evidence.
+    """
+    return tools.ledger_set_readiness(ledger, pin_id, verdict, zone, evidence, hardens, rationale)
+
+
 @mcp.tool(annotations={"title": "Ledger — Correctness Unknown (the honest exit)", **_RW})
 def ledger_mark_correctness_unknown(
     ledger: str,

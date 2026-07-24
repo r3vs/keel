@@ -22,7 +22,17 @@ dependency graph.
 4. **Detect cycles.** Mutual `depends_on` = a knot (e.g. two contracts each assumed as the
    other's truth). Surface it as a blocker pin: the user must pick which to break first. Do not
    auto-resolve.
-5. **Emit `roadmap.ordered_item_ids`** plus a human-facing plan.
+5. **Assess the landing zone of any pin that ADDS behavior** — an `acceptance_criterion` or an
+   `incompleteness` whose remediation builds something new, rather than aligning what is there.
+   `readiness_assess` returns the zone (the anchors' blast radius) and four deterministic carriers:
+   unresolved pins already in that zone, files no test imports directly, churn, and files that
+   co-change with the zone from outside it. **You** form the verdict — `ready` / `harden_first` /
+   `redesign` — and record it with `ledger_set_readiness`; the tool states no verdict of its own,
+   because a threshold invented over that evidence would be judgment wearing a deterministic label.
+   `harden_first` appends the prerequisite pins to `depends_on`, so step 3 orders them first with no
+   new mechanism. Full doctrine, including the two disciplines that stop this becoming an
+   open-ended rewrite: `references/core/landing-zone.md`.
+6. **Emit `roadmap.ordered_item_ids`** plus a human-facing plan.
 
 ## The waves (emergent, not hardcoded)
 

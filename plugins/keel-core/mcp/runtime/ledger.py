@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.7). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.8). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -28,13 +28,13 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.7"
+SCHEMA_VERSION = "0.8"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
 # would strand the one artifact the whole package treats as durable truth. Reading an older file
 # upgrades its `version` in memory; the upgrade lands on disk at the next `save()`.
-READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7")
+READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8")
 
 KINDS = {
     "contract_mismatch",
@@ -56,6 +56,7 @@ STATES = (
 )
 DETERMINISM = ("D0", "D1", "D2")                                  # v0.7 — how a result reproduces
 VERIFICATION_RUNGS = ("self_check", "re_read", "observed", "cross_derived")  # v0.7 — how hard checked
+READINESS_VERDICTS = ("ready", "harden_first", "redesign")        # v0.8 — can the ground bear it?
 RESOLUTION_MODES = ("asked", "policy_default", "proposed_default")
 CHALLENGE_CLASSES = (
     "unfalsifiable", "inconsistent", "unsatisfiable", "unfounded_infeasibility",
@@ -311,6 +312,78 @@ class Ledger:
             events.append(event)
         return events
 
+    def set_readiness(
+        self,
+        pin_id: str,
+        verdict: str,
+        zone: dict,
+        evidence: dict,
+        hardens: Optional[list] = None,
+        rationale: str = "",
+    ) -> dict:
+        """v0.8 — record the landing-zone verdict, and wire the hardening prerequisites.
+
+        The premortem of the *terrain*, not of the plan: can the code this change lands on bear it?
+        The evidence is D0 (graph, git, ledger); the verdict is D2 (judgment over that evidence) and
+        is stored saying so, because a threshold invented here would be a number with no carrier.
+
+        `harden_first` means the prerequisite work **blocks** the change: the hardening pins join
+        `depends_on`, so the existing wave scheduler orders them first with no new mechanism, and
+        the existing rule that only `resolved`/`accepted` close an edge means the change cannot
+        start until the ground is actually fixed.
+        """
+        pin = self.pin(pin_id)
+        _require(verdict in READINESS_VERDICTS, f"verdict must be one of {READINESS_VERDICTS}")
+        zone_files = {f for f in (zone or {}).get("files", [])}
+        _require(bool(zone_files), "a readiness verdict needs a zone — assess before concluding")
+        hardens = [str(h) for h in (hardens or [])]
+        if verdict == "harden_first":
+            _require(bool(hardens),
+                     "harden_first without prerequisites is a worry, not a verdict — name the pins "
+                     "that must land first")
+        else:
+            _require(not hardens, f"only harden_first carries prerequisites, not {verdict!r}")
+
+        by_id = {p["id"]: p for p in self.data["pins"]}
+        for h in hardens:
+            _require(h != pin_id, "a pin cannot harden itself")
+            _require(h in by_id, f"no pin {h}")
+            # CHANGE-JUSTIFIED, enforced rather than promised: remediation is admitted only when it
+            # reduces *this* change's risk. A pin whose anchors lie outside the landing zone is
+            # someone else's cleanup, and admitting it is how a bounded gate becomes a rewrite.
+            anchors = [(a.get("loc") or "").split(":")[0] for a in by_id[h].get("anchors", [])]
+            _require(any(a in zone_files for a in anchors if a),
+                     f"{h} anchors outside the landing zone — hardening must be justified by THIS "
+                     "change, not by the code being imperfect elsewhere")
+            _require(not self._reaches(h, pin_id, by_id),
+                     f"{h} already depends on {pin_id} — hardening it here would close a cycle")
+            if h not in pin["depends_on"]:
+                pin["depends_on"].append(h)
+
+        pin["readiness"] = {
+            "verdict": verdict,
+            "determinism": "D2",           # the verdict is judgment...
+            "evidence_determinism": "D0",  # ...over deterministic evidence. Never merged.
+            "zone": {"files": sorted(zone_files), "nodes": len(zone.get("nodes", []))},
+            "evidence": evidence,
+            "hardens": hardens,
+            "rationale": rationale,
+        }
+        return pin
+
+    @staticmethod
+    def _reaches(start: str, target: str, by_id: dict) -> bool:
+        seen, stack = set(), [start]
+        while stack:
+            cur = stack.pop()
+            if cur == target:
+                return True
+            if cur in seen or cur not in by_id:
+                continue
+            seen.add(cur)
+            stack.extend(by_id[cur].get("depends_on", []))
+        return False
+
     def defer(self, pin_id: str) -> dict:
         """Out of scope now (YAGNI at spec level) — stays as future backlog."""
         pin = self.pin(pin_id)
@@ -560,14 +633,40 @@ class Ledger:
             "attempted": attempted,
             "blocked_by": str(blocked_by).strip(),
         }
+        # The state forces an explicit next move, so it carries the fork that asks for one. Without
+        # this the pin would block closure while asking nobody anything — the original question is
+        # already answered (its DecisionEvent is in the immutable log); this is the live one.
+        pin["question"] = {
+            "prompt": (f"Correctness could not be established: {pin['verification']['blocked_by']}. "
+                       "What now?"),
+            "options": [
+                {"id": "retry", "label": "Retry with more context"},
+                {"id": "add_check", "label": "Add the missing check first",
+                 "implication": "a new acceptance_criterion — the zone earns verifiability"},
+                {"id": "takeover", "label": "Manual takeover"},
+                {"id": "narrow", "label": "Narrow the scope to what IS verifiable"},
+                {"id": "accept", "label": "Accept the risk, unknown named",
+                 "implication": "state becomes accepted, with the unverified remainder recorded"},
+            ],
+            "allow_freeform": True,
+        }
+        pin["resolution_mode"] = "asked" if pin["severity"] in _NEVER_SILENT \
+            else pin.get("resolution_mode", "asked")
         pin["state"] = "correctness_unknown"
         return pin
 
     # -- views (the surfaces hold no state of their own) ------------------------
 
     def interview_view(self) -> list[dict]:
-        """The interview IS the filtered view of needs_input pins, ordered by
-        information gain: the ones that collapse the most downstream pins come first."""
+        """The interview IS the filtered view of pins awaiting a human answer, ordered by
+        information gain: the ones that collapse the most downstream pins come first.
+
+        Two states await an answer, for different reasons. `needs_input` means the decision has not
+        been made. `correctness_unknown` (v0.7) means the decision was made and *verification*
+        failed — the pin needs a next-move answer, not a re-election. Both belong here: a state that
+        blocks closure and appears on no surface is a black hole, and the pin most likely to be
+        forgotten is exactly the one nobody could verify.
+        """
         dependents: dict[str, int] = {}
         for p in self.data["pins"]:
             for dep in p.get("depends_on", []):
@@ -580,11 +679,20 @@ class Ledger:
                     total += 1 + transitive(p["id"], seen | {p["id"]})
             return total
 
-        pending = [p for p in self.data["pins"] if p["state"] == "needs_input"]
+        pending = [p for p in self.data["pins"]
+                   if p["state"] in ("needs_input", "correctness_unknown")]
         sev_rank = {s: i for i, s in enumerate(SEVERITIES)}
+        # An unverifiable blocker outranks information gain. Fan-out orders questions that are still
+        # open; a `blocker|high` whose correctness could not be established is not a question to
+        # sequence well, it is one that must not be skimmed past (the v0.3 threshold rule applied to
+        # the verification exit).
+        def unverifiable_first(p: dict) -> int:
+            return 0 if (p["state"] == "correctness_unknown"
+                         and p["severity"] in _NEVER_SILENT) else 1
         return sorted(
             pending,
-            key=lambda p: (-transitive(p["id"]), sev_rank[p["severity"]], p["id"]),
+            key=lambda p: (unverifiable_first(p), -transitive(p["id"]),
+                           sev_rank[p["severity"]], p["id"]),
         )
 
     def summary(self) -> dict:

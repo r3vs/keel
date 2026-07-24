@@ -21,6 +21,16 @@ not re-decide order.
 > returns the waves plus what is actionable right now. Eyeballing the backlog is how a slice gets
 > built before the contract it consumes.
 
+**On a tree that is no longer empty, check the ground before you build on it.** In `forge` mode
+as-is starts empty and this does not apply; in `slice` / `evolve` mode — and any time forge extends
+a project that already has code — a `BuildItem` lands on existing files, and a correct plan onto a
+zone that cannot hold it fails anyway. `readiness_assess` returns the zone and its deterministic
+carriers; **you** form the `ready` / `harden_first` / `redesign` verdict and record it with
+`ledger_set_readiness`. `harden_first` appends the prerequisite pins to `depends_on`, so `build_waves`
+schedules the hardening first without any new mechanism — which is also how a rescue pin becomes a
+blocking prerequisite of a forge build item, making the two skills one DAG rather than two workflows
+meeting at a handoff. Doctrine: `references/core/landing-zone.md`.
+
 ## Context management: reset, don't accumulate
 
 Each iteration is a **fresh invocation** loading only: the item, its pin and `to_be`, the contract
