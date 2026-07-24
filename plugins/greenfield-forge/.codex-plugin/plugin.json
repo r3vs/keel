@@ -1,6 +1,6 @@
 {
   "name": "greenfield-forge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Preventive: build a new project aligned from the first commit. Elects the design in a compressed interview before any code exists, then generates every layer from one contract so they cannot drift.",
   "keywords": [
     "skills",

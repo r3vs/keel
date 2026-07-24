@@ -1,7 +1,7 @@
 {
   "name": "keel-kit",
   "description": "Composable helpers, each useful on its own and each bound to the decisions ledger: the engineering loop (test-driven-development, systematic-debugging, code-review, verification-before-completion, branch-lifecycle), plus grounded-research (cite current sources, never stale memory), static-first-analysis (strongest deterministic signal before judgment), project-memory (durable facts), and learning-layer (senior-grade output while the operator levels up).",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "r3vs"
   },

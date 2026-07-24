@@ -238,5 +238,60 @@ class TestLiveMap(unittest.TestCase):
         self.assertNotIn("livebadge", self._html())
 
 
+class TestInstructionCarrierRoundTrip(unittest.TestCase):
+    """The generated-file list must survive a regeneration that does not re-state it.
+
+    It is transient input, but the tool is re-run for unrelated reasons all the time — a pin gets
+    decided, a policy is added. If the list vanished then, `AGENTS.md` would lose its never-hand-edit
+    section while `.claude/rules/` kept asserting it, and `instructions_diff` would answer `in_sync`
+    because it was asked the same incomplete question. Two carriers of one fact, disagreeing, with a
+    green drift-check on top: exactly what this module exists to make impossible.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ledger = _ledger_with_pins(self.tmp)
+        self.rule = os.path.join(self.tmp, ".claude", "rules", "keel-generated-files.md")
+
+    def _agents(self):
+        with open(os.path.join(self.tmp, "AGENTS.md"), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_a_rerun_without_the_argument_preserves_both_carriers(self):
+        tools.generate_instructions(self.ledger, self.tmp, generated=["src/types.ts"],
+                                    generated_from="contract.json", generated_by="generate_layers")
+        self.assertIn("src/types.ts", self._agents())
+        self.assertTrue(os.path.isfile(self.rule))
+
+        out = tools.generate_instructions(self.ledger, self.tmp)   # unrelated regeneration
+        self.assertEqual(out["generated"], ["src/types.ts"])
+        self.assertIn("src/types.ts", self._agents())
+        self.assertTrue(os.path.isfile(self.rule), "the Claude rule must not outlive or precede the region")
+        self.assertTrue(tools.instructions_diff(self.ledger, self.tmp)["in_sync"])
+
+    def test_clearing_is_explicit_and_takes_the_claude_rule_with_it(self):
+        tools.generate_instructions(self.ledger, self.tmp, generated=["src/types.ts"])
+        out = tools.generate_instructions(self.ledger, self.tmp, generated=[])
+        self.assertEqual(out["generated"], [])
+        self.assertNotIn("src/types.ts", self._agents())
+        self.assertFalse(os.path.isfile(self.rule),
+                         "an emptied list must remove the rule, or the two carriers disagree")
+
+    def test_diff_recovers_the_same_list_the_generator_would(self):
+        # The generate/diff pair must answer the same question the same way, or the drift-check is
+        # checking something the generator never wrote.
+        tools.generate_instructions(self.ledger, self.tmp, generated=["a.ts", "b.sql"])
+        self.assertEqual(tools.instructions_diff(self.ledger, self.tmp)["generated"],
+                         ["a.ts", "b.sql"])
+
+    def test_an_opted_out_bridge_is_not_reported_as_missing(self):
+        tools.generate_instructions(self.ledger, self.tmp, bridge=False)
+        self.assertFalse(os.path.isfile(os.path.join(self.tmp, "CLAUDE.md")))
+        self.assertEqual(tools.instructions_diff(self.ledger, self.tmp)["claude_bridge"], "missing")
+        out = tools.instructions_diff(self.ledger, self.tmp, bridge=False)
+        self.assertEqual(out["claude_bridge"], "not_requested")
+        self.assertTrue(out["in_sync"], "opting out of the bridge says nothing about the region")
+
+
 if __name__ == "__main__":
     unittest.main()

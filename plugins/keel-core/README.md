@@ -23,16 +23,16 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **32** | the deterministic engine, typed and discoverable |
+| MCP tools | **34** | the deterministic engine, typed and discoverable |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
 | Skills | **2** | `using-the-ledger`, `run-workflow` |
-| Shared doctrine | **13 docs** | the ledger spec, the interview funnel, the shape engine, … |
+| Shared doctrine | **14 docs** | the ledger spec, the interview funnel, the shape engine, … |
 | MCP servers declared | **4** | `keel` · `context7` · `deepwiki` · `playwright` |
 
 ---
 
-## The 32 MCP tools
+## The 34 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
@@ -78,6 +78,19 @@ Django · SQLAlchemy · GraphQL · TypeScript · Pydantic**. What comes back is 
 
 Generating the layers is how `greenfield-forge` makes drift structurally impossible instead of
 merely detectable.
+
+### Instruction carrier (2)
+
+| Tool | Does |
+|---|---|
+| `generate_instructions` | project the ledger into a managed region of `AGENTS.md` (+ the `CLAUDE.md` bridge) |
+| `instructions_diff` | is that region still what the ledger projects — `in_sync` / `stale` / `hand_edited` / `absent` |
+
+The ledger is the single source of truth and **no coding agent loads it**. Every host loads one thing
+unprompted: `AGENTS.md` (Claude Code via a `CLAUDE.md` that imports it). Without this pair, a project
+can have a fully elected design and still hand every fresh executor a blank slate. It writes **only**
+between its own markers, so the file stays yours; `hand_edited` is reported and never auto-healed,
+because a decision written into the projection belongs in the ledger.
 
 ### Comprehension graph (9)
 
@@ -171,6 +184,11 @@ The gate is what turns rule #1 from prose into a mechanism. Its behavior, precis
   invisible. Being invisible when it doesn't apply is what earns it the right to block when it does.
 - **Unresolved blocker/high pins in `needs_input`** → **deny** edits to product code. The to-be for
   that area isn't knowable yet; anything built on it is a guess wearing a decision's clothes.
+- **A write into the host's agent-written memory, same condition** → **ask**, never deny. That store
+  is the one write path nothing else guards: the agent picks what to persist, it is machine-local and
+  never reviewed in a PR, and no host emits a memory hook event. Asking costs one prompt and turns a
+  silent write into a visible one; denying would put the gate in the business of blocking prose,
+  which it promises it never does. Where memory lives is read from `autoMemoryDirectory`, not guessed.
 - **Otherwise** → allow. Once the load-bearing questions are elected, writing code is the point.
 
 It **never** blocks tests (TDD writes the failing test first), the ledger and its artifacts, or
@@ -211,7 +229,7 @@ manifest points at the same file; opencode gets the same table from a `config()`
 
 | Server | Transport | Why |
 |---|---|---|
-| `keel` | stdio (`uv run --script`) | the 32 tools above |
+| `keel` | stdio (`uv run --script`) | the 34 tools above |
 | `context7` | http | **current** library docs — beats the model's training cutoff |
 | `deepwiki` | http | how a real repo actually solved it |
 | `playwright` | stdio (`npx`) | rendered-DOM extraction for the design/frontend layer |

@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-409%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-444%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -91,7 +91,7 @@ those are the manuals.
 
 | Plugin | What it is | Ships |
 |---|---|---|
-| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **32 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
+| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **34 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
 | **[`codebase-rescue`](plugins/codebase-rescue/README.md)** | **curative** — align a codebase that already drifted | 5 modes · 5 phases · 28 analysis modules · `/rescue` |
 | **[`greenfield-forge`](plugins/greenfield-forge/README.md)** | **preventive** — build one that can't drift | 5 modes · 7 phases · 15 modules · `/forge` |
 | **[`keel-kit`](plugins/keel-kit/README.md)** | the composable engineering loop, each skill bound to the ledger | 9 skills |
@@ -187,13 +187,13 @@ so *why* survives, not just *what*.
 carry high confidence and skip the false-positive gate. Model judgment is *labelled as such*, every
 time. If Keel can't prove something, it says so instead of sounding confident.
 
-### The engine: 24 modules, 6.2k lines, Python stdlib only — reaching your agent as 32 typed MCP tools
+### The engine: 24 modules, 6.2k lines, Python stdlib only — reaching your agent as 34 typed MCP tools
 
 Your agent **discovers** these. It is never told a file path. Full signatures and semantics:
 [`keel-core`](plugins/keel-core/README.md).
 
 <details>
-<summary><b>All 32 tools</b></summary>
+<summary><b>All 34 tools</b></summary>
 
 **Ledger (8)** — the append-only source of truth. None of these elect anything.
 `ledger_summary` · `interview_next` · `ledger_add_pin` · `ledger_surface_assumption` ·
@@ -207,6 +207,11 @@ Drizzle · Prisma · Django · SQLAlchemy · GraphQL · TypeScript · Pydantic.
 **Generation (3)** — one contract → every layer, round-tripping to zero drift.
 `generate_layers` (DB + ORM + API + client) · `generate_tokens` (W3C DTCG → CSS/Tailwind/DESIGN.md) ·
 `extract_tokens`
+
+**Instruction carrier (2)** — the ledger projected into the file every host actually loads, because
+none of them loads `ledger.json`.
+`generate_instructions` (→ a managed region of `AGENTS.md` + the `CLAUDE.md` bridge) ·
+`instructions_diff` (`in_sync` / `stale` / `hand_edited` / `absent`)
 
 **Comprehension graph (9)** — tree-sitter native, real grammars, not regex.
 `build_graph` · `understand_codebase` · `explain_node` · `graph_query` · `guided_tour` ·
@@ -294,7 +299,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 11 composable ones, with the runtime **largely
-implemented**: 24 modules, 32 MCP tools, **409 tests green in CI**, 4 hosts.
+implemented**: 24 modules, 34 MCP tools, **444 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

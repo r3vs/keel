@@ -618,6 +618,65 @@ def docs_claims(graph_path: str, docs: list[str]) -> dict:
     return tools.docs_claims(graph_path, docs)
 
 
+@mcp.tool(annotations={"title": "Generate Agent Instructions (ledger → AGENTS.md carrier)", **_RW})
+def generate_instructions(ledger: str, root: str = ".", generated: list[str] | None = None,
+                          generated_from: str = "", generated_by: str = "",
+                          max_lines: int = 0, bridge: bool = True) -> dict:
+    """Project the elected design into the file coding agents actually load. WRITES FILES.
+
+    The ledger is the single source of truth and **no host loads it**; every host loads `AGENTS.md`
+    (Claude Code via a `CLAUDE.md` that imports it). So the elected decisions, the standing policies,
+    the forks NOT yet decided, and the generated files get written into a fenced managed region of
+    `AGENTS.md`. Everything outside `<!-- keel:begin -->`/`<!-- keel:end -->` is preserved byte for
+    byte — the file is the user's; only the region is ours.
+
+    Idempotent and stable: an unchanged ledger re-renders byte-identically, so `instructions_diff`
+    round-trips to `in_sync` — the same executable guarantee `generate_layers` gives its layers.
+
+    Run it after the interview elects (before the build loop starts, so the executor's fresh context
+    inherits the decisions) and again whenever a pin is decided, reopened, or resolved.
+
+    Args:
+        ledger: Path to ledger.json — the source this region is a projection of.
+        root: Project root that owns AGENTS.md (the USER's repo, not the skill's).
+        generated: Paths that a generator wrote, to be marked never-hand-edit (from generate_layers).
+            OMIT to keep whatever the region already records — a regeneration triggered by anything
+            else must not silently drop the list. Pass `[]` to clear it (which also removes the
+            Claude-only rule file, so the two never disagree).
+        generated_from: The contract those files were generated from (named in the warning).
+        generated_by: The tool that generated them.
+        max_lines: Line budget for the region; 0 = the default 60. Two hosts penalize length, so any
+            clipping is declared inside the region rather than silently dropping decisions.
+        bridge: Also write a CLAUDE.md that imports AGENTS.md (Claude Code does not read AGENTS.md).
+    """
+    return tools.generate_instructions(ledger, root, generated, generated_from, generated_by,
+                                       max_lines, bridge)
+
+
+@mcp.tool(annotations={"title": "Instructions Drift (AGENTS.md region vs the ledger)", **_RO})
+def instructions_diff(ledger: str, root: str = ".", generated: list[str] | None = None,
+                      max_lines: int = 0, bridge: bool = True) -> dict:
+    """Is the AGENTS.md managed region still what the ledger projects? WRITES NO FILE.
+
+    Four outcomes, and the distinction between two of them is the point: `hand_edited` (the region's
+    body no longer matches the fingerprint its marker recorded — someone wrote a decision into the
+    projection instead of into the ledger; regenerating would silently discard it) versus `stale`
+    (intact, but the ledger moved on — regenerate). Plus `absent` and `in_sync`. Also reports whether
+    the Claude Code bridge is present. Every verdict is a comparison, so `confidence: extracted`.
+
+    Args:
+        ledger: Path to ledger.json.
+        root: Project root holding AGENTS.md / CLAUDE.md.
+        generated: Omit to use whatever the region records (the same recovery generate_instructions
+            does, so asking both the same question gets the same answer); pass a list to check
+            against it instead.
+        max_lines: Same budget passed to generate_instructions; 0 = the default 60.
+        bridge: Set False if the CLAUDE.md bridge was deliberately skipped, so it reports
+            `not_requested` rather than flagging a deliberate choice as `missing`.
+    """
+    return tools.instructions_diff(ledger, root, generated, max_lines, bridge)
+
+
 if __name__ == "__main__":
     _warm_grammars_async()
     mcp.run()
