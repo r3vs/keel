@@ -38,8 +38,9 @@ what the spec says it means.
 | you want | MCP tool |
 |---|---|
 | the state, before acting | `ledger_summary` |
-| the next real questions | `interview_next` |
+| the next real questions | `interview_next` (create them first with `interview_expand`) |
 | add a finding / defect / `open_decision` | `ledger_add_pin` |
+| the human answered a fork | `ledger_record_decision` |
 | plan & close the gap | `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` |
 | surface a forced assumption | `ledger_surface_assumption` |
 | the work was done but correctness is not establishable | `ledger_mark_correctness_unknown` |
@@ -51,9 +52,19 @@ remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidenc
 observed`. Its two honest exits matter as much: `ledger_mark_correctness_unknown` when the evidence
 stack was walked and nothing could speak, and `ledger_defer` when the work is out of scope — a pin
 that leaves the loop by either door is still on the ledger, which is the difference between scoping
-and forgetting. What stays off-limits to every agent is the one **electing** write — only the human's
-committed interview answer sets `state: decided` and appends a `DecisionEvent`, so there is
-deliberately no `ledger_decide` tool.
+and forgetting.
+
+**Electing stays the human's; recording it is yours.** `ledger_record_decision` writes the
+`DecisionEvent` and moves the pin to `decided`, and it cannot be used to choose: the outcome must be
+one the pin's own `question` offered, freeform only where the question allows it, and
+`flip_criteria` is required so nothing fossilizes. If the host supports elicitation the **server**
+asks the user and writes the reply itself — you never carry the value, and whatever you passed is
+ignored. Otherwise you relay, and must quote the user verbatim in `human_answer`; that lands as
+`evidence: transcribed`, the weaker rung, visible to anyone reading the log. There is still no
+`ledger_decide`: no tool elects on its own authority.
+
+Use it. A pin that never reaches `decided` blocks its own remediation, its dependents, and the
+reopen loop — the analysis was done and none of it can land.
 
 **The MCP tools are the only channel.** The server's location is resolved by the host, so the
 `ledger_*` tools work from the user's project cwd — the whole class of path-resolution bugs a bundled

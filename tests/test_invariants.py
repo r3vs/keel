@@ -93,8 +93,8 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     #: is the only thing that elects, so `decide` and `accept` having no tool is the design, not a
     #: gap — exposing them would hand an agent the one power the whole package withholds.
     HUMAN_ONLY = {
-        "decide": "only the human's committed interview answer elects a decision",
-        "accept": "accepting a risk with a flip_criteria is the human's call",
+        "decide": "reached only through record_decision, which records an election and cannot make one",
+        "accept": "same channel: record_decision(accept_as_is=True), gated to design_concern",
     }
     #: Mutators reached through another governed entry point rather than a tool of their own.
     INTERNAL = {
@@ -137,12 +137,51 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                          "HUMAN_ONLY, or INTERNAL with the reason. An unclassified writer is a "
                          "write path nobody governs.")
 
-    def test_electing_a_decision_is_reachable_from_no_tool(self):
-        """The one power the package withholds from every agent, checked rather than promised."""
+    def test_an_agent_can_record_an_election_but_never_make_one(self):
+        """The invariant is about who CHOOSES, and it used to be enforced by having no tool at all.
+
+        That conflated choosing with writing. It did stop an agent electing — and it also stopped
+        the human being recorded, so once the CLI went away no pin on any host could reach
+        `decided`, and everything hanging off that state (the DecisionEvent, flip_criteria, the
+        reopen loop, `roadmap = diff(to_be, as_is)`) was unreachable with the tests green.
+
+        So the assertion moves from "the capability does not exist" to "the capability cannot be
+        abused", which is the stronger claim: the outcome must come from the pin's own question.
+        """
         import tools as mcp_tools
         exposed = {n for n, _ in inspect.getmembers(mcp_tools, inspect.isfunction)}
         for forbidden in ("decide", "ledger_decide", "accept", "ledger_accept"):
-            self.assertNotIn(forbidden, exposed)
+            self.assertNotIn(forbidden, exposed, "no tool may elect on the caller's own authority")
+        self.assertIn("record_decision", exposed, "the human needs a door, or nothing is ever decided")
+
+        led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        pin = led.add_pin(
+            kind="design_concern", title="three near-identical blocks", severity="low",
+            confidence="inferred", provenance=[{"source": "recon", "detail": "x"}],
+            as_is={"current_design": "copy-paste", "concern": "drift"},
+            question={"prompt": "Consolidate?",
+                      "options": [{"id": "keep", "label": "leave it"},
+                                  {"id": "extract", "label": "extract a helper"}],
+                      "allow_freeform": False})
+        led.save()
+
+        with self.assertRaises(ValueError, msg="an outcome outside the offered menu is an election"):
+            mcp_tools.record_decision(led.path, pin["id"], "rewrite_in_rust",
+                                      rationale="r", flip_criteria="f", human_answer="do that")
+        with self.assertRaises(ValueError, msg="freeform must be permitted by the question"):
+            mcp_tools.record_decision(led.path, pin["id"], "freeform",
+                                      rationale="r", flip_criteria="f", human_answer="something else")
+        with self.assertRaises(ValueError, msg="relaying without a quote is an unfalsifiable claim"):
+            mcp_tools.record_decision(led.path, pin["id"], "extract", rationale="r", flip_criteria="f")
+
+        out = mcp_tools.record_decision(led.path, pin["id"], "extract", rationale="r",
+                                        flip_criteria="if the helper grows a second caller shape",
+                                        human_answer="yes, pull the helper out")
+        self.assertEqual((out["state"], out["outcome"], out["evidence"]),
+                         ("decided", "extract", "transcribed"))
+        event = ledgermod.Ledger(led.path).data["decision_log"][-1]
+        self.assertEqual(event["human_answer"], "yes, pull the helper out",
+                         "the words the decision rests on must be in the ledger, not only in a chat")
 
     def test_the_classification_itself_stays_honest(self):
         """A stale exemption is worse than none: it names a method that no longer exists and reads

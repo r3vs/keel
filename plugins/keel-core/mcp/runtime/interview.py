@@ -84,7 +84,8 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
         if cid in brief_decisions:
             ledger.decide(pin["id"], outcome=brief_decisions[cid],
                           rationale="pre-decided by the brief",
-                          flip_criteria=f"if the brief's {cid} choice is contradicted downstream")
+                          flip_criteria=f"if the brief's {cid} choice is contradicted downstream",
+                          evidence="brief")
             pre_decided.append(cid)
         else:
             created.append(pin["id"])

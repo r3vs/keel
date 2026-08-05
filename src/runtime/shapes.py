@@ -750,7 +750,59 @@ EXTRACTORS = {
 }
 
 
-def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> list[dict]:
+def propose_correspondence(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                           min_overlap: float = 0.5) -> list[dict]:
+    """Candidate entity pairings between two layers, ranked by FIELD OVERLAP — never by name.
+
+    `reconcile_layers` matches on the name and refuses to guess past it, which is right and, on a
+    real repo, can leave you with nothing: a schema whose tables are `cert_lotti_registrati` and
+    whose models are `LottoRegistrato` reports every entity missing and every entity extra. That is
+    an honest answer and a useless one, and it pushes the operator into doing this comparison by
+    hand outside the tool.
+
+    So the comparison comes inside — as a PROPOSAL, which is the only form a similarity score may
+    take here. Overlap of field names is a measure of shape, not of naming, and it is evidence for a
+    human to accept or reject, never a correspondence. Feed what the human elects back in as
+    `reconcile_layers(correspondence=...)`, and from that point the diff is deterministic again: the
+    pairing is a declared fact, exactly as a contract carrier declares it.
+
+    Jaccard over field names, one pair per entity (the best available, greedily), and every
+    candidate carries its evidence so the human is electing on the fields, not on the number.
+    """
+    a = EXTRACTORS[layer_a](path_a)
+    b = EXTRACTORS[layer_b](path_b)
+    scored = []
+    for ea, fa in a.items():
+        names_a = {f.lower() for f in fa}
+        for eb, fb in b.items():
+            names_b = {f.lower() for f in fb}
+            union = names_a | names_b
+            if not union:
+                continue
+            shared = names_a & names_b
+            overlap = len(shared) / len(union)
+            if overlap >= min_overlap:
+                scored.append({
+                    "a": ea, "b": eb, "overlap": round(overlap, 3),
+                    "shared_fields": sorted(shared),
+                    "only_in_a": sorted(names_a - names_b),
+                    "only_in_b": sorted(names_b - names_a),
+                    "name_match": ea.lower() == eb.lower(),
+                    "status": "proposed",   # never a finding: nothing here has been elected
+                })
+    scored.sort(key=lambda c: (-c["overlap"], c["a"], c["b"]))
+    taken_a, taken_b, out = set(), set(), []
+    for cand in scored:
+        if cand["a"] in taken_a or cand["b"] in taken_b:
+            continue                      # one pairing per entity; the rest are worse by construction
+        taken_a.add(cand["a"])
+        taken_b.add(cand["b"])
+        out.append(cand)
+    return out
+
+
+def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                     correspondence: Optional[dict] = None) -> list[dict]:
     """Carrier-less reconciliation: diff two extracted layers **directly** against each other,
     matching entities by table/model/type name and fields by name. This is rescue's path when a
     repo has no shared-types carrier to anchor against (the Phase-0 verdict found the carrier is
@@ -760,14 +812,25 @@ def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> li
     pluralization guessing (that is English-specific and unreliable). When two layers use different
     naming conventions (a `users` table vs a `User` model), their correspondence is a fact the
     carrier declares: use `drift_check` (carrier-anchored), which the Phase-0 verdict names the
-    strongest anchor. Here, absent an exact name match, a side is honestly missing/extra."""
+    strongest anchor. Here, absent an exact name match, a side is honestly missing/extra.
+
+    `correspondence` is the third way, for a repo with no carrier AND no shared naming: a
+    `{entity_in_a: entity_in_b}` map the HUMAN elected, which overrides the name match for those
+    pairs and leaves every other pair alone. Propose the candidates with
+    `propose_correspondence` — that is where field-overlap similarity is allowed to speak, because
+    there it only proposes. Once declared here, the pairing is a fact and the diff is deterministic
+    again."""
     a = EXTRACTORS[layer_a](path_a)
     b = EXTRACTORS[layer_b](path_b)
+    declared = {str(k).lower(): str(v) for k, v in (correspondence or {}).items()}
 
     def key(name: str) -> str:
         return name.lower()   # case-insensitive exact; no singular/plural fold (a guess)
 
     b_by_key = {key(k): k for k in b}
+    for a_name, b_name in declared.items():
+        if key(b_name) in b_by_key:
+            b_by_key[a_name] = b_by_key[key(b_name)]   # a declared pair beats the name match
     findings: list[dict] = []
     matched_b = set()
     for ea, fields_a in a.items():

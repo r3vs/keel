@@ -88,6 +88,10 @@ BUILD_ACTIONS = ("scaffold", "implement", "wire", "configure", "instrument")  # 
 EFFORTS = ("S", "M", "L")
 FLIP_SIGNAL_SOURCES = ("metrics", "logs", "traces", "manual_checkpoint", "incident")
 
+# How the human's answer reached the DecisionEvent. Not a confidence score — three different
+# failure modes, kept apart so a reader can weigh them (see `Ledger.decide`).
+DECISION_EVIDENCE = ("elicited", "transcribed", "brief")
+
 # severities that must never be silently defaulted (the threshold rule, v0.3)
 _NEVER_SILENT = ("blocker", "high")
 
@@ -318,15 +322,38 @@ class Ledger:
         source: str = "interview",
         flip_signal: Optional[dict] = None,
         apply_to_cluster: bool = False,
+        evidence: str = "transcribed",
+        human_answer: str = "",
     ) -> list[dict]:
         """Append a DecisionEvent and materialize pin.state (last committed wins).
 
         Design decision 9: every decision carries flip_criteria. Neutrality: only
         `interview` or a user-set `policy:<id>` may commit — the brainstorm, the
         challenger, and the feedback loop cannot.
+
+        `evidence` records HOW the human's answer reached this line, because `source: interview`
+        only says who is *entitled* to commit and every writer can claim it. The rungs differ in
+        what could have gone wrong, so they are kept apart instead of averaged:
+
+          * `elicited` — the server asked the user through the host and wrote the reply itself. The
+            agent never carried the value, so it could not have invented it.
+          * `transcribed` — an agent relayed what the user said, recorded verbatim in
+            `human_answer`. Weaker: honest relay and confabulation look identical here.
+          * `brief` — pre-decided in the project brief at frame time; the brief is the evidence.
+
+        It defaults to `transcribed`, the WEAKER rung, deliberately: a caller that says nothing has
+        not earned the strong claim, and the safe direction to be wrong in is understating what is
+        known. Only the elicitation path may pass `elicited`, and it is the only caller that does.
         """
         _require(source == "interview" or source.startswith("policy:"),
                  f"only the interview (or a user-set policy cascade) commits; got {source!r}")
+        _require(evidence in DECISION_EVIDENCE,
+                 f"evidence must be one of {DECISION_EVIDENCE}; got {evidence!r}")
+        # The "a transcribed decision must quote the human" rule is enforced one layer out, in
+        # `mcp/tools.py::record_decision`, because that is the only boundary an AGENT can reach and
+        # so the only place the claim is actually made. Enforcing it here as well would tax the
+        # library's own callers — `expand_catalog`, `accept`, the tests — for a risk none of them
+        # carry.
         _require(bool(flip_criteria),
                  "flip_criteria is required — a decision without a reopen condition fossilizes")
         if flip_signal is not None:
@@ -349,8 +376,11 @@ class Ledger:
                 "rationale": rationale,
                 "flip_criteria": flip_criteria,
                 "source": source,
+                "evidence": evidence,
                 "policy_hash": self._policy_hash(),
             }
+            if human_answer:
+                event["human_answer"] = human_answer
             if flip_signal is not None:
                 event["flip_signal"] = dict(flip_signal)
             self.data["decision_log"].append(event)
@@ -439,12 +469,14 @@ class Ledger:
         pin["state"] = "deferred"
         return pin
 
-    def accept(self, pin_id: str, rationale: str, flip_criteria: str) -> dict:
+    def accept(self, pin_id: str, rationale: str, flip_criteria: str,
+               evidence: str = "transcribed", human_answer: str = "") -> dict:
         """Leave-as-is: the legitimate default resolution of a design_concern only."""
         pin = self.pin(pin_id)
         _require(pin["kind"] == "design_concern",
                  "accepted applies to design_concern only (open_decision has nothing to keep)")
-        self.decide(pin_id, outcome="keep", rationale=rationale, flip_criteria=flip_criteria)
+        self.decide(pin_id, outcome="keep", rationale=rationale, flip_criteria=flip_criteria,
+                    evidence=evidence, human_answer=human_answer)
         pin["state"] = "accepted"
         return pin
 
@@ -770,9 +802,21 @@ class Ledger:
     def add_remediation(self, pin_id: str, action: str, ladder_rung: int,
                         canonical_target: Optional[str] = None,
                         build_track: Optional[str] = None,
-                        contract_carrier: Optional[str] = None,
-                        depends_on: Optional[list[str]] = None) -> dict:
-        """RemediationItem (rescue verbs) or BuildItem (greenfield verbs, build_track set)."""
+                        contract_carrier: Optional[str] = None) -> dict:
+        """RemediationItem (rescue verbs) or BuildItem (greenfield verbs, build_track set).
+
+        **No item-level `depends_on`.** Ordering lives one level up, on the pin, and only there:
+        `add_pin(depends_on=...)` validates each id exists, and `buildloop.waves()` levels *pins* by
+        it. Items are worked in list order within their pin (`buildloop.next_item`), which is enough
+        because the executor takes one scope at a time — so a second ordering channel would have
+        nothing to say that this one cannot.
+
+        The field used to exist and was inert three ways: ids were allocated per-pin
+        (`rem_0001` on every pin, so a cross-pin reference was ambiguous by construction), nothing
+        validated them, and no line of the runtime ever read them. Kept out rather than repaired: a
+        parameter that accepts anything and changes nothing is worse than its absence, because it
+        reads as a capability.
+        """
         pin = self.pin(pin_id)
         is_build = build_track is not None
         allowed = BUILD_ACTIONS if is_build else REMEDIATION_ACTIONS
@@ -794,8 +838,6 @@ class Ledger:
             item["build_track"] = build_track
         if contract_carrier:
             item["contract_carrier"] = contract_carrier
-        if depends_on:
-            item["depends_on"] = depends_on
         pin["remediation"].append(item)
         return item
 

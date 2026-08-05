@@ -113,13 +113,125 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
+def decision_prompt(ledger: str, pin_id: str) -> dict:
+    """The fork exactly as the pin poses it — what to put in front of the human, nothing invented.
+
+    Read-only, and separate from recording on purpose: the thing that ASKS must be able to run
+    without the power to write.
+    """
+    pin = _open_existing(ledger).pin(pin_id)
+    question = pin.get("question")
+    if not question:
+        raise ValueError(
+            f"{pin_id} poses no question, so there is nothing to elect. A pin reaches "
+            f"`decided` only through the fork the interview put to the user; a `defect` needs no "
+            f"election and goes straight to remediation."
+        )
+    return {
+        "pin_id": pin_id,
+        "title": pin["title"],
+        "kind": pin["kind"],
+        "severity": pin["severity"],
+        "prompt": question["prompt"],
+        "options": [{"id": o["id"], "label": o["label"], "implication": o.get("implication", "")}
+                    for o in question.get("options", [])],
+        "allow_freeform": bool(question.get("allow_freeform")),
+        "can_accept_as_is": pin["kind"] == "design_concern",
+    }
+
+
+def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, flip_criteria: str,
+                    human_answer: str = "", evidence: str = "transcribed",
+                    accept_as_is: bool = False, apply_to_cluster: bool = False) -> dict:
+    """Record an election the HUMAN made. This tool does not elect; it writes down what was elected.
+
+    That distinction is the package's central invariant, and until now it was implemented by having
+    no tool at all — which stopped an agent from choosing and also stopped the human from being
+    recorded, so after the CLI was removed no pin on any host could reach `decided`. The whole
+    downstream chain rests on that state: `DecisionEvent`, `flip_criteria`, the reopen loop, and
+    `roadmap = diff(to_be, as_is)`. Only `defect` pins moved, because they need no election.
+
+    What replaces "there is no tool" is a tool that cannot be used to choose:
+
+      * `option_id` must name an option the pin's own `question` offers. An agent cannot elect an
+        outcome the interview never put to the user — the menu is the ledger's, not the caller's.
+      * freeform is allowed only where the question says `allow_freeform`, and then the human's
+        words ARE the outcome.
+      * `flip_criteria` is required, so no decision fossilizes out of reach of the reopen loop.
+      * a `transcribed` decision must quote the human. An agent asserting "the user chose B" with
+        nothing quoted is exactly the claim `evidence` exists to make checkable — and this is the
+        boundary where that claim gets made, which is why the rule lives here and not in `ledger.py`.
+
+    `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
+    user through the host and the agent never carries the value. See `mcp/server.py`.
+    """
+    prompt = decision_prompt(ledger, pin_id)
+    offered = {o["id"] for o in prompt["options"]}
+
+    if accept_as_is:
+        if not prompt["can_accept_as_is"]:
+            raise ValueError(
+                f"{pin_id} is a {prompt['kind']}; leaving-as-is is the legitimate resolution of a "
+                f"design_concern only — an open_decision has nothing to keep."
+            )
+    elif option_id == "freeform":
+        if not prompt["allow_freeform"]:
+            raise ValueError(f"{pin_id} does not allow a freeform answer; choose one of {sorted(offered)}")
+        if not human_answer:
+            raise ValueError("a freeform election IS the human's words — human_answer is required")
+    elif option_id not in offered:
+        raise ValueError(
+            f"{option_id!r} is not an option this pin offers ({sorted(offered) or 'none'}). An "
+            f"agent may record an election, never invent one: the menu belongs to the question the "
+            f"interview asked. Use option_id='freeform' if the question allows it."
+        )
+
+    if evidence == "transcribed" and not human_answer:
+        raise ValueError(
+            "a transcribed decision must carry the human's answer verbatim in human_answer — "
+            "without it, an honest relay and a fabricated one are indistinguishable in the ledger"
+        )
+
+    led = _open_existing(ledger)
+    if accept_as_is:
+        led.accept(pin_id, rationale=rationale, flip_criteria=flip_criteria,
+                   evidence=evidence, human_answer=human_answer)
+        outcome, state = "keep", "accepted"
+    else:
+        outcome = human_answer if option_id == "freeform" else option_id
+        led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
+                   evidence=evidence, human_answer=human_answer,
+                   apply_to_cluster=apply_to_cluster)
+        state = "decided"
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin_id, "state": state, "outcome": outcome, "evidence": evidence}
+
+
+def interview_expand(ledger: str, project_type: str = "web-saas",
+                     brief_decisions: dict | None = None) -> dict:
+    """Materialize the decision catalog as pins — greenfield's Phase-2 opening move.
+
+    Exposed because the funnel had no pins to funnel: `interview_next` reads, and the thing that
+    CREATES the forks lived in `interview.expand_catalog` with no surface at all, so Phase 2 could
+    not start through the only runtime channel there is.
+    """
+    import interview
+    led = _open_or_create(ledger)
+    result = interview.expand_catalog(led, interview.load_catalog(), project_type=project_type,
+                                      brief_decisions=brief_decisions or {})
+    led.save()
+    _refresh_live_maps(ledger)
+    return result
+
+
 def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
                            canonical_target: str | None = None, build_track: str | None = None,
-                           contract_carrier: str | None = None, depends_on: list | None = None) -> dict:
+                           contract_carrier: str | None = None) -> dict:
     led = _open_existing(ledger)
     item = led.add_remediation(pin_id, action=action, ladder_rung=ladder_rung,
                                canonical_target=canonical_target, build_track=build_track,
-                               contract_carrier=contract_carrier, depends_on=depends_on)
+                               contract_carrier=contract_carrier)
     led.save()
     _refresh_live_maps(ledger)
     return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
@@ -325,9 +437,18 @@ def contract_diff(contract: str, backend: str = "auto", **layers) -> dict:
     return {"findings": findings}
 
 
-def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> dict:
+def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                     correspondence: dict | None = None) -> dict:
     import shapes
-    return {"findings": shapes.reconcile_layers(layer_a, path_a, layer_b, path_b)}
+    return {"findings": shapes.reconcile_layers(layer_a, path_a, layer_b, path_b,
+                                                correspondence=correspondence)}
+
+
+def propose_correspondence(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                           min_overlap: float = 0.5) -> dict:
+    import shapes
+    return {"candidates": shapes.propose_correspondence(layer_a, path_a, layer_b, path_b,
+                                                        min_overlap=min_overlap)}
 
 
 def _git_head(cwd: str | None = None) -> str:

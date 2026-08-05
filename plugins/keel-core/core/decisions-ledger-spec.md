@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.9
+# Decisions Ledger — Spec v0.10
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -177,7 +177,9 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "outcome": "opt_a",            // option id | freeform
   "rationale": "string",
   "flip_criteria": "if users appear with permissions beyond admin, reopen",  // DECISION 9
-  "source": "interview" }        // only "interview" commits
+  "source": "interview",         // only "interview" commits — WHO was entitled to
+  "evidence": "elicited",        // elicited | transcribed | brief — HOW the answer got here
+  "human_answer": "yes, pull the helper out" }   // required when transcribed: the words, verbatim
 
 // RemediationItem (inside pin.remediation[]) — DECISION 8
 { "id": "rem_0001",
@@ -242,6 +244,18 @@ A category rule the user sets in the interview that auto-resolves matching pins.
 ```
 When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "policy:<id>"` pointing back to the user's choice: it stays a **user-originated** decision, only amplified. Neutrality holds (the brainstorm still commits nothing).
 
+### `evidence` — how the human's answer reached the log (v0.10)
+
+`source` says who was *entitled* to commit, and every writer can claim `interview`. `evidence` says how the answer actually travelled, because the failure modes differ and averaging them would hide the weak one:
+
+- **`elicited`** — the MCP server asked the user through the host and wrote the reply itself (`mcp:ledger_record_decision` on a client that declares the elicitation capability). The agent never held the value, so it could not have invented it.
+- **`transcribed`** — an agent relayed what the user said. `human_answer` carries the words verbatim, and is **required**: without a quote, an honest relay and a fabricated one are the same line in the ledger.
+- **`brief`** — settled in the project brief at frame time; the brief is the evidence.
+
+It defaults to `transcribed`, the weaker rung, on purpose: a writer that says nothing has not earned the stronger claim, and understating what is known is the safe direction to be wrong in.
+
+This is the same move as `provenance: agent_assumption` — the weak path is not forbidden, it is made **visible**, so a reader can weigh it and the challenger can attack it. Forbidding it outright is what the package did before v0.10, by shipping no election tool at all: that stopped an agent from choosing and also stopped the human from being recorded, so no pin could reach `decided` on any host.
+
 ### Threshold rule (confirmed)
 What may end up in a silent default without disturbing anyone:
 - `severity: blocker | high` → **never** silent. Always `asked`, or at least at the top of the batch to review.
@@ -304,9 +318,16 @@ Where `RemediationItem` closes a gap on existing code, `BuildItem` **builds** wh
   "build_track": "A",            // A = red→green from the elected to_be (primary) · B = characterization (only when extending)
   "ladder_rung": 7,              // YAGNI for construction: never build beyond what the decision requires
   "contract_carrier": "shared-types",  // for 'scaffold' of the contract: the single source the layers are generated from
-  "depends_on": ["bld_0000"],    // the DAG: client depends_on API depends_on contract
   "status": "todo" }             // todo | in_progress | done
 ```
+
+**An item carries no `depends_on`, deliberately.** Sequence belongs to the pin — `pin.depends_on`
+holds global ids, is validated on write ("the DAG is real, not aspirational"), and is what
+`buildloop.waves()` actually levels. Items run in list order within their pin, which suffices
+because the executor takes one scope at a time. The field existed until v0.9 and was inert three
+ways: ids were allocated per-pin, so `rem_0001` named an item on *every* pin and a cross-pin
+reference was ambiguous by construction; nothing validated them; and no line of the runtime read
+them. Removed rather than repaired — a schema field addressed to nobody reads as a capability.
 
 `action`:
 - **`scaffold`** — generate from a single source: the contract → DDL/ORM/DTO/client types aligned *by construction*; or the paved road (test harness, linter, CI, session-start hook).
@@ -314,7 +335,7 @@ Where `RemediationItem` closes a gap on existing code, `BuildItem` **builds** wh
 - **`wire`** — connect already-scaffolded pieces (a route to its handler, a form to its endpoint).
 - **`configure`** — deterministic settings descending from a decision (env, secrets, feature flags).
 
-The waves fall out of `depends_on` (contract & data model → paved road → core slice → secondary features → polish), they are not hardcoded — exactly like rescue's reconciliation waves. The diff `gap = diff(to_be, as_is)` stays the invariant: here `as_is` starts empty and the roadmap is the build backlog, which tends to zero at completed v1.
+The waves fall out of the **pins'** `depends_on` (contract & data model → paved road → core slice → secondary features → polish), they are not hardcoded — exactly like rescue's reconciliation waves. The diff `gap = diff(to_be, as_is)` stays the invariant: here `as_is` starts empty and the roadmap is the build backlog, which tends to zero at completed v1.
 
 ---
 

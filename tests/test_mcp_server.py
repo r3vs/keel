@@ -16,6 +16,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 import unittest
 
 SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py")
@@ -35,6 +37,7 @@ SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py"
 # be handled explicitly rather than by loosening this back to a subset.
 EXPECTED_TOOLS = {
     "ledger_summary", "interview_next", "contract_diff", "reconcile_layers", "blast_radius",
+    "propose_correspondence",
     "generate_layers", "findings_gate", "build_waves", "challenge_oracle", "render_map",
     "coverage_gaps",
     # non-electing ledger writes; decide/accept stay human-only and are deliberately NOT here
@@ -46,6 +49,8 @@ EXPECTED_TOOLS = {
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
     # the instruction-file carrier — the ledger projected into the file every host actually loads
     "generate_instructions", "instructions_diff",
+    # the election: creating the forks, and recording the human's answer to one
+    "interview_expand", "ledger_record_decision",
     # design contract (DTCG) + the frontend/design scanner
     "generate_tokens", "tokens_diff", "extract_tokens", "design_scan",
     # cost & token telemetry — the measurer's surface
@@ -69,17 +74,31 @@ WRITE_TOOLS = {
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
     "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
-    "generator_observe",
+    "generator_observe", "interview_expand", "ledger_record_decision",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
 
 
-@unittest.skipIf(shutil.which("uv") is None,
-                 "uv not on PATH — the host cannot spawn the MCP server, and its tools would be "
-                 "silently absent. uv is a hard prerequisite; bootstrap.sh installs it and aborts if it cannot.")
-class TestServerAdvertisesItsTools(unittest.TestCase):
-    """One session, driven over real stdio, reused across assertions (a cold uv resolve is ~7s)."""
+NEEDS_UV = unittest.skipIf(
+    shutil.which("uv") is None,
+    "uv not on PATH — the host cannot spawn the MCP server, and its tools would be silently "
+    "absent. uv is a hard prerequisite; bootstrap.sh installs it and aborts if it cannot.")
+
+
+class _Session(unittest.TestCase):
+    """One server session over real stdio, reused across a class's assertions (cold uv is ~7s).
+
+    Subclasses vary `CAPABILITIES`, because what this fake client declares in `initialize` is what
+    the server reads to decide whether it may ask the user directly. That makes both rungs of
+    `ledger_record_decision` testable here, with no host in the loop.
+    """
+
+    #: What this fake client declares in `initialize`. The server reads it to decide whether it may
+    #: ask the user directly, so declaring nothing here is what exercises the relay path.
+    CAPABILITIES: dict = {}
+    #: Reply to a server->client `elicitation/create`, or None to fail loudly on one.
+    ELICIT_REPLY: dict | None = None
 
     @classmethod
     def setUpClass(cls):
@@ -92,10 +111,19 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
             env={**os.environ, "CODEBASE_ALIGNMENT_SKIP_WARM": "1"},
         )
         cls._id = 0
+        cls.elicited = []
+        # Drain stderr continuously. It used to be read only when the stream closed, which is fine
+        # until a tool raises: FastMCP logs the traceback, a few KB fills the OS pipe buffer, and
+        # the server BLOCKS on its own stderr write — so it never answers, and `readline()` below
+        # waits forever with no timeout to save it. The first test to exercise a refusal hung the
+        # whole suite. Kept, not discarded: the text is still what the failure messages quote.
+        cls._stderr = []
+        cls._drain = threading.Thread(target=cls._pump_stderr, daemon=True)
+        cls._drain.start()
         try:
             cls._request("initialize", {
                 "protocolVersion": "2025-11-25",
-                "capabilities": {},
+                "capabilities": cls.CAPABILITIES,
                 "clientInfo": {"name": "keel-tests", "version": "1"},
             })
             cls._notify("notifications/initialized")
@@ -113,6 +141,15 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
                 cls.proc.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 cls.proc.kill()
+
+    @classmethod
+    def _pump_stderr(cls):
+        for line in cls.proc.stderr:
+            cls._stderr.append(line)
+
+    @classmethod
+    def _stderr_text(cls) -> str:
+        return "".join(cls._stderr[-40:])
 
     @classmethod
     def _send(cls, payload):
@@ -135,8 +172,24 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
                     f"server crashed. stderr:\n{cls.proc.stderr.read()}"
                 )
             msg = json.loads(line)
+            if msg.get("method") == "elicitation/create" and "id" in msg:
+                # The server is asking the USER something, mid-call. A client that declares the
+                # capability and then ignores the request would deadlock the tool, so answering it
+                # is part of being this client — and it is what lets the strong rung be tested
+                # end to end with no host involved.
+                cls.elicited.append(msg["params"])
+                if cls.ELICIT_REPLY is None:
+                    raise AssertionError(
+                        "the server elicited from a client that declared no elicitation capability")
+                cls._send({"jsonrpc": "2.0", "id": msg["id"], "result": cls.ELICIT_REPLY})
+                continue
             if msg.get("id") == cls._id:   # skip any notifications interleaved on the wire
                 return msg
+
+
+@NEEDS_UV
+class TestServerAdvertisesItsTools(_Session):
+    """The relay rung: a client that declares nothing, so the server must not try to ask."""
 
     def test_the_advertised_set_is_exactly_the_inventory(self):
         """Both directions, because they are different bugs.
@@ -171,8 +224,9 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
                 self.assertFalse(self.tools[name]["annotations"]["readOnlyHint"],
                                  "a write tool must not claim to be read-only")
 
-    def test_decide_is_not_advertised(self):
-        # Electing an outcome stays the human interview's job — no MCP tool may commit a decision.
+    def test_no_tool_elects_on_its_own_authority(self):
+        # Electing stays the human's job. What the surface offers is a way to RECORD an election —
+        # `ledger_record_decision`, which can only write an outcome the pin's own question offered.
         self.assertNotIn("ledger_decide", self.tools)
         self.assertNotIn("ledger_accept", self.tools)
 
@@ -223,3 +277,86 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+DESIGN_CONCERN = {
+    "kind": "design_concern", "title": "three near-identical blocks", "severity": "low",
+    "confidence": "inferred", "provenance": [{"source": "recon", "detail": "clones"}],
+    "as_is": {"current_design": "copy-paste", "concern": "they drift"},
+    "question": {"prompt": "Consolidate them?",
+                 "options": [{"id": "keep", "label": "leave it", "implication": "drift stays possible"},
+                             {"id": "extract", "label": "extract a helper", "implication": "one call shape"}],
+                 "allow_freeform": False},
+}
+
+
+def _seeded_ledger(session, tmp):
+    """A pin with a real fork on it, created over the wire like an agent would."""
+    path = os.path.join(tmp, "ledger.json")
+    res = session._request("tools/call", {"name": "ledger_add_pin",
+                                          "arguments": {"ledger": path, **DESIGN_CONCERN}})
+    return path, res["result"]["structuredContent"]["pin_id"]
+
+
+@NEEDS_UV
+class TestRecordingAnElectionByRelay(_Session):
+    """No elicitation capability declared, so the agent must relay — and be held to it.
+
+    `ELICIT_REPLY` stays None: if the server tried to ask this client anyway, the harness fails
+    loudly rather than deadlocking on a request that would never be answered.
+    """
+
+    def test_the_outcome_must_come_from_the_pins_own_question(self):
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "rewrite_in_rust",
+            "rationale": "r", "flip_criteria": "f", "human_answer": "do that"}})
+        self.assertTrue(res["result"].get("isError"),
+                        "an agent must not be able to write an outcome the interview never offered")
+
+    def test_a_relayed_decision_is_recorded_with_the_words_it_rests_on(self):
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "extract",
+            "rationale": "one call shape beats three", "human_answer": "yes, pull the helper out",
+            "flip_criteria": "if a second caller shape appears"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual((out["state"], out["outcome"], out["evidence"]),
+                         ("decided", "extract", "transcribed"))
+        self.assertEqual(self.elicited, [], "the server must not ask a client that cannot answer")
+        with open(path, encoding="utf-8") as fh:
+            event = json.load(fh)["decision_log"][-1]
+        self.assertEqual(event["human_answer"], "yes, pull the helper out")
+
+
+@NEEDS_UV
+class TestRecordingAnElectionByElicitation(_Session):
+    """The strong rung, end to end: the SERVER asks, this client answers, the server writes.
+
+    The point is what does not happen — the answer never passes through the caller. So the call
+    below sends a deliberately wrong `option_id`, and the recorded outcome must be the one this
+    client picked, not the one the caller asked for.
+    """
+
+    CAPABILITIES = {"elicitation": {}}
+    ELICIT_REPLY = {"action": "accept", "content": {"value": "extract — extract a helper (→ one call shape)"}}
+
+    def test_the_server_asks_the_user_and_ignores_what_the_caller_proposed(self):
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "keep",
+            "rationale": "whatever the user says", "human_answer": "the caller's own words",
+            "flip_criteria": "if a second caller shape appears"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["evidence"], "elicited")
+        self.assertEqual(out["outcome"], "extract",
+                         "the elicited answer must win over the caller's proposed option_id — "
+                         "otherwise the strong rung is decoration")
+        self.assertTrue(self.elicited, "the server never asked")
+        asked = json.dumps(self.elicited[0])
+        self.assertIn("extract a helper", asked, "the user was not shown the pin's real options")

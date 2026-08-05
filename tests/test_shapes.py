@@ -264,3 +264,50 @@ class TestHonestyRules(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestElectedCorrespondence(unittest.TestCase):
+    """The third way, for a repo with no carrier AND no shared naming between its layers.
+
+    `reconcile_layers` matching on the name is right and, on a real codebase, can leave you with
+    nothing usable: 74 tables named `cert_lotti_registrati` against models named `LottoRegistrato`
+    report as 74 missing and 377 extra. Honest, useless, and it pushes the operator into doing the
+    comparison by hand outside the tool. So the comparison comes inside — as a PROPOSAL, which is
+    the only form a similarity score is allowed to take here.
+    """
+
+    DDL = pathlib.Path(__file__).parent / "fixtures" / "step0" / "001_initial.sql"
+    PRISMA = pathlib.Path(__file__).parent / "fixtures" / "stacks" / "schema.prisma"
+
+    def test_pairs_are_proposed_by_field_overlap_not_by_name(self):
+        cands = shapes.propose_correspondence("ddl", str(self.DDL), "prisma", str(self.PRISMA))
+        pairs = {(c["a"], c["b"]) for c in cands}
+        self.assertIn(("users", "User"), pairs,
+                      "identical field sets under different names must still be proposable")
+        for c in cands:
+            self.assertEqual(c["status"], "proposed",
+                             "a similarity score may propose; it may never be a finding")
+            self.assertTrue(c["shared_fields"], "a candidate must carry the evidence it rests on")
+
+    def test_one_pairing_per_entity(self):
+        cands = shapes.propose_correspondence("ddl", str(self.DDL), "prisma", str(self.PRISMA))
+        self.assertEqual(len({c["a"] for c in cands}), len(cands))
+        self.assertEqual(len({c["b"] for c in cands}), len(cands))
+
+    def test_nothing_is_proposed_below_the_floor(self):
+        self.assertEqual(
+            shapes.propose_correspondence("ddl", str(self.DDL), "prisma", str(self.PRISMA),
+                                          min_overlap=1.01), [])
+
+    def test_an_elected_pairing_makes_the_diff_deterministic_again(self):
+        before = shapes.reconcile_layers("ddl", str(self.DDL), "prisma", str(self.PRISMA))
+        self.assertIn("users", {f["entity"] for f in before if f["kind"] == "missing_entity"})
+
+        after = shapes.reconcile_layers("ddl", str(self.DDL), "prisma", str(self.PRISMA),
+                                        correspondence={"users": "User"})
+        kinds = {(f["entity"], f["kind"]) for f in after}
+        self.assertNotIn(("users", "missing_entity"), kinds,
+                         "a declared pairing must beat the name match")
+        self.assertNotIn(("User", "extra_entity"), kinds, "and must consume the other side too")
+        # every other entity is left exactly as it was: the map declares pairs, it does not fold names
+        self.assertIn("projects", {f["entity"] for f in after if f["kind"] == "missing_entity"})

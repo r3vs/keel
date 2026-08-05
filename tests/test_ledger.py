@@ -321,6 +321,37 @@ class TestRemediation(unittest.TestCase):
         with self.assertRaises(LedgerError):                       # build verb on RemediationItem
             led.add_remediation(fork["id"], action="scaffold", ladder_rung=2)
 
+    def test_sequence_lives_on_the_pin_and_only_there(self):
+        """An item takes no `depends_on`, and the pin's is the one the scheduler levels.
+
+        Both halves matter. The item field used to exist and was inert three ways — ids allocated
+        per-pin (`rem_0001` on every pin, so a cross-pin reference was ambiguous by construction),
+        no validation, and no reader anywhere in the runtime. It read as a capability, which is how
+        it got planned around. `scripts/check_schema_fields.py` guards the class, but it matches on
+        the field NAME and so cannot tell a pin's `depends_on` from an item's; this is the instance.
+        """
+        led = make_ledger()
+        defect = led.add_pin(kind="defect", title="sqli", severity="blocker", confidence="extracted",
+                             provenance=[{"source": "semgrep", "detail": "r"}], as_is={"description": "x"})
+        with self.assertRaises(TypeError, msg="an item must not accept ordering of its own"):
+            led.add_remediation(defect["id"], action="refactor", ladder_rung=1,
+                                depends_on=["rem_0001"])
+        item = led.add_remediation(defect["id"], action="refactor", ladder_rung=1)
+        self.assertNotIn("depends_on", item)
+
+        # ...and the surviving channel is real: validated on write, and levelled into waves.
+        with self.assertRaises(LedgerError, msg="the pin DAG is real, not aspirational"):
+            led.add_pin(kind="defect", title="downstream", severity="low", confidence="extracted",
+                        provenance=[{"source": "s", "detail": "d"}], as_is={"description": "y"},
+                        depends_on=["pin_9999"])
+        later = led.add_pin(kind="defect", title="downstream", severity="low", confidence="extracted",
+                            provenance=[{"source": "s", "detail": "d"}], as_is={"description": "y"},
+                            depends_on=[defect["id"]])
+        import buildloop
+        waves = buildloop.waves(led)
+        self.assertLess(next(i for i, w in enumerate(waves) if defect["id"] in w),
+                        next(i for i, w in enumerate(waves) if later["id"] in w))
+
     def test_resolve_gated_on_done_items(self):
         led = make_ledger()
         pin = add_simple_pin(led)

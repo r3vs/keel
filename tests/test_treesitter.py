@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -282,3 +284,57 @@ class TestGenericDispatch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCIExercisesTheShippedBackend(unittest.TestCase):
+    """CI must install the SAME backend the server ships, and must actually run these tests.
+
+    Both halves were broken. CI installed no grammars at all, so every `skip_no_ts` test skipped
+    green on every run since they were written — the backend `treesitter_extract` calls *primary*,
+    and that the MCP server carries in its own PEP 723 deps, was never once exercised. And the
+    moment CI does install it, the pin becomes a second copy of a version that already exists in
+    `server.py`, which in this repo is a drift waiting to happen. So the copies are held together
+    here rather than by remembering.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+    def _pins(self, text: str) -> set:
+        return set(re.findall(r'tree-sitter(?:-language-pack)?[=><]{1,2}[\d.]+', text))
+
+    def test_the_ci_pin_matches_what_the_server_ships(self):
+        server = (self.ROOT / "src" / "mcp" / "server.py").read_text(encoding="utf-8")
+        deps = next(line for line in server.splitlines() if line.startswith("# dependencies"))
+        ci = (self.ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertTrue(self._pins(deps), "the server's PEP 723 block no longer pins the backend")
+        self.assertEqual(
+            self._pins(deps), self._pins(ci),
+            "CI installs a different extraction backend than the server ships, so the tests below "
+            "no longer prove anything about what a user runs")
+
+    def test_the_suite_sees_the_same_backend_a_plain_process_does(self):
+        """If a bare interpreter can import the backend and this suite cannot, say so — loudly.
+
+        Every test in this file is `skipUnless(HAVE_TS)`, so a broken environment does not fail, it
+        goes QUIET: 21 assertions report success by not running. That is the failure mode this repo
+        keeps finding in itself, and it is worse here than a red build, because the skip line reads
+        like a deliberate degradation when it may be an accident.
+
+        A skip is only honest when the backend is genuinely absent. Absent from the suite while
+        present in a plain `python -c` is not absence — it is the suite's own environment breaking,
+        and the operator has to be told, not reassured.
+        """
+        probe = subprocess.run([sys.executable, "-c", "import tree_sitter"],
+                               capture_output=True, text=True)
+        standalone = probe.returncode == 0
+        if not standalone:
+            self.skipTest("the backend is genuinely not installed — the honest skip. CI installs "
+                          "it (see the pin test above), so this marks a local environment only.")
+        self.assertTrue(
+            HAVE_TS,
+            "`python -c 'import tree_sitter'` succeeds with this very interpreter, but the backend "
+            "is invisible from inside the suite — so 21 tests are skipping green on an environment "
+            "that HAS the thing they need. Do not read those skips as coverage.")
+        self.assertTrue(tse.available("typescript"),
+                        "the backend imports but its grammar never arrives — the exact failure "
+                        "`available(lang)` was given an argument to expose")
