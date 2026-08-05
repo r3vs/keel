@@ -644,7 +644,8 @@ def contract_diff(
 
 
 @mcp.tool(annotations={"title": "Reconcile Two Layers (no carrier)", **_RO})
-def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> dict:
+def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                     correspondence: dict | None = None) -> dict:
     """Diff two layers directly against each other, with no contract in between.
 
     Use on an existing codebase, where no carrier exists yet and cross-layer correspondence cannot
@@ -661,8 +662,34 @@ def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> di
         path_a: Path to that layer's source file.
         layer_b: The other layer kind.
         path_b: Path to the other layer's source file.
+        correspondence: {entity_in_a: entity_in_b} the HUMAN elected, overriding the name match for
+            those pairs. Get the candidates from `propose_correspondence` first.
     """
-    return tools.reconcile_layers(layer_a, path_a, layer_b, path_b)
+    return tools.reconcile_layers(layer_a, path_a, layer_b, path_b, correspondence)
+
+
+@mcp.tool(annotations={"title": "Propose Cross-Layer Correspondence (candidates only)", **_RO})
+def propose_correspondence(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                           min_overlap: float = 0.5) -> dict:
+    """Candidate entity pairings between two layers, ranked by FIELD OVERLAP rather than by name.
+
+    For the repo where `reconcile_layers` reports everything missing and everything extra because
+    the two layers simply do not share naming (`cert_lotti_registrati` vs `LottoRegistrato`).
+
+    Returns `{"candidates": [...]}`, each `status: "proposed"` and carrying its evidence — the
+    shared fields, and what each side has alone. These are NOT findings and must not be written to
+    the ledger as drift. Put them to the human, then pass what they elect back as
+    `reconcile_layers(correspondence=...)`, where the pairing becomes a declared fact and the diff
+    is deterministic again.
+
+    Args:
+        layer_a: Layer kind — ddl | sqlalchemy | pydantic | typescript | drizzle | prisma | django | graphql.
+        path_a: Path to that layer's source file.
+        layer_b: The other layer kind.
+        path_b: Path to the other layer's source file.
+        min_overlap: Jaccard floor over field names, 0..1. Below it, a pair is not worth showing.
+    """
+    return tools.propose_correspondence(layer_a, path_a, layer_b, path_b, min_overlap)
 
 
 @mcp.tool(annotations={"title": "Blast Radius", **_RO})

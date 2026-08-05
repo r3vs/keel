@@ -61,8 +61,16 @@ Consequences, baked into this module's posture (unchanged — the fresh run reaf
    otherwise, and **refuses to write at all when `built_at_commit` != HEAD** (a graph 37 commits
    behind is worse than none — rebuild with `graphify update <path>` first).
 4. **A monorepo shared-types package is the strongest standalone contract when present** — diff the
-   layers against it (carrier-anchored `shapes.drift_check`); when absent, diff two layers directly
-   (`shapes.reconcile_layers`).
+   layers against it (carrier-anchored `mcp:contract_diff`); when absent, diff two layers directly
+   (`mcp:reconcile_layers`).
+   **When the layers do not share naming, that direct diff reports everything missing and everything
+   extra** — a table `cert_lotti_registrati` against a model `LottoRegistrato` corresponds to nothing
+   by name. That is the honest answer and a useless one, and it is not a reason to start guessing:
+   run `mcp:propose_correspondence`, which ranks candidate pairs by **field overlap** rather than by
+   name. Its output is `status: "proposed"` and must never be written to the ledger as drift — put
+   the candidates to the user, then pass what they elect back as
+   `mcp:reconcile_layers(correspondence=...)`. From there the pairing is a declared fact and the
+   diff is deterministic again, exactly as a carrier would have made it.
 5. **Check route returns against the shared types, not just the FE hooks** — the real drift is raw
    `pg` / untyped route returns vs those types.
 

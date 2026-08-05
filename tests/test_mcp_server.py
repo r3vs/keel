@@ -37,6 +37,7 @@ SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py"
 # be handled explicitly rather than by loosening this back to a subset.
 EXPECTED_TOOLS = {
     "ledger_summary", "interview_next", "contract_diff", "reconcile_layers", "blast_radius",
+    "propose_correspondence",
     "generate_layers", "findings_gate", "build_waves", "challenge_oracle", "render_map",
     "coverage_gaps",
     # non-electing ledger writes; decide/accept stay human-only and are deliberately NOT here

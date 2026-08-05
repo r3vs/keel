@@ -437,9 +437,18 @@ def contract_diff(contract: str, backend: str = "auto", **layers) -> dict:
     return {"findings": findings}
 
 
-def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> dict:
+def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                     correspondence: dict | None = None) -> dict:
     import shapes
-    return {"findings": shapes.reconcile_layers(layer_a, path_a, layer_b, path_b)}
+    return {"findings": shapes.reconcile_layers(layer_a, path_a, layer_b, path_b,
+                                                correspondence=correspondence)}
+
+
+def propose_correspondence(layer_a: str, path_a: str, layer_b: str, path_b: str,
+                           min_overlap: float = 0.5) -> dict:
+    import shapes
+    return {"candidates": shapes.propose_correspondence(layer_a, path_a, layer_b, path_b,
+                                                        min_overlap=min_overlap)}
 
 
 def _git_head(cwd: str | None = None) -> str:
