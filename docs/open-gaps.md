@@ -209,9 +209,43 @@ offered menu, which the pure layer would then reject with a confusing error.
 
 ---
 
-## 4. The local suite skips 21 tree-sitter tests and nobody knows why
+## 4. The local suite skips 21 tree-sitter tests and nobody knows why — **CLOSED 2026-08-05**
 
-### Verified
+**Cause: two interpreters, not one behaviour.** The gap's premise ("the same interpreter") was
+false. An unrelated tool's virtualenv (`…\hermes-agent\venv\Scripts`, python 3.11.9, no
+`tree_sitter`) sat on the **User PATH ahead of the real install**, so every PATH-resolving shell —
+PowerShell, cmd, and any subprocess any tool spawns — got it. Git Bash escaped only via
+`~/.bashrc:31`, an `alias python=…Python314\python` that rewrites what bash execs and is invisible
+to PATH lookup in any child process. So the passing `python -c "import tree_sitter"` ran under the
+alias (3.14, backend present) and the skipping `discover` ran under PATH resolution (3.11, backend
+absent). Same-shell control, only the interpreter varied: `OK (skipped=29)` vs `OK (skipped=4)`.
+
+That is also why every hypothesis below was ruled out — there was nothing to find inside the
+process. `sys.path` was not corrupted and nothing shadowed the import; the interpreter simply never
+had the package, and the "unrelated venv's site-packages" was not a symptom but literally the
+running interpreter's own.
+
+**Why the existing detector missed it.** `TestCIExercisesTheShippedBackend` probes
+`subprocess.run([sys.executable, …])` — it asks the possibly-broken interpreter about *itself*, so
+it can only catch an **intra**-interpreter discrepancy. The real condition was **inter**-interpreter,
+so the probe agreed with itself, honestly, and degraded to its skip exactly as designed.
+
+**The check that closes it** — `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter`.
+When this interpreter lacks the backend, it asks **every python PATH can reach** (executing each and
+reading its exit code — the carrier, not the path's spelling; zero-byte Windows App Execution Alias
+stubs are excluded because they cannot be executables and running one opens the Store). If any has
+it, the test **fails** and names both interpreters plus what bare `python` resolves to. It counts
+the silenced assertions off `__unittest_skip__`, the same attribute the runner reads, rather than
+hardcoding 21. Verified at the consumer on all three branches: hermes 3.11 → RED naming both
+interpreters; Python 3.14 → 29 tests, `OK`, no skips; PATH stripped of any capable python →
+`OK (skipped=22)`, the honest absence, no false failure. The skip *reason* now names the interpreter
+too, so the 21 skips can no longer read as a fact about the machine.
+
+**Left to the operator** (outside any repo, so not done here): take the foreign venv off the global
+PATH, or invoke the interpreter you mean by its full path. `CLAUDE.md`'s "on Windows use `python`
+(present)" — the instruction that produced this — was corrected.
+
+### Verified (the original report, kept as the record)
 
 In CI this is **closed**: the workflow now installs the backend pinned to what the server ships, and
 the same commit went from `Ran 565 tests, OK (skipped=28)` to `OK (skipped=4)` — the four remaining
@@ -230,6 +264,12 @@ interpreter. What was ruled out:
 Yet inside a real `discover()` run, `importlib.util.find_spec("tree_sitter")` returns `None` and the
 only `site-packages` on `sys.path` is an unrelated venv's. The interpreter reports the base prefix,
 not a virtualenv.
+
+> Two claims in that last sentence were wrong, and both point at the cause. The venv's site-packages
+> is not "an unrelated venv's" — it is the running interpreter's own. And `sys.prefix !=
+> sys.base_prefix` there, i.e. it *is* a virtualenv; the reading that said otherwise came from the
+> other interpreter. Measured, both: hermes → `prefix=…\hermes-agent\venv`,
+> `base_prefix=…\Python311`; Python314 → equal.
 
 `tests/test_treesitter.py::TestCIExercisesTheShippedBackend` now fails loudly if a plain subprocess
 can import the backend while the suite cannot — but in the failing runs the subprocess *also* cannot,
@@ -252,6 +292,12 @@ Start from the divergence, not from the code: run the failing `discover()` and t
 module with `python -X importtime` and compare, and print the full `sys.path` plus `os.environ`
 snapshot at the top of both. The env is the remaining suspect — the subprocess probe inheriting a
 different environment than the shell is consistent with everything ruled out above.
+
+> Superseded, and worth keeping as a lesson in where to start. No `importtime` diff was needed or
+> possible: the module is absent from the interpreter, so there is no import event to compare. The
+> instruction "start from the divergence" was right; the divergence was just one level further out
+> than "the env" — it was **which binary the word `python` names**, which every command in this file
+> spells the same way and no gate had ever pinned down.
 
 ---
 

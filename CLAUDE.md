@@ -134,8 +134,14 @@ skills bind to. Each skill's `evals/evals.json` holds prompts **with assertions*
 `scripts/run_evals.py` validates their structure (CI) and executes them when an agent runner is
 available.
 
-Both Python checks run in CI on every PR (`.github/workflows/ci.yml`). On Windows use `python`
-(present) and run the `.sh` script from the Bash shell / Git Bash.
+Both Python checks run in CI on every PR (`.github/workflows/ci.yml`). Run the `.sh` scripts from
+Git Bash. On Windows, **check which `python` you got before trusting a green run** — this very line
+used to say "use `python` (present)", and that is the instruction that walked a session into an
+unrelated tool's virtualenv sitting earlier on the User PATH: a 3.11 venv with no extraction
+backend, so 21 tree-sitter tests skipped in a way that reads as deliberate degradation. Git Bash
+hid it (a `~/.bashrc` alias, which no subprocess inherits), so the same command in two shells ran
+two interpreters. `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter` now fails when
+another python on PATH has the backend this one lacks; its docstring holds the full condition.
 
 ## The one idea to hold in your head
 
