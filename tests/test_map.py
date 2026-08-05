@@ -1,10 +1,16 @@
 """Tests for runtime/map.py — the visual map artifact.
 
-The map is a user-facing deliverable, verified rendered in a browser during development (the pin
-list, the three-column contract-diff with the disagreeing layer flagged, the linked interview
-question, and the traffic-light all render from the inlined ledger, no console errors). These
-tests pin the properties CI can guard without a browser: the output is one self-contained file
+The map is a user-facing deliverable and its correctness is a DOM, so it is verified rendered in a
+browser — repeatably, via `python scripts/preview_map.py`, whose docstring lists what to look at.
+That pass covers the pin list, the `as_is`/`to_be` projection over every shape the spec allows, the
+three-column contract-diff with the disagreeing layer flagged, the linked interview question, the
+traffic-light, and hostile content rendering as text rather than executing — in light and dark.
+
+These tests pin only what CI can guard without a browser: the output is one self-contained file
 (data inlined, no external fetch), it is script-safe, and every pin's data reaches the page.
+Deliberately NOT here: assertions that the template *contains* the strings a correct renderer would
+emit. Matching source text against expected content is the heuristic this package refuses
+everywhere else; it would pass on a renderer that never runs.
 """
 from __future__ import annotations
 

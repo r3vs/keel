@@ -27,15 +27,15 @@ import json
 import pathlib
 from typing import Optional
 
-_TEMPLATE = """<!doctype html>
+_TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Decisions map — __TITLE__</title>
 <style>
 :root{--bg:#fbfbfd;--fg:#1c1c1e;--mut:#6b6b70;--card:#fff;--line:#e3e3e8;--accent:#4c6ef5;
---blocker:#e03131;--high:#f08c00;--medium:#1971c2;--low:#868e96;--ok:#2f9e44}
+--code:#f1f1f5;--blocker:#e03131;--high:#f08c00;--medium:#1971c2;--low:#868e96;--ok:#2f9e44}
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececf1;--mut:#9a9aa2;--card:#1f1f23;
---line:#303036;--accent:#748ffc}}
+--line:#303036;--accent:#748ffc;--code:#2a2a31}}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 background:var(--bg);color:var(--fg)}
 header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap}
@@ -69,6 +69,28 @@ main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0;min-height
 .imp{color:var(--high);font-size:12px;padding:0 0 4px 0}
 .kv{display:flex;gap:8px;font-size:13px;margin:3px 0}.kv b{color:var(--mut);min-width:88px}
 .empty{color:var(--mut);padding:40px;text-align:center}
+.ch{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);font-weight:650;
+  margin:0 0 12px}
+dl.fields{display:grid;grid-template-columns:minmax(96px,168px) 1fr;gap:9px 16px;margin:0;align-items:baseline}
+dl.fields dt{color:var(--mut);font-size:12px;font-weight:650;line-height:1.45;overflow-wrap:anywhere}
+dl.fields dd{margin:0;overflow-wrap:anywhere;min-width:0}
+dl.fields dl.fields{grid-column:1/-1;padding-left:12px;border-left:2px solid var(--line)}
+@media(max-width:640px){dl.fields{grid-template-columns:1fr;gap:2px}
+  dl.fields dd{margin:0 0 10px}dl.fields dl.fields{padding-left:10px}}
+.fields code,.chips code{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:var(--code);border-radius:5px;padding:1px 5px;overflow-wrap:anywhere}
+.nul{color:var(--mut)}
+.bool{font-size:11px;font-weight:650;padding:1px 8px;border-radius:20px;background:var(--line)}
+.chips code{margin:0 4px 4px 0;display:inline-block}
+.items{display:grid;gap:10px}
+.items>.item{padding-left:12px;border-left:2px solid var(--line)}
+.raw{margin-top:14px}
+.raw summary{cursor:pointer;color:var(--mut);font-size:12px;list-style:none}
+.raw summary::-webkit-details-marker{display:none}
+.raw summary::before{content:"⌄";display:inline-block;margin-right:7px;transition:transform .15s}
+.raw[open] summary::before{transform:rotate(180deg)}
+.raw pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mut);margin:8px 0 0;
+  font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 __LIVE_STYLE__</style></head><body>
 <header>
   <h1>🧭 Decisions map</h1>__LIVE_BADGE__
@@ -83,7 +105,51 @@ const LEDGER = __DATA__;
 const SEV = {blocker:'var(--blocker)',high:'var(--high)',medium:'var(--medium)',low:'var(--low)'};
 const DONE = new Set(['decided','resolved','accepted']);
 let view='as_is', sel=null;
-const esc = s => (s==null?'':String(s));
+const ENT={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+// Named `esc` but, until now, only a String() cast — so every pin title, extracted layer shape and
+// file path went into innerHTML raw. The ledger is written by agents reading someone else's code
+// and this page is meant to be safe to hand to anyone; it escapes for real now.
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>ENT[c]);
+
+// -- as_is / to_be ---------------------------------------------------------------------------
+// The payload is free-form by design (`other` is an open escape hatch, and every kind's shape is
+// constrained but never closed), so this walks the VALUE's structure, never its key names: object
+// -> labelled rows, array -> items, scalar -> text. Key-driven rendering would be a guess about
+// content the spec does not promise.
+//
+// The one content-driven choice is typographic and stays that: a string with no whitespace is an
+// identifier, a path, a type or an enum, and reads as one in monospace; a string with whitespace is
+// prose and reads as prose. Nothing is hidden either way — the raw JSON stays one click below,
+// because a projection that quietly drops a field would be the divergence this package hunts.
+function labelize(k){return String(k).replace(/[_-]+/g,' ').replace(/^./,c=>c.toUpperCase());}
+function isScalar(v){return v===null||typeof v!=='object';}
+function isBlank(v){
+  return v===null||v===undefined||v===''||
+    (typeof v==='object'&&!(Array.isArray(v)?v.length:Object.keys(v).length));
+}
+function scalarHTML(v){
+  if(v===null||v===undefined||v==='') return '<span class="nul">—</span>';
+  if(typeof v==='boolean') return `<span class="bool">${v?'yes':'no'}</span>`;
+  if(typeof v==='number') return `<code>${esc(v)}</code>`;
+  const s=String(v);
+  return /\s/.test(s) ? esc(s) : `<code>${esc(s)}</code>`;
+}
+function valueHTML(v){
+  if(isScalar(v)) return scalarHTML(v);
+  if(Array.isArray(v)){
+    if(!v.length) return '<span class="nul">none</span>';
+    if(v.every(isScalar)) return `<span class="chips">${v.map(scalarHTML).join('')}</span>`;
+    return `<div class="items">${v.map(x=>`<div class="item">${valueHTML(x)}</div>`).join('')}</div>`;
+  }
+  const keys=Object.keys(v);
+  if(!keys.length) return '<span class="nul">—</span>';
+  return `<dl class="fields">`+keys.map(k=>
+    `<dt>${esc(labelize(k))}</dt><dd>${valueHTML(v[k])}</dd>`).join('')+`</dl>`;
+}
+function sideCard(side,label){
+  return `<div class="card"><div class="ch">${esc(label)}</div>${valueHTML(side)}
+    <details class="raw"><summary>raw</summary><pre>${esc(JSON.stringify(side,null,2))}</pre></details></div>`;
+}
 
 function trafficLight(){
   const pins=LEDGER.pins||[]; const done=pins.filter(p=>DONE.has(p.state)).length;
@@ -113,9 +179,10 @@ function contractCols(p){
 function detail(p){
   if(!p)return '<div class="empty">select a pin</div>';
   const side=p[view]; let body='';
+  const label = view==='as_is'?'as-is':'to-be';
   if(p.kind==='contract_mismatch'&&view==='as_is') body+=contractCols(p);
-  else if(side) body+=`<div class="card"><b>${view}</b><pre style="white-space:pre-wrap;margin:8px 0 0">${esc(JSON.stringify(side,null,2))}</pre></div>`;
-  else body+=`<div class="card" style="color:var(--mut)">no ${view} yet</div>`;
+  else if(!isBlank(side)) body+=sideCard(side,label);
+  else body+=`<div class="card nul">no ${label} yet</div>`;
   if(p.question) body+=`<div class="card q"><b>Interview question</b><p>${esc(p.question.prompt)}</p>`+
     (p.question.options||[]).map(o=>`<div class="opt"><b>${esc(o.label)}</b>${o.implication?`<div class="imp">→ ${esc(o.implication)}</div>`:''}</div>`).join('')+`</div>`;
   if((p.anchors||[]).length) body+=`<div class="card anchors"><b>Anchors</b>`+
