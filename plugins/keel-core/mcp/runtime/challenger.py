@@ -17,6 +17,14 @@ deterministic ones so they run every time, cheaply and without a model call:
 
 The judgment classes (`inconsistent`, `unsatisfiable`, `unstated_assumption`) are left to the
 agent, which calls `ledger.challenge(...)` with its argument — the same sink this module uses.
+
+**Not here, and why:** "a decision recorded as `transcribed` with no `human_answer`" looks like a
+deterministic class and is not one. `mcp/tools.py::record_decision` already *refuses* that write, so
+no shipped path can produce it; what remains are the library's own callers, and `apply_policies`
+takes the `transcribed` default for a cascade nobody transcribed. A deterministic class here would
+therefore fire on exactly one population — user-set policy cascades — and reopen them. The rung is
+surfaced instead where a human weighs it (the map's decision card, `ledger_summary`), and an agent
+that reads an unquoted relay can still challenge it as `unstated_assumption` on target `decision`.
 Everything here only proposes challenges; `ledger.challenge(upheld=True)` is what reopens, and only
 the interview ever commits.
 

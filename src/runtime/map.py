@@ -11,7 +11,9 @@ one" decision, resolved: share one). Rescue's pins render their `as_is` (extract
 the default view; greenfield's `open_decision`/`acceptance_criterion` pins render `to_be` (the
 elected design) — the toggle flips which side leads. `contract_mismatch` pins get the three-column
 cross-layer diff panel; every pin links its interview question; a completeness traffic-light sums
-the states.
+the states. A decided pin states **how the human's answer got there** (`evidence`, spec v0.10) and
+shows the quote when an agent relayed it — the spec allows the weak rung only because it is made
+visible, and this is the surface people actually read.
 
 Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
 Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
@@ -33,9 +35,10 @@ _TEMPLATE = r"""<!doctype html>
 <title>Decisions map — __TITLE__</title>
 <style>
 :root{--bg:#fbfbfd;--fg:#1c1c1e;--mut:#6b6b70;--card:#fff;--line:#e3e3e8;--accent:#4c6ef5;
---code:#f1f1f5;--blocker:#e03131;--high:#f08c00;--medium:#1971c2;--low:#868e96;--ok:#2f9e44}
+--code:#f1f1f5;--blocker:#e03131;--high:#f08c00;--medium:#1971c2;--low:#868e96;--ok:#2f9e44;
+--warnbg:#fff7e6}
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececf1;--mut:#9a9aa2;--card:#1f1f23;
---line:#303036;--accent:#748ffc;--code:#2a2a31}}
+--line:#303036;--accent:#748ffc;--code:#2a2a31;--warnbg:#2e2413}}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 background:var(--bg);color:var(--fg)}
 header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap}
@@ -91,6 +94,15 @@ dl.fields dl.fields{grid-column:1/-1;padding-left:12px;border-left:2px solid var
 .raw[open] summary::before{transform:rotate(180deg)}
 .raw pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mut);margin:8px 0 0;
   font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+.dec{border-left:3px solid var(--ok)}
+.dec.mid{border-left-color:var(--medium)}
+.dec.weak{border-left-color:var(--high);background:var(--warnbg)}
+.rung{font-size:11px;font-weight:650;padding:1px 8px;border-radius:20px;background:var(--line);color:var(--fg)}
+.rung.strong{background:var(--ok);color:#fff}.rung.weak{background:var(--high);color:#fff}
+.why{color:var(--mut);font-size:12px;margin-top:7px}
+.warn{color:var(--high);font-size:12px;font-weight:600;margin-top:7px}
+.quote{margin:9px 0 0;padding:5px 0 5px 12px;border-left:3px solid var(--line);font-style:italic;
+  overflow-wrap:anywhere}
 __LIVE_STYLE__</style></head><body>
 <header>
   <h1>🧭 Decisions map</h1>__LIVE_BADGE__
@@ -151,6 +163,48 @@ function sideCard(side,label){
     <details class="raw"><summary>raw</summary><pre>${esc(JSON.stringify(side,null,2))}</pre></details></div>`;
 }
 
+// -- how the human's answer reached the ledger (`evidence`, spec v0.10) -----------------------
+// The spec permits the weak rung on the grounds that it is made VISIBLE — so it has to be visible
+// HERE, on the surface people actually read, and it has to read as weaker rather than merely be
+// present. `pin.decision` carries only {event_id, outcome}; the rung lives on the DecisionEvent, and
+// the whole ledger is inlined, so this is a lookup in `decision_log` and never a fetch.
+// Not a confidence score: three rungs with different failure modes, named and kept apart.
+const RUNG={
+  elicited:{label:'elicited', cls:'strong',
+    why:'the server asked the user through the host and wrote the reply itself — the agent never held the value, so it could not have invented it'},
+  brief:{label:'from the brief', cls:'mid',
+    why:'settled in the project brief at frame time; the brief is the evidence'},
+  transcribed:{label:'transcribed', cls:'weak',
+    why:'an agent relayed what the user said — an honest relay and a fabricated one are the same line here, so what you weigh is the quote'}};
+function decisionEvent(id){
+  if(!id)return null;
+  const log=LEDGER.decision_log||[];
+  for(let i=0;i<log.length;i++)if(log[i]&&log[i].id===id)return log[i];
+  return null;
+}
+// hasOwnProperty, not `RUNG[r]`: the rung comes from a file agents write, and `constructor` would
+// otherwise resolve to a function and render as a rung nobody defined.
+function rungMeta(r){return Object.prototype.hasOwnProperty.call(RUNG,r)?RUNG[r]:null;}
+function rungOf(p){
+  if(!p||!p.decision)return null;
+  const ev=decisionEvent(p.decision.event_id);
+  return ev&&ev.evidence?String(ev.evidence):'';
+}
+function decisionCard(p){
+  const ev=decisionEvent(p.decision.event_id)||{};
+  const r=ev.evidence?String(ev.evidence):'';
+  const meta=rungMeta(r), cls=meta?meta.cls:'weak';
+  const quote=ev.human_answer?`<div class="quote">“${esc(ev.human_answer)}”</div>`:'';
+  let note=meta?`<div class="why">${meta.why}</div>`
+    :`<div class="warn">⚠ no evidence rung recorded — how this answer reached the ledger is unknown</div>`;
+  if(r==='transcribed'&&!ev.human_answer)
+    note+=`<div class="warn">⚠ relayed with no quote — nothing here separates it from an invention</div>`;
+  return `<div class="card dec ${cls}">
+    <div class="kv"><b>decided</b><span>${esc(p.decision.outcome)}</span></div>
+    <div class="kv"><b>evidence</b><span class="rung ${cls}">${esc(meta?meta.label:(r||'unrecorded'))}</span></div>
+    ${quote}${note}</div>`;
+}
+
 function trafficLight(){
   const pins=LEDGER.pins||[]; const done=pins.filter(p=>DONE.has(p.state)).length;
   const openBlockers=pins.filter(p=>!DONE.has(p.state)&&(p.severity==='blocker')).length;
@@ -164,10 +218,17 @@ function trafficLight(){
 function renderList(){
   const el=document.getElementById('list'); const pins=LEDGER.pins||[];
   if(!pins.length){el.innerHTML='<div class="empty">empty ledger</div>';return;}
-  el.innerHTML=pins.map((p,i)=>`<div class="pin${i===sel?' sel':''}" onclick="select(${i})">
+  // Only the WEAK rung is badged in the list. Badging all three would turn the signal into
+  // decoration; the card states the rung for every decision, whichever it is.
+  el.innerHTML=pins.map((p,i)=>{
+    const r=rungOf(p), m=r===null?null:rungMeta(r);
+    const weak=r!==null&&(m?m.cls:'weak')==='weak';
+    return `<div class="pin${i===sel?' sel':''}" onclick="select(${i})">
     <div class="t">${esc(p.title)}</div>
     <div class="m"><span class="sev" style="background:${SEV[p.severity]||'#888'}">${p.severity}</span>
-    <span>${esc(p.kind)}</span><span>· ${esc(p.state)}</span></div></div>`).join('');
+    <span>${esc(p.kind)}</span><span>· ${esc(p.state)}</span>`+
+    (weak?`<span class="rung weak">${esc(m?m.label:'unrecorded')}</span>`:'')+
+    `</div></div>`;}).join('');
 }
 function contractCols(p){
   const a=p.as_is||{}; const dis=new Set(a.disagreeing_layers||[]);
@@ -199,7 +260,7 @@ function detail(p){
       }
       return `<code>${esc(a.layer||'')} ${esc(a.loc||a.node_id||'')}${nid}</code>${br}`;
     }).join('')+`</div>`;
-  if(p.decision) body+=`<div class="card"><div class="kv"><b>decided</b><span>${esc(p.decision.outcome)}</span></div></div>`;
+  if(p.decision) body+=decisionCard(p);
   return `<h2>${esc(p.title)}</h2><div class="sub"><span class="sev" style="background:${SEV[p.severity]||'#888'}">${p.severity}</span> · ${esc(p.kind)} · ${esc(p.state)}${p.substate?' ('+esc(p.substate)+')':''}</div>`+body;
 }
 function select(i){sel=i;renderList();document.getElementById('detail').innerHTML=detail((LEDGER.pins||[])[i]);}

@@ -91,6 +91,58 @@ class TestRender(unittest.TestCase):
         self.assertEqual(ins.render(LEDGER), ins.render(LEDGER))
 
 
+class TestEvidenceNote(unittest.TestCase):
+    """v0.10: the region is byte-budgeted, so `evidence` gets one conditional header line — and the
+    condition is what makes it affordable. It must appear when some decision rests on a relay,
+    disappear when none does, and never eat a section's room."""
+
+    @staticmethod
+    def _with(log):
+        return {**LEDGER, "decision_log": log}
+
+    def test_absent_when_every_decision_was_elicited(self):
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "elicited"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "brief"}]))
+        self.assertNotIn("transcribed", body)
+
+    def test_present_and_counted_when_a_decision_was_relayed(self):
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed",
+             "human_answer": "the DB is truth"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("1 of 2 recorded decisions were relayed by an agent", body)
+
+    def test_only_decision_events_are_counted(self):
+        """`decision_log` also holds challenges, reopens and failures. Counting those would report a
+        rung for events that never carried a human's answer at all."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed", "human_answer": "x"},
+            {"id": "chl_0001", "pin_id": "p_0002", "class": "unfalsifiable"},
+            {"id": "fal_0001", "pin_id": "p_0002", "class": "environment"}]))
+        self.assertIn("1 of 1 recorded decisions", body)
+
+    def test_the_declared_note_length_is_the_length_it_emits(self):
+        """`_NOTE_LINES` is budget arithmetic, so it must be measured off the note, not asserted
+        about it: if the note grows a line and the floor does not, a tight budget starts overrunning
+        itself — which is the one failure the budget exists to prevent."""
+        note = ins._evidence_note(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed", "human_answer": "x"}]))
+        self.assertEqual(len(note), ins._NOTE_LINES)
+
+    def test_the_note_never_costs_a_section_its_room(self):
+        noted = self._with([{"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed",
+                             "human_answer": "x"}])
+        floor = ins.render(noted, max_lines=ins._MIN_LINES)
+        self.assertLessEqual(len(floor.splitlines()), ins._MIN_LINES)
+        self.assertIn("relayed by an agent", floor)
+        # at the floor exactly one section survives, and it is still the rules an agent must obey —
+        # the note is budgeted for, so it displaces nothing that fitted before it existed
+        self.assertIn("### Standing rules", floor)
+        # at the default budget the note is additive: every section it shares the region with stays
+        self.assertIn("`p_0002`", ins.render(noted))
+
+
 class TestRegion(unittest.TestCase):
     def test_apply_into_empty_creates_file_body(self):
         out = ins.apply(None, ins.render(LEDGER))

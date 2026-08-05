@@ -8,10 +8,12 @@ procedure instead of a memory:
 
     python scripts/preview_map.py && open .preview/map.html
 
-The pins below are the spec's `as_is` variants (`core/decisions-ledger-spec.md`) plus the two cases
-that actually broke: an agent-authored free-form payload of long prose under invented keys — which
-rendered as a `JSON.stringify` blob until 0.4.1 — and hostile content, which went into `innerHTML`
-unescaped for just as long. Both should now read as ordinary rows of text.
+The pins below are the spec's `as_is` variants (`core/decisions-ledger-spec.md`) plus the cases that
+actually broke: an agent-authored free-form payload of long prose under invented keys — which
+rendered as a `JSON.stringify` blob until 0.4.1 — hostile content, which went into `innerHTML`
+unescaped for just as long, and the three `evidence` rungs, which until 0.4.2 were written by
+`Ledger.decide()` and rendered nowhere, so a decision an agent merely relayed looked exactly like one
+the server elicited from the user.
 
 What to check, in both light and dark:
   1. prose reads as prose; paths, identifiers and enums read as monospace
@@ -19,6 +21,11 @@ What to check, in both light and dark:
   3. empty string, null and `{}` all render as "—" or "no as-is yet", never as `null` or `{}`
   4. the last pin's `<script>` and `<img onerror>` appear as TEXT, and no dialog opens
   5. `raw` still reveals the exact JSON — the projection may reformat, never hide
+  6. the three decided pins read as three different strengths WITHOUT reading the words: `elicited`
+     is green, `from the brief` neutral, `transcribed` amber on a tinted card. If they look alike,
+     the fix did not land — presence is not visibility.
+  7. the transcribed pin quotes the human verbatim, escaped (its answer contains `"` and `<b>`), and
+     the unquoted relay says so in amber. Only the weak rung is badged in the left-hand list.
 """
 from __future__ import annotations
 
@@ -76,15 +83,24 @@ def build() -> Ledger:
                 as_is={"variants": [{"desc": "JWT on /api/v1", "anchor_ref": "n_501"},
                                     {"desc": "session cookie on /api/v2", "anchor_ref": "n_777"}]})
 
-    # the three-column cross-layer panel — its own path, unchanged, so a regression shows here
-    led.add_pin(kind="contract_mismatch", severity="high", confidence="extracted", provenance=P,
-                title="role enum drift",
-                as_is={"db": "ENUM('admin','user')", "api": "role: string",
-                       "frontend": "'superadmin'", "disagreeing_layers": ["frontend"]},
-                question={"prompt": "What is the intended role set?",
-                          "options": [{"id": "a", "label": "Only {admin,user} — the DB is truth",
-                                       "implication": "remove the frontend check"}],
-                          "allow_freeform": True})
+    # the three-column cross-layer panel — its own path, unchanged, so a regression shows here.
+    # Also the STRONG evidence rung: the server asked the user through the host and wrote the reply.
+    role = led.add_pin(kind="contract_mismatch", severity="high", confidence="extracted",
+                       provenance=P, title="role enum drift",
+                       as_is={"db": "ENUM('admin','user')", "api": "role: string",
+                              "frontend": "'superadmin'", "disagreeing_layers": ["frontend"]},
+                       question={"prompt": "What is the intended role set?",
+                                 "options": [{"id": "a",
+                                              "label": "Only {admin,user} — the DB is truth",
+                                              "implication": "remove the frontend check"}],
+                                 "allow_freeform": True})
+    led.decide(role["id"], outcome="a", rationale="the DB enum is the narrowest of the three",
+               flip_criteria="a fourth role appears in a product requirement",
+               evidence="elicited",
+               # the shape the elicitation path actually writes: the choice string the host
+               # returned, not a bare option id (`mcp/server.py::record_decision`)
+               human_answer="a — Only {admin,user} — the DB is truth "
+                            "(→ remove the frontend check)")
 
     # a contract_mismatch with no layers at all: `contractCols` returns '' here, so before 0.4.1
     # the as-is side vanished with no card and no message. Its own row, because the three-column
@@ -104,6 +120,52 @@ def build() -> Ledger:
                 title="<img src=x onerror=alert('title')>",
                 as_is={"payload": "<script>alert('as_is')</script>",
                        "quoted": 'he said "ciao" & left <b>bold</b>'})
+
+    # -- the remaining `evidence` rungs (spec v0.10) ------------------------------------------
+    # `elicited` is on the role-enum pin above. These three complete the set the map must tell
+    # apart: the weak rung with its quote, the brief, and the relay that quotes nobody. The point
+    # of rendering them side by side is that "weaker" must be legible before the words are read.
+    relayed = led.add_pin(
+        kind="open_decision", severity="blocker", confidence="inferred", provenance=P,
+        title="Persistence: Postgres or SQLite",
+        as_is={"givens": [], "built": None},
+        to_be={"statement": "one primary store, chosen before the first migration"},
+        question={"prompt": "Which store does v1 run on?",
+                  "options": [{"id": "pg", "label": "Postgres",
+                               "implication": "a container in dev; JSONB available"},
+                              {"id": "sqlite", "label": "SQLite",
+                               "implication": "zero-ops; no concurrent writers"}],
+                  "allow_freeform": True})
+    # The quote carries `"` and `<b>`: it is human prose relayed by an agent, so it goes through
+    # `esc` like every other user-supplied string on this page.
+    led.decide(relayed["id"], outcome="pg",
+               rationale="the user rejected SQLite over concurrent writers",
+               flip_criteria="single-writer deployment becomes the only target",
+               evidence="transcribed",
+               human_answer='Postgres. "one writer only" is <b>not</b> a constraint I can accept '
+                            'in v1 & I would rather pay the container cost now.')
+
+    brief = led.add_pin(
+        kind="open_decision", severity="medium", confidence="inferred", provenance=P,
+        title="Auth: sessions or JWT",
+        as_is={"givens": [], "built": None},
+        question={"prompt": "Which session model?",
+                  "options": [{"id": "cookie", "label": "Server sessions in a cookie"}],
+                  "allow_freeform": False})
+    led.decide(brief["id"], outcome="cookie", rationale="pre-decided by the brief",
+               flip_criteria="a third-party client needs a bearer token",
+               evidence="brief")
+
+    # A relay that quotes nobody. `mcp:record_decision` refuses to write this, so it can only reach
+    # a ledger from outside the guarded path — which is exactly when a reader needs to be told.
+    unquoted = led.add_pin(
+        kind="design_concern", severity="medium", confidence="inferred", provenance=P,
+        title="Background jobs: in-process or a queue",
+        as_is={"current_design": "a thread pool inside the API process"})
+    led.decide(unquoted["id"], outcome="keep the thread pool",
+               rationale="the user said it is fine for now",
+               flip_criteria="job latency exceeds the request budget",
+               evidence="transcribed")
     return led
 
 

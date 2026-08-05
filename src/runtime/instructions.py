@@ -59,6 +59,22 @@ would silently push the *user's own* instructions past a byte limit on one host 
 on another. So the region is an **index with a hard line budget**, and truncation is always
 **declared** (`+N more — read the ledger`), never silent: a shortened list that looks complete is the
 same lie as a clean bill of health from a scanner that did not run.
+
+What the budget bought and what it refused: `evidence` (v0.10)
+--------------------------------------------------------------
+Each decision records the rung its answer travelled on — `elicited` / `transcribed` / `brief`. Two
+ways to project that, and only one earns its bytes:
+
+- **Per decision, refused.** The `Elected` list is the section most likely to be clipped already, and
+  a ` (transcribed)` suffix on every entry costs bytes on every line to restate a fact that is
+  identical for nearly all of them — the elicitation rung only fires on hosts that declare the
+  capability. Paying per line for a mostly-constant value is what pushes the *user's* prose past
+  Codex's byte cap.
+- **One header line, taken** — and only when a weak rung is actually present. It is emitted only if
+  some decision was `transcribed`, so a project with none pays nothing, and it says what the agent
+  should DO (weigh them before building on one) rather than merely reporting a number. The full
+  per-decision detail is one `ledger_summary` call away (`decisions_by_evidence`) and is stated in
+  full on the map, which is where a human looks.
 """
 from __future__ import annotations
 
@@ -89,9 +105,15 @@ _HEAD_TEMPLATE = (
     "this section does not answer your question, do not decide it silently — surface a vetoable",
     "assumption pin (`ledger_surface_assumption`) and keep going.",
 )
-#: Header + a heading + one item + its clip note. Below this a budget cannot be honoured at all, and
-#: overrunning it silently is the exact failure the budget exists to prevent — so it is refused.
-_MIN_LINES = len(_HEAD_TEMPLATE) + 4
+#: The evidence note (blank line + one line), emitted only when a weak rung is present. Counted in
+#: the floor below so a tight budget can never squeeze every section out and fall back to "nothing
+#: elected yet" on a ledger that has decisions — the note must cost the sections nothing.
+_NOTE_LINES = 2
+
+#: Header + the evidence note + a heading + one item + its clip note. Below this a budget cannot be
+#: honoured at all, and overrunning it silently is the exact failure the budget exists to prevent —
+#: so it is refused.
+_MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + 4
 
 _SEVERITY_RANK = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
 #: states in which the human has committed something — these are the elected truth
@@ -119,6 +141,23 @@ def _pin_line(pin: dict, with_outcome: bool) -> str:
     return line
 
 
+def _evidence_note(data: dict) -> list:
+    """One line naming how many decisions rest on an agent's relay — or nothing at all.
+
+    Reads the `decision_log`, not the pins: the rung is a property of the write, and `pin.decision`
+    carries only `{event_id, outcome}`. Emitted only when a `transcribed` decision exists, because a
+    line that always says "0 of N" is bytes spent to report the absence of a problem.
+    """
+    events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
+    if not events:
+        return []
+    weak = sum(1 for e in events if (e.get("evidence") or "transcribed") == "transcribed")
+    if not weak:
+        return []
+    return ["", f"*Evidence: {weak} of {len(events)} recorded decisions were relayed by an agent "
+                f"(`transcribed`), not elicited from the user — weigh those before building on one.*"]
+
+
 def _section(title: str, lines: list, remaining: int, more_hint: str) -> list:
     """A titled list fitted into `remaining` lines, with any clip DECLARED (never silent).
 
@@ -144,6 +183,10 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     answer), and the generated files it must never hand-edit. Ordering is severity then id — stable,
     so an unchanged ledger re-renders byte-identically and the drift-check has no false positives.
 
+    Above them, the header carries one conditional line when some decision rests on an agent's relay
+    (`_evidence_note`) — see the module docstring for why that is the only shape of `evidence` this
+    projection can afford.
+
     `max_lines` bounds the WHOLE region, not each section: the budget exists because two hosts
     penalize length (one truncates by bytes, one loses adherence), and a per-section cap would let
     four sections quietly sum past it. Sections are filled in the order above and each declares what
@@ -165,7 +208,8 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     pins = list(data.get("pins") or [])
     policies = list(data.get("policies") or [])
 
-    head = [line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
+    head = ([line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
+            + _evidence_note(data))
 
     elected = sorted((p for p in pins if p.get("state") in _ELECTED), key=_order)
     openp = sorted((p for p in pins if p.get("state") in _OPEN), key=_order)

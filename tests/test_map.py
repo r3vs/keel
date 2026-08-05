@@ -4,7 +4,9 @@ The map is a user-facing deliverable and its correctness is a DOM, so it is veri
 browser — repeatably, via `python scripts/preview_map.py`, whose docstring lists what to look at.
 That pass covers the pin list, the `as_is`/`to_be` projection over every shape the spec allows, the
 three-column contract-diff with the disagreeing layer flagged, the linked interview question, the
-traffic-light, and hostile content rendering as text rather than executing — in light and dark.
+traffic-light, the four `evidence` states of a decision card (elicited / brief / transcribed with a
+quote / transcribed with none) reading as *different strengths* before the words are read, and
+hostile content rendering as text rather than executing — in light and dark.
 
 These tests pin only what CI can guard without a browser: the output is one self-contained file
 (data inlined, no external fetch), it is script-safe, and every pin's data reaches the page.
@@ -14,6 +16,7 @@ everywhere else; it would pass on a renderer that never runs.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -100,6 +103,33 @@ class TestGraphAnchoredRendering(unittest.TestCase):
         self.assertIn("backend/models.py:30", html)  # sample dependent inlined
         # still self-contained: no external fetch introduced
         self.assertNotIn("fetch(", html.split("const LEDGER =", 1)[1].split("\n", 1)[0])
+
+
+class TestDecisionEvidenceIsInlined(unittest.TestCase):
+    """The decision card states the rung, which lives on the DecisionEvent — so the page must carry
+    `decision_log`, not just `pins`.
+
+    This is the only part of that feature CI can hold without a browser, and it is worth holding:
+    trimming the inlined payload to `pins` is an obvious "optimization" that would turn the lookup
+    into a dangling id and silently drop the rung — with the page still rendering, still
+    self-contained, and every other test still green. Asserting that the *template* contains the
+    words a correct card would print is the heuristic this file refuses; asserting the data the
+    lookup needs is a fact about the artifact."""
+
+    def test_the_event_the_pin_points_at_reaches_the_page(self):
+        led = demo_ledger()
+        pin = led.data["pins"][0]
+        led.decide(pin["id"], "a", "the DB enum is narrowest", "a fourth role appears",
+                   evidence="transcribed", human_answer="option a — the DB is truth")
+        html = mapmod.render(led.data, title="decided")
+        event_id = pin["decision"]["event_id"]
+        payload = json.loads(html.split("const LEDGER =", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        event = next((e for e in payload.get("decision_log", []) if e["id"] == event_id), None)
+        self.assertIsNotNone(event, "the map cannot resolve pin.decision.event_id — the rung is "
+                                    "unreachable from the page, whatever the card says")
+        self.assertEqual(event["evidence"], "transcribed")
+        self.assertEqual(event["human_answer"], "option a — the DB is truth")
 
 
 class TestLiveMode(unittest.TestCase):

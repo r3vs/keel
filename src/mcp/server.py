@@ -118,10 +118,11 @@ _RW_CREATE = {**_RW, "idempotentHint": False}  # each call appends a new pin / r
 
 @mcp.tool(annotations={"title": "Ledger Summary", **_RO})
 def ledger_summary(ledger: str) -> dict:
-    """Counts of ledger pins by state, kind and severity.
+    """Counts of ledger pins by state, of events, and of how each decision was evidenced.
 
     The ledger is the single source of truth all three surfaces project. Read it before acting on
-    any pin.
+    any pin. `decisions_by_evidence` counts the rung each decision reached: `transcribed` ones rest
+    on an agent's relay of what the human said — weigh those before building on one.
 
     Args:
         ledger: Path to ledger.json.

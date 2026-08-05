@@ -978,9 +978,17 @@ class Ledger:
         # v0.9: failures surface here or they surface nowhere. An event class that only exists in
         # the log is the same black hole `correctness_unknown` was before it reached the interview.
         by_failure: dict[str, int] = {}
+        # v0.10: the rung each decision reached. The summary is what an agent reads BEFORE acting, and
+        # "17 decided, 15 of them on an agent's say-so" changes what a reviewer does next — while the
+        # rung stored on the event and read by nobody changes nothing. Counts, never a blended score:
+        # the three rungs fail differently and averaging them would hide the weak one.
+        by_evidence: dict[str, int] = {}
         for e in self.data["decision_log"]:
             if e["id"].startswith("fal_"):
                 by_failure[e["class"]] = by_failure.get(e["class"], 0) + 1
+            elif e["id"].startswith("ev_"):
+                rung = e.get("evidence") or "unrecorded"
+                by_evidence[rung] = by_evidence.get(rung, 0) + 1
         return {
             "version": self.data["version"],
             "pins": len(self.data["pins"]),
@@ -989,6 +997,7 @@ class Ledger:
             "policies": len(self.data["policies"]),
             "open_questions": len(self.interview_view()),
             "failures_by_class": by_failure,
+            "decisions_by_evidence": by_evidence,
             "premortems": sum(1 for p in self.data["pins"] if p.get("premortem")),
         }
 

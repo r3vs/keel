@@ -161,6 +161,50 @@ class TestDecisions(unittest.TestCase):
             led.accept(fork["id"], "n/a", "n/a")
 
 
+class TestEvidenceIsReachable(unittest.TestCase):
+    """v0.10 `evidence`: stored on the event, read by the surfaces a human looks at.
+
+    The rung was written by `decide()` and consumed by nothing for a version, which made the spec's
+    own justification for allowing the weak rung — *it is made visible* — false as shipped. These
+    pin the two things a surface needs: the count an agent reads before acting, and the path the map
+    walks to state the rung on a decision card.
+    """
+
+    def test_summary_counts_the_rungs_apart(self):
+        led = make_ledger()
+        a, b, c = add_simple_pin(led), add_simple_pin(led), add_simple_pin(led)
+        led.decide(a["id"], "opt_a", "r", "flip", evidence="elicited")
+        led.decide(b["id"], "opt_a", "r", "flip", evidence="transcribed", human_answer="opt A")
+        led.decide(c["id"], "opt_a", "r", "flip", evidence="brief")
+        # counts, never a blended score: three failure modes kept apart is the design
+        self.assertEqual(led.summary()["decisions_by_evidence"],
+                         {"elicited": 1, "transcribed": 1, "brief": 1})
+
+    def test_summary_counts_only_decisions_not_every_event(self):
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.decide(pin["id"], "opt_a", "r", "flip", evidence="elicited")
+        led.challenge(pin["id"], target="to_be", challenge_class="unstated_assumption",
+                      argument="assumes single-tenant", severity="high", upheld=True)
+        led.label_failure(pin["id"], failure_class="environment", detail="toolchain missing",
+                          phase="build")
+        self.assertEqual(led.summary()["decisions_by_evidence"], {"elicited": 1})
+
+    def test_the_map_can_reach_the_rung_from_the_pin(self):
+        """`pin.decision` carries only `{event_id, outcome}`, so every surface that states the rung
+        resolves it in `decision_log` by that id. If either half of that join stops holding, the
+        map's decision card silently loses the rung again — with nothing else failing."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.decide(pin["id"], "opt_a", "r", "flip",
+                   evidence="transcribed", human_answer="option A, the DB is truth")
+        event_id = pin["decision"]["event_id"]
+        event = next((e for e in led.data["decision_log"] if e["id"] == event_id), None)
+        self.assertIsNotNone(event, "pin.decision.event_id resolves to no event")
+        self.assertEqual(event["evidence"], "transcribed")
+        self.assertEqual(event["human_answer"], "option A, the DB is truth")
+
+
 class TestThresholdAndPolicies(unittest.TestCase):
     """v0.3: 200 findings are not 200 decisions — but blocker|high never defaults silently."""
 
