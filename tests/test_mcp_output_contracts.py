@@ -23,6 +23,10 @@ import ast
 import pathlib
 import unittest
 
+# An `async def` tool is still a tool. Matching only ast.FunctionDef made the elicitation path
+# invisible to this gate the moment it was written — the exact silent-skip this file forbids.
+FUNC = (ast.FunctionDef, ast.AsyncFunctionDef)
+
 SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 MCP = SRC / "mcp"
 RUNTIME = SRC / "runtime"
@@ -41,7 +45,7 @@ def _annotation(fn):
 
 
 def _functions(tree):
-    return {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    return {n.name: n for n in tree.body if isinstance(n, FUNC)}
 
 
 def _aliases(fn, module_tree):
@@ -62,7 +66,7 @@ def _aliases(fn, module_tree):
 def _returns_of(fn):
     """Returns belonging to THIS function — not to a nested def."""
     nested = {id(n) for outer in ast.walk(fn) if outer is not fn
-              for n in ast.walk(outer) if isinstance(outer, ast.FunctionDef)}
+              for n in ast.walk(outer) if isinstance(outer, FUNC)}
     return [n for n in ast.walk(fn)
             if isinstance(n, ast.Return) and n.value is not None and id(n) not in nested]
 
@@ -76,11 +80,11 @@ class Universe:
         for f in py_files:
             tree = _parse(f)
             for n in tree.body:
-                if isinstance(n, ast.FunctionDef):
+                if isinstance(n, FUNC):
                     self.functions[f"{f.stem}.{n.name}"] = _annotation(n)
                 elif isinstance(n, ast.ClassDef):
                     for m in n.body:
-                        if isinstance(m, ast.FunctionDef):
+                        if isinstance(m, FUNC):
                             self.methods.setdefault(m.name, set()).add(_annotation(m))
 
     def function(self, dotted):
@@ -162,7 +166,7 @@ class TestDeclaredOutputMatchesActual(unittest.TestCase):
         cls.tools_universe = Universe([MCP / "tools.py"])
         cls.tool_names = sorted(
             n.name for n in cls.server_tree.body
-            if isinstance(n, ast.FunctionDef) and any(
+            if isinstance(n, FUNC) and any(
                 isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr == "tool"
                 for d in n.decorator_list)
         )

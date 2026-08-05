@@ -50,8 +50,28 @@ loudly** if it cannot, turning a silent absence into a fail-fast the operator ca
 import sys
 
 from fastmcp import FastMCP
+from fastmcp.server.context import Context
+from fastmcp.server.elicitation import AcceptedElicitation
 
 import tools
+
+
+def _client_can_elicit(ctx) -> bool:
+    """Does THIS client accept an elicitation request? Asked, never assumed.
+
+    The strong rung of `ledger_record_decision` needs the host to render a prompt, and host support
+    is exactly the kind of fact this repo has been wrong about by reasoning from memory. So it is
+    not a per-host table that rots: the client declares `elicitation` in its own `initialize`
+    capabilities, and the MCP session already holds the answer. A host that gains support gets the
+    better path with no change here; one that lacks it degrades to relaying instead of hanging on a
+    request it will never answer — `ctx.elicit` does not check first, it just sends.
+    """
+    try:
+        from mcp import types
+        return bool(ctx.session.check_client_capability(
+            types.ClientCapabilities(elicitation=types.ElicitationCapability())))
+    except Exception:
+        return False   # unknown means the weaker rung, never the stronger one
 
 
 def _warm_grammars_async() -> None:
@@ -167,6 +187,81 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
         confidence: inferred | ambiguous.
     """
     return tools.ledger_surface_assumption(ledger, title, detail, severity, confidence)
+
+
+@mcp.tool(annotations={"title": "Interview — Ask the Human and Record the Election", **_RW_CREATE})
+async def ledger_record_decision(
+    ledger: str, pin_id: str, rationale: str, flip_criteria: str,
+    option_id: str = "", human_answer: str = "", accept_as_is: bool = False,
+    apply_to_cluster: bool = False, ctx: Context = None,
+) -> dict:
+    """Move a pin to decided/accepted by recording the election the HUMAN made. Never elects.
+
+    Prefer this over describing a decision in prose: a pin that never reaches `decided` blocks its
+    remediation, its dependents, and the reopen loop.
+
+    Two paths, and the tool chooses — you do not:
+      * If the host supports elicitation, THIS SERVER asks the user directly, and whatever you
+        passed as option_id/human_answer is ignored. The answer never travels through you.
+      * Otherwise you must relay: option_id from the pin's own offered options (or "freeform" where
+        allowed), and human_answer quoting the user verbatim. Recorded as the weaker rung.
+
+    Either way the outcome must be one the pin's `question` actually offered. Read it first with
+    `interview_next`, or `ledger_summary` for the pin list.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin being decided.
+        rationale: Why this outcome — the reasoning, not the restatement.
+        flip_criteria: What would reopen this. Required: a decision with no reopen condition fossilizes.
+        option_id: Id of the elected option, or "freeform". Ignored on the elicitation path.
+        human_answer: The user's answer, verbatim. Required when relaying.
+        accept_as_is: Leave a design_concern as it is (state `accepted`).
+        apply_to_cluster: Apply the same outcome to the pin's whole cluster.
+    """
+    prompt = tools.decision_prompt(ledger, pin_id)
+    evidence = "transcribed"
+
+    if ctx is not None and _client_can_elicit(ctx):
+        choices = [f"{o['id']} — {o['label']}" + (f" (→ {o['implication']})" if o["implication"] else "")
+                   for o in prompt["options"]]
+        if prompt["can_accept_as_is"]:
+            choices.append("accept_as_is — leave it as it is")
+        message = f"{prompt['title']}\n\n{prompt['prompt']}"
+        result = await (ctx.elicit(message, str) if not choices
+                        else ctx.elicit(message, choices))
+        if not isinstance(result, AcceptedElicitation):
+            # Declined and cancelled are not outcomes. Writing one would be the fabrication this
+            # whole path exists to make impossible.
+            raise ValueError(
+                f"the user did not answer ({type(result).__name__}); {pin_id} stays open. "
+                f"An unanswered fork is not a decision — ask again, or leave it to the interview."
+            )
+        human_answer = str(result.data)
+        picked = "freeform" if not choices else human_answer.split(" — ")[0]
+        evidence = "elicited"
+        accept_as_is = picked == "accept_as_is"
+        option_id = "" if accept_as_is else picked
+
+    return tools.record_decision(ledger, pin_id, option_id, rationale, flip_criteria,
+                                 human_answer=human_answer, evidence=evidence,
+                                 accept_as_is=accept_as_is, apply_to_cluster=apply_to_cluster)
+
+
+@mcp.tool(annotations={"title": "Interview — Expand the Decision Catalog", **_RW_CREATE})
+def interview_expand(ledger: str, project_type: str = "web-saas",
+                     brief_decisions: dict | None = None) -> dict:
+    """Materialize the decision catalog as open_decision / acceptance_criterion pins.
+
+    Greenfield's Phase-2 opening move: this creates the forks that `interview_next` then funnels.
+
+    Args:
+        ledger: Path to ledger.json (created if absent — this is the first write).
+        project_type: Prunes clusters that do not apply (a fork absent from the type is not a question).
+        brief_decisions: cluster_id -> outcome already settled in the brief; those pins are created
+            and committed immediately, with evidence "brief".
+    """
+    return tools.interview_expand(ledger, project_type, brief_decisions)
 
 
 @mcp.tool(annotations={"title": "Ledger — Add Remediation / Build Item", **_RW_CREATE})
