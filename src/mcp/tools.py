@@ -317,9 +317,9 @@ def coverage_gaps(langs: list, reports: list | None = None) -> dict:
 def contract_diff(contract: str, backend: str = "auto", **layers) -> dict:
     # Wrapped under a key, not returned bare: MCP's `structuredContent` is an object, so a tool that
     # hands back the engine's `list[dict]` is rejected on the wire before the agent sees a thing —
-    # even at zero drift, where the list is empty. `{"findings": [...]}` is the house shape
-    # (`findings_gate`, `challenge_oracle`), and it leaves room to say more later without breaking
-    # a caller that reads `["findings"]`.
+    # even at zero drift, where the list is empty. `findings_gate` already answers under that key,
+    # and a named key leaves room to say more later without breaking a caller that reads
+    # `["findings"]`.
     import shapes
     findings = shapes.drift_check(contract, backend=backend, **{k: v for k, v in layers.items() if v})
     return {"findings": findings}

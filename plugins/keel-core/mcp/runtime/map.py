@@ -180,7 +180,11 @@ function detail(p){
   if(!p)return '<div class="empty">select a pin</div>';
   const side=p[view]; let body='';
   const label = view==='as_is'?'as-is':'to-be';
-  if(p.kind==='contract_mismatch'&&view==='as_is') body+=contractCols(p);
+  // `contractCols` answers '' for a contract_mismatch carrying no layers, so taking that branch on
+  // `kind` alone rendered the pin as a bare title: no columns, no card, no message, and no `raw` to
+  // fall back on. Branch on what it PRODUCED, not on what it was asked for.
+  const cols = (p.kind==='contract_mismatch'&&view==='as_is') ? contractCols(p) : '';
+  if(cols) body+=cols;
   else if(!isBlank(side)) body+=sideCard(side,label);
   else body+=`<div class="card nul">no ${label} yet</div>`;
   if(p.question) body+=`<div class="card q"><b>Interview question</b><p>${esc(p.question.prompt)}</p>`+

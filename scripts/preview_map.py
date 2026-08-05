@@ -86,6 +86,13 @@ def build() -> Ledger:
                                        "implication": "remove the frontend check"}],
                           "allow_freeform": True})
 
+    # a contract_mismatch with no layers at all: `contractCols` returns '' here, so before 0.4.1
+    # the as-is side vanished with no card and no message. Its own row, because the three-column
+    # path bypasses `sideCard` and nothing else exercises the empty case.
+    led.add_pin(kind="contract_mismatch", severity="medium", confidence="inferred", provenance=P,
+                title="contract_mismatch carrying no layers",
+                as_is={"disagreeing_layers": ["frontend"]})
+
     # blank values, and a pin with no to_be at all
     led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
                 title="ranking_service.py repeats 180 lines in three near-identical blocks",
