@@ -49,8 +49,11 @@ EXPECTED_TOOLS = {
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
     # the instruction-file carrier — the ledger projected into the file every host actually loads
     "generate_instructions", "instructions_diff",
-    # the election: creating the forks, and recording the human's answer to one
-    "interview_expand", "ledger_record_decision",
+    # the election: creating the forks, offering the opening policies, and recording the human's
+    # answer to one. `interview_seed_policies` is its own tool and not a step inside
+    # `interview_expand` — the two run together at frame time, but a tool named "expand" must not
+    # also do a thing its name does not say.
+    "interview_expand", "interview_seed_policies", "ledger_record_decision",
     # design contract (DTCG) + the frontend/design scanner
     "generate_tokens", "tokens_diff", "extract_tokens", "design_scan",
     # cost & token telemetry — the measurer's surface

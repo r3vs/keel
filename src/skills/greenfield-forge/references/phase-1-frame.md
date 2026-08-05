@@ -52,6 +52,18 @@ For each live, undecided fork, materialize one `open_decision` pin (schema: `ref
   `medium`. This drives the severity threshold in Phase 2.
 - `as_is` = the givens that constrain this fork; `built: null`. `to_be` stays null until elected.
 
+**Materialize them — do not write them out by hand:** call `interview_expand` over `ledger.json`.
+It reads the machine form of the catalog, prunes by the `project_type` from Step 1, creates one pin
+per surviving fork with the catalog's options, implications, `cluster_id`, `severity` and
+`depends_on` already wired to the freshly-created pin ids, and takes the Step-2 givens as
+`brief_decisions` (cluster id → the outcome the brief already settled), which it commits as
+pre-decided with `evidence: "brief"` instead of asking again. It returns `created` / `pruned` /
+`pre_decided`, which is the audit of what Steps 1–2 actually did.
+
+Then call `interview_seed_policies` for the catalog's per-cluster default policies. They are
+**offers**, not writes — Phase 2 opens with them and the user elects; nothing lands in the ledger
+until it does.
+
 Also run the **threat-model** pass here (`references/threat-model.md`): STRIDE over the decided
 elements materializes security `open_decision`s, so security is designed in from Phase 1, not
 scanned for later.

@@ -254,7 +254,8 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
                      brief_decisions: dict | None = None) -> dict:
     """Materialize the decision catalog as open_decision / acceptance_criterion pins.
 
-    Greenfield's Phase-2 opening move: this creates the forks that `interview_next` then funnels.
+    Greenfield's Phase-1 frame step: this creates the forks that `interview_next` then funnels, so
+    an unexpanded ledger makes the funnel answer "no questions" rather than "no forks".
 
     Args:
         ledger: Path to ledger.json (created if absent — this is the first write).
@@ -263,6 +264,25 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
             and committed immediately, with evidence "brief".
     """
     return tools.interview_expand(ledger, project_type, brief_decisions)
+
+
+@mcp.tool(annotations={"title": "Interview — The Opening Policy Offers", **_RO})
+def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict:
+    """The decision catalog's per-cluster default policies, as the offers the interview OPENS with.
+
+    Policy questions come first because they carry the most leverage — one accepted policy resolves a
+    whole cluster's low-severity tail. Run it beside `interview_expand` at frame time; kept separate
+    because it is a different act, and a tool named "expand" must not quietly do this too.
+
+    Returns `{"offers": [...]}` and WRITES NOTHING. A Policy exists only once the human elects it:
+    accepting one cascades outcomes across its cluster, so seeding them unasked would decide at
+    scale. Put each offer to the user; record what they elect.
+
+    Args:
+        ledger: Path to ledger.json (must exist — offers for a ledger that isn't there are noise).
+        project_type: Prunes the clusters that do not apply, the same way interview_expand did.
+    """
+    return tools.interview_seed_policies(ledger, project_type)
 
 
 @mcp.tool(annotations={"title": "Ledger — Add Remediation / Build Item", **_RW_CREATE})

@@ -210,7 +210,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
 
 def interview_expand(ledger: str, project_type: str = "web-saas",
                      brief_decisions: dict | None = None) -> dict:
-    """Materialize the decision catalog as pins — greenfield's Phase-2 opening move.
+    """Materialize the decision catalog as pins — greenfield's Phase-1 frame step.
 
     Exposed because the funnel had no pins to funnel: `interview_next` reads, and the thing that
     CREATES the forks lived in `interview.expand_catalog` with no surface at all, so Phase 2 could
@@ -223,6 +223,26 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     led.save()
     _refresh_live_maps(ledger)
     return result
+
+
+def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict:
+    """The catalog's per-cluster default policies, as the interview's opening OFFERS.
+
+    Its own tool rather than a step inside `interview_expand`, even though the two are used together
+    at frame time: a policy offer is not a consequence of expanding a catalog, and folding it in
+    would make it a side effect nobody reading the call could see. The tool that offers the policies
+    says it offers the policies.
+
+    It READS. That is not an oversight to be fixed later — `interview.default_policies` deliberately
+    writes nothing, and could not: a `Policy` in the ledger carries a `default_outcome` that
+    `apply_policies` then cascades into DecisionEvents over the whole medium/low tail, so writing one
+    the human never elected would be an agent deciding at scale, through the one door this package
+    holds shut. It seeds the *interview*, never the ledger.
+    """
+    import interview
+    return {"offers": interview.default_policies(interview.load_catalog(),
+                                                 _open_existing(ledger),
+                                                 project_type=project_type)}
 
 
 def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,

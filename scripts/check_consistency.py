@@ -13,7 +13,7 @@ Path convention (see CLAUDE.md):
 
 Run in CI: `python scripts/check_consistency.py` (exit 1 on drift); pair with build.py --check.
 """
-import json, re, sys
+import ast, json, re, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,6 +47,16 @@ CORE_RE = re.compile(r"`(core/[\w\-./]+\.md)`")        # repo-root-relative
 # agent engine is D2 whatever the module says, and a fake-deterministic label is worse than an honest
 # judgment one, because a wrong D0 finding gets believed where a wrong D2 finding gets argued with
 # (core/trust-axes.md).
+#
+# The engine is REQUIRED of a deterministic module and OPTIONAL of a judgment one — but when a
+# judgment module declares one, it is checked exactly as hard. The interview is the case that forced
+# this: it elects by human judgment (D2, so `type: judgment` is right) and yet its output reaches
+# disk through exactly one tool, `ledger_record_decision`, so naming that tool is the difference
+# between a workflow and a description of one. The first version of this branch only looked at the
+# engine when the type was `deterministic`, which meant a judgment module could name a tool the
+# server does not expose and nothing would notice — an unvalidated claim, in the gate whose whole job
+# is validating claims. `scripts/check_tool_carriers.py` runs the other direction: from the server's
+# write tools back to the prose, failing when one is named by nothing that ships.
 MCP_ENGINE_RE = re.compile(r"^mcp:(\w+)$")
 
 
@@ -85,19 +95,24 @@ module_count = 0
 reference_dirs = []
 
 def mcp_tools() -> set:
-    """Tool names src/mcp/server.py advertises, parsed structurally from its `@mcp.tool`
-    decorations — the one source of truth, so a module's engine cannot name a tool the server does
-    not expose (validate against the thing that serves, never a hand-kept second list)."""
-    lines = read(ROOT / "src" / "mcp" / "server.py").splitlines()
-    out = set()
-    for i, line in enumerate(lines):
-        if line.startswith("def ") and i:
-            j = i - 1
-            while j >= 0 and not lines[j].strip():
-                j -= 1
-            if j >= 0 and lines[j].lstrip().startswith("@mcp.tool"):
-                out.add(line[4:].split("(", 1)[0].strip())
-    return out
+    """Tool names src/mcp/server.py advertises, parsed from its `@mcp.tool` decorations — the one
+    source of truth, so a module's engine cannot name a tool the server does not expose (validate
+    against the thing that serves, never a hand-kept second list).
+
+    An AST walk, not a line scan. The line scan matched `def ` at column 0 and so was blind to every
+    `async def` tool: `ledger_record_decision` — the only tool that can move a pin to `decided` — was
+    invisible to this gate, which would have rejected the module that correctly named it. The same
+    trap `tests/test_mcp_output_contracts.py` records at the top of its file: an async tool is still
+    a tool, and a checker that cannot see one reports clean about a surface it never read.
+    """
+    tree = ast.parse(read(ROOT / "src" / "mcp" / "server.py"))
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr == "tool"
+                for d in node.decorator_list)
+    }
 
 
 MCP_TOOLS = mcp_tools()
@@ -121,15 +136,16 @@ for skill, rel in SKILLS.items():
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' has no reference")
             elif not ref_resolves(ref, sroot):
                 errors.append(f"[{skill}] module '{m.get('id', '?')}' -> missing reference '{ref}'")
-            elif m.get("type") == "deterministic":
+            else:
                 engine = m.get("engine")
                 if not engine:
-                    errors.append(
-                        f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but "
-                        "names no `engine` — say what produces its output: an `mcp:<tool>` MCP tool, "
-                        "an `external:<tool>`, or an `agent:<how>`. A deterministic module with no "
-                        "declared mechanism is prose wearing a label"
-                    )
+                    if m.get("type") == "deterministic":
+                        errors.append(
+                            f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but "
+                            "names no `engine` — say what produces its output: an `mcp:<tool>` MCP "
+                            "tool, an `external:<tool>`, or an `agent:<how>`. A deterministic module "
+                            "with no declared mechanism is prose wearing a label"
+                        )
                 elif (mm := MCP_ENGINE_RE.match(engine)):
                     if mm.group(1) not in MCP_TOOLS:
                         errors.append(
@@ -137,12 +153,13 @@ for skill, rel in SKILLS.items():
                             f"src/mcp/server.py advertises no `{mm.group(1)}` tool"
                         )
                 elif engine.startswith("agent:"):
-                    errors.append(
-                        f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but its "
-                        f"engine '{engine}' reasons — an agent on the path is D2 however the module "
-                        "is labeled. Declare it type=judgment; `agent:<how>` stays a legitimate "
-                        "engine, just not a deterministic one (core/trust-axes.md)"
-                    )
+                    if m.get("type") == "deterministic":
+                        errors.append(
+                            f"[{skill}] module '{m.get('id', '?')}' declares type=deterministic but "
+                            f"its engine '{engine}' reasons — an agent on the path is D2 however the "
+                            "module is labeled. Declare it type=judgment; `agent:<how>` stays a "
+                            "legitimate engine, just not a deterministic one (core/trust-axes.md)"
+                        )
                 elif not engine.startswith("external:"):
                     errors.append(
                         f"[{skill}] module '{m.get('id', '?')}' engine '{engine}' is not a "

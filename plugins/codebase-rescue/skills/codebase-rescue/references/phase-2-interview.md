@@ -59,7 +59,9 @@ Options: `{admin,user} — DB is truth` · `add superadmin to schema` · (freefo
 - `defect` → usually `question: null`; goes to remediation. Promote to `needs_input` only
   when there's a genuine scope question (e.g. "is this dead code residue, or a half-built
   feature you want completed?").
-- `incompleteness` → question is typically scope: implement now / defer / drop (YAGNI).
+- `incompleteness` → question is typically scope: implement now / defer / drop (YAGNI). "Defer" is
+  `ledger_defer`, not silence: the pin stays on the ledger as backlog, which is the whole difference
+  between scoping something out and forgetting it.
 
 ## Parallelism with the map and brainstorm
 
@@ -69,6 +71,27 @@ surfaces. If the user opens a brainstorm on a pin, the brainstorm writes
 `proposals[]`; the user's committed answer here (and only here) sets `state: decided` and
 emits the `DecisionEvent` (with `flip_criteria`). The interview commits; the brainstorm
 never does.
+
+> **Committing is one tool: `mcp:ledger_record_decision`.** Nothing else moves a pin to `decided`,
+> so an answer you only wrote down in prose leaves the pin open — and an open pin blocks its own
+> remediation, its dependents, and the reopen loop. Four things it enforces — meet them
+> deliberately rather than meeting them as errors:
+> - **`option_id` must be one the pin's own `question` offered** (`"freeform"` only where that
+>   question sets `allow_freeform`, and then the user's words *are* the outcome). An outcome from
+>   anywhere else is you electing, which is the one thing no agent here may do.
+> - **`flip_criteria` is required** — a decision with no reopen condition fossilizes, and the
+>   feedback loop has nothing to fire against. Name the observable that would make you revisit it.
+> - **If the host's client declares elicitation, the server asks the user itself** and ignores
+>   whatever you passed; the answer never travels through you (`evidence: elicited`). Otherwise you
+>   are relaying, and must **quote the user verbatim in `human_answer`** — that lands as
+>   `evidence: transcribed`, the weaker rung, which a reader and the `challenger` can then weigh.
+>   Relaying with nothing quoted is refused: an honest relay and an invented one would be
+>   indistinguishable in the log.
+> - **`accept_as_is: true`** is how "leave it as it is" is recorded, and only for a `design_concern`
+>   — an `ambiguity` or a `contract_mismatch` has nothing to keep.
+>
+> `apply_to_cluster: true` writes the same outcome across the cluster the funnel collapsed, which is
+> what makes "200 findings → one decision" real rather than rhetorical.
 
 > **Composability (optional):** a coaching layer — the `learning-layer` skill — can wrap this
 > surface non-invasively: capture the user's own spec attempt *before* the derived `to_be` is

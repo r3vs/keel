@@ -29,7 +29,11 @@ never made visible. A silent assumption defeats both arcs — so it is never all
 - **A forced assumption is a pin, not a default.** When an agent must assume to proceed, it writes
   the assumption into the ledger — either as its own pin, or as a `provenance`
   entry on the pin it is creating — with `provenance: [{ source: "agent_assumption", detail: "…" }]`
-  and `confidence: inferred | ambiguous` (never `extracted`; an assumption is not a fact).
+  and `confidence: inferred | ambiguous` (never `extracted`; an assumption is not a fact). Its own
+  pin is one call: **`ledger_surface_assumption`**, which stamps that provenance and attaches the
+  keep/correct question for you, so the veto exists from the moment the guess does. Naming the tool
+  matters more here than anywhere else in this file: an assumption you meant to surface and did not
+  is indistinguishable from one you never noticed making.
 - **Confidence tags the guess honestly.** `inferred` = a defensible reading from real signal;
   `ambiguous` = genuinely undecided, multiple readings live. The severity threshold then applies as
   always: a `blocker`/`high` assumption is **always `asked`**, never a silent `proposed_default`

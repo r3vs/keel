@@ -31,6 +31,12 @@ named owner (`needs_interview` / `needs_research` / `needs_hardening` / `needs_c
 a decision that was never really elected, and building it is how the forge starts producing the slop
 it exists to prevent.
 
+Where it reports a premortem **owed**, write it with `ledger_premortem` — the challenger's second
+mode: grant the plan, assume it already failed, name what killed it, and answer each failure mode
+with a guardrail or an abort criterion (the tool refuses a failure with no response). It lands in the
+ledger, not in the plan's prose, so `ledger_label_failure` can be joined against it later in the same
+closed vocabulary — the anticipated, the unrealized, and the surprises nobody saw coming.
+
 **On a tree that is no longer empty, check the ground before you build on it.** In `forge` mode
 as-is starts empty and this does not apply; in `slice` / `evolve` mode — and any time forge extends
 a project that already has code — a `BuildItem` lands on existing files, and a correct plan onto a

@@ -49,6 +49,13 @@ jobs:
       - name: Schema-field linter (every declared field has a reader)
         run: python scripts/check_schema_fields.py
 
+      # The mirror of the above, one layer out: a field with no reader and a WRITE TOOL no playbook
+      # names are the same bug — a capability the artifact carries and the workflow never reaches.
+      # The server makes tools discoverable, which answers it for the tools an agent goes looking
+      # for; nothing answers it for the ones it does not know to want.
+      - name: Tool-carrier linter (every write tool is named by a shipped playbook)
+        run: python scripts/check_tool_carriers.py
+
       # --- the source is correct AS SHIPPED ----------------------------------------------------
       - name: Executable-pointer verifier (no path that dies once installed)
         run: python scripts/verify_commands.py

@@ -169,11 +169,18 @@ become the interview's opening policy questions. See `references/phase-1-frame.m
 ## Runtime
 
 The machine-usable form of this catalog is `assets/decision-catalog.json` (this doc stays the
-authoring source — keep them in step). The `interview_next` tool loads it and runs Phase 1:
-`expand_catalog(ledger, catalog, project_type, brief_decisions)` prunes by project type, skips the
-forks the brief already decided (pre-committed, never re-asked), materializes one pin per surviving
-fork, and wires `depends_on` to the created pin ids; `funnel(ledger)` compresses to the asked
-questions ordered by transitive information gain with the tail as `proposed_default`;
-`default_policies()` offers the per-cluster defaults. The `challenge_oracle` tool then red-teams the
-elected oracles (deterministic classes). `interview_next` takes the project type (e.g. `web-saas`).
-Both are covered by the runtime's own test suite.
+authoring source — keep them in step). **Three tools read it, and they are not interchangeable:**
+
+- `interview_expand(ledger, project_type, brief_decisions)` runs Phase 1 over it — prunes by project
+  type, skips the forks the brief already decided (pre-committed with `evidence: "brief"`, never
+  re-asked), materializes one pin per surviving fork, and wires `depends_on` to the created pin ids.
+  This is the only one that **writes the forks**; without it there is nothing to funnel.
+- `interview_seed_policies(ledger, project_type)` returns the per-cluster `default_policy` entries
+  as the interview's opening offers. It writes nothing — the user elects a policy, and only then
+  does it cascade.
+- `interview_next(ledger)` compresses to the asked questions ordered by transitive information gain,
+  with the tail as `proposed_default`. It takes **only the ledger** — the project type was already
+  spent at expansion time — and it only reads.
+
+`challenge_oracle` then red-teams the elected oracles (the deterministic classes). All are covered
+by the runtime's own test suite.

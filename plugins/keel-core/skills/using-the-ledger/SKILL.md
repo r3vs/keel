@@ -39,6 +39,7 @@ what the spec says it means.
 |---|---|
 | the state, before acting | `ledger_summary` |
 | the next real questions | `interview_next` (create them first with `interview_expand`) |
+| the opening policy offers, before asking anything | `interview_seed_policies` (offers only — a Policy exists once the human elects it) |
 | add a finding / defect / `open_decision` | `ledger_add_pin` |
 | the human answered a fork | `ledger_record_decision` |
 | plan & close the gap | `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` |
