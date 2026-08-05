@@ -46,6 +46,9 @@ jobs:
       - name: Hypothesis linter (every tuned number is declared)
         run: python scripts/check_hypotheses.py
 
+      - name: Schema-field linter (every declared field has a reader)
+        run: python scripts/check_schema_fields.py
+
       # --- the source is correct AS SHIPPED ----------------------------------------------------
       - name: Executable-pointer verifier (no path that dies once installed)
         run: python scripts/verify_commands.py

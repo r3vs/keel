@@ -770,9 +770,21 @@ class Ledger:
     def add_remediation(self, pin_id: str, action: str, ladder_rung: int,
                         canonical_target: Optional[str] = None,
                         build_track: Optional[str] = None,
-                        contract_carrier: Optional[str] = None,
-                        depends_on: Optional[list[str]] = None) -> dict:
-        """RemediationItem (rescue verbs) or BuildItem (greenfield verbs, build_track set)."""
+                        contract_carrier: Optional[str] = None) -> dict:
+        """RemediationItem (rescue verbs) or BuildItem (greenfield verbs, build_track set).
+
+        **No item-level `depends_on`.** Ordering lives one level up, on the pin, and only there:
+        `add_pin(depends_on=...)` validates each id exists, and `buildloop.waves()` levels *pins* by
+        it. Items are worked in list order within their pin (`buildloop.next_item`), which is enough
+        because the executor takes one scope at a time — so a second ordering channel would have
+        nothing to say that this one cannot.
+
+        The field used to exist and was inert three ways: ids were allocated per-pin
+        (`rem_0001` on every pin, so a cross-pin reference was ambiguous by construction), nothing
+        validated them, and no line of the runtime ever read them. Kept out rather than repaired: a
+        parameter that accepts anything and changes nothing is worse than its absence, because it
+        reads as a capability.
+        """
         pin = self.pin(pin_id)
         is_build = build_track is not None
         allowed = BUILD_ACTIONS if is_build else REMEDIATION_ACTIONS
@@ -794,8 +806,6 @@ class Ledger:
             item["build_track"] = build_track
         if contract_carrier:
             item["contract_carrier"] = contract_carrier
-        if depends_on:
-            item["depends_on"] = depends_on
         pin["remediation"].append(item)
         return item
 

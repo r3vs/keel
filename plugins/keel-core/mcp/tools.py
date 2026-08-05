@@ -115,11 +115,11 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
 
 def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
                            canonical_target: str | None = None, build_track: str | None = None,
-                           contract_carrier: str | None = None, depends_on: list | None = None) -> dict:
+                           contract_carrier: str | None = None) -> dict:
     led = _open_existing(ledger)
     item = led.add_remediation(pin_id, action=action, ladder_rung=ladder_rung,
                                canonical_target=canonical_target, build_track=build_track,
-                               contract_carrier=contract_carrier, depends_on=depends_on)
+                               contract_carrier=contract_carrier)
     led.save()
     _refresh_live_maps(ledger)
     return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}

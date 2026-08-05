@@ -172,8 +172,11 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
 @mcp.tool(annotations={"title": "Ledger — Add Remediation / Build Item", **_RW_CREATE})
 def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
                            canonical_target: str | None = None, build_track: str | None = None,
-                           contract_carrier: str | None = None, depends_on: list[str] | None = None) -> dict:
+                           contract_carrier: str | None = None) -> dict:
     """Attach a RemediationItem (rescue) or BuildItem (greenfield, build_track set) to a decided pin.
+
+    Ordering is NOT set here. Sequence pins with `ledger_add_pin(depends_on=...)` — that is the DAG
+    the wave scheduler levels; items run in the order you add them, within their pin.
 
     Args:
         ledger: Path to ledger.json.
@@ -183,10 +186,9 @@ def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: i
         canonical_target: Optional canonical target of a consolidate.
         build_track: "A" or "B" — set this to make it a BuildItem.
         contract_carrier: Optional contract carrier path.
-        depends_on: Remediation ids this depends on.
     """
     return tools.ledger_add_remediation(ledger, pin_id, action, ladder_rung, canonical_target,
-                                        build_track, contract_carrier, depends_on)
+                                        build_track, contract_carrier)
 
 
 @mcp.tool(annotations={"title": "Ledger — Set Remediation Status", **_RW})

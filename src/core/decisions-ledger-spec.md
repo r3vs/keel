@@ -302,9 +302,16 @@ Where `RemediationItem` closes a gap on existing code, `BuildItem` **builds** wh
   "build_track": "A",            // A = red→green from the elected to_be (primary) · B = characterization (only when extending)
   "ladder_rung": 7,              // YAGNI for construction: never build beyond what the decision requires
   "contract_carrier": "shared-types",  // for 'scaffold' of the contract: the single source the layers are generated from
-  "depends_on": ["bld_0000"],    // the DAG: client depends_on API depends_on contract
   "status": "todo" }             // todo | in_progress | done
 ```
+
+**An item carries no `depends_on`, deliberately.** Sequence belongs to the pin — `pin.depends_on`
+holds global ids, is validated on write ("the DAG is real, not aspirational"), and is what
+`buildloop.waves()` actually levels. Items run in list order within their pin, which suffices
+because the executor takes one scope at a time. The field existed until v0.9 and was inert three
+ways: ids were allocated per-pin, so `rem_0001` named an item on *every* pin and a cross-pin
+reference was ambiguous by construction; nothing validated them; and no line of the runtime read
+them. Removed rather than repaired — a schema field addressed to nobody reads as a capability.
 
 `action`:
 - **`scaffold`** — generate from a single source: the contract → DDL/ORM/DTO/client types aligned *by construction*; or the paved road (test harness, linter, CI, session-start hook).
@@ -312,7 +319,7 @@ Where `RemediationItem` closes a gap on existing code, `BuildItem` **builds** wh
 - **`wire`** — connect already-scaffolded pieces (a route to its handler, a form to its endpoint).
 - **`configure`** — deterministic settings descending from a decision (env, secrets, feature flags).
 
-The waves fall out of `depends_on` (contract & data model → paved road → core slice → secondary features → polish), they are not hardcoded — exactly like rescue's reconciliation waves. The diff `gap = diff(to_be, as_is)` stays the invariant: here `as_is` starts empty and the roadmap is the build backlog, which tends to zero at completed v1.
+The waves fall out of the **pins'** `depends_on` (contract & data model → paved road → core slice → secondary features → polish), they are not hardcoded — exactly like rescue's reconciliation waves. The diff `gap = diff(to_be, as_is)` stays the invariant: here `as_is` starts empty and the roadmap is the build backlog, which tends to zero at completed v1.
 
 ---
 
