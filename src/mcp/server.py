@@ -525,7 +525,8 @@ def contract_diff(
     """Field-shape drift of each layer against the contract carrier — the core cross-layer engine.
 
     Deterministic and tech-stack agnostic: each layer is read only through its own type system,
-    never guessed from names or comments. Empty result means zero drift.
+    never guessed from names or comments. Returns `{"findings": [...]}`; an empty `findings` is
+    zero drift, and IS the evidence.
 
     Args:
         contract: Path to the contract carrier (the source of truth for correspondence).
@@ -551,7 +552,12 @@ def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str) -> di
 
     Use on an existing codebase, where no carrier exists yet and cross-layer correspondence cannot
     be trusted from an inferred graph. Extraction reads each stack's own types; correspondence comes
-    from the carrier or not at all.
+    from the carrier or not at all. Returns `{"findings": [...]}`.
+
+    Entity matching here is case-insensitive EXACT on the name. Where two layers name the same thing
+    differently (`cert_lotti` vs `LottoRegistrato`), every entity reports as missing/extra — that is
+    the honest answer, not a result: the correspondence is a fact a carrier declares, so reach for
+    `contract_diff` instead of reading this output as drift.
 
     Args:
         layer_a: Layer kind — ddl | sqlalchemy | pydantic | typescript | drizzle | prisma | django | graphql.

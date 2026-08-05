@@ -93,8 +93,13 @@ class TestWritingTools(unittest.TestCase):
             pydantic=gen["written"]["pydantic"],
             typescript=gen["written"]["typescript"],
         )
-        findings = drift.get("findings", drift) if isinstance(drift, dict) else drift
-        self.assertFalse(findings, f"generated layers must round-trip to zero drift, got: {findings}")
+        # Asserted as a shape, not sniffed. This line used to read
+        #     drift.get("findings", drift) if isinstance(drift, dict) else drift
+        # and that hedge is why the bug lived: the tool was handing back a bare list, MCP rejected
+        # every call, and the test accommodated both shapes instead of pinning one.
+        self.assertIsInstance(drift, dict, "structuredContent must be a JSON object")
+        self.assertEqual(drift["findings"], [],
+                         f"generated layers must round-trip to zero drift, got: {drift['findings']}")
 
     def test_generate_layers_can_restrict_to_a_subset(self):
         contract = os.path.join(FIXTURES, "step0", "contract.json")
