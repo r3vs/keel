@@ -176,6 +176,41 @@ class TestServerAdvertisesItsTools(unittest.TestCase):
         self.assertNotIn("ledger_decide", self.tools)
         self.assertNotIn("ledger_accept", self.tools)
 
+    def test_the_cross_layer_core_answers_over_the_wire(self):
+        """The regression that costs the most to miss, exercised where it actually broke.
+
+        `contract_diff` and `reconcile_layers` are the cross-layer core, and both were unreachable
+        over MCP for months: annotated `-> dict`, returning `shapes`' bare `list[dict]`, so FastMCP's
+        derived output_schema rejected every payload — the empty one too. Nothing caught it, because
+        the behaviour tests call `tools.contract_diff(...)` in-process (a list is fine there) and
+        this file only ever read `inputSchema`. A declared output type is only true on the wire, so
+        it gets asserted on the wire. `test_mcp_output_contracts.py` guards the whole class
+        statically; this proves the instance end to end.
+        """
+        step0 = os.path.join(os.path.dirname(__file__), "fixtures", "step0")
+        for name, args in (
+            ("contract_diff", {"contract": os.path.join(step0, "contract.json"),
+                               "ddl": os.path.join(step0, "001_initial.sql")}),
+            ("reconcile_layers", {"layer_a": "ddl", "path_a": os.path.join(step0, "001_initial.sql"),
+                                  "layer_b": "sqlalchemy", "path_b": os.path.join(step0, "models.py")}),
+        ):
+            with self.subTest(tool=name):
+                res = self._request("tools/call", {"name": name, "arguments": args})
+                self.assertNotIn("error", res, f"{name} failed at the JSON-RPC layer: {res.get('error')}")
+                result = res["result"]
+                self.assertFalse(
+                    result.get("isError"),
+                    f"{name} returned a tool error over the wire: "
+                    f"{[c.get('text') for c in result.get('content', [])]}")
+                structured = result.get("structuredContent")
+                self.assertIsInstance(structured, dict,
+                                      "structuredContent must be a JSON object — a bare list is "
+                                      "rejected by the host before the agent sees any of it")
+                self.assertIn("findings", structured)
+                self.assertEqual(structured["findings"], [],
+                                 "the step-0 fixtures are aligned: zero drift is the expected answer, "
+                                 f"got {structured['findings']}")
+
     def test_schemas_are_derived_from_the_signatures(self):
         diff = self.tools["contract_diff"]["inputSchema"]
         self.assertIn("contract", diff["properties"])

@@ -12,8 +12,8 @@ never a change or a guess.
   resolved. Plus the generated **contract test** (`references/core/contract-testing.md`) passes at the
   boundary — the runtime complement to the static re-diff. The re-diff is the same engine that found
   it: `contract_diff` against the carrier, or `reconcile_layers` head-to-head when there is none.
-  **An empty result is the evidence** — anything else is not resolved, however convincing the diff
-  looks by eye.
+  **An empty `findings` is the evidence** (both tools answer `{"findings": [...]}`) — anything else
+  is not resolved, however convincing the diff looks by eye.
 - **incompleteness (implemented)** — the previously-missing behavior now exists, is
   **reachable** (graph edge from an entry point), and its **Track-A test kills the relevant
   mutants** (green-but-mutation-surviving does not validate).

@@ -9,6 +9,11 @@ docs/audits/
 # a marketplace installs straight from the repo — there is nowhere else for it to live. That is what
 # `python scripts/build.py --check` is for: it fails CI if the committed output drifts from src/.
 
+# scripts/preview_map.py renders here for the manual browser pass, and the Playwright MCP drops
+# snapshots/screenshots in its own dir. Both are dev scratch, like every other runtime artifact.
+.preview/
+.playwright-mcp/
+
 node_modules/
 __pycache__/
 *.pyc
