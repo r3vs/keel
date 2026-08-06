@@ -30,7 +30,7 @@ wrong* is the part that stops it coming back.
 > | ~~15~~ | ~~two gates check less than their names claim~~ | **CLOSED** — both inverted and re-planted; the schema gate then found **six** write-only fields it had always passed |
 > | ~~16~~ | ~~an unknown `settles_as` renders as a bare label~~ | **CLOSED** — one `unknownNote` sentence, seven callers, tables kept apart |
 > | ~~17~~ | ~~seven residuals of the final review~~ | **CLOSED** — 17c was the last, and it was eight prose sites rather than three |
-> | **18** | **which class still has no gate** | not a defect: the standing answer, one class newly gated and three argued as not mechanizable |
+> | **18** | **which class still has no gate** | not a defect: the standing answer — two classes gated, one newly gated, two argued as not mechanizable |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
