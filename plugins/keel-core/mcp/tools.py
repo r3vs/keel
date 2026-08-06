@@ -119,7 +119,14 @@ def decision_prompt(ledger: str, pin_id: str) -> dict:
     Read-only, and separate from recording on purpose: the thing that ASKS must be able to run
     without the power to write.
     """
-    pin = _open_existing(ledger).pin(pin_id)
+    return _prompt_from_pin(_open_existing(ledger).pin(pin_id))
+
+
+def _prompt_from_pin(pin: dict) -> dict:
+    """The prompt over an already-loaded pin. Split out so `record_decision` can check the pin it is
+    about to write against the ledger it is about to write to — one open, one object, no window in
+    which the fork it showed and the fork it enforces could be different files."""
+    pin_id = pin["id"]
     question = pin.get("question")
     if not question:
         raise ValueError(
@@ -142,7 +149,7 @@ def decision_prompt(ledger: str, pin_id: str) -> dict:
 
 def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, flip_criteria: str,
                     human_answer: str = "", evidence: str = "transcribed",
-                    accept_as_is: bool = False, apply_to_cluster: bool = False) -> dict:
+                    accept_as_is: bool = False) -> dict:
     """Record an election the HUMAN made. This tool does not elect; it writes down what was elected.
 
     That distinction is the package's central invariant, and until now it was implemented by having
@@ -153,8 +160,11 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
 
     What replaces "there is no tool" is a tool that cannot be used to choose:
 
-      * `option_id` must name an option the pin's own `question` offers. An agent cannot elect an
-        outcome the interview never put to the user — the menu is the ledger's, not the caller's.
+      * `option_id` must name an option the pin's own `question` offers — checked with
+        `Ledger.question_offers`, the *same function* the unasked doors reach through
+        `unasked_verdict`, so "what this pin may be decided to" has one answer and not two that
+        happen to agree. An agent cannot elect an outcome the interview never put to the user: the
+        menu is the ledger's, not the caller's.
       * freeform is allowed only where the question says `allow_freeform`, and then the human's
         words ARE the outcome.
       * `flip_criteria` is required, so no decision fossilizes out of reach of the reopen loop.
@@ -162,10 +172,21 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
         nothing quoted is exactly the claim `evidence` exists to make checkable — and this is the
         boundary where that claim gets made, which is why the rule lives here and not in `ledger.py`.
 
+    **One pin.** This door took `apply_to_cluster`, which fanned the same outcome — and the same
+    quote — across every pin sharing the `cluster_id`, past all three rules above: a pin offering a
+    different option set, a pin with no question, a `blocker`. The elicitation the human answered
+    named ONE pin. Cluster-wide is `record_policy`: it shows the radius before the write, holds back
+    what may not be settled, and leaves a `Policy` for each cascaded event to point at. The funnel's
+    "200 findings → one decision" is that tool, and it is the only shape of it that can say, on each
+    pin, whose answer this was.
+
     `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
     user through the host and the agent never carries the value. See `mcp/server.py`.
     """
-    prompt = decision_prompt(ledger, pin_id)
+    from ledger import Ledger
+    led = _open_existing(ledger)
+    pin = led.pin(pin_id)
+    prompt = _prompt_from_pin(pin)
     offered = {o["id"] for o in prompt["options"]}
 
     if accept_as_is:
@@ -179,7 +200,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
             raise ValueError(f"{pin_id} does not allow a freeform answer; choose one of {sorted(offered)}")
         if not human_answer:
             raise ValueError("a freeform election IS the human's words — human_answer is required")
-    elif option_id not in offered:
+    elif not Ledger.question_offers(pin, option_id):
         raise ValueError(
             f"{option_id!r} is not an option this pin offers ({sorted(offered) or 'none'}). An "
             f"agent may record an election, never invent one: the menu belongs to the question the "
@@ -192,7 +213,6 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
             "without it, an honest relay and a fabricated one are indistinguishable in the ledger"
         )
 
-    led = _open_existing(ledger)
     if accept_as_is:
         led.accept(pin_id, rationale=rationale, flip_criteria=flip_criteria,
                    evidence=evidence, human_answer=human_answer)
@@ -200,8 +220,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     else:
         outcome = human_answer if option_id == "freeform" else option_id
         led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
-                   evidence=evidence, human_answer=human_answer,
-                   apply_to_cluster=apply_to_cluster)
+                   evidence=evidence, human_answer=human_answer)
         state = "decided"
     led.save()
     _refresh_live_maps(ledger)
@@ -215,6 +234,13 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     Exposed because the funnel had no pins to funnel: `interview_next` reads, and the thing that
     CREATES the forks lived in `interview.expand_catalog` with no surface at all, so Phase 2 could
     not start through the only runtime channel there is.
+
+    `brief_decisions` is a WRITE — it commits DecisionEvents — and it is the one this tool has to be
+    read for (v0.14). It is gated by `Ledger.unasked_verdict`, the same predicate the policy cascade
+    passes, because the `brief` rung means precisely *nobody was asked*: a cluster the brief settles
+    with an outcome its own fork does not offer, or a `blocker`/`high` fork, comes back under
+    `brief_held_back` with the reason and stays an open question. Un-gated, this door wrote any
+    string onto any cluster at any severity — the third way into `decide` and the quietest.
     """
     import interview
     led = _open_or_create(ledger)

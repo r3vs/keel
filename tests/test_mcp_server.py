@@ -343,6 +343,35 @@ class TestRecordingAnElectionByRelay(_Session):
 
 
 @NEEDS_UV
+class TestTheBriefIsAWriteAndSaysWhatItRefused(_Session):
+    """`interview_expand(brief_decisions=...)` was the third door onto `decide` — it committed
+    whatever string the caller supplied, for any cluster, at any severity, on the `brief` rung.
+
+    Over the wire because the refusal is only useful if it REACHES the agent: a held-back fork that
+    the tool knows about and `structuredContent` drops is a fork the agent still believes is settled.
+    """
+
+    def test_a_fork_the_brief_could_not_carry_comes_back_named(self):
+        path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+        res = self._request("tools/call", {"name": "interview_expand", "arguments": {
+            "ledger": path, "project_type": "web-saas", "brief_decisions": {
+                "persistence": "mongodb — an outcome no option offers",
+                "identity": "roll our own crypto"}}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["pre_decided"], [])
+        held = {h["cluster_id"]: h for h in out["brief_held_back"]}
+        self.assertEqual(set(held), {"persistence", "identity"},
+                         "the agent must be told which forks the brief did not settle")
+        self.assertIn("relational", held["persistence"]["offers"],
+                      "naming the ids it DOES offer is what makes the refusal actionable")
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        self.assertEqual(data["decision_log"], [])
+        self.assertTrue(all(p["state"] != "decided" for p in data["pins"]))
+
+
+@NEEDS_UV
 class TestReadingALedgerWrittenBeforeTheRuleExisted(_Session):
     """v0.13, over the wire because that is where the agent reads it.
 
@@ -537,3 +566,75 @@ class TestRecordingAnElectionByElicitation(_Session):
         self.assertTrue(self.elicited, "the server never asked")
         asked = json.dumps(self.elicited[0])
         self.assertIn("extract a helper", asked, "the user was not shown the pin's real options")
+
+
+#: Two options whose DISPLAY rows are distinct and whose ids are not separable by the delimiter that
+#: joins id and label. Nothing constrains an option id and an agent authors them via `ledger_add_pin`,
+#: so this is reachable, not contrived.
+AMBIGUOUS = {
+    "kind": "design_concern", "title": "the module nobody owns", "severity": "low",
+    "confidence": "inferred", "provenance": [{"source": "recon", "detail": "clones"}],
+    "as_is": {"current_design": "copy-paste", "concern": "they drift"},
+    "question": {"prompt": "What do we do with it?",
+                 "options": [{"id": "keep", "label": "leave it exactly as it is"},
+                             {"id": "keep — and also delete the module",
+                              "label": "keep the interface, delete the implementation"}],
+                 "allow_freeform": False},
+}
+PICKED_ROW = "keep — and also delete the module — keep the interface, delete the implementation"
+
+
+@NEEDS_UV
+class TestTheElicitedAnswerIsCarriedNotParsed(_Session):
+    """The id the human picked must be the id that gets written — on the strongest rung, where the
+    whole claim is that the agent never touched the value.
+
+    The server built each choice as `f"{id} — {label}"` and recovered the id with
+    `.split(" — ")[0]`, so an id CONTAINING that delimiter made the two rows above parse to the same
+    token: the user picks the second, the server records the first. Reproduced over real stdio.
+
+    `ELICIT_REPLY` is set per test rather than per class: both answers exercise the same lookup and a
+    second server spawn would buy nothing but seven seconds.
+    """
+
+    CAPABILITIES = {"elicitation": {}}
+    ELICIT_REPLY = {"action": "accept", "content": {"value": PICKED_ROW}}
+
+    def _pin(self, tmp):
+        path = os.path.join(tmp, "ledger.json")
+        res = self._request("tools/call", {"name": "ledger_add_pin",
+                                           "arguments": {"ledger": path, **AMBIGUOUS}})
+        return path, res["result"]["structuredContent"]["pin_id"]
+
+    def test_an_option_id_containing_the_separator_is_recorded_as_itself(self):
+        type(self).ELICIT_REPLY = {"action": "accept", "content": {"value": PICKED_ROW}}
+        tmp = tempfile.mkdtemp()
+        path, pin_id = self._pin(tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "keep",
+            "rationale": "whatever the user says", "human_answer": "the caller's own words",
+            "flip_criteria": "if the interface grows a second implementation"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["outcome"], "keep — and also delete the module",
+                         "the server recorded a DIFFERENT option than the human picked")
+        self.assertEqual(out["evidence"], "elicited")
+        rows = self.elicited[-1]["requestedSchema"]["properties"]["value"]["enum"]
+        self.assertEqual(len(rows), len(set(rows)),
+                         "two identical rows would make the reply ambiguous whatever the lookup")
+
+    def test_an_answer_outside_the_offered_choices_leaves_the_pin_open(self):
+        """The other half of carrying the mapping: an unmatched reply is refused, not snapped to the
+        nearest row. Guessing which option was meant is this server electing."""
+        type(self).ELICIT_REPLY = {"action": "accept", "content": {"value": "keep"}}
+        tmp = tempfile.mkdtemp()
+        path, pin_id = self._pin(tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "keep", "rationale": "r",
+            "human_answer": "the caller's own words", "flip_criteria": "f"}})
+        self.assertTrue(res["result"].get("isError"),
+                        "an answer that maps to no option is not an election")
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        self.assertEqual(data["decision_log"], [])
+        self.assertEqual([p["state"] for p in data["pins"]], ["needs_input"])

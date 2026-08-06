@@ -192,11 +192,55 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
     return tools.ledger_surface_assumption(ledger, title, detail, severity, confidence)
 
 
+#: The row that offers "leave it as it is" on a design_concern. Its VALUE in the choice map is
+#: `None`, not a string: `_validate_question` requires every option id to be truthy, so `None` is
+#: the one value no option id can collide with. A sentinel string could — an agent authors option
+#: ids through `ledger_add_pin`, and an option literally called `accept_as_is` would then be
+#: recorded as an acceptance instead of as itself.
+_ACCEPT_AS_IS_ROW = "accept_as_is — leave it as it is"
+
+
+def _decision_choices(prompt: dict) -> dict:
+    """`{what the user reads: the option id it means}` — an explicit, injective map.
+
+    The elicitation protocol carries a string, so the id has to survive a round trip through display
+    text. It used to survive by being parsed back out: choices were built as `f"{id} — {label}"` and
+    the reply was read with `.split(" — ")[0]`. Nothing constrains an option id, and an agent
+    authors them (`ledger_add_pin`), so ids `keep` and `keep — and also delete the module` render two
+    distinct rows that parse to the SAME token: the human picks the second, the server writes the
+    first, on the `elicited` rung — the strongest one, the one whose whole claim is that the agent
+    never touched the value. Reproduced over real stdio.
+
+    So the mapping is carried, not re-derived: build it once, look the answer up by equality (the
+    same discipline `_POLICY_ACCEPT`/`_POLICY_DECLINE` already use), and refuse an answer that is not
+    in it. Injectivity is not assumed either — two options rendering identically would silently
+    collapse into one row, so that is refused at the source rather than resolved by guessing.
+    """
+    out: dict = {}
+    for o in prompt["options"]:
+        row = f"{o['id']} — {o['label']}" + (f" (→ {o['implication']})" if o["implication"] else "")
+        if row in out:
+            raise ValueError(
+                f"two options of {prompt['pin_id']} render the same choice ({row!r}), so a reply "
+                f"naming it would not say which was picked. Give them distinct ids or labels — a "
+                f"fork whose options a human cannot tell apart is not a fork."
+            )
+        out[row] = o["id"]
+    if prompt["can_accept_as_is"]:
+        if _ACCEPT_AS_IS_ROW in out:
+            raise ValueError(
+                f"an option of {prompt['pin_id']} renders exactly as the leave-as-is row "
+                f"({_ACCEPT_AS_IS_ROW!r}); rename it, or the two answers are indistinguishable."
+            )
+        out[_ACCEPT_AS_IS_ROW] = None      # not an option id: see the constant above
+    return out
+
+
 @mcp.tool(annotations={"title": "Interview — Ask the Human and Record the Election", **_RW_CREATE})
 async def ledger_record_decision(
     ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     option_id: str = "", human_answer: str = "", accept_as_is: bool = False,
-    apply_to_cluster: bool = False, ctx: Context = None,
+    ctx: Context = None,
 ) -> dict:
     """Move a pin to decided/accepted by recording the election the HUMAN made. Never elects.
 
@@ -212,6 +256,10 @@ async def ledger_record_decision(
     Either way the outcome must be one the pin's `question` actually offered. Read it first with
     `interview_next`, or `ledger_summary` for the pin list.
 
+    ONE pin. To settle a whole cluster with one answer, use `ledger_record_policy`: it shows the
+    user the radius before writing, holds back what a rule may not settle, and leaves a `Policy`
+    every cascaded decision points back at.
+
     Args:
         ledger: Path to ledger.json.
         pin_id: The pin being decided.
@@ -220,25 +268,15 @@ async def ledger_record_decision(
         option_id: Id of the elected option, or "freeform". Ignored on the elicitation path.
         human_answer: The user's answer, verbatim. Required when relaying.
         accept_as_is: Leave a design_concern as it is (state `accepted`).
-        apply_to_cluster: Apply the same outcome to the pin's whole cluster.
     """
     prompt = tools.decision_prompt(ledger, pin_id)
     evidence = "transcribed"
 
     if ctx is not None and _client_can_elicit(ctx):
-        # Each choice LEADS with the option id, and the option id is exactly what lands in the
-        # DecisionEvent's `outcome` — so what the user reads is what gets written, and the parse
-        # below takes back the token they were shown. Re-checked against the policy door's failure,
-        # where the elicited message named the rule and never the outcome: here the outcome cannot
-        # go missing without the choice itself going missing. Do not reorder to "label — id": that
-        # breaks the display promise and the parse in the same edit.
-        choices = [f"{o['id']} — {o['label']}" + (f" (→ {o['implication']})" if o["implication"] else "")
-                   for o in prompt["options"]]
-        if prompt["can_accept_as_is"]:
-            choices.append("accept_as_is — leave it as it is")
+        by_choice = _decision_choices(prompt)
         message = f"{prompt['title']}\n\n{prompt['prompt']}"
-        result = await (ctx.elicit(message, str) if not choices
-                        else ctx.elicit(message, choices))
+        result = await (ctx.elicit(message, str) if not by_choice
+                        else ctx.elicit(message, list(by_choice)))
         if not isinstance(result, AcceptedElicitation):
             # Declined and cancelled are not outcomes. Writing one would be the fabrication this
             # whole path exists to make impossible.
@@ -247,14 +285,28 @@ async def ledger_record_decision(
                 f"An unanswered fork is not a decision — ask again, or leave it to the interview."
             )
         human_answer = str(result.data)
-        picked = "freeform" if not choices else human_answer.split(" — ")[0]
+        if not by_choice:
+            picked = "freeform"
+        elif human_answer in by_choice:
+            picked = by_choice[human_answer]
+        else:
+            # The protocol constrains the reply to the enum we sent, so this is a client that did
+            # not honour it. Guessing which option was meant is the failure this whole lookup
+            # replaced; refusing leaves the pin open, which is the correct state for an answer
+            # nobody can attribute.
+            raise ValueError(
+                f"the client answered {human_answer!r}, which is not one of the choices it was "
+                f"offered ({sorted(by_choice)}). {pin_id} stays open: an answer that maps to no "
+                f"option is not an election, and picking the nearest one would be this server "
+                f"electing."
+            )
         evidence = "elicited"
-        accept_as_is = picked == "accept_as_is"
+        accept_as_is = picked is None          # the leave-as-is row, and nothing else, maps to None
         option_id = "" if accept_as_is else picked
 
     return tools.record_decision(ledger, pin_id, option_id, rationale, flip_criteria,
                                  human_answer=human_answer, evidence=evidence,
-                                 accept_as_is=accept_as_is, apply_to_cluster=apply_to_cluster)
+                                 accept_as_is=accept_as_is)
 
 
 @mcp.tool(annotations={"title": "Interview — Expand the Decision Catalog", **_RW_CREATE})
@@ -265,11 +317,17 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     Greenfield's Phase-1 frame step: this creates the forks that `interview_next` then funnels, so
     an unexpanded ledger makes the funnel answer "no questions" rather than "no forks".
 
+    `brief_decisions` commits decisions, and "the brief said so" means nobody was asked — so each
+    one passes the same gate a policy cascade does. The outcome must be an option id that cluster's
+    own fork offers, and a `blocker`/`high` fork is never settled this way. Whatever the brief could
+    not carry comes back in `brief_held_back` (with the reason and the ids it did offer) and stays an
+    open question for the interview. Check that list: a fork you thought was settled may not be.
+
     Args:
         ledger: Path to ledger.json (created if absent — this is the first write).
         project_type: Prunes clusters that do not apply (a fork absent from the type is not a question).
-        brief_decisions: cluster_id -> outcome already settled in the brief; those pins are created
-            and committed immediately, with evidence "brief".
+        brief_decisions: cluster_id -> the OPTION ID that cluster's fork already got in the brief;
+            those pins are created and committed with evidence "brief", unless held back.
     """
     return tools.interview_expand(ledger, project_type, brief_decisions)
 

@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.13). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.14). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -139,16 +139,24 @@ class TestDecisions(unittest.TestCase):
                    flip_signal={"signal": "orders p95", "comparator": ">",
                                 "threshold": "200ms", "window": "7d", "source": "metrics"})
 
-    def test_cluster_decide_applies_to_group_with_per_pin_events(self):
+    def test_one_call_decides_one_pin_and_cannot_fan_out(self):
+        """v0.14. `decide` took `apply_to_cluster`, and one call then wrote the same outcome — and
+        the same `human_answer` — onto every pin sharing the `cluster_id`, past the offered-options
+        rule, past the severity threshold, from an elicitation that named one pin. It is not gated,
+        it is gone: a fan-out is a `Policy` (there is no rung for one that is not), and `apply_policy`
+        does it with a preview and two held-back buckets. Asserted on the signature too, because the
+        parameter coming back is exactly how this regresses."""
+        import inspect
         led = make_ledger()
         a = add_simple_pin(led, cluster_id="cl_sqli", severity="medium")
         b = add_simple_pin(led, cluster_id="cl_sqli", severity="medium")
-        c = add_simple_pin(led, cluster_id="cl_other", severity="medium")
-        events = led.decide(a["id"], "parametrize", "one class, one decision", "new sqli class",
-                            apply_to_cluster=True)
-        self.assertEqual(len(events), 2)
-        self.assertEqual(b["state"], "decided")
-        self.assertEqual(c["state"], "needs_input")   # other cluster untouched
+        self.assertNotIn("apply_to_cluster", inspect.signature(led.decide).parameters,
+                         "a cluster fan-out that carries no Policy can name neither the rule it "
+                         "applied nor the radius the human was shown")
+        event = led.decide(a["id"], "parametrize", "one class, one decision", "new sqli class")
+        self.assertEqual(event["pin_id"], a["id"])
+        self.assertEqual(len(led.data["decision_log"]), 1)
+        self.assertEqual(b["state"], "needs_input")   # the sibling stays open and gets asked
 
     def test_accept_is_design_concern_only(self):
         led = make_ledger()

@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.13). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.14). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -27,7 +27,11 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 - v0.13 those rules bind at the WRITE, so a file written earlier does not satisfy them. Two
   consequences, both handled here rather than at each surface: the rung of a pre-v0.11 cascade is
   READ from the carrier its writer left (`decision_rung`), and the `version` stamp does not rise
-  above what the file's own content conforms to (`nonconforming`). Nothing in the log is rewritten.
+  above what the file's own content conforms to (`nonconforming`). Nothing in the log is rewritten;
+- v0.14 those rules live in ONE predicate instead of in one door. Every write that settles a pin
+  whose own question was never put to the human — the policy cascade, the brief — goes through
+  `unasked_verdict`, and `decide()` no longer fans out over a cluster at all, so one human answer
+  can no longer become four DecisionEvents without a `Policy` to carry the election.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -40,7 +44,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.13"
+SCHEMA_VERSION = "0.14"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -52,7 +56,8 @@ SCHEMA_VERSION = "0.13"
 # not follow, so every ledger on disk from that period says "0.9". That drift was not cosmetic —
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
-READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13")
+READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
+                     "0.14")
 
 KINDS = {
     "contract_mismatch",
@@ -114,6 +119,15 @@ POLICY_EVIDENCE = ("elicited", "transcribed", "brief")
 
 # severities that must never be silently defaulted (the threshold rule, v0.3)
 _NEVER_SILENT = ("blocker", "high")
+
+# A pin these states describe is not open to being settled again by anyone.
+SETTLED_STATES = ("decided", "resolved", "accepted", "deferred")
+
+# What `Ledger.unasked_verdict` can answer, and therefore the buckets every radius over it reports
+# (v0.14). Ordered so a caller can present them the way a human reads them: what it decides first,
+# then the two refusals, then the pins that were never in scope. `policy_preview` builds its return
+# shape from this tuple, so adding a bucket cannot leave one surface reporting four and another five.
+UNASKED_BUCKETS = ("would_decide", "held_back", "not_offered", "excepted", "already_settled")
 
 
 class LedgerError(ValueError):
@@ -420,12 +434,26 @@ class Ledger:
         flip_criteria: str,
         source: str = "interview",
         flip_signal: Optional[dict] = None,
-        apply_to_cluster: bool = False,
         evidence: str = "transcribed",
         human_answer: str = "",
         policy_id: Optional[str] = None,
-    ) -> list[dict]:
-        """Append a DecisionEvent and materialize pin.state (last committed wins).
+    ) -> dict:
+        """Append ONE DecisionEvent for ONE pin and materialize its state (last committed wins).
+
+        One pin, and that is now structural (v0.14). It used to take `apply_to_cluster`, and with it
+        one call wrote the same outcome — and the same `human_answer` — onto every pin sharing the
+        `cluster_id`, with no filter of any kind: a pin offering a different option set, a pin posing
+        no question at all, a `blocker`. The three rules the doors above enforce were bypassed by one
+        boolean, and the reason is worth keeping rather than just the fix: **there is no rung for
+        that write.** `elicited` and `transcribed` describe an answer given about THIS pin; a fan-out
+        gives one answer about several, which is what `cascaded` means — and `cascaded` requires a
+        `Policy` to point at, because the `Policy` is what carries the rule, the quote and the radius
+        the human was shown. An honest cluster fan-out therefore IS a policy. It is
+        `apply_policy`, reached through `mcp:ledger_record_policy`, and the funnel's "200 findings →
+        one decision" runs there with a preview, a held-back list and a `not_offered` list.
+
+        Returns the event (a dict, not a list of one): a call that can write exactly one event should
+        not have a return shape that suggests otherwise.
 
         Design decision 9: every decision carries flip_criteria. Neutrality: only
         `interview` or a user-set `policy:<id>` may commit — the brainstorm, the
@@ -484,36 +512,28 @@ class Ledger:
                      f"flip_signal.source must be one of {FLIP_SIGNAL_SOURCES}")
 
         pin = self.pin(pin_id)
-        targets = [pin]
-        if apply_to_cluster and pin.get("cluster_id"):
-            targets += [p for p in self.data["pins"]
-                        if p.get("cluster_id") == pin["cluster_id"] and p["id"] != pin_id]
-
-        events = []
-        for target in targets:
-            event = {
-                "id": self._next_id("ev_", self.data["decision_log"]),
-                "pin_id": target["id"],
-                "timestamp": _now(),
-                "outcome": outcome,
-                "rationale": rationale,
-                "flip_criteria": flip_criteria,
-                "source": source,
-                "evidence": evidence,
-                "policy_hash": self._policy_hash(),
-            }
-            if policy_id:
-                event["policy_id"] = policy_id
-            if human_answer:
-                event["human_answer"] = human_answer
-            if flip_signal is not None:
-                event["flip_signal"] = dict(flip_signal)
-            self.data["decision_log"].append(event)
-            target["state"] = "decided"
-            target.pop("substate", None)
-            target["decision"] = {"event_id": event["id"], "outcome": outcome}
-            events.append(event)
-        return events
+        event = {
+            "id": self._next_id("ev_", self.data["decision_log"]),
+            "pin_id": pin["id"],
+            "timestamp": _now(),
+            "outcome": outcome,
+            "rationale": rationale,
+            "flip_criteria": flip_criteria,
+            "source": source,
+            "evidence": evidence,
+            "policy_hash": self._policy_hash(),
+        }
+        if policy_id:
+            event["policy_id"] = policy_id
+        if human_answer:
+            event["human_answer"] = human_answer
+        if flip_signal is not None:
+            event["flip_signal"] = dict(flip_signal)
+        self.data["decision_log"].append(event)
+        pin["state"] = "decided"
+        pin.pop("substate", None)
+        pin["decision"] = {"event_id": event["id"], "outcome": outcome}
+        return event
 
     def set_readiness(
         self,
@@ -665,6 +685,46 @@ class Ledger:
         return any(o.get("id") == outcome
                    for o in ((pin.get("question") or {}).get("options") or []))
 
+    def unasked_verdict(self, pin: dict, outcome: str,
+                        excepted: frozenset[str] = frozenset()) -> str:
+        """**THE predicate.** May this outcome be written onto this pin, given that this pin's own
+        question was never put to the human? Returns the bucket, one of `UNASKED_BUCKETS` (v0.14).
+
+        Every write that settles a pin the human was not shown goes through exactly this call —
+        the policy cascade (`apply_policy`, via `policy_preview`) and the project brief
+        (`interview.expand_catalog`). It exists because the rule kept being implemented *per door*:
+        v0.12 put the offered-options check on the policy door after finding it only on the
+        single-pin door, and a reviewer then got the identical violation through two doors nobody had
+        looked at — `decide(apply_to_cluster=True)` and `interview_expand(brief_decisions=...)`.
+        A rule that lives in a door has to be remembered by every new caller, and one always does
+        not; a rule that lives in a predicate is passed by construction, and this repo's invariant
+        suite enumerates the callers of `decide` from the AST, so a new one that skips this fails.
+
+        The two rules it composes are the funnel's, and neither is new:
+
+          * **the severity threshold** — `blocker`/`high` are never *silently* defaulted
+            (`core/interview-funnel.md` §5). Silence is the operative word and the reason this
+            predicate is about being unasked rather than about writing: a blocker answered pin by pin
+            through `record_decision` is exactly right, which is why that door does not call this.
+          * **offered options** — `question_offers`, the same function and the same carrier
+            (`question.options[].id`) the single-pin door checks. `allow_freeform` does not widen it
+            here: freeform is legitimate where the human's own words ARE that pin's outcome, and by
+            construction they are not, on a pin nobody put to them.
+
+        Order matters and is asserted rather than assumed: settled and excepted first (those are not
+        refusals, they are pins outside the radius), then the threshold, then the options. A reader
+        asking "why is this pin still open" gets one reason, and the strongest one.
+        """
+        if pin["state"] in SETTLED_STATES:
+            return "already_settled"
+        if pin["id"] in excepted:
+            return "excepted"
+        if pin["severity"] in _NEVER_SILENT:
+            return "held_back"          # threshold rule — never silent
+        if not self.question_offers(pin, outcome):
+            return "not_offered"        # offered-options rule — never invented
+        return "would_decide"
+
     def policy_preview(self, applies_to: dict, default_outcome: str,
                        exceptions: Optional[list[str]] = None) -> dict:
         """What a policy with this scope and this outcome WOULD do, without doing it. Read-only.
@@ -683,23 +743,16 @@ class Ledger:
         scope but do not offer it land in `not_offered` and stay open — held back exactly as
         `blocker`/`high` pins are, for a different reason that is named separately rather than
         merged into one bucket a reader cannot act on.
+
+        v0.14: this is now only the SCOPE — which pins the policy matches. The per-pin judgment is
+        `unasked_verdict`, shared with the brief, so the two cannot answer differently.
         """
-        excepted_ids = set(exceptions or [])
-        out: dict = {"would_decide": [], "held_back": [], "not_offered": [],
-                     "excepted": [], "already_settled": []}
+        excepted = frozenset(exceptions or [])
+        out: dict = {bucket: [] for bucket in UNASKED_BUCKETS}
         for pin in self.data["pins"]:
             if not all(pin.get(k) == v for k, v in applies_to.items()):
                 continue
-            if pin["state"] in ("decided", "resolved", "accepted", "deferred"):
-                out["already_settled"].append(pin["id"])
-            elif pin["id"] in excepted_ids:
-                out["excepted"].append(pin["id"])
-            elif pin["severity"] in _NEVER_SILENT:
-                out["held_back"].append(pin["id"])       # threshold rule — never silent
-            elif not self.question_offers(pin, default_outcome):
-                out["not_offered"].append(pin["id"])     # offered-options rule — never invented
-            else:
-                out["would_decide"].append(pin["id"])
+            out[self.unasked_verdict(pin, default_outcome, excepted)].append(pin["id"])
         return out
 
     def apply_policy(self, policy: dict) -> dict:
@@ -713,7 +766,9 @@ class Ledger:
         Offered-options rule (v0.12): a matching pin whose own `question` does not offer
         `default_outcome` is held back too. The single-pin door has always refused an outcome the
         pin's question never offered; a policy decides MORE pins than a single decision does, so it
-        cannot be governed less.
+        cannot be governed less. Both rules are `unasked_verdict` (v0.14) — this method states them
+        in prose and applies not one of them itself, which is what stops the prose and the write from
+        drifting.
 
         One policy, not all of them (v0.12). This used to be `apply_policies()`, which re-ran every
         policy in the ledger on every call. Already-settled pins are skipped, so the only pins a

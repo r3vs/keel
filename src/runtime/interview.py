@@ -10,7 +10,9 @@ over `runtime/ledger.py`; it adds no state of its own (the ledger stays the sing
 Both disciplines from the catalog playbook are enforced here:
 1. **Prune by project type** before asking anything (a CLI has no rendering fork).
 2. **Skip what the brief already decided** — recorded as pre-committed `DecisionEvent`s (source
-   `interview`, so neutrality holds), never re-asked.
+   `interview`, so neutrality holds), never re-asked. Skipping is a *write*, so it passes the one
+   predicate every unasked write passes (`Ledger.unasked_verdict`): the brief settles a fork only
+   with one of that fork's own options, and never a `blocker`/`high` one. See `expand_catalog`.
 """
 from __future__ import annotations
 
@@ -53,12 +55,27 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
     - `brief_decisions` maps cluster_id → an already-decided outcome; those pins are created and
       immediately committed (pre-decided by the brief), never left as open questions.
 
+    **`brief` is a rung, not a hole (v0.14).** It means *answered from the project brief, without
+    asking* — which is exactly why it is held to `Ledger.unasked_verdict`, the same predicate the
+    policy cascade passes: nobody was asked here either. So the outcome must be an option id the
+    pin's own question offers, and a `blocker`/`high` fork is never settled this way. Before that,
+    this was the third door onto `decide`, and the weakest: an agent-supplied dict wrote any string
+    onto any cluster at any severity, so `{"persistence": "mongodb", "identity": "roll our own
+    crypto"}` committed `high` pins to outcomes their questions never offered, with `evidence:
+    brief` claiming a document that was never quoted. A brief that really did settle the persistence
+    fork settles it with one of the fork's own options; anything else is a fork the brief left open,
+    and the funnel exists to ask those.
+
+    A held-back cluster is NOT dropped: its pin is created open, marked `resolution_mode: asked`,
+    and named in the return, so an agent reading the result knows the brief did not carry it rather
+    than assuming it did.
+
     depends_on is wired from catalog cluster ids to the freshly-created pin ids. Returns
-    {created: [pin_ids], pruned: [cluster_ids], pre_decided: [cluster_ids]}.
+    {created, pruned, pre_decided, brief_held_back, id_map}.
     """
     brief_decisions = brief_decisions or {}
     id_map: dict[str, str] = {}       # catalog cluster id -> ledger pin id
-    created, pruned, pre_decided = [], [], []
+    created, pruned, pre_decided, held_back = [], [], [], []
 
     for cluster in sorted(catalog["clusters"], key=lambda c: c["order"]):
         cid = cluster["id"]
@@ -81,16 +98,26 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
             cluster_id=f"cl_{cid}",
         )
         id_map[cid] = pin["id"]
-        if cid in brief_decisions:
-            ledger.decide(pin["id"], outcome=brief_decisions[cid],
-                          rationale="pre-decided by the brief",
-                          flip_criteria=f"if the brief's {cid} choice is contradicted downstream",
-                          evidence="brief")
-            pre_decided.append(cid)
-        else:
+        if cid not in brief_decisions:
             created.append(pin["id"])
+            continue
+        outcome = brief_decisions[cid]
+        verdict = ledger.unasked_verdict(pin, outcome)
+        if verdict != "would_decide":
+            # Held back for the reason the predicate gives, and the pin joins the questions to ask.
+            pin["resolution_mode"] = "asked"
+            created.append(pin["id"])
+            held_back.append({"cluster_id": cid, "pin_id": pin["id"], "outcome": outcome,
+                              "reason": verdict, "severity": pin["severity"],
+                              "offers": [o["id"] for o in (question or {}).get("options", [])]})
+            continue
+        ledger.decide(pin["id"], outcome=outcome,
+                      rationale="pre-decided by the brief",
+                      flip_criteria=f"if the brief's {cid} choice is contradicted downstream",
+                      evidence="brief")
+        pre_decided.append(cid)
     return {"created": created, "pruned": pruned, "pre_decided": pre_decided,
-            "id_map": id_map}
+            "brief_held_back": held_back, "id_map": id_map}
 
 
 def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> dict:

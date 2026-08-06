@@ -45,6 +45,11 @@ Summary of what matters here:
   that already exists: the rung of a pre-v0.11 cascade is read from the carrier its writer left
   (never rewritten — the log is immutable), and `version` is a floor that rises only when the file's
   own content conforms to the newer rules.
+- v0.14 moves those rules out of the doors and into ONE predicate, because guarding a door only
+  guards that door: the same violation went through a cluster fan-out flag and through the project
+  brief. Every write that settles a pin whose fork was never put to the human — the cascade, the
+  brief — asks `unasked_verdict`; a decision writes one event for one pin; and a cluster-wide answer
+  can only be a `Policy`, which is the one thing that records the rule, the quote and the radius.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen.
 

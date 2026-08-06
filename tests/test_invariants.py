@@ -1,4 +1,4 @@
-"""Two BEHAVIORAL invariant tests — not unit tests (Block 4 of docs/design/sota-alignment.md).
+"""Three BEHAVIORAL invariant tests — not unit tests (Block 4 of docs/design/sota-alignment.md).
 
 The difference matters and is the reason these live in their own file. A unit test asks whether a
 function returns the right value. These ask whether a *rule the package promises* actually holds at
@@ -9,11 +9,16 @@ the seam where it would be broken:
    when the gate never ran, which is the exact way a security control rots into decoration.
 2. every state-mutating path on the ledger goes through a **governed channel** — asserted, rather
    than agreed. Adding a mutator without deciding its channel fails here.
+3. every path that reaches `Ledger.decide` is **enumerated from the source** and reaches the single
+   predicate. 2 asks whether a mutator has a channel; 3 asks the question that was actually being
+   dodged — *how many ways in are there*. It is computed, not listed from memory, because the last
+   three times this rule was fixed it was fixed at a door, and the next door did not know.
 
 Stdlib unittest (also runs under pytest).
 """
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import os
@@ -93,7 +98,11 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     #: is the only thing that elects, so `decide` and `accept` having no tool is the design, not a
     #: gap — exposing them would hand an agent the one power the whole package withholds.
     HUMAN_ONLY = {
-        "decide": "reached only through record_decision, which records an election and cannot make one",
+        "decide": "no tool of its own; every path to it is enumerated and gated by "
+                  "TestEveryPathToDecideIsGated below — which is the honest form of this claim. It "
+                  "used to read 'reached only through record_decision', and that was false: "
+                  "expand_catalog and apply_policy also reach it, and a fan-out flag on "
+                  "record_decision reached it four times per call",
         "accept": "same channel: record_decision(accept_as_is=True), gated to design_concern",
         "add_policy": "reached only through record_policy, which records a policy the human elected "
                       "— from an offer taken verbatim, or quoted — and cannot set one",
@@ -117,7 +126,7 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
         readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview",
-                    "question_offers"}
+                    "question_offers", "unasked_verdict"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -247,6 +256,200 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         mutators = self._mutators()
         stale = sorted((set(self.HUMAN_ONLY) | set(self.INTERNAL)) - mutators)
         self.assertEqual(stale, [], "these exemptions name methods that are gone")
+
+
+class TestEveryPathToDecideIsGated(unittest.TestCase):
+    """Invariant 3 — CLOSE THE CLASS: enumerate every path to `Ledger.decide` structurally, and
+    assert each one reaches the single predicate.
+
+    Why this class exists, and why it is AST and not prose. The offered-options rule was implemented
+    once per door: on the single-pin door, then (a version later, after it was found missing) on the
+    policy door. An adversarial reviewer then drove the identical violation through **two doors
+    nobody had looked at** — `decide(apply_to_cluster=True)`, which fanned one answer across a whole
+    cluster, and `interview_expand(brief_decisions=...)`, which wrote any string onto any cluster at
+    any severity. 617 tests and eight green linters missed all of it, because every test asked
+    whether a *known* door was guarded.
+
+    So the assertion is not "these doors are guarded". It is **"these are all the doors"**, computed
+    from the source rather than remembered, plus "each reaches the predicate". A door added later
+    fails `test_the_enumeration_is_complete` on the day it is added.
+
+    Scope is what ships and can write: `src/runtime/*.py` and `src/mcp/*.py`. `scripts/` and
+    `tests/` call `decide` freely and are dev-only by construction — they are not a channel an agent
+    reaches on any host.
+    """
+
+    ROOTS = ("runtime", "mcp")
+    #: The single predicate, in its two halves. `unasked_verdict` composes the severity threshold
+    #: with `question_offers`; `question_offers` is the offered-options rule itself, and is what the
+    #: single-pin door reaches directly (the threshold does not apply where the human WAS asked).
+    PREDICATES = ("unasked_verdict", "question_offers")
+
+    #: Every function that calls `Ledger.decide`, and the call chain by which it reaches a predicate.
+    #: Each hop is checked as an AST edge, so the chain cannot be aspirational. Hops are
+    #: module-qualified: `policy_preview` names both a Ledger method and an MCP tool, and a chain
+    #: that resolved to the wrong one would pass while proving nothing.
+    DECIDE_CALLERS = {
+        ("ledger.py", "accept"): [],
+        ("ledger.py", "apply_policy"): [("ledger.py", "policy_preview"),
+                                        ("ledger.py", "unasked_verdict")],
+        ("interview.py", "expand_catalog"): [("ledger.py", "unasked_verdict")],
+        ("tools.py", "record_decision"): [("ledger.py", "question_offers")],
+    }
+    #: The one caller with an empty chain needs its reason here, or "no gate" reads as an oversight.
+    UNGATED = {
+        ("ledger.py", "accept"): "not a door: `accept` is reached only from record_decision's "
+                                 "accept_as_is branch, which gates it on kind == design_concern and "
+                                 "on the human having been shown this pin. Its outcome is `keep`, "
+                                 "which is the leave-as-is answer rather than an elected option.",
+    }
+
+    def _modules(self) -> dict:
+        base = os.path.join(os.path.dirname(__file__), "..", "src")
+        out = {}
+        for root in self.ROOTS:
+            for path in sorted(os.listdir(os.path.join(base, root))):
+                if path.endswith(".py"):
+                    full = os.path.join(base, root, path)
+                    with open(full, encoding="utf-8") as fh:
+                        out[path] = ast.parse(fh.read(), filename=full)
+        return out
+
+    @staticmethod
+    def _functions(tree: ast.AST) -> dict:
+        """name -> node, for every def in the module (methods included)."""
+        return {n.name: n for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+    @staticmethod
+    def _calls(node: ast.AST) -> set:
+        """The names this function calls, by the final component: `x.decide()` and `decide()` both
+        count as `decide`. Nested defs are excluded — they are their own callers."""
+        out, inner = set(), {c for n in ast.iter_child_nodes(node)
+                             for c in ast.walk(n)
+                             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        for child in ast.walk(node):
+            if child in inner or not isinstance(child, ast.Call):
+                continue
+            func = child.func
+            if isinstance(func, ast.Attribute):
+                out.add(func.attr)
+            elif isinstance(func, ast.Name):
+                out.add(func.id)
+        return out
+
+    def _callers_of(self, name: str) -> set:
+        found = set()
+        for module, tree in self._modules().items():
+            for fn_name, fn in self._functions(tree).items():
+                if fn_name == name:
+                    continue                       # the definition itself is not a caller
+                if name in self._calls(fn):
+                    found.add((module, fn_name))
+        return found
+
+    def test_the_enumeration_is_complete(self):
+        """The load-bearing assertion of this file: set EQUALITY against the source."""
+        self.assertEqual(
+            self._callers_of("decide"), set(self.DECIDE_CALLERS),
+            "a path to Ledger.decide was added or removed. Every one must be declared here WITH the "
+            "chain by which it reaches the predicate — that is what stops the next door from being "
+            "the third one nobody looked at.")
+
+    def test_every_path_reaches_the_predicate(self):
+        modules = self._modules()
+        for (module, caller), chain in sorted(self.DECIDE_CALLERS.items()):
+            with self.subTest(caller=f"{module}::{caller}"):
+                if not chain:
+                    self.assertIn((module, caller), self.UNGATED,
+                                  "a path with no gate needs a stated reason, or it is a hole")
+                    continue
+                self.assertIn(chain[-1][1], self.PREDICATES,
+                              "a chain must END at the predicate, not merely at something plausible")
+                current = self._functions(modules[module])[caller]
+                for hop_module, hop in chain:
+                    self.assertIn(hop, self._calls(current),
+                                  f"{caller} does not call {hop} — the declared chain is prose")
+                    current = self._functions(modules[hop_module])[hop]
+
+    def test_the_predicate_is_one_predicate_and_not_two(self):
+        """`unasked_verdict` must be built ON `question_offers`, not beside it. Two functions that
+        happen to agree today are the shape this whole class exists to refuse."""
+        fns = self._functions(self._modules()["ledger.py"])
+        self.assertIn("question_offers", self._calls(fns["unasked_verdict"]))
+
+    # -- and the same four paths, exercised ---------------------------------
+
+    FORK = {"prompt": "Consolidate?",
+            "options": [{"id": "keep", "label": "leave it"},
+                        {"id": "extract", "label": "extract a helper"}]}
+    OTHER = {"prompt": "Which layer is truth?",
+             "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
+    PROV = [{"source": "recon", "detail": "x"}]
+
+    def _cluster(self):
+        led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(kind="design_concern", title="the pin the human saw", severity="low",
+                    confidence="inferred", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"current_design": "copy-paste", "concern": "drift"}, question=self.FORK)
+        led.add_pin(kind="contract_mismatch", title="offers only db|api", severity="low",
+                    confidence="extracted", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"db": "int", "api": "string"}, question=self.OTHER)
+        led.add_pin(kind="defect", title="poses no question at all", severity="low",
+                    confidence="extracted", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"description": "d"})
+        led.add_pin(kind="design_concern", title="a blocker", severity="blocker",
+                    confidence="inferred", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"current_design": "x", "concern": "y"}, question=self.FORK)
+        led.save()
+        return led
+
+    def test_the_single_pin_door_decides_one_pin(self):
+        import tools as mcp_tools
+        led = self._cluster()
+        out = mcp_tools.record_decision(led.path, "pin_0001", "extract", rationale="r",
+                                        flip_criteria="a second caller shape appears",
+                                        human_answer="yes, pull the helper out")
+        after = ledgermod.Ledger(led.path)
+        self.assertEqual((out["state"], len(after.data["decision_log"])), ("decided", 1))
+        self.assertEqual([p["state"] for p in after.data["pins"]],
+                         ["decided", "needs_input", "detected", "needs_input"],
+                         "one human answer, one pin — the siblings are still open questions")
+
+    def test_the_cluster_fan_out_is_not_a_parameter_anywhere(self):
+        """Asserted at both boundaries an agent can reach, because the flag was declared on the
+        server, forwarded by the tool and applied by the library — three files, one hole."""
+        import inspect
+        import tools as mcp_tools
+        for fn in (ledgermod.Ledger.decide, mcp_tools.record_decision):
+            self.assertNotIn("apply_to_cluster", inspect.signature(fn).parameters,
+                             f"{fn.__qualname__} can fan one answer across pins nobody was shown")
+
+    def test_the_policy_cascade_holds_back_what_the_predicate_refuses(self):
+        import tools as mcp_tools
+        led = self._cluster()
+        out = mcp_tools.record_policy(led.path, rule="extract the helper everywhere",
+                                      default_outcome="extract",
+                                      applies_to={"cluster_id": "cl_dupe"},
+                                      human_answer="extract it wherever it repeats")
+        self.assertEqual(out["cascaded"], ["pin_0001"])
+        self.assertEqual(out["not_offered"], ["pin_0002", "pin_0003"])
+        self.assertEqual(out["held_back"], ["pin_0004"])
+
+    def test_the_brief_is_held_to_the_same_predicate(self):
+        import interview
+        led = self._cluster()
+        catalog = {"clusters": [
+            {"id": "persistence", "order": 1, "kind": "open_decision", "severity": "high",
+             "title": "Persistence", "options": [{"id": "relational", "label": "SQL"}]},
+            {"id": "sync", "order": 2, "kind": "open_decision", "severity": "medium",
+             "title": "Sync", "options": [{"id": "reqresp", "label": "request/response"}]}]}
+        result = interview.expand_catalog(led, catalog, project_type="web-saas", brief_decisions={
+            "persistence": "relational",              # offered, but `high` — the threshold holds
+            "sync": "mongodb"})                       # medium, but nothing offers it
+        self.assertEqual(result["pre_decided"], [])
+        self.assertEqual([h["reason"] for h in result["brief_held_back"]],
+                         ["held_back", "not_offered"])
 
 
 class TestGovernanceIsStamped(unittest.TestCase):

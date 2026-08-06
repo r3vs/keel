@@ -93,3 +93,20 @@ took a two-value accept, and stamped a `default_outcome` the caller had composed
 the cluster — the strong `elicited` rung on a value the human was never shown. What the message
 omits was not elected, whatever rung the write claims; so the elicitation names the outcome, and the
 outcome has to be one the pin offers.
+
+**And it is one predicate, not a rule each door remembers.** Guarding the policy door was not
+enough: the same violation went through two others nobody had looked at — a cluster fan-out flag on
+the single-pin door, and the project brief's `brief_decisions`, which wrote any string onto any
+cluster at any severity, `blocker` included. A rule that lives in a door has to be re-implemented by
+every new caller, and one of them always is not. So there is exactly one question, asked in one
+place (`Ledger.unasked_verdict`): *may this outcome land on this pin, given that this pin's own
+question was never put to the human?* The severity threshold and the offered-options rule are its
+two halves. The policy cascade asks it, the brief asks it, and anything added later must ask it —
+the callers are enumerated from the source itself, so a new one that skips it fails the gate.
+The single-pin door does not ask it, for the one reason that holds: there the human WAS shown this
+pin, so the threshold does not apply — and the offered-options half is literally the same function.
+
+Which is why there is no third door and no fan-out flag. A fan-out **is** a policy: one answer
+covering pins nobody was shown individually is exactly what a `Policy` records — the rule, the
+quote, and the radius — and `cascaded` is the only rung that describes it honestly. "200 findings →
+one decision" is real and it runs there, with the radius in front of the user before the write.

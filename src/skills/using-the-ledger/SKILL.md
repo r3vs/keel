@@ -79,6 +79,13 @@ That is the same check `ledger_record_decision` makes for one pin, and a policy 
 than one decision does, so it is not governed less. It cascades **once**, over the radius the user
 was shown; pins found later are asked, or covered by a policy elected with them in view.
 
+**One predicate, every door.** That rule plus the severity threshold is one question asked in one
+place: *may this outcome land on a pin whose own fork was never put to the human?* Two tools reach
+it — the policy cascade, and `interview_expand`'s `brief_decisions`, whose held-back forks come back
+in `brief_held_back` and get asked. There is no cluster flag on `ledger_record_decision`: it decides
+the one pin the user answered about, and a fan-out is a policy, which is the only thing that can
+name the rule and the radius it covers.
+
 Use it. A pin that never reaches `decided` blocks its own remediation, its dependents, and the
 reopen loop — the analysis was done and none of it can land.
 

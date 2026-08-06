@@ -185,6 +185,10 @@ authoring source — keep them in step). **Four tools read it, and they are not 
   type, skips the forks the brief already decided (pre-committed with `evidence: "brief"`, never
   re-asked), materializes one pin per surviving fork, and wires `depends_on` to the created pin ids.
   This is the only one that **writes the forks**; without it there is nothing to funnel.
+  `brief_decisions` maps a cluster id to **one of that cluster's own option ids** and is held to the
+  same gate a policy cascade is — "the brief said so" means nobody was asked, so a `blocker`/`high`
+  fork is never settled that way and neither is an outcome the fork does not offer. Whatever is held
+  back comes back in `brief_held_back` and is asked in Phase 2.
 - `interview_seed_policies(ledger, project_type)` returns the per-cluster `default_policy` entries
   as the interview's opening offers, each with the pins it would decide and the option id
   (`default_policy_outcome`) that accepting it writes. It writes nothing. Clusters whose default no

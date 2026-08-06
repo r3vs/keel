@@ -112,8 +112,14 @@ never does.
 > - **`accept_as_is: true`** is how "leave it as it is" is recorded, and only for a `design_concern`
 >   — an `ambiguity` or a `contract_mismatch` has nothing to keep.
 >
-> `apply_to_cluster: true` writes the same outcome across the cluster the funnel collapsed, which is
-> what makes "200 findings → one decision" real rather than rhetorical.
+> **It decides ONE pin.** "200 findings → one decision" is real, and it is the tool above:
+> `mcp:ledger_record_policy`, which shows the user the pins the rule would decide *before* writing,
+> holds back the ones it may not settle, and leaves a `Policy` every cascaded decision points back
+> at. This door briefly took an `apply_to_cluster` flag instead, and that flag is exactly the shape
+> of the mistake this playbook warns about everywhere else: one answer, about one pin, stamped onto
+> every pin sharing the `cluster_id` — past the offered-options rule, past the severity threshold,
+> with the same quote copied onto pins the user was never shown. A fan-out has to name the rule it
+> applies and the radius it covers, and the thing that does that **is** a policy.
 
 > **Composability (optional):** a coaching layer — the `learning-layer` skill — can wrap this
 > surface non-invasively: capture the user's own spec attempt *before* the derived `to_be` is

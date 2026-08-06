@@ -75,11 +75,43 @@ class TestExpand(unittest.TestCase):
     def test_brief_decided_forks_are_pre_committed_not_asked(self):
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
+                                          brief_decisions={"client": "ssr"})
+        self.assertIn("client", result["pre_decided"])
+        client = next(p for p in led.data["pins"] if p["title"].startswith("Client"))
+        self.assertEqual(client["state"], "decided")
+        self.assertEqual(client["decision"]["outcome"], "ssr")
+        self.assertEqual(led.data["decision_log"][-1]["evidence"], "brief")
+
+    def test_the_brief_cannot_settle_a_fork_with_an_outcome_it_never_offered(self):
+        """v0.14. This was the third door onto `decide`, and the quietest: an agent-supplied dict
+        wrote any string onto any cluster at any severity, with `evidence: brief` claiming a document
+        nobody quoted. Reproduced verbatim from the review."""
+        led = fresh_ledger()
+        result = interview.expand_catalog(led, self.cat, project_type="web-saas", brief_decisions={
+            "persistence": "mongodb — an outcome no option offers",
+            "identity": "roll our own crypto"})
+        self.assertEqual(result["pre_decided"], [])
+        self.assertEqual(led.data["decision_log"], [],
+                         "the brief is a rung, not a hole — nothing here was ever put to the user")
+        for pin in led.data["pins"]:
+            if pin["title"].startswith(("Persistence", "Identity")):
+                self.assertEqual(pin["state"], "needs_input")
+                self.assertEqual(pin["resolution_mode"], "asked")
+        held = {h["cluster_id"]: h for h in result["brief_held_back"]}
+        self.assertEqual(set(held), {"persistence", "identity"})
+        self.assertIn("relational", held["persistence"]["offers"])
+
+    def test_the_severity_threshold_binds_the_brief_too(self):
+        """`brief` means nobody was asked, which is the definition of a silent default — so the
+        blocker/high rule applies here exactly as it does to a policy cascade, even when the outcome
+        IS one of the fork's own options."""
+        led = fresh_ledger()
+        result = interview.expand_catalog(led, self.cat, project_type="web-saas",
                                           brief_decisions={"persistence": "relational"})
-        self.assertIn("persistence", result["pre_decided"])
-        persistence = next(p for p in led.data["pins"] if p["title"].startswith("Persistence"))
-        self.assertEqual(persistence["state"], "decided")
-        self.assertEqual(persistence["decision"]["outcome"], "relational")
+        self.assertEqual(result["pre_decided"], [])
+        held = result["brief_held_back"][0]
+        self.assertEqual((held["cluster_id"], held["reason"], held["severity"]),
+                         ("persistence", "held_back", "high"))
 
     def test_pruned_cluster_with_dependents_still_wires_surviving_deps(self):
         # client depends_on api_contract; in an api-service, client is pruned but api survives

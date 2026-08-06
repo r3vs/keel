@@ -56,9 +56,19 @@ For each live, undecided fork, materialize one `open_decision` pin (schema: `ref
 It reads the machine form of the catalog, prunes by the `project_type` from Step 1, creates one pin
 per surviving fork with the catalog's options, implications, `cluster_id`, `severity` and
 `depends_on` already wired to the freshly-created pin ids, and takes the Step-2 givens as
-`brief_decisions` (cluster id → the outcome the brief already settled), which it commits as
-pre-decided with `evidence: "brief"` instead of asking again. It returns `created` / `pruned` /
-`pre_decided`, which is the audit of what Steps 1–2 actually did.
+`brief_decisions` (cluster id → **the option id** that fork already got in the brief), which it
+commits as pre-decided with `evidence: "brief"` instead of asking again. It returns `created` /
+`pruned` / `pre_decided` / `brief_held_back`, which is the audit of what Steps 1–2 actually did.
+
+**`brief` is a rung, not a shortcut, and `brief_held_back` is where that bites.** It means
+*answered from the brief, without asking* — so each one passes the same gate a policy cascade
+passes: the outcome must be one of that fork's **own option ids** (`"relational"`, not *"we'll use
+Mongo"*), and a `blocker`/`high` fork is never settled this way, because the whole point of the rung
+is that nobody was asked. Anything the brief could not carry comes back in `brief_held_back` with
+the reason (`held_back` = severity, `not_offered` = the fork does not offer that outcome) and the
+ids it does offer, and stays an open question. **Read that list before Phase 2**: a fork you
+recorded as settled in Step 2 may be one the brief only gestured at, and the interview is where it
+gets settled properly.
 
 Then call `interview_seed_policies` for the catalog's per-cluster default policies. They are
 **offers**, not writes — Phase 2 opens with them and the user elects; nothing lands in the ledger
