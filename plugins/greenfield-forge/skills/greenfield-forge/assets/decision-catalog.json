@@ -32,6 +32,7 @@
       ],
       "depends_on": ["domain"],
       "default_policy": "one relational datastore until a concrete need proves otherwise; schema-first",
+      "default_policy_outcome": "relational",
       "prune_for": ["library", "static-site"]
     },
     {
@@ -48,6 +49,7 @@
       ],
       "depends_on": ["domain"],
       "default_policy": "third-party identity unless there's a reason to own it; single-tenant until a second tenant is real",
+      "default_policy_outcome": "third_party",
       "prune_for": ["cli", "library", "static-site"]
     },
     {
@@ -77,6 +79,7 @@
       ],
       "depends_on": ["api_contract"],
       "default_policy": "server-render unless interactivity genuinely demands a SPA — client-heavy by exception, not default",
+      "default_policy_outcome": "ssr",
       "prune_for": ["cli", "library", "api-service"]
     },
     {
@@ -89,6 +92,7 @@
       ],
       "depends_on": ["client"],
       "default_policy": "elect a minimal DTCG token set from day one so design drift is a contract breach a CI check catches, not taste; skip only for headless/API-only",
+      "default_policy_outcome": "capture_dtcg",
       "prune_for": ["cli", "library", "api-service"]
     },
     {
@@ -102,6 +106,7 @@
       ],
       "depends_on": ["domain", "api_contract"],
       "default_policy": "synchronous request/response until a concrete latency or decoupling need justifies a queue; no event bus in v1",
+      "default_policy_outcome": "reqresp",
       "prune_for": ["static-site"]
     },
     {
@@ -114,6 +119,7 @@
       ],
       "depends_on": ["domain"],
       "default_policy": "modular monolith; split to services only when a module has a proven independent scaling or ownership need",
+      "default_policy_outcome": "modular_monolith",
       "prune_for": ["cli", "library", "static-site"]
     },
     {

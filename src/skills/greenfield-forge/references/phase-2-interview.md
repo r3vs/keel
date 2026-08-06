@@ -16,16 +16,42 @@ The pins are **open decisions**, not code findings. So:
   - "Server-render unless interactivity genuinely demands a SPA."
   - "Generate every layer from one contract; never hand-duplicate a shape."
   Each becomes a `Policy` that auto-resolves the matching long-tail forks by default; the user
-  overrides by exception.
+  overrides by exception. The accepted ones are written by `mcp:ledger_record_policy` — take the
+  offer with `offer_id` alone (its rule, scope and outcome are the catalog's, and restating them is
+  refused), name the forks the user pulled out in `exceptions`, and the cascade runs in the same
+  call. High-fan-out forks stay `asked`: the threshold rule holds them back, which is why a policy
+  never quietly settles the domain model.
+
+  The rule above is the sentence the user reads; what gets **written** on each pin is the offer's
+  `default_outcome`, one of that cluster's own option ids (`"relational"`, `"modular_monolith"`).
+  Put both to the user. A pin whose question does not offer it is held back in `not_offered` and
+  stays a question — the same refusal `ledger_record_decision` makes for one pin, applied where a
+  single answer would otherwise carry a whole cluster.
 - **Information-gain order is the catalog order**: domain model and persistence first (they fan
   out to everything downstream), delivery and observability last. Answering "what are the core
   entities and what's in v1" collapses more of the tree than any other question — ask it first.
 - **Options come from the catalog**, each carrying its downstream implication, so the user sees
   what a choice commits them to before choosing.
 
-> **The frame is code, not a script to improvise.** The `interview_next` tool expands the decision
-> catalog into `open_decision` / `acceptance_criterion` pins and seeds the per-cluster default
-> policies, then returns the funnelled view in catalog order, threshold already enforced.
+> **The frame is code, not a script to improvise — but it is four tools, not one.**
+> - `interview_expand` **materializes** the catalog as `open_decision` / `acceptance_criterion`
+>   pins. Phase 1 runs it (`references/phase-1-frame.md`); run it here if you are entering the
+>   interview on an unexpanded ledger, because the funnel can only compress pins that exist.
+> - `interview_seed_policies` returns the catalog's per-cluster default policies as the **offers**
+>   you open with, each carrying the pins it would decide. It writes nothing: a `Policy` enters the
+>   ledger only when the user elects one, because a policy then cascades outcomes over the
+>   medium/low tail — seeding them unasked would be an agent deciding at scale. Its
+>   `no_default_outcome` list is the clusters that state a default no one option carries; those are
+>   asked, not offered.
+> - `ledger_record_policy` is what writes the one they elect, and runs the cascade. Offer → answer →
+>   this call; skip it and the accepted policy exists only in the conversation, so nothing is
+>   compressed and every fork it covered comes back as its own question. It records, it does not
+>   elect: `offer_id` alone for a catalog offer, the user's words verbatim when you are relaying,
+>   and the server asks them itself where the host can elicit.
+> - `interview_next` returns the funnelled view in catalog order, threshold already enforced. It
+>   only reads, so on an unexpanded ledger it answers "no questions" — which is not the same fact as
+>   "no forks", and reading it as one is how a whole design goes un-elected.
+>
 > Improvising the question order is how "what are the core entities" ends up asked third, after two
 > questions its answer would have collapsed.
 
@@ -44,6 +70,13 @@ which to reopen it ("chose a modular monolith; reopen if a module needs independ
 "single-tenant; reopen when a second tenant is real"). This is what stops an early decision made
 on thin information from fossilizing — the ledger becomes a living ADR that knows when it is stale.
 
+**"Committed" means `mcp:ledger_record_decision`** — the only thing that moves a fork to `decided`,
+and it *refuses* a call with no `flip_criteria`, so the rule above is enforced rather than merely
+stated. Its other refusals matter as much here: the outcome must be one the fork's own `question`
+offered (the catalog's options are the menu; inventing one is you electing), and where the host
+cannot elicit, you are relaying and must quote the user verbatim in `human_answer` — recorded as
+`evidence: transcribed`, the weaker rung, so the challenger can weigh what a decision rests on.
+
 ## Kind-specific handling
 
 - `acceptance_criterion` (from Phase 1) → resolve **first**: they root the DAG, so electing which
@@ -56,8 +89,12 @@ on thin information from fossilizing — the ledger becomes a living ADR that kn
   subtree of dependent forks.
 - `open_decision` (leaf / stylistic) → may be `proposed_default` (the architectural policies
   usually cover it); the user skims and overrides by exception.
-- A fork the user wants to punt → `deferred`: it leaves v1 scope as a future backlog item (the
-  natural handoff to `slice` mode later), not silent scaffolding.
+- A fork the user wants to punt → `deferred` via `mcp:ledger_defer`: it leaves v1 scope as a future
+  backlog item (the natural handoff to `slice` mode later), not silent scaffolding. Recorded, so
+  the fork is still findable; unrecorded, it is just forgotten. **Punting is an answer**, so the tool
+  records it as one: the user's verbatim words and a `flip_criteria` naming what brings the fork back.
+  You may record a deferral; you may never decide one — a `blocker` fork that stops being asked
+  because an agent deferred it is the failure this whole phase exists to prevent.
 
 > **Composability (optional):** the `learning-layer` skill can wrap this surface non-invasively —
 > capture the user's own decision attempt *before* the derived `to_be` is revealed, then teach the

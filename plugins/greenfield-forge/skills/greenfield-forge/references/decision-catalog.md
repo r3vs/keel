@@ -26,6 +26,16 @@ Each fork below lists **options** (candidate to-be's, never one asserted as corr
 **downstream** forks it feeds (`depends_on` runs the other way), and a **default policy**
 candidate the interview can offer to auto-resolve the long tail.
 
+**A default policy is offerable only when one of that cluster's own options carries it.** A policy
+cascade writes an `outcome` onto a pin, and an outcome may only be written onto a pin its own
+`question` offered — so the offer's `default_outcome` is an **option id** (`relational`, `ssr`,
+`modular_monolith`), declared in the JSON as `default_policy_outcome`. Six clusters have one and
+make offers. The other six state a default that no single option carries — cluster 8 names four
+options in one sentence, cluster 9's default is conditional on the topology fork, cluster 0 has no
+options at all — and `interview_seed_policies` returns them under `no_default_outcome` instead of
+as offers: still stated, deliberately asked. This is not a gap to close by inventing an id; a
+sentence that is not one of the options is guidance for the answer, not the answer.
+
 ### 0. Outcomes / acceptance criteria  ·  roots of the DAG
 The testable results v1 must deliver — the **engineering half** of requirements. Not forks with
 options but **assertions of desired outcome**, elicited as a bounded set and pinned as
@@ -169,11 +179,28 @@ become the interview's opening policy questions. See `references/phase-1-frame.m
 ## Runtime
 
 The machine-usable form of this catalog is `assets/decision-catalog.json` (this doc stays the
-authoring source — keep them in step). The `interview_next` tool loads it and runs Phase 1:
-`expand_catalog(ledger, catalog, project_type, brief_decisions)` prunes by project type, skips the
-forks the brief already decided (pre-committed, never re-asked), materializes one pin per surviving
-fork, and wires `depends_on` to the created pin ids; `funnel(ledger)` compresses to the asked
-questions ordered by transitive information gain with the tail as `proposed_default`;
-`default_policies()` offers the per-cluster defaults. The `challenge_oracle` tool then red-teams the
-elected oracles (deterministic classes). `interview_next` takes the project type (e.g. `web-saas`).
-Both are covered by the runtime's own test suite.
+authoring source — keep them in step). **Four tools read it, and they are not interchangeable:**
+
+- `interview_expand(ledger, project_type, brief_decisions)` runs Phase 1 over it — prunes by project
+  type, skips the forks the brief already decided (pre-committed with `evidence: "brief"`, never
+  re-asked), materializes one pin per surviving fork, and wires `depends_on` to the created pin ids.
+  This is the only one that **writes the forks**; without it there is nothing to funnel.
+  `brief_decisions` maps a cluster id to **one of that cluster's own option ids** and is held to the
+  same gate a policy cascade is — "the brief said so" means nobody was asked, so a `blocker`/`high`
+  fork is never settled that way and neither is an outcome the fork does not offer. Whatever is held
+  back comes back in `brief_held_back` and is asked in Phase 2; a key matching no cluster of this
+  catalog comes back in `brief_unmatched` rather than being dropped.
+- `interview_seed_policies(ledger, project_type)` returns the per-cluster `default_policy` entries
+  as the interview's opening offers, each with the pins it would decide and the option id
+  (`default_policy_outcome`) that accepting it writes. It writes nothing. Clusters whose default no
+  option carries come back under `no_default_outcome` — stated, not offered.
+- `ledger_record_policy(ledger, offer_id, ...)` writes the offer the user elected and runs the
+  cascade — it reads the catalog to check that `offer_id` is an offer this project type actually
+  makes, and copies that offer's rule, scope and outcome verbatim. Without this call an accepted
+  policy exists only in the conversation and cascades over nothing.
+- `interview_next(ledger)` compresses to the asked questions ordered by transitive information gain,
+  with the tail as `proposed_default`. It takes **only the ledger** — the project type was already
+  spent at expansion time — and it only reads.
+
+`challenge_oracle` then red-teams the elected oracles (the deterministic classes). All are covered
+by the runtime's own test suite.

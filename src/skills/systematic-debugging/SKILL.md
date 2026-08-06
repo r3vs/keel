@@ -44,8 +44,10 @@ A bug is a `defect` pin, and the pin holds what a commit message loses:
 Record it through the ledger's MCP tools: `ledger_add_pin` opens the `defect` (root cause in
 `as_is`, provenance the reproduction at the test); `ledger_add_remediation` plans the fix and
 `ledger_set_remediation_status` marks it done; then `ledger_resolve` closes it against the OBSERVED
-reproduction — the tool demands `evidence`, so the pin cannot close until the repro no longer
-reproduces.
+reproduction — the tool demands `evidence` **and `rung="observed"`**, so the pin cannot close until
+the repro no longer reproduces and you say that you watched it not reproduce. A pin that records no
+verification at all is refused exactly like one whose verification was weak: absence is the weakest
+reading, never permission.
 
 If the cause turns out to be a decision that was wrong rather than code that was wrong, **do not
 fix it here** — reopen the decision. Fixing code to work around an unsound elected decision buries

@@ -35,7 +35,11 @@ LEDGER = {
     ],
     "decision_log": [],
     "policies": [{"id": "pol_0001", "applies_to": {"kind": "contract_mismatch"},
-                  "rule": "the DB is the canonical layer", "default_outcome": "canonicalize on db",
+                  # v0.12: an option id, since that is the only thing a cascade may write
+                  "rule": "the DB is the canonical layer", "default_outcome": "db",
+                  # v0.15: a properly elected rule, so the evidence note in the tests below stays
+                  # about the decisions they are each written to check
+                  "evidence": "transcribed", "human_answer": "the DB wins unless I flag one",
                   "set_by": "interview", "exceptions": []}],
 }
 
@@ -49,8 +53,8 @@ class TestRender(unittest.TestCase):
         self.assertIn("`p_0002`", body)
         self.assertIn("**canonicalize on the DB enum**", body)
         self.assertIn("`p_0003`", body)
-        # open pins are listed as NOT decided, and carry no outcome
-        self.assertIn("### NOT decided — do not encode an answer", body)
+        # open pins are listed as open
+        self.assertIn("### Open — not settled; do not decide one yourself", body)
         self.assertIn("`p_0001`", body)
         # blocker sorts above medium within its section
         self.assertLess(body.index("`p_0001`"), body.index("`p_0004`"))
@@ -58,7 +62,7 @@ class TestRender(unittest.TestCase):
     def test_open_pin_never_shown_as_elected(self):
         """The anti-slop property: an undecided fork must not read as settled."""
         body = ins.render(LEDGER)
-        elected = body.split("### NOT decided")[0]
+        elected = body.split("### Open —")[0]
         self.assertNotIn("`p_0001`", elected)
 
     def test_empty_ledger_says_so(self):
@@ -89,6 +93,252 @@ class TestRender(unittest.TestCase):
 
     def test_render_is_stable(self):
         self.assertEqual(ins.render(LEDGER), ins.render(LEDGER))
+
+
+class TestEveryStateReachesTheRegion(unittest.TestCase):
+    """The projection kept its OWN pair of state lists — six of the schema's eight — so a `deferred`
+    pin and a `correctness_unknown` pin reached a fresh agent's always-on context in NO section.
+
+    Same bug `map.py` carried until its `SETTLED` set was sourced from `ledger.SETTLED_STATES`, one
+    surface over, and the same fix: a set the schema owns cannot be kept here, because a state added
+    there does not come here. So these assert the partition at the schema, and the behaviour at the
+    projection — a private list re-added later fails the second even if it satisfies the first.
+    """
+
+    def test_the_two_sets_partition_the_schema(self):
+        from ledger import OPEN_STATES, SETTLED_STATES, STATES
+        self.assertEqual(set(SETTLED_STATES) & set(OPEN_STATES), set(),
+                         "a state in both buckets would be listed twice, saying two things")
+        self.assertEqual(sorted(set(SETTLED_STATES) | set(OPEN_STATES)), sorted(STATES),
+                         "a state in neither bucket reaches the agent in no section at all — "
+                         "which is exactly how `deferred` and `correctness_unknown` went missing")
+
+    def test_a_pin_in_every_state_is_listed(self):
+        from ledger import STATES
+        data = {"pins": [_pin(f"p_{i:04d}", "defect", f"pin in {s}", s) for i, s in
+                         enumerate(STATES)], "policies": [], "decision_log": []}
+        body = ins.render(data, max_lines=200)
+        missing = [p["id"] for p in data["pins"] if p["id"] not in body]
+        self.assertEqual(missing, [], f"listed in no section: {missing}")
+
+    def test_the_two_states_that_went_missing(self):
+        """The reproduction, verbatim: two blockers, and the region said no decisions existed."""
+        data = {"pins": [
+            _pin("p_0001", "open_decision", "Multi-tenant isolation is unimplemented", "deferred",
+                 "blocker", outcome="defer"),
+            _pin("p_0002", "defect", "Webhook replay", "correctness_unknown", "blocker"),
+        ], "policies": [], "decision_log": []}
+        body = ins.render(data)
+        self.assertNotIn("No decisions elected yet", body)
+        self.assertIn("Multi-tenant isolation is unimplemented", body)
+        self.assertIn("Webhook replay", body)
+        # and on the right side of the divide: deferring is an election, correctness_unknown is not
+        settled, openp = body.split("### Open —")
+        self.assertIn("`p_0001`", settled)
+        self.assertIn("`p_0002`", openp)
+
+
+class TestArrivingInASectionThatInvertsTheMeaning(unittest.TestCase):
+    """Landing the two rescued states somewhere was not the fix finished — the section a pin lands
+    in is an instruction, and for these two it was the wrong one.
+
+    Both reproduced against the shipped renderer before the fix, and both are about the ONE thing
+    this file is: bytes an agent reads before it writes anything.
+    """
+
+    def test_a_deferred_pin_does_not_clip_the_decisions_that_say_what_to_build(self):
+        """Six deferred blockers + six decided mediums at `max_lines=22`: severity-then-id put all
+        six `— **defer**` lines FIRST and clipped two elected decisions to `(+2 more)`. `deferred`
+        is the one settled state whose instruction is *do not build this*, so in a byte-budgeted
+        always-on context it was outranking the pins that say what to build."""
+        pins = [_pin(f"p_{i:04d}", "incompleteness", f"deferred blocker {i}", "deferred",
+                     "blocker", outcome="defer") for i in range(6)]
+        pins += [_pin(f"p_{i:04d}", "open_decision", f"elected medium {i}", "decided",
+                      "medium", outcome=f"choice_{i}") for i in range(6, 12)]
+        log = [{"id": f"ev_{i:04d}", "pin_id": p["id"], "evidence": "transcribed",
+                "human_answer": "yes"} for i, p in enumerate(pins)]
+        body = ins.render({"pins": pins, "decision_log": log, "policies": []}, max_lines=22)
+        self.assertRegex(body, r"\(\+2 more")               # the budget still clips two
+        clipped = [p["id"] for p in pins if f"`{p['id']}`" not in body]
+        self.assertEqual(len(clipped), 2)
+        elected = {p["id"] for p in pins if p["state"] == "decided"}
+        self.assertEqual(elected & set(clipped), set(),
+                         f"an elected decision was clipped while a deferral survived: {clipped}")
+        lines = [ln for ln in body.splitlines() if ln.startswith("- `p_")]
+        last_elected = max(i for i, ln in enumerate(lines) if "**choice_" in ln)
+        first_defer = min((i for i, ln in enumerate(lines) if "**defer**" in ln), default=len(lines))
+        self.assertLess(last_elected, first_defer,
+                        "every deferral sorts after every other settled pin, so the budget "
+                        "reaches them last")
+
+    def test_the_settled_heading_says_what_a_defer_outcome_means(self):
+        """A `deferred` pin listed under a bare *build on these* reads as the opposite of itself."""
+        body = ins.render({"pins": [_pin("p_0001", "open_decision", "multi-tenant isolation",
+                                         "deferred", "blocker", outcome="defer")],
+                           "decision_log": [], "policies": []})
+        heading = [ln for ln in body.splitlines() if ln.startswith("### Settled")][0]
+        self.assertIn("defer", heading)
+
+    def test_a_correctness_unknown_pin_does_not_reach_the_agent_as_an_unanswered_question(self):
+        """The state means *elected, and we could not establish that it worked*. Its outcome was
+        suppressed because the pin is in `OPEN_STATES`, so a decision the human made arrived as a
+        fork — and an agent may answer it again."""
+        pin = _pin("p_0001", "open_decision", "idempotency key source", "correctness_unknown",
+                   "high", outcome="request_id")
+        body = ins.render({"pins": [pin], "decision_log": [], "policies": []})
+        openp = body.split("### Open —")[1]
+        self.assertIn("**request_id**", openp,
+                      "the elected outcome must be visible where the pin is listed")
+        self.assertIn("do not decide one yourself", body.split("### Open —")[1].splitlines()[0],
+                      "and the heading must still forbid deciding it")
+
+    def test_a_pin_with_no_decision_still_prints_no_outcome(self):
+        """The rule is one rule, not a per-section flag: nothing to say costs nothing."""
+        body = ins.render({"pins": [_pin("p_0001", "ambiguity", "which cache", "needs_input")],
+                           "decision_log": [], "policies": []})
+        self.assertIn("- `p_0001` [ambiguity] which cache\n", body)
+
+
+class TestEvidenceNote(unittest.TestCase):
+    """v0.10: the region is byte-budgeted, so `evidence` gets one conditional header line — and the
+    condition is what makes it affordable. It must appear when some decision rests on a relay,
+    disappear when none does, and never eat a section's room."""
+
+    @staticmethod
+    def _with(log):
+        return {**LEDGER, "decision_log": log}
+
+    def test_absent_when_every_decision_was_elicited(self):
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "elicited"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "brief"}]))
+        self.assertNotIn("transcribed", body)
+
+    def test_present_and_counted_when_a_decision_was_relayed(self):
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed",
+             "human_answer": "the DB is truth"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("of 2 recorded decisions, 1 relayed by an agent", body)
+
+    def test_a_cascade_is_reported_as_a_cascade(self):
+        """v0.11. The clauses are kept apart because they fail differently: a relay may be an
+        invention, a cascade may simply not fit this pin. Summing them into "N weak" would put the
+        user's own elected policy in the same sentence as an agent's unquoted say-so — and reading a
+        missing rung as `transcribed`, which this used to do, said it outright."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "cascaded", "policy_id": "pol_0001"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("1 cascaded from a policy the user elected once", body)
+        self.assertNotIn("relayed by an agent", body)
+
+    def test_a_cascade_written_before_the_rung_existed_is_still_not_a_relay(self):
+        """v0.13, and the reason the clause above was not enough: the rung binds the WRITE, so every
+        ledger written before v0.11 carries `transcribed` on its cascades — `decide()`'s old
+        parameter default — and this line, reading the field literally, told the user in their own
+        `AGENTS.md` that an agent had relayed a decision their elected policy made."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "source": "policy:pol_0001",
+             "evidence": "transcribed"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("1 cascaded from a policy the user elected once", body)
+        self.assertNotIn("relayed by an agent", body)
+
+    def test_an_unrecorded_rung_is_not_reported_as_a_relay(self):
+        body = ins.render(self._with([{"id": "ev_0001", "pin_id": "p_0002"}]))
+        self.assertIn("1 with no rung recorded at all", body)
+        self.assertNotIn("relayed by an agent", body)
+
+    def test_a_rung_this_projection_does_not_know_is_counted_as_that(self):
+        """It used to fall through all three clauses and be reported as nothing — while the map
+        badged it weak. Unrecorded is not the same as unrecognised: one says nobody wrote how the
+        answer travelled, the other says the file did and this projection cannot read the road."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "oracle"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("1 on a rung this projection does not know", body)
+        self.assertNotIn("with no rung recorded at all", body)
+
+    def test_only_decision_events_are_counted(self):
+        """`decision_log` also holds challenges, reopens and failures. Counting those would report a
+        rung for events that never carried a human's answer at all."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed", "human_answer": "x"},
+            {"id": "chl_0001", "pin_id": "p_0002", "class": "unfalsifiable"},
+            {"id": "fal_0001", "pin_id": "p_0002", "class": "environment"}]))
+        self.assertIn("of 1 recorded decisions", body)
+
+    def test_the_declared_note_length_is_the_length_it_emits(self):
+        """`_NOTE_LINES` is budget arithmetic, so it must be measured off the note, not asserted
+        about it: if the note grows a line and the floor does not, a tight budget starts overrunning
+        itself — which is the one failure the budget exists to prevent."""
+        note = ins._evidence_note(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed", "human_answer": "x"}]))
+        self.assertEqual(len(note), ins._NOTE_LINES)
+
+    def test_the_note_never_costs_a_section_its_room(self):
+        noted = self._with([{"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed",
+                             "human_answer": "x"}])
+        floor = ins.render(noted, max_lines=ins._MIN_LINES)
+        self.assertLessEqual(len(floor.splitlines()), ins._MIN_LINES)
+        self.assertIn("relayed by an agent", floor)
+        # at the floor exactly one section survives, and it is still the rules an agent must obey —
+        # the note is budgeted for, so it displaces nothing that fitted before it existed
+        self.assertIn("### Standing rules", floor)
+        # at the default budget the note is additive: every section it shares the region with stays
+        self.assertIn("`p_0002`", ins.render(noted))
+
+
+class TestTheStandingRulesAreWeighedToo(unittest.TestCase):
+    """v0.15. This region already LISTED the policies; what it never said is how the human elected
+    them — while saying exactly that about every decision. A `Policy` decides a whole cluster and is
+    what each `cascaded` line above derives from, so weighing the cascade and not the election
+    behind it weighs the wrong end. It is also the only clause here that can fire with an empty
+    `decision_log`: a rule that cascaded over no pin still governs what gets written next."""
+
+    @staticmethod
+    def _with(policy):
+        return {**LEDGER, "decision_log": [], "policies": [policy]}
+
+    BASE = {"id": "pol_0001", "applies_to": {"kind": "contract_mismatch"},
+            "rule": "the DB is the canonical layer", "default_outcome": "db", "exceptions": []}
+
+    def test_an_elected_rule_that_decided_nothing_is_still_weighed(self):
+        body = ins.render(self._with(dict(self.BASE)))          # no rung recorded at all
+        self.assertIn("1 of the standing rules below was elected with no rung recorded", body)
+        self.assertIn("the DB is the canonical layer", body)
+
+    def test_an_unquoted_relay_of_a_whole_cluster_says_so(self):
+        body = ins.render(self._with(dict(self.BASE, evidence="transcribed")))
+        self.assertIn("relayed with no quote", body)
+
+    def test_a_properly_elected_rule_costs_nothing(self):
+        body = ins.render(self._with(dict(self.BASE, evidence="transcribed",
+                                          human_answer="the DB wins unless I flag one")))
+        self.assertNotIn("standing rules below was elected", body)
+        body = ins.render(self._with(dict(self.BASE, evidence="elicited")))
+        self.assertNotIn("standing rules below was elected", body)
+
+    def test_the_count_is_the_ledgers_and_not_this_modules(self):
+        """The map badged two standing rules on the preview fixture and this line said one, because
+        each surface had its own rule for "weak". `ledger.policy_weakness` is the single answer now;
+        what stays here is the wording, and every code it can return must have some."""
+        from ledger import POLICY_WEAKNESS
+        self.assertEqual(set(ins._POLICY_WEAKNESS_CLAUSE), set(POLICY_WEAKNESS),
+                         "a weakness code with no clause here surfaces as a bare token")
+
+    def test_a_rung_the_schema_does_not_name_is_reported_as_its_own_thing(self):
+        body = ins.render(self._with(dict(self.BASE, evidence="oracle")))
+        self.assertIn("elected on a rung this projection does not know", body)
+        self.assertNotIn("with no rung recorded", body)
+
+    def test_the_note_is_still_one_line_with_both_halves(self):
+        """`_NOTE_LINES` is budget arithmetic: a second sentence must not become a second line."""
+        note = ins._evidence_note({**LEDGER, "policies": [dict(self.BASE)], "decision_log": [
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed"}]})
+        self.assertEqual(len(note), ins._NOTE_LINES)
+        self.assertIn("relayed by an agent", note[1])
+        self.assertIn("standing rules below", note[1])
 
 
 class TestRegion(unittest.TestCase):

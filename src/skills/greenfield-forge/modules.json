@@ -1,16 +1,17 @@
 {
   "schema_version": "0.1",
   "skill": "greenfield-forge",
-  "note": "Source of truth for greenfield-forge's module catalog (twin of codebase-rescue's). The shared drift-linter (scripts/check_consistency.py) verifies every module here has a matching reference file and that SKILL.md pointers stay consistent. 'deterministic' modules generate/scaffold from a source and each names its `engine` — an `mcp:<tool>` MCP tool, declared per-module and checked against the server by check_consistency.py, no free-riding; 'judgment' modules require model reasoning over the brief, the decision-catalog, and the ledger. An `agent:<how>` engine is legitimate and still declared, but it is never deterministic: a model on the path is D2 however the module is labeled, so those modules are type=judgment and keep the engine as the honest statement of what produces the output. Four of them shipped as 'deterministic' until the gate learned to check type↔engine coherence rather than mere engine presence (core/trust-axes.md). Shared spine (ledger, funnel, brainstorm, shape-engine) lives in core/ and is not re-catalogued here.",
+  "note": "Source of truth for greenfield-forge's module catalog (twin of codebase-rescue's). The shared drift-linter (scripts/check_consistency.py) verifies every module here has a matching reference file and that SKILL.md pointers stay consistent. 'deterministic' modules generate/scaffold from a source and each names its `engine` — an `mcp:<tool>` MCP tool, declared per-module and checked against the server by check_consistency.py, no free-riding; 'judgment' modules require model reasoning over the brief, the decision-catalog, and the ledger. An `agent:<how>` engine is legitimate and still declared, but it is never deterministic: a model on the path is D2 however the module is labeled, so those modules are type=judgment and keep the engine as the honest statement of what produces the output. Four of them shipped as 'deterministic' until the gate learned to check type↔engine coherence rather than mere engine presence (core/trust-axes.md). The same holds for an `mcp:<tool>` engine on a judgment module — the interview elects by human judgment AND writes through exactly one tool, so it declares that tool; the engine names the carrier, the type still governs trust, and check_consistency.py validates an `mcp:` engine against the server whatever the type. Shared spine (ledger, funnel, brainstorm, shape-engine) lives in core/ and is not re-catalogued here.",
   "modules": [
     {
       "id": "decision-frame",
       "phase": 1,
       "kind": "core",
       "type": "judgment",
+      "engine": "mcp:interview_expand",
       "tools": [],
       "produces": ["open_decision"],
-      "notes": "THE entry move. Expands references/decision-catalog.md against the brief, prunes by project type, and materializes one open_decision pin per fork with options, downstream implications, and depends_on wired from the catalog. Records brief-stated choices as pre-committed DecisionEvents (source: brief) rather than re-asking. This is the greenfield analog of rescue's finding modules: the pin source is the decision space, not the code.",
+      "notes": "THE entry move. Expands references/decision-catalog.md against the brief, prunes by project type, and materializes one open_decision pin per fork with options, downstream implications, and depends_on wired from the catalog. Records brief-stated choices as pre-committed DecisionEvents (source: brief) rather than re-asking. This is the greenfield analog of rescue's finding modules: the pin source is the decision space, not the code. type stays judgment because reading the brief for givens and classifying the project type is model work; the expansion itself is one tool, interview_expand, and the module names it so the pins get created instead of being described. The opening policy offers come from interview_seed_policies, which writes nothing (a Policy is elected, never seeded) and now carries what each offer would decide; the elected one is written by ledger_record_policy in Phase 2.",
       "reference": "references/phase-1-frame.md"
     },
     {
@@ -29,9 +30,10 @@
       "phase": 2,
       "kind": "core",
       "type": "judgment",
+      "engine": "mcp:ledger_record_decision",
       "tools": [],
       "produces": ["question", "policy"],
-      "notes": "Materializes Question objects from open_decision pins and runs the shared compression funnel (core/interview-funnel.md): policy (architectural defaults) -> exception -> proposed-default, severity threshold, information-gain order (domain/persistence first). Every committed answer emits a DecisionEvent with flip_criteria.",
+      "notes": "Materializes Question objects from open_decision pins and runs the shared compression funnel (core/interview-funnel.md): policy (architectural defaults) -> exception -> proposed-default, severity threshold, information-gain order (domain/persistence first). Every committed answer emits a DecisionEvent with flip_criteria — and it emits it through ledger_record_decision, the one tool that can move a fork to decided. The engine is declared on a judgment module deliberately: the outcome is the human's (D2), the write has a single carrier, and the tool is what enforces flip_criteria, the offered-options rule, and the verbatim quote when the host cannot elicit. The policy step of the funnel commits through ledger_record_policy instead — same invariant one level up, over a whole cluster — with policy_preview showing the radius before the user accepts.",
       "reference": "references/phase-2-interview.md"
     },
     {

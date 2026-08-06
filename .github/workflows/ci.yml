@@ -49,6 +49,13 @@ jobs:
       - name: Schema-field linter (every declared field has a reader)
         run: python scripts/check_schema_fields.py
 
+      # The mirror of the above, one layer out: a field with no reader and a WRITE TOOL no playbook
+      # names are the same bug — a capability the artifact carries and the workflow never reaches.
+      # The server makes tools discoverable, which answers it for the tools an agent goes looking
+      # for; nothing answers it for the ones it does not know to want.
+      - name: Tool-carrier linter (every write tool is named by a shipped playbook)
+        run: python scripts/check_tool_carriers.py
+
       # --- the source is correct AS SHIPPED ----------------------------------------------------
       - name: Executable-pointer verifier (no path that dies once installed)
         run: python scripts/verify_commands.py
@@ -72,7 +79,7 @@ jobs:
         run: python -m pip install "tree-sitter>=0.23" "tree-sitter-language-pack==1.12.5"
 
       # --- behaviour ---------------------------------------------------------------------------
-      # Covers the ledger runtime (spec v0.6 as executable checks), the MCP tools, the MCP server
+      # Covers the ledger runtime (the spec as executable checks), the MCP tools, the MCP server
       # over real stdio via uv, the PreToolUse ledger gate, and the package as installed.
       - name: Tests
         run: python -m unittest discover -s tests

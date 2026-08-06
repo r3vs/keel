@@ -26,10 +26,11 @@ Loaded as always-on context by AGENTS.md-aware agents (opencode, Codex, Pi). **C
 - **The gates protect the package *as installed*, not just the repo as a repo.** That distinction
   is the one this repo learned the hard way: every earlier gate anchored on `__file__` and was
   therefore blind to the only path class that is working-directory-sensitive — the strings a
-  shipped file tells an agent to run. **Before committing**, all of these must be green (CI at
-  `.github/workflows/ci.yml`):
-  `build.py --check` · `check_consistency.py` · `verify_pointers.py` · `verify_commands.py` ·
-  `python -m unittest discover -s tests`
+  shipped file tells an agent to run. **Before committing, every gate must be green — the list is
+  the Commands block in `CLAUDE.md`**, which is complete against `.github/workflows/ci.yml`. It is
+  not restated here: this bullet used to carry its own copy and the copy was short by four
+  (`check_hypotheses` · `check_schema_fields` · `check_tool_carriers` · `run_evals --validate`),
+  which is the class the gates exist to catch, in the note that tells a session which gates exist.
 - **A user installs into THEIR project and never works in this repo** — so the root carries no host
   config, and delivery is the install: `.mcp.json` at the plugin root (Claude reads it; Codex's
   manifest points at it) and a `config()` hook in the opencode plugin. Root `.mcp.json` /

@@ -41,8 +41,12 @@ ALLOWED = {
     "_SEVERITY_ORDER": "ordinals of the SEVERITIES tuple",
     "_CONF_RANK": "ordinals of the CONFIDENCES tuple — the ranks ARE the enum's order",
     "_TYPE_RANK": "ordinals of the node-type ladder file<class<function<method",
-    "_MIN_LINES": "computed from the header template's own length plus the 4 lines a region "
-                  "structurally needs (heading + item + clip note) — arithmetic, not a choice",
+    "_MIN_LINES": "computed from the header template's own length, the evidence note's own length "
+                  "and the 4 lines a region structurally needs (heading + item + clip note) — "
+                  "arithmetic, not a choice",
+    "_NOTE_LINES": "the number of lines `_evidence_note` returns — a blank separator and the note "
+                   "itself. Measured off the function, not chosen: "
+                   "`test_the_declared_note_length_is_the_length_it_emits` fails if they diverge",
     "SCHEMA_VERSION": "a version string, not a threshold",
     "CATALOG_VERSION": "a version string, not a threshold",
     "_INDENT": "formatting width",

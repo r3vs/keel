@@ -4,7 +4,10 @@ The map is a user-facing deliverable and its correctness is a DOM, so it is veri
 browser — repeatably, via `python scripts/preview_map.py`, whose docstring lists what to look at.
 That pass covers the pin list, the `as_is`/`to_be` projection over every shape the spec allows, the
 three-column contract-diff with the disagreeing layer flagged, the linked interview question, the
-traffic-light, and hostile content rendering as text rather than executing — in light and dark.
+traffic-light, the `evidence` states of a decision card (elicited / brief / transcribed with a
+quote / transcribed with none / cascaded, which also shows the policy and how it was elected)
+reading as *different strengths* before the words are read, and
+hostile content rendering as text rather than executing — in light and dark.
 
 These tests pin only what CI can guard without a browser: the output is one self-contained file
 (data inlined, no external fetch), it is script-safe, and every pin's data reaches the page.
@@ -14,6 +17,7 @@ everywhere else; it would pass on a renderer that never runs.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -66,6 +70,43 @@ class TestSelfContained(unittest.TestCase):
         data_line = script_body.split("\n", 1)[0]
         self.assertNotIn("</script", data_line.lower())
 
+    def test_the_derived_payload_is_script_safe_too(self):
+        """A second inlined payload is a second way out of the inline script, and it carries values
+        taken from the same agent-written file — a `source` is as attacker-reachable as a title. The
+        rule that governs `const LEDGER` governs this one; asserted at it, not assumed from it."""
+        hostile = {"version": "0.9", "pins": [],
+                   "decision_log": [{"id": "ev_0001", "evidence": "transcribed",
+                                     "source": "policy:</script><img src=x onerror=alert(1)>"}],
+                   "policies": []}
+        line = mapmod.render(hostile).split("const DERIVED = ", 1)[1].split("\n", 1)[0]
+        self.assertIn("policy_id", line)          # the value did reach the page...
+        self.assertNotIn("</script", line.lower())  # ...and cannot close the script it rides in
+
+    def test_inlined_content_is_never_rewritten_by_a_later_substitution(self):
+        """The page was assembled by chained `.replace()`, so every substitution after `__DATA__`
+        ran over the ledger it had just inlined. A pin titled `evil __DERIVED__ title` came out as
+        `evil {} title` — or as the whole derived-rungs JSON — and `__LIVE_SCRIPT__` in a title
+        injected the self-reload loop into the frozen artifact that is meant to be safe to hand to
+        anyone. `esc` cannot reach this: it happens in Python, to the JSON literal, before the page
+        exists. Asserted on the value that comes back out of the inlined JSON, which is the only
+        thing that proves the title survived intact."""
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        titles = ["evil __DERIVED__ title", "__DATA__ and __TITLE__",
+                  "__LIVE_SCRIPT__ __LIVE_STYLE__ __LIVE_BADGE__"]
+        for t in titles:
+            led.add_pin(kind="defect", title=t, severity="low", confidence="extracted",
+                        provenance=[{"source": "recon", "detail": "x"}], as_is={"description": "d"})
+        # a non-empty DERIVED payload, so the second substitution has something to inject
+        led.data["decision_log"].append({"id": "ev_0001", "pin_id": "pin_0001", "outcome": "x",
+                                         "source": "policy:pol_0001", "evidence": "transcribed"})
+        html = mapmod.render(led.data, title="hostile")
+        payload = json.loads(html.split("const LEDGER =", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        self.assertEqual([p["title"] for p in payload["pins"]], titles)
+        # and the frozen page stays frozen: content cannot switch live mode on
+        self.assertNotIn("location.reload", html)
+        self.assertNotIn("livebadge", html)
+
     def test_empty_ledger_renders(self):
         empty = Ledger(os.path.join(tempfile.mkdtemp(), "l.json"))
         out = mapmod.render(empty.data)
@@ -100,6 +141,304 @@ class TestGraphAnchoredRendering(unittest.TestCase):
         self.assertIn("backend/models.py:30", html)  # sample dependent inlined
         # still self-contained: no external fetch introduced
         self.assertNotIn("fetch(", html.split("const LEDGER =", 1)[1].split("\n", 1)[0])
+
+
+class TestDecisionEvidenceIsInlined(unittest.TestCase):
+    """The decision card states the rung, which lives on the DecisionEvent — so the page must carry
+    `decision_log`, not just `pins`.
+
+    This is the only part of that feature CI can hold without a browser, and it is worth holding:
+    trimming the inlined payload to `pins` is an obvious "optimization" that would turn the lookup
+    into a dangling id and silently drop the rung — with the page still rendering, still
+    self-contained, and every other test still green. Asserting that the *template* contains the
+    words a correct card would print is the heuristic this file refuses; asserting the data the
+    lookup needs is a fact about the artifact."""
+
+    def test_the_event_the_pin_points_at_reaches_the_page(self):
+        led = demo_ledger()
+        pin = led.data["pins"][0]
+        led.decide(pin["id"], "a", "the DB enum is narrowest", "a fourth role appears",
+                   evidence="transcribed", human_answer="option a — the DB is truth")
+        html = mapmod.render(led.data, title="decided")
+        event_id = pin["decision"]["event_id"]
+        payload = json.loads(html.split("const LEDGER =", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        event = next((e for e in payload.get("decision_log", []) if e["id"] == event_id), None)
+        self.assertIsNotNone(event, "the map cannot resolve pin.decision.event_id — the rung is "
+                                    "unreachable from the page, whatever the card says")
+        self.assertEqual(event["evidence"], "transcribed")
+        self.assertEqual(event["human_answer"], "option a — the DB is truth")
+
+    def test_a_cascaded_card_can_reach_the_policy_that_decided_it(self):
+        """The `cascaded` card states the rule the user elected and how they elected it, so the
+        second join — event.policy_id -> policies[] — has to land on the page too. It is a join on a
+        field, not on `source`'s `policy:<id>` prefix: a surface that parses a string to find its
+        record is one refactor away from silently finding nothing."""
+        led = demo_ledger()
+        pin = led.data["pins"][0]
+        pin["severity"] = "low"                      # blocker|high is held back by the threshold
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="the DB is truth",
+                             default_outcome="a",   # the id this pin's own question offers (v0.12)
+                             human_answer="db wins unless I flag one")
+        led.apply_policy(pol)
+        payload = json.loads(mapmod.render(led.data, title="cascaded").split("const LEDGER =", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        event = next(e for e in payload["decision_log"] if e["id"] == pin["decision"]["event_id"])
+        self.assertEqual(event["evidence"], "cascaded")
+        policy = next((p for p in payload.get("policies", []) if p["id"] == event["policy_id"]), None)
+        self.assertIsNotNone(policy, "the map cannot resolve event.policy_id — the card would have "
+                                     "to say a policy decided this and be unable to say which")
+        self.assertEqual((policy["rule"], policy["evidence"], policy["human_answer"]),
+                         ("the DB is truth", "transcribed", "db wins unless I flag one"))
+
+
+class TestARungTheTableDoesNotKnow(unittest.TestCase):
+    """The spec says it outright — *"a rung one of the three surfaces does not know is the same bug
+    wearing a new name, so adding one means teaching all three"* — and nothing held the map to it.
+    `cascaded` was added to `DECISION_EVIDENCE` and to this table by hand, in the same commit, by
+    someone who remembered; the next one would be added by someone who did not, and the card would
+    fall through to the `weak` default and call it unrecorded.
+
+    The carrier is the object literal, read as keys, not a search for the word in the file."""
+
+    def test_the_cards_rung_table_covers_every_rung_the_schema_names(self):
+        from ledger import DECISION_EVIDENCE
+        block = re.search(r"const RUNG=\{(.*?)\}\};", mapmod._TEMPLATE, re.S)
+        self.assertIsNotNone(block, "the RUNG table's shape changed — this guard just went vacuous")
+        keys = set(re.findall(r"^\s+(\w+):\{", block.group(1), re.M))
+        self.assertEqual(keys, set(DECISION_EVIDENCE))
+
+
+class TestALedgerWrittenBeforeTheRungExisted(unittest.TestCase):
+    """v0.13. `cascaded` binds the write, so a pre-v0.11 ledger carries `transcribed` on its
+    cascades and this surface printed *"an agent relayed what the user said"* + *"⚠ relayed with no
+    quote — nothing here separates it from an invention"* over the user's own elected policy.
+
+    The rule is applied in Python (`map.derived_rungs` → `ledger.decision_rung`) and its RESULT
+    crosses into the page, which is what makes it assertable here at all: a second implementation in
+    the page's JavaScript would be reachable by no test without a browser, and would drift."""
+
+    @staticmethod
+    def _legacy() -> dict:
+        return {"version": "0.9",
+                "pins": [{"id": "pin_0001", "state": "decided",
+                          "decision": {"event_id": "ev_0001", "outcome": "db"}}],
+                "decision_log": [{"id": "ev_0001", "pin_id": "pin_0001", "outcome": "db",
+                                  "source": "policy:pol_0001", "evidence": "transcribed"}],
+                "policies": [{"id": "pol_0001", "rule": "the DB is truth", "default_outcome": "db"}]}
+
+    def test_the_page_is_told_to_read_the_rung_it_cannot_take_off_the_field(self):
+        derived = mapmod.derived_rungs(self._legacy())
+        self.assertEqual(derived, {"ev_0001": {"rung": "cascaded", "policy_id": "pol_0001",
+                                               "as_recorded": "transcribed"}})
+
+    def test_the_derivation_reaches_the_rendered_page(self):
+        html = mapmod.render(self._legacy(), title="legacy")
+        inlined = json.loads(html.split("const DERIVED = ", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        self.assertEqual(inlined["ev_0001"]["rung"], "cascaded")
+        # the policy the card must join to is named, though the event carries no `policy_id`
+        self.assertEqual(inlined["ev_0001"]["policy_id"], "pol_0001")
+        # and what the file actually records travels with it, so the card states the disagreement
+        # instead of quietly winning it
+        self.assertEqual(inlined["ev_0001"]["as_recorded"], "transcribed")
+
+    def test_a_ledger_this_runtime_wrote_derives_nothing(self):
+        """Empty is the normal case, and it has to be: the branch it feeds is the exception, and an
+        index that grew entries for ordinary events would be a second copy of the rung."""
+        led = demo_ledger()
+        pin = led.data["pins"][0]
+        pin["severity"] = "low"
+        led.apply_policy(led.add_policy(applies_to={"kind": "contract_mismatch"},
+                                        rule="the DB is truth", default_outcome="a",
+                                        human_answer="db wins"))
+        led.decide(pin["id"], "a", "r", "flip", evidence="elicited")
+        self.assertEqual(mapmod.derived_rungs(led.data), {})
+
+
+class TestTheSafePathIsTheOnlyPath(unittest.TestCase):
+    """`esc` at every site is a rule every site must remember, and this file got it wrong twice:
+    once `esc` was a String() cast that escaped nothing, and then `severity` — alone among the
+    fields — went into the list row, the detail sub-line and a `style` attribute raw, so a ledger
+    carrying `severity: "<img src=x onerror=…>"` put a live img node in the DOM.
+
+    Fixing the field would leave the next field to whoever writes it. What CI can hold without a
+    browser is the *shape* of the mechanism, and it is worth holding precisely because it is the
+    thing that makes the field-level bug unwritable: markup reaches the document through ONE sink,
+    the sink escapes anything that is not an assembled fragment, and the tagged template is the only
+    thing that assembles one. The behaviour itself is verified rendered — `scripts/preview_map.py`,
+    check 4 — because a DOM is what it is about.
+
+    The honest limit: this reads our own template as text. It cannot tell a sink in code from the
+    word in a comment, which is why the assertion is an exact count and the message says so."""
+
+    #: Every DOM API that writes markup rather than text. A closed list of names with exact
+    #: meanings — not a guess about what some code does.
+    SINKS = ("outerHTML", "insertAdjacentHTML", "document.write", "createContextualFragment")
+
+    def test_markup_reaches_the_document_through_exactly_one_sink(self):
+        body = mapmod._TEMPLATE
+        self.assertEqual(body.count("innerHTML"), 1,
+                         "the page writes markup in more than one place (or a comment says the "
+                         "word). Every write goes through `mount`, which escapes anything that is "
+                         "not an assembled fragment — a second sink is a second escaping rule.")
+        line = next(ln for ln in body.splitlines() if "innerHTML" in ln)
+        self.assertIn("function mount(", line)
+        for sink in self.SINKS:
+            self.assertNotIn(sink, body, f"{sink} bypasses `mount` and its escaping")
+
+    def test_only_the_tagged_template_can_produce_an_unescaped_fragment(self):
+        """`frag` escapes everything that is not an `H`, so `new H(` IS the escape hatch. There is
+        exactly one, inside `h`, and it exists to let fragments nest. A `raw()` helper added later
+        would show up here — which is the point: an opt-out you can reach for is an opt-out someone
+        reaches for with a pin title in their hand."""
+        self.assertEqual(mapmod._TEMPLATE.count("new H("), 1)
+        self.assertEqual(mapmod._TEMPLATE.count("function H("), 1)
+
+
+class TestNothingInTheDataCanEndTheDocument(unittest.TestCase):
+    """A `</script>` was escaped; `<!--` was not, and it was the worse of the two. HTML's script-data
+    tokenizer treats `<!--` followed later by `<script` as a double-escaped span in which `</script>`
+    closes nothing, so a pin titled ``A <!--<script> double escape`` swallowed the rest of the
+    document: `LEDGER` undefined, both panes empty, **no error anywhere**. A map that silently shows
+    nothing reads as "no findings", which is the worst thing this surface can say.
+
+    So the rule is not a longer list of sequences but the character all of them need."""
+
+    HOSTILE = "A <!--<script> double escape"
+
+    def _rendered(self) -> str:
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(kind="other", kind_detail="renderer", title=self.HOSTILE, severity="low",
+                    confidence="inferred", provenance=[{"source": "recon", "detail": "x"}],
+                    as_is={"payload": "<!-- <script> -->"})
+        led.data["policies"].append({"id": "pol_x", "rule": "<b>r</b>", "default_outcome": "x",
+                                     "applies_to": {}, "exceptions": []})
+        return mapmod.render(led.data, title="hostile")
+
+    @staticmethod
+    def _payload(html: str, name: str) -> str:
+        return html.split(name, 1)[1].split(";\n", 1)[0]
+
+    def test_no_inlined_payload_carries_an_angle_bracket(self):
+        html = self._rendered()
+        for name in ("const LEDGER =", "const DERIVED =", "const WEAK_POL =", "const SETTLED ="):
+            self.assertNotIn("<", self._payload(html, name),
+                             f"{name} can still start an HTML token inside the script it rides in")
+
+    def test_the_data_survives_the_escape_intact(self):
+        """An escape that loses the data is not an escape. `\\u003c` is JSON's own encoding of the
+        character, so the payload stays valid JSON and reads back byte-identical."""
+        payload = json.loads(self._payload(self._rendered(), "const LEDGER ="))
+        self.assertEqual(payload["pins"][0]["title"], self.HOSTILE)
+        self.assertEqual(payload["pins"][0]["as_is"]["payload"], "<!-- <script> -->")
+
+    def test_the_document_still_closes_after_the_script(self):
+        html = self._rendered()
+        self.assertIn("</script></body></html>", html.replace("\n", ""))
+
+
+class TestTheSurfacesAgreeAboutOneLedger(unittest.TestCase):
+    """Two surfaces counted the same standing rules and printed different numbers — the map badged
+    two on the repo's own preview fixture, the projected `AGENTS.md` said one — because the map
+    asked *is the rung weak* and the projection asked *is the quote missing*. Neither was wrong on
+    its own terms, which is exactly why a reader could act on neither.
+
+    The classification is `ledger.policy_weakness` now, in the module that owns the schema, and the
+    map gets its RESULT inlined the way it already gets `derived_rungs`. Asserted over the preview
+    fixture because that is the ledger a human actually looks at."""
+
+    @staticmethod
+    def _fixture() -> dict:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import preview_map
+        return preview_map.build().data
+
+    def test_the_map_and_the_projection_weigh_the_same_rules(self):
+        import instructions
+        data = self._fixture()
+        weak = mapmod.weak_policies(data)
+        self.assertTrue(weak, "the fixture no longer carries a weak rule — this guard went vacuous")
+        self.assertIn(f"{len(weak)} of the standing rules below", instructions.render(data))
+
+    def test_the_reasons_reach_the_page(self):
+        data = self._fixture()
+        inlined = json.loads(mapmod.render(data).split("const WEAK_POL = ", 1)[1]
+                             .split(";\n", 1)[0])
+        self.assertEqual(inlined, mapmod.weak_policies(data))
+
+    def test_the_pages_settled_states_are_the_schemas(self):
+        """v0.16 made `deferred` a settled state and the page kept its own hand-written list, so a
+        deferred blocker was counted as an OPEN blocker in the loudest colour the page has."""
+        from ledger import SETTLED_STATES
+        html = mapmod.render(demo_ledger().data)
+        inlined = json.loads(html.split("const SETTLED = new Set(", 1)[1].split(");", 1)[0])
+        self.assertEqual(inlined, list(SETTLED_STATES))
+
+
+class TestACrossDerivationHasAReader(unittest.TestCase):
+    """`cross_derivations` had ONE writer — `Ledger.cross_derive` — and zero readers: not this page,
+    not `ledger_summary`, not the projected `AGENTS.md`. The writer's own comment asserted the
+    opposite (*"the derivations are on the pin either way, so the human sees what disagreed"*),
+    which made it a claim with no carrier written in the commit that closed a claim with no carrier.
+
+    It matters most in the branch that comment defends: `cross_derive` stopped rewriting an existing
+    question, rightly, so a disagreement reopened the pin to `needs_input (contested)` with the
+    human's original menu and no account anywhere of why it was back.
+
+    Verified rendered, in a browser, on `.preview/map.html`: the contested pin's card sits above the
+    question, names both providers and both results, and reads amber on `--warnbg` with the ⚠ line,
+    while the agreeing pin's card is green-bordered on the plain card background with no warning at
+    all (`border-left-color` `rgb(240,140,0)` vs `rgb(47,158,68)` — measured off the elements, in
+    light mode). What is asserted below is what CI can hold without a browser."""
+
+    @staticmethod
+    def _fixture() -> dict:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import preview_map
+        return preview_map.build().data
+
+    def test_the_preview_fixture_carries_a_disagreement_and_an_agreement(self):
+        """Without both, the manual pass has nothing to look at and item 18 goes vacuous — the same
+        guard `test_the_map_and_the_projection_weigh_the_same_rules` puts on its fixture."""
+        found = {x["agreement"] for p in self._fixture()["pins"]
+                 for x in (p.get("cross_derivations") or [])}
+        self.assertLessEqual({"agree", "disagree"}, found)
+
+    def test_the_page_knows_no_agreement_the_ledger_refuses(self):
+        """The table is read as keys, like `RUNG`, and each key is EXECUTED against the writer
+        rather than compared to a second copy of its vocabulary kept here — a hand-kept list beside
+        the schema's is the bug one surface over. The reverse direction is not asserted because it
+        does not have to be: an agreement this table does not carry falls through to a DEFINED
+        `weak` case that shows the value and the ⚠, so an unknown value degrades to "weigh this",
+        never to a card that says nothing."""
+        block = re.search(r"const AGREE=\{(.*?)\}\};", mapmod._TEMPLATE, re.S)
+        self.assertIsNotNone(block, "the AGREE table's shape changed — this guard just went vacuous")
+        keys = set(re.findall(r"^\s*(\w+):\{", block.group(1), re.M))
+        self.assertTrue(keys, "no agreement values at all — the reader is gone")
+        derivations = [{"provider": "anthropic", "model": "m", "result": "yes"},
+                       {"provider": "openai", "model": "n", "result": "no"}]
+        for key in sorted(keys):
+            with self.subTest(agreement=key):
+                led = demo_ledger()
+                led.cross_derive(led.data["pins"][0]["id"], claim="c",
+                                 derivations=derivations, agreement=key)
+
+    def test_the_derivations_reach_the_rendered_page(self):
+        led = demo_ledger()
+        led.cross_derive(led.data["pins"][0]["id"],
+                         claim="the scheduler re-delivers on consumer timeout",
+                         derivations=[{"provider": "anthropic", "model": "opus",
+                                       "result": "yes — the ack deadline expires"},
+                                      {"provider": "openai", "model": "gpt-5",
+                                       "result": "no — the row is marked taken first"}],
+                         agreement="disagree")
+        inlined = json.loads(mapmod.render(led.data).split("const LEDGER = ", 1)[1]
+                             .split(";\n", 1)[0].replace("\\u003c", "<"))
+        record = inlined["pins"][0]["cross_derivations"][0]
+        self.assertEqual(record["agreement"], "disagree")
+        self.assertEqual([d["result"] for d in record["derivations"]],
+                         ["yes — the ack deadline expires", "no — the row is marked taken first"])
 
 
 class TestLiveMode(unittest.TestCase):

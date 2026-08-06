@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,7 +27,89 @@ import treesitter_extract as tse  # noqa: E402
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 HAVE_TS = tse.available()
-skip_no_ts = unittest.skipUnless(HAVE_TS, "tree-sitter backend not installed")
+
+# A probe that hangs must not hang the suite. Generous, because a cold interpreter on Windows can
+# take seconds to start; it is a ceiling on pathology, not a measured budget.
+_PROBE_TIMEOUT_S = 30
+
+
+def _interpreter_facts() -> str:
+    """The running interpreter, named — read off the interpreter, never inferred from a path."""
+    venv = "" if sys.prefix == sys.base_prefix else f", venv at {sys.prefix}"
+    return f"{sys.executable} (python {sys.version.split()[0]}{venv})"
+
+
+# A skip is a claim about an ENVIRONMENT, and "the environment" is one interpreter, not the machine.
+# The bare reason this used to carry ("tree-sitter backend not installed") reads as a fact about the
+# box; it is only ever a fact about whichever python happened to be resolved. Naming it in the reason
+# is what turns 21 silent skips into a legible one.
+skip_no_ts = unittest.skipUnless(
+    HAVE_TS,
+    "tree-sitter backend not installed in " + _interpreter_facts() +
+    " — this says nothing about other interpreters on this machine; "
+    "TestASkipIsAClaimAboutOneInterpreter checks those")
+
+
+def _pythons_on_path() -> list:
+    """Every distinct interpreter a bare `python` / `python3` lookup could reach, in PATH order.
+
+    Deterministic by construction: it resolves the same names PATH lookup itself resolves and then
+    ASKS each candidate whether it can import the backend. Nothing is concluded from how a path is
+    spelled — the sole filesystem filter is a zero-byte file, which cannot be an executable. (On
+    Windows those are App Execution Alias reparse stubs; running one opens the Microsoft Store
+    instead of an interpreter, so probing it would be worse than useless.)
+
+    The running interpreter is excluded: this function exists to find the INTER-interpreter
+    discrepancy, and `HAVE_TS` already answers the intra-interpreter one.
+    """
+    names = ("python.exe", "python3.exe") if os.name == "nt" else ("python", "python3")
+    try:
+        seen = {os.path.normcase(os.path.realpath(sys.executable))}
+    except OSError:
+        seen = set()
+    out = []
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        for name in names:
+            cand = pathlib.Path(entry) / name
+            try:
+                if not cand.is_file() or cand.stat().st_size == 0:
+                    continue
+                key = os.path.normcase(os.path.realpath(cand))
+            except OSError:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(str(cand))
+    return out
+
+
+def _backend_visible_to(exe: str) -> bool:
+    """Ask the interpreter itself. Its exit code is the carrier; nothing else is consulted."""
+    try:
+        return subprocess.run([exe, "-c", "import tree_sitter"],
+                              capture_output=True, text=True,
+                              timeout=_PROBE_TIMEOUT_S).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _assertions_this_environment_silences() -> int:
+    """How many assertions the skips hide, counted off unittest's own carrier.
+
+    `skipUnless` stamps `__unittest_skip__` on the class, and that attribute is exactly what the
+    runner reads before deciding not to run it. Counting it counts the same fact the runner acts on
+    — not a grep over decorator source, which would be this repo's own no-heuristics rule broken in
+    the linter written to enforce it.
+    """
+    total = 0
+    for obj in list(globals().values()):
+        if (isinstance(obj, type) and issubclass(obj, unittest.TestCase)
+                and getattr(obj, "__unittest_skip__", False)):
+            total += sum(1 for n in dir(obj) if n.startswith("test"))
+    return total
 
 
 class TestAlwaysOn(unittest.TestCase):
@@ -323,13 +406,21 @@ class TestCIExercisesTheShippedBackend(unittest.TestCase):
         A skip is only honest when the backend is genuinely absent. Absent from the suite while
         present in a plain `python -c` is not absence — it is the suite's own environment breaking,
         and the operator has to be told, not reassured.
+
+        SCOPE, stated because leaving it implicit is what let gap 4 sit open: this probe spawns
+        `sys.executable`, so it can only ever catch an INTRA-interpreter discrepancy — sys.path
+        corrupted during discovery, a module poking sys.modules. It asks the possibly-broken
+        interpreter about itself. The condition actually observed on Windows was one interpreter
+        further out, and this probe degraded to its honest skip exactly as designed while missing
+        it entirely. `TestASkipIsAClaimAboutOneInterpreter` below covers that half.
         """
         probe = subprocess.run([sys.executable, "-c", "import tree_sitter"],
                                capture_output=True, text=True)
         standalone = probe.returncode == 0
         if not standalone:
-            self.skipTest("the backend is genuinely not installed — the honest skip. CI installs "
-                          "it (see the pin test above), so this marks a local environment only.")
+            self.skipTest("the backend is absent from THIS interpreter — " + _interpreter_facts() +
+                          ". That is all a same-interpreter probe can say; whether another python "
+                          "on PATH has it is the next test's question.")
         self.assertTrue(
             HAVE_TS,
             "`python -c 'import tree_sitter'` succeeds with this very interpreter, but the backend "
@@ -338,3 +429,54 @@ class TestCIExercisesTheShippedBackend(unittest.TestCase):
         self.assertTrue(tse.available("typescript"),
                         "the backend imports but its grammar never arrives — the exact failure "
                         "`available(lang)` was given an argument to expose")
+
+
+class TestASkipIsAClaimAboutOneInterpreter(unittest.TestCase):
+    """The 21 skips said "not installed" when the truth was "you ran the wrong python".
+
+    THE CONDITION, named (observed on Windows 2026-08-05, and the close of `docs/open-gaps.md` §4).
+    An unrelated tool's virtualenv sat on the User PATH ahead of the real install, so `python`
+    resolved to it — a 3.11 venv with no `tree_sitter` — for PowerShell, cmd, and every subprocess
+    any tool spawns. Git Bash escaped it only because `~/.bashrc` aliased `python` to the real
+    interpreter, a shell-local rewrite that does not survive into a child process. So the two runs
+    the gap called "the same interpreter" never were: `python -c "import tree_sitter"` succeeded
+    under the alias while `python -m unittest discover` skipped under PATH resolution. Nothing was
+    wrong inside the process, which is why every sys.path / shadowing / sys.modules hypothesis was
+    ruled out — the interpreter simply never had the package.
+
+    The fix on a machine is the operator's, outside any repo: take the foreign venv off the global
+    PATH, or invoke the interpreter you mean by its full path. What belongs to the repo is this —
+    that the condition can no longer present itself as coverage.
+
+    WHY THIS TEST AND NOT THE ONE ABOVE. Both ask "does something else see a backend I cannot?", but
+    they ask different somethings. The probe above spawns `sys.executable` and so is blind by
+    construction to a discrepancy BETWEEN interpreters: run it in the wrong python and it agrees
+    with itself, honestly, and says nothing. This one asks every python PATH can reach. That is the
+    only in-process question whose answer distinguishes "this machine has no backend" (a real,
+    honest skip) from "this machine has one and you are not running it" (21 assertions reporting
+    success by not executing).
+
+    It fails rather than skips on purpose. A skip here would be the bug wearing the costume of the
+    detector written to catch it.
+    """
+
+    def test_no_other_python_on_path_has_the_backend_this_one_lacks(self):
+        if HAVE_TS:
+            return  # this interpreter has it: nothing skips, so there is no silence to explain
+        rivals = [exe for exe in _pythons_on_path() if _backend_visible_to(exe)]
+        if not rivals:
+            # Genuine absence, and now a checked one: no interpreter reachable as `python` has the
+            # backend either. The skips above are what they claim to be.
+            return
+        self.fail(
+            "{n} assertions in this file are skipping green, and the cause is the INTERPRETER, "
+            "not the machine — these skips are not coverage.\n"
+            "  running this suite : {me}\n"
+            "  HAS the backend    : {rivals}\n"
+            "  bare `python` finds: {which}\n"
+            "Re-run with an interpreter that has it, or take whatever is shadowing it off PATH. "
+            "The class docstring above records the condition in full.".format(
+                n=_assertions_this_environment_silences(),
+                me=_interpreter_facts(),
+                rivals=", ".join(rivals),
+                which=shutil.which("python") or "nothing"))

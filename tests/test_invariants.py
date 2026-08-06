@@ -1,4 +1,4 @@
-"""Two BEHAVIORAL invariant tests — not unit tests (Block 4 of docs/design/sota-alignment.md).
+"""Four BEHAVIORAL invariant tests — not unit tests (Block 4 of docs/design/sota-alignment.md).
 
 The difference matters and is the reason these live in their own file. A unit test asks whether a
 function returns the right value. These ask whether a *rule the package promises* actually holds at
@@ -9,11 +9,19 @@ the seam where it would be broken:
    when the gate never ran, which is the exact way a security control rots into decoration.
 2. every state-mutating path on the ledger goes through a **governed channel** — asserted, rather
    than agreed. Adding a mutator without deciding its channel fails here.
+3. every path that reaches `Ledger.decide` is **enumerated from the source** and reaches the single
+   predicate. 2 asks whether a mutator has a channel; 3 asks the question that was actually being
+   dodged — *how many ways in are there*. It is computed, not listed from memory, because the last
+   three times this rule was fixed it was fixed at a door, and the next door did not know.
+4. every write-time rule `decide` enforces is one the **reader** can replay over a file written
+   before it existed. 3 is about doors, 4 is about rules; both were fixed once per instance until
+   the instance count made the class visible.
 
 Stdlib unittest (also runs under pytest).
 """
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import os
@@ -93,15 +101,28 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     #: is the only thing that elects, so `decide` and `accept` having no tool is the design, not a
     #: gap — exposing them would hand an agent the one power the whole package withholds.
     HUMAN_ONLY = {
-        "decide": "reached only through record_decision, which records an election and cannot make one",
+        "decide": "no tool of its own; every path to it is enumerated and gated by "
+                  "TestEveryPathToDecideIsGated below — which is the honest form of this claim. It "
+                  "used to read 'reached only through record_decision', and that was false: "
+                  "expand_catalog and apply_policy also reach it, and a fan-out flag on "
+                  "record_decision reached it four times per call",
         "accept": "same channel: record_decision(accept_as_is=True), gated to design_concern",
+        "add_policy": "reached only through record_policy, which records a policy the human elected "
+                      "— from an offer taken verbatim, or quoted — and cannot set one",
+        "apply_policy": "same channel: the cascade is what electing a policy MEANS, so it runs "
+                        "inside record_policy, once, on the policy just elected — never as a step "
+                        "an agent can take alone or re-run over pins nobody was shown",
     }
     #: Mutators reached through another governed entry point rather than a tool of their own.
     INTERNAL = {
-        "set_question": "the interview funnel writes it (interview_next drives the surface)",
+        "set_question": "NOTHING calls it — verified, zero call sites in src/ and plugins/. The "
+                        "reason here used to read 'the interview funnel writes it (interview_next "
+                        "drives the surface)', which is false: `interview.funnel` reads. It is the "
+                        "runtime half of the door docs/open-gaps.md §10 records as missing, kept "
+                        "rather than deleted because that is what §10 would expose — and an "
+                        "exemption whose stated reason is wrong is worse than none, because the "
+                        "check has then been asked and answered",
         "add_proposals": "the brainstorm agent's own write path; neutral by schema",
-        "add_policy": "a user-set policy cascade, elected in the interview",
-        "apply_policies": "runs inside the interview funnel",
         "assign_resolution_modes": "runs inside the interview funnel",
         "reopen": "the feedback loop's downstream arc, driven by a fired flip_signal",
         "challenge": "exposed as challenge_oracle, which applies upheld ChallengeEvents",
@@ -113,7 +134,8 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     def _mutators(self) -> set:
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
-        readonly = {"pin", "interview_view", "summary", "foresight"}
+        readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview",
+                    "question_offers", "unasked_verdict", "settlement_verdict"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -183,12 +205,323 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         self.assertEqual(event["human_answer"], "yes, pull the helper out",
                          "the words the decision rests on must be in the ledger, not only in a chat")
 
+    def test_an_agent_can_record_a_policy_election_but_never_make_one(self):
+        """The same invariant one level up, where the leverage is: a policy decides a whole cluster.
+
+        It had no door at all — `add_policy`/the cascade were reachable by nothing on any host,
+        while four shipped passages told an agent the user elects a policy and that it then
+        cascades. The door added here must not become the shortcut the absence was protecting
+        against, so what it refuses is asserted before what it writes.
+        """
+        import tools as mcp_tools
+        exposed = {n for n, _ in inspect.getmembers(mcp_tools, inspect.isfunction)}
+        self.assertNotIn("add_policy", exposed, "a policy is elected, never set by an agent")
+        self.assertIn("record_policy", exposed, "the human needs a door, or nothing ever cascades")
+
+        led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        fork = {"prompt": "Which layer is truth?",
+                "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
+        pins = [led.add_pin(kind="contract_mismatch", title=f"drift {i}", severity=sev,
+                            confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                            cluster_id="cl_shape", as_is={"db": "int", "api": "string"},
+                            question=fork)
+                for i, sev in enumerate(("low", "medium", "blocker"))]
+        led.save()
+
+        with self.assertRaises(ValueError, msg="a policy needs a rule, a scope and an outcome"):
+            mcp_tools.record_policy(led.path, applies_to={"cluster_id": "cl_shape"},
+                                    human_answer="db wins")
+        with self.assertRaises(ValueError, msg="relaying a policy without a quote is unfalsifiable"):
+            mcp_tools.record_policy(led.path, rule="DB wins", default_outcome="db",
+                                    applies_to={"cluster_id": "cl_shape"})
+        with self.assertRaises(ValueError, msg="an offer the catalog never made is an invention"):
+            mcp_tools.record_policy(led.path, offer_id="cl_not_a_cluster", human_answer="sure")
+        with self.assertRaises(ValueError, msg="an excepted pin that does not exist excepts nothing"):
+            mcp_tools.record_policy(led.path, rule="DB wins", default_outcome="db",
+                                    applies_to={"cluster_id": "cl_shape"},
+                                    exceptions=["pin_9999"], human_answer="db wins")
+
+        preview = mcp_tools.policy_prompt(led.path, rule="DB wins", default_outcome="db",
+                                          applies_to={"cluster_id": "cl_shape"})
+        out = mcp_tools.record_policy(led.path, rule="DB wins", default_outcome="db",
+                                      applies_to={"cluster_id": "cl_shape"},
+                                      human_answer="the DB wins unless I flag one")
+        self.assertEqual(out["cascaded"], preview["would_decide"],
+                         "what the user was shown must be what the cascade did")
+        self.assertEqual(out["held_back"], [pins[2]["id"]],
+                         "blocker|high is never settled by a policy — the threshold rule")
+        self.assertEqual(out["not_offered"], [],
+                         "these pins all pose the fork this policy answers")
+        after = ledgermod.Ledger(led.path)
+        event = after.data["decision_log"][-1]
+        self.assertEqual((event["evidence"], event["policy_id"]), ("cascaded", out["policy_id"]))
+        self.assertEqual(after.data["policies"][-1]["human_answer"],
+                         "the DB wins unless I flag one",
+                         "the words a whole cluster rests on must be in the ledger, not a chat")
+
     def test_the_classification_itself_stays_honest(self):
         """A stale exemption is worse than none: it names a method that no longer exists and reads
         as governance while covering nothing."""
         mutators = self._mutators()
         stale = sorted((set(self.HUMAN_ONLY) | set(self.INTERNAL)) - mutators)
         self.assertEqual(stale, [], "these exemptions name methods that are gone")
+
+
+class TestEveryPathToDecideIsGated(unittest.TestCase):
+    """Invariant 3 — CLOSE THE CLASS: enumerate every path to `Ledger.decide` structurally, and
+    assert each one reaches the single predicate.
+
+    Why this class exists, and why it is AST and not prose. The offered-options rule was implemented
+    once per door: on the single-pin door, then (a version later, after it was found missing) on the
+    policy door. An adversarial reviewer then drove the identical violation through **two doors
+    nobody had looked at** — `decide(apply_to_cluster=True)`, which fanned one answer across a whole
+    cluster, and `interview_expand(brief_decisions=...)`, which wrote any string onto any cluster at
+    any severity. 617 tests and eight green linters missed all of it, because every test asked
+    whether a *known* door was guarded.
+
+    So the assertion is not "these doors are guarded". It is **"these are all the doors"**, computed
+    from the source rather than remembered, plus "each reaches the predicate". A door added later
+    fails `test_the_enumeration_is_complete` on the day it is added.
+
+    Scope is what ships and can write: `src/runtime/*.py` and `src/mcp/*.py`. `scripts/` and
+    `tests/` call `decide` freely and are dev-only by construction — they are not a channel an agent
+    reaches on any host.
+    """
+
+    ROOTS = ("runtime", "mcp")
+    #: The single predicate, in its two halves. `unasked_verdict` composes the severity threshold
+    #: with `question_offers`; `question_offers` is the offered-options rule itself, and is what the
+    #: single-pin door reaches directly (the threshold does not apply where the human WAS asked).
+    PREDICATES = ("unasked_verdict", "question_offers")
+
+    #: Every function that calls `Ledger.decide`, and the call chain by which it reaches a predicate.
+    #: Each hop is checked as an AST edge, so the chain cannot be aspirational. Hops are
+    #: module-qualified: `policy_preview` names both a Ledger method and an MCP tool, and a chain
+    #: that resolved to the wrong one would pass while proving nothing.
+    DECIDE_CALLERS = {
+        ("ledger.py", "accept"): [],
+        ("ledger.py", "defer"): [],
+        ("ledger.py", "apply_policy"): [("ledger.py", "policy_preview"),
+                                        ("ledger.py", "unasked_verdict")],
+        ("interview.py", "expand_catalog"): [("ledger.py", "unasked_verdict")],
+        ("tools.py", "record_decision"): [("ledger.py", "question_offers")],
+    }
+    #: The callers with an empty chain need their reason here, or "no gate" reads as an oversight.
+    #: Both are meta-answers about scope rather than branches of the pin's own fork, so the
+    #: offered-options half of the predicate has nothing to check — and neither is unasked, which is
+    #: what the other half is for. What holds them is `settlement_verdict` plus the quote their MCP
+    #: door demands, and `TestLeavingTheOpenSetIsGovernedToo` is where that is asserted.
+    UNGATED = {
+        ("ledger.py", "accept"): "not a door: `accept` is reached only from record_decision's "
+                                 "accept_as_is branch, which gates it on kind == design_concern and "
+                                 "on the human having been shown this pin. Its outcome is `keep`, "
+                                 "which is the leave-as-is answer rather than an elected option.",
+        ("ledger.py", "defer"): "not a door: `defer` is reached only from ledger_defer, which "
+                                "demands the human's verbatim answer exactly as record_decision "
+                                "does. Its outcome is `defer` — the not-now answer, which the "
+                                "spec's own question shape offers as an option — rather than an "
+                                "elected branch of this pin's fork.",
+    }
+
+    @classmethod
+    def _modules(cls) -> dict:
+        base = os.path.join(os.path.dirname(__file__), "..", "src")
+        out = {}
+        for root in cls.ROOTS:
+            for path in sorted(os.listdir(os.path.join(base, root))):
+                if path.endswith(".py"):
+                    full = os.path.join(base, root, path)
+                    with open(full, encoding="utf-8") as fh:
+                        out[path] = ast.parse(fh.read(), filename=full)
+        return out
+
+    @staticmethod
+    def _functions(tree: ast.AST) -> dict:
+        """name -> node, for every def in the module (methods included)."""
+        return {n.name: n for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+    @staticmethod
+    def _calls(node: ast.AST) -> set:
+        """The names this function calls, by the final component: `x.decide()` and `decide()` both
+        count as `decide`. Nested defs are excluded — they are their own callers."""
+        out, inner = set(), {c for n in ast.iter_child_nodes(node)
+                             for c in ast.walk(n)
+                             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        for child in ast.walk(node):
+            if child in inner or not isinstance(child, ast.Call):
+                continue
+            func = child.func
+            if isinstance(func, ast.Attribute):
+                out.add(func.attr)
+            elif isinstance(func, ast.Name):
+                out.add(func.id)
+        return out
+
+    def _callers_of(self, name: str) -> set:
+        found = set()
+        for module, tree in self._modules().items():
+            for fn_name, fn in self._functions(tree).items():
+                if fn_name == name:
+                    continue                       # the definition itself is not a caller
+                if name in self._calls(fn):
+                    found.add((module, fn_name))
+        return found
+
+    def test_the_enumeration_is_complete(self):
+        """The load-bearing assertion of this file: set EQUALITY against the source."""
+        self.assertEqual(
+            self._callers_of("decide"), set(self.DECIDE_CALLERS),
+            "a path to Ledger.decide was added or removed. Every one must be declared here WITH the "
+            "chain by which it reaches the predicate — that is what stops the next door from being "
+            "the third one nobody looked at.")
+
+    def test_every_path_reaches_the_predicate(self):
+        modules = self._modules()
+        for (module, caller), chain in sorted(self.DECIDE_CALLERS.items()):
+            with self.subTest(caller=f"{module}::{caller}"):
+                if not chain:
+                    self.assertIn((module, caller), self.UNGATED,
+                                  "a path with no gate needs a stated reason, or it is a hole")
+                    continue
+                self.assertIn(chain[-1][1], self.PREDICATES,
+                              "a chain must END at the predicate, not merely at something plausible")
+                current = self._functions(modules[module])[caller]
+                for hop_module, hop in chain:
+                    self.assertIn(hop, self._calls(current),
+                                  f"{caller} does not call {hop} — the declared chain is prose")
+                    current = self._functions(modules[hop_module])[hop]
+
+    def test_the_predicate_is_one_predicate_and_not_two(self):
+        """`unasked_verdict` must be built ON `question_offers`, not beside it. Two functions that
+        happen to agree today are the shape this whole class exists to refuse."""
+        fns = self._functions(self._modules()["ledger.py"])
+        self.assertIn("question_offers", self._calls(fns["unasked_verdict"]))
+
+    # -- and the same four paths, exercised ---------------------------------
+
+    FORK = {"prompt": "Consolidate?",
+            "options": [{"id": "keep", "label": "leave it"},
+                        {"id": "extract", "label": "extract a helper"}]}
+    OTHER = {"prompt": "Which layer is truth?",
+             "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
+    PROV = [{"source": "recon", "detail": "x"}]
+
+    def _cluster(self):
+        led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(kind="design_concern", title="the pin the human saw", severity="low",
+                    confidence="inferred", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"current_design": "copy-paste", "concern": "drift"}, question=self.FORK)
+        led.add_pin(kind="contract_mismatch", title="offers only db|api", severity="low",
+                    confidence="extracted", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"db": "int", "api": "string"}, question=self.OTHER)
+        led.add_pin(kind="defect", title="poses no question at all", severity="low",
+                    confidence="extracted", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"description": "d"})
+        led.add_pin(kind="design_concern", title="a blocker", severity="blocker",
+                    confidence="inferred", provenance=self.PROV, cluster_id="cl_dupe",
+                    as_is={"current_design": "x", "concern": "y"}, question=self.FORK)
+        led.save()
+        return led
+
+    def test_the_single_pin_door_decides_one_pin(self):
+        import tools as mcp_tools
+        led = self._cluster()
+        out = mcp_tools.record_decision(led.path, "pin_0001", "extract", rationale="r",
+                                        flip_criteria="a second caller shape appears",
+                                        human_answer="yes, pull the helper out")
+        after = ledgermod.Ledger(led.path)
+        self.assertEqual((out["state"], len(after.data["decision_log"])), ("decided", 1))
+        self.assertEqual([p["state"] for p in after.data["pins"]],
+                         ["decided", "needs_input", "detected", "needs_input"],
+                         "one human answer, one pin — the siblings are still open questions")
+
+    def test_the_cluster_fan_out_is_not_a_parameter_anywhere(self):
+        """Asserted at both boundaries an agent can reach, because the flag was declared on the
+        server, forwarded by the tool and applied by the library — three files, one hole."""
+        import inspect
+        import tools as mcp_tools
+        for fn in (ledgermod.Ledger.decide, mcp_tools.record_decision):
+            self.assertNotIn("apply_to_cluster", inspect.signature(fn).parameters,
+                             f"{fn.__qualname__} can fan one answer across pins nobody was shown")
+
+    def test_the_policy_cascade_holds_back_what_the_predicate_refuses(self):
+        import tools as mcp_tools
+        led = self._cluster()
+        out = mcp_tools.record_policy(led.path, rule="extract the helper everywhere",
+                                      default_outcome="extract",
+                                      applies_to={"cluster_id": "cl_dupe"},
+                                      human_answer="extract it wherever it repeats")
+        self.assertEqual(out["cascaded"], ["pin_0001"])
+        self.assertEqual(out["not_offered"], ["pin_0002", "pin_0003"])
+        self.assertEqual(out["held_back"], ["pin_0004"])
+
+    def test_the_brief_is_held_to_the_same_predicate(self):
+        import interview
+        led = self._cluster()
+        catalog = {"clusters": [
+            {"id": "persistence", "order": 1, "kind": "open_decision", "severity": "high",
+             "title": "Persistence", "options": [{"id": "relational", "label": "SQL"}]},
+            {"id": "sync", "order": 2, "kind": "open_decision", "severity": "medium",
+             "title": "Sync", "options": [{"id": "reqresp", "label": "request/response"}]}]}
+        result = interview.expand_catalog(led, catalog, project_type="web-saas", brief_decisions={
+            "persistence": "relational",              # offered, but `high` — the threshold holds
+            "sync": "mongodb"})                       # medium, but nothing offers it
+        self.assertEqual(result["pre_decided"], [])
+        self.assertEqual([h["reason"] for h in result["brief_held_back"]],
+                         ["held_back", "not_offered"])
+
+
+class TestEveryWriteTimeRuleGainsItsReader(unittest.TestCase):
+    """Invariant 4 — CLOSE THE OTHER HALF OF THE CLASS: a rule the writer enforces must be a rule
+    the reader can replay over a file written before it existed.
+
+    v0.13 named this failure — *"a new rule arrives with a writer and no reader"* — and then shipped
+    it: `decide()` held six checks inline, `nonconforming` re-implemented **one** of them by hand,
+    and nothing made the next one gain a reader. Invariant 3 is the same shape one axis over (there:
+    every DOOR reaches the predicate; here: every RULE reaches the floor), and both are asserted
+    from the source rather than from a list somebody maintains.
+
+    The AST is the carrier because the alternative — "we will remember to add it to the table" — is
+    exactly what failed. A `_require` added back into `decide` fails on the day it is added.
+    """
+
+    #: The AST reader is invariant 3's, deliberately: two readers of the same source in one file
+    #: would be the duplication these invariants exist to refuse.
+    AST = TestEveryPathToDecideIsGated
+
+    def test_decide_holds_no_rule_outside_the_shared_table(self):
+        fns = self.AST._functions(self.AST._modules()["ledger.py"])
+        calls = self.AST._calls(fns["decide"])
+        self.assertNotIn("_require", calls,
+                         "a rule enforced inline in `decide` is invisible to `nonconforming`, so "
+                         "every ledger already on disk keeps claiming a conformance it was never "
+                         "checked for. Put it in EVENT_RULES.")
+        self.assertIn("_check_event", calls, "the writer must run the shared table")
+
+    def test_the_floor_is_the_same_table_and_not_a_copy_of_it(self):
+        fns = self.AST._functions(self.AST._modules()["ledger.py"])
+        self.assertIn("event_violations", self.AST._calls(fns["nonconforming"]),
+                      "the floor must REPLAY the writer's rules, not re-state them")
+        self.assertIn("EVENT_RULES",
+                      {n.id for n in ast.walk(fns["_check_event"]) if isinstance(n, ast.Name)},
+                      "the writer must iterate the table itself, not a private copy of it")
+
+    def test_a_rule_added_to_the_table_is_reported_by_the_floor_without_being_taught(self):
+        """The counterfactual, run rather than asserted: append a rule to the table and the floor
+        reports it — which is what 'gains its reader by construction' has to mean."""
+        original = ledgermod.EVENT_RULES
+        try:
+            ledgermod.EVENT_RULES = original + (
+                ("a_rule_added_later", lambda e: e.get("outcome") != "planted",
+                 lambda e: "planted"),)
+            out = ledgermod.nonconforming({"decision_log": [{"id": "ev_0001", "outcome": "planted",
+                                                             "source": "interview",
+                                                             "evidence": "brief",
+                                                             "flip_criteria": "x"}]})
+            self.assertEqual(out, {"a_rule_added_later": ["ev_0001"]})
+        finally:
+            ledgermod.EVENT_RULES = original
 
 
 class TestGovernanceIsStamped(unittest.TestCase):

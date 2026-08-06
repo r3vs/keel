@@ -119,7 +119,14 @@ def decision_prompt(ledger: str, pin_id: str) -> dict:
     Read-only, and separate from recording on purpose: the thing that ASKS must be able to run
     without the power to write.
     """
-    pin = _open_existing(ledger).pin(pin_id)
+    return _prompt_from_pin(_open_existing(ledger).pin(pin_id))
+
+
+def _prompt_from_pin(pin: dict) -> dict:
+    """The prompt over an already-loaded pin. Split out so `record_decision` can check the pin it is
+    about to write against the ledger it is about to write to — one open, one object, no window in
+    which the fork it showed and the fork it enforces could be different files."""
+    pin_id = pin["id"]
     question = pin.get("question")
     if not question:
         raise ValueError(
@@ -142,7 +149,7 @@ def decision_prompt(ledger: str, pin_id: str) -> dict:
 
 def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, flip_criteria: str,
                     human_answer: str = "", evidence: str = "transcribed",
-                    accept_as_is: bool = False, apply_to_cluster: bool = False) -> dict:
+                    accept_as_is: bool = False) -> dict:
     """Record an election the HUMAN made. This tool does not elect; it writes down what was elected.
 
     That distinction is the package's central invariant, and until now it was implemented by having
@@ -153,19 +160,39 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
 
     What replaces "there is no tool" is a tool that cannot be used to choose:
 
-      * `option_id` must name an option the pin's own `question` offers. An agent cannot elect an
-        outcome the interview never put to the user — the menu is the ledger's, not the caller's.
+      * `option_id` must name an option the pin's own `question` offers — checked with
+        `Ledger.question_offers`, the *same function* the unasked doors reach through
+        `unasked_verdict`, so "what this pin may be decided to" has one answer and not two that
+        happen to agree. An agent cannot elect an outcome the interview never put to the user: the
+        menu is the ledger's, not the caller's.
       * freeform is allowed only where the question says `allow_freeform`, and then the human's
         words ARE the outcome.
       * `flip_criteria` is required, so no decision fossilizes out of reach of the reopen loop.
       * a `transcribed` decision must quote the human. An agent asserting "the user chose B" with
         nothing quoted is exactly the claim `evidence` exists to make checkable — and this is the
         boundary where that claim gets made, which is why the rule lives here and not in `ledger.py`.
+      * a pin whose work is FINISHED (`resolved` / `accepted` / `deferred`) is refused, by
+        `Ledger.settlement_verdict` inside `decide` (v0.16). This door had no settled check of any
+        kind, so it re-decided a resolved pin back to `decided` while `unasked_verdict` refused the
+        same pin as `already_settled` — two doors, two answers, one question. A `decided` pin is
+        still re-electable here and only here: that is the human correcting themselves, the log
+        keeps both events, and no unasked write can do it.
+
+    **One pin.** This door took `apply_to_cluster`, which fanned the same outcome — and the same
+    quote — across every pin sharing the `cluster_id`, past all three rules above: a pin offering a
+    different option set, a pin with no question, a `blocker`. The elicitation the human answered
+    named ONE pin. Cluster-wide is `record_policy`: it shows the radius before the write, holds back
+    what may not be settled, and leaves a `Policy` for each cascaded event to point at. The funnel's
+    "200 findings → one decision" is that tool, and it is the only shape of it that can say, on each
+    pin, whose answer this was.
 
     `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
     user through the host and the agent never carries the value. See `mcp/server.py`.
     """
-    prompt = decision_prompt(ledger, pin_id)
+    from ledger import Ledger
+    led = _open_existing(ledger)
+    pin = led.pin(pin_id)
+    prompt = _prompt_from_pin(pin)
     offered = {o["id"] for o in prompt["options"]}
 
     if accept_as_is:
@@ -179,7 +206,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
             raise ValueError(f"{pin_id} does not allow a freeform answer; choose one of {sorted(offered)}")
         if not human_answer:
             raise ValueError("a freeform election IS the human's words — human_answer is required")
-    elif option_id not in offered:
+    elif not Ledger.question_offers(pin, option_id):
         raise ValueError(
             f"{option_id!r} is not an option this pin offers ({sorted(offered) or 'none'}). An "
             f"agent may record an election, never invent one: the menu belongs to the question the "
@@ -192,7 +219,6 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
             "without it, an honest relay and a fabricated one are indistinguishable in the ledger"
         )
 
-    led = _open_existing(ledger)
     if accept_as_is:
         led.accept(pin_id, rationale=rationale, flip_criteria=flip_criteria,
                    evidence=evidence, human_answer=human_answer)
@@ -200,8 +226,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     else:
         outcome = human_answer if option_id == "freeform" else option_id
         led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
-                   evidence=evidence, human_answer=human_answer,
-                   apply_to_cluster=apply_to_cluster)
+                   evidence=evidence, human_answer=human_answer)
         state = "decided"
     led.save()
     _refresh_live_maps(ledger)
@@ -210,11 +235,23 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
 
 def interview_expand(ledger: str, project_type: str = "web-saas",
                      brief_decisions: dict | None = None) -> dict:
-    """Materialize the decision catalog as pins — greenfield's Phase-2 opening move.
+    """Materialize the decision catalog as pins — greenfield's Phase-1 frame step.
 
     Exposed because the funnel had no pins to funnel: `interview_next` reads, and the thing that
     CREATES the forks lived in `interview.expand_catalog` with no surface at all, so Phase 2 could
     not start through the only runtime channel there is.
+
+    `brief_decisions` is a WRITE — it commits DecisionEvents — and it is the one this tool has to be
+    read for (v0.14). It is gated by `Ledger.unasked_verdict`, the same predicate the policy cascade
+    passes, because the `brief` rung means precisely *nobody was asked*: a cluster the brief settles
+    with an outcome its own fork does not offer, or a `blocker`/`high` fork, comes back under
+    `brief_held_back` with the reason and stays an open question. Un-gated, this door wrote any
+    string onto any cluster at any severity — the third way into `decide` and the quietest.
+
+    A key naming no cluster of this catalog, or one pruned for this `project_type`, comes back under
+    `brief_unmatched` (v0.16). It used to come back nowhere: the docstring told the caller to check
+    `brief_held_back`, and a typo'd or obsolete cluster id appeared on no list at all, so a fork the
+    brief believed it had settled was reported as neither settled nor held.
     """
     import interview
     led = _open_or_create(ledger)
@@ -223,6 +260,178 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     led.save()
     _refresh_live_maps(ledger)
     return result
+
+
+def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict:
+    """The catalog's per-cluster default policies, as the interview's opening OFFERS.
+
+    Its own tool rather than a step inside `interview_expand`, even though the two are used together
+    at frame time: a policy offer is not a consequence of expanding a catalog, and folding it in
+    would make it a side effect nobody reading the call could see. The tool that offers the policies
+    says it offers the policies.
+
+    It READS. That is not an oversight to be fixed later — `interview.default_policies` deliberately
+    writes nothing, and could not: a `Policy` in the ledger carries a `default_outcome` that the
+    cascade then writes into DecisionEvents over the whole medium/low tail, so writing one
+    the human never elected would be an agent deciding at scale, through the one door this package
+    holds shut. It seeds the *interview*, never the ledger. What the user elects is written by
+    `record_policy`, and that door does exist — for one version it did not, and this docstring told
+    an agent to "record what they elect" through a surface nothing implemented.
+
+    Each offer carries what accepting it WOULD decide, from `Ledger.policy_preview` — the same
+    matcher the cascade itself runs. That is what the `ledger` argument is for: an offer put to a
+    user without its blast radius is a rule with the interesting part missing, and a policy decides
+    more pins than any single question does.
+
+    The second key, `no_default_outcome`, is the honest half (v0.12). A cascade may only write an
+    outcome the pin's own question offers, so a cluster whose stated default is not carried by any
+    of its own options cannot be offered as a policy — `nfrs` names four options at once, and
+    `delivery`'s default is conditional on the topology fork. Those clusters are returned here
+    rather than dropped: the catalog still states a default for them, and an agent that saw only
+    `offers` would read the silence as "this cluster has no default" instead of "this default has
+    to be asked".
+    """
+    import interview
+    led = _open_existing(ledger)
+    seeded = interview.default_policies(interview.load_catalog(), led, project_type=project_type)
+    offers = [{**offer, **led.policy_preview(offer["applies_to"], offer["default_outcome"])}
+              for offer in seeded["offers"]]
+    return {"offers": offers, "no_default_outcome": seeded["no_default_outcome"]}
+
+
+def policy_prompt(ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
+                  default_outcome: str = "", exceptions: list | None = None,
+                  project_type: str = "web-saas") -> dict:
+    """The policy exactly as it would be set, and exactly what it would decide. Read-only.
+
+    The twin of `decision_prompt`, and separate from recording for the same reason: the thing that
+    ASKS must be able to run without the power to write. It resolves the two legitimate origins of a
+    policy and refuses everything else:
+
+      * `offer_id` — the `cluster_id` of an offer `interview_seed_policies` returned. The rule, the
+        scope and the default outcome are then taken FROM the offer; passing your own is refused,
+        because the offer is the mandate the user was shown and restating it is rewriting it.
+      * no `offer_id` — a policy the catalog never offered (every rescue policy is one: its clusters
+        come from findings, not from a catalog). Then `rule`, `applies_to` and `default_outcome` are
+        the caller's, and `record_policy` demands the user's words verbatim, because those words are
+        the only thing the policy rests on.
+
+    Either way `default_outcome` is an **option id**, and the returned radius splits on whether each
+    matching pin's own question offers it (`not_offered`, v0.12). That is the half that used to be
+    missing on the freeform path: the caller's own sentence became the outcome of every pin in the
+    cluster, including pins whose question offered a closed set that did not contain it.
+    """
+    led = _open_existing(ledger)
+    exceptions = [str(x) for x in (exceptions or [])]
+    for pin_id in exceptions:
+        led.pin(pin_id)      # an exception naming no pin excepts nothing; fail rather than pretend
+
+    if offer_id:
+        import interview
+        seeded = interview.default_policies(interview.load_catalog(), led,
+                                            project_type=project_type)
+        offers = {o["cluster_id"]: o for o in seeded["offers"]}
+        offer = offers.get(offer_id)
+        if offer is None:
+            stated = {o["cluster_id"] for o in seeded["no_default_outcome"]}
+            raise ValueError(
+                f"{offer_id!r} is not an offer this catalog makes for project_type={project_type!r} "
+                f"({sorted(offers) or 'none'}). Read them with interview_seed_policies; a policy the "
+                f"user was never offered is one you invented."
+                + (f" That cluster does state a default, but no single one of its options carries "
+                   f"it, so it cannot be cascaded — ask it as a question." if offer_id in stated
+                   else "")
+            )
+        if rule or applies_to or default_outcome:
+            raise ValueError(
+                "an offer carries its own rule, scope and default outcome — pass offer_id alone. "
+                "Restating them here would let the recorded policy differ from the one the user "
+                "was shown, which is the whole thing this refuses."
+            )
+        rule, applies_to = offer["rule"], offer["applies_to"]
+        default_outcome = offer["default_outcome"]
+    else:
+        if not rule or not applies_to or not default_outcome:
+            raise ValueError(
+                "a policy the offers did not contain needs all three of rule, applies_to and "
+                "default_outcome: what the user decided, which pins it covers, and the outcome "
+                "every one of them gets. Or pass offer_id to take a catalog offer verbatim."
+            )
+
+    if not isinstance(default_outcome, str) or not default_outcome.strip():
+        raise ValueError(
+            "default_outcome must be the option id every cascaded pin gets — a non-empty string. "
+            "It is what lands in each DecisionEvent, and each pin's own question has to offer it; "
+            "a structured value is offered by no question, so it would decide nothing anywhere."
+        )
+
+    return {"offer_id": offer_id, "rule": rule, "applies_to": applies_to,
+            "default_outcome": default_outcome, "exceptions": exceptions,
+            **led.policy_preview(applies_to, default_outcome, exceptions)}
+
+
+def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
+                  default_outcome: str = "", exceptions: list | None = None, human_answer: str = "",
+                  evidence: str = "transcribed", project_type: str = "web-saas") -> dict:
+    """Record a POLICY the human elected, and cascade it. This tool does not elect; it writes down
+    what was elected — the same invariant `record_decision` holds, one level up.
+
+    One level up is the point. A policy is an election over a whole cluster: it decides more than
+    one pin, so it earns at least the discipline a single decision gets, not less. Until now it got
+    less on the one axis that matters most — `record_decision` refuses an outcome the pin's own
+    question never offered, and this door wrote the caller's own sentence onto every pin in the
+    cluster regardless of what those pins offered.
+
+    What is refused, so that this cannot be used to choose:
+
+      * an `offer_id` the catalog does not make for this project type;
+      * an offer restated in the caller's own words (see `policy_prompt`);
+      * a policy with no rule, scope or outcome;
+      * an outcome that is not a non-empty string — it is an option id, not a payload;
+      * an exception naming a pin that does not exist;
+      * a `transcribed` policy with no quote — the same rule as a transcribed decision, and it bites
+        harder here, since one unquoted claim would carry a whole cluster;
+      * and, per pin, the write itself: a pin whose own `question` does not offer this outcome is
+        HELD BACK (`not_offered`) and stays open, exactly as a blocker/high pin is. That is the
+        offered-options rule of `record_decision`, applied where it was missing.
+
+    `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
+    user through the host — showing the rule, the OUTCOME it writes, and the pins it would decide —
+    and the agent never carries the answer. See `mcp/server.py`.
+    """
+    prompt = policy_prompt(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
+                           project_type)
+
+    if evidence == "transcribed" and not human_answer:
+        raise ValueError(
+            "a transcribed policy must carry the human's answer verbatim in human_answer — without "
+            "it, an honest relay and a fabricated one are indistinguishable, and this one decides "
+            f"{len(prompt['would_decide'])} pin(s) at once"
+        )
+
+    led = _open_existing(ledger)
+    policy = led.add_policy(applies_to=prompt["applies_to"], rule=prompt["rule"],
+                            default_outcome=prompt["default_outcome"],
+                            exceptions=prompt["exceptions"],
+                            evidence=evidence, human_answer=human_answer)
+    # Exactly this policy, once, over the radius its elector was shown. It used to call
+    # `apply_policies()`, which re-ran every policy in the ledger: the returned `cascaded` then
+    # listed pins an OLDER policy had just decided, and accepting one policy silently cascaded a
+    # previous one over pins added since it was elected — pins nobody was shown when they elected it.
+    radius = led.apply_policy(policy)
+    led.save()
+    _refresh_live_maps(ledger)
+    # What THIS policy decided on THIS call. Every event it wrote carries evidence `cascaded` and
+    # points back at this policy by `policy_id` — none of them claims a relay nobody made, and none
+    # of them is another policy's work reported as this one's. The refusal buckets are spread from
+    # the radius rather than named one by one: they used to be hardcoded here while `policy_preview`
+    # built its shape from `UNASKED_BUCKETS`, so the constant's own comment ("adding a bucket cannot
+    # leave one surface reporting four and another five") was false of this surface.
+    out = {"policy_id": policy["id"], "rule": policy["rule"],
+           "default_outcome": policy["default_outcome"], "evidence": evidence,
+           "cascaded": radius["would_decide"]}
+    out.update({bucket: radius[bucket] for bucket in radius if bucket != "would_decide"})
+    return out
 
 
 def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
@@ -245,12 +454,13 @@ def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status
     return {"item_id": item["id"], "status": item["status"]}
 
 
-def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
+def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> dict:
     led = _open_existing(ledger)
-    pin = led.resolve(pin_id, evidence=evidence)
+    pin = led.resolve(pin_id, evidence=evidence, rung=rung or None)
     led.save()
     _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"]}
+    return {"pin_id": pin["id"], "state": pin["state"],
+            "verification": pin.get("verification")}
 
 
 def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
@@ -375,7 +585,19 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     led.save()
     _refresh_live_maps(ledger)
     pin = led.pin(pin_id)
+    # v0.16: what the disagreement DID, said rather than inferred from the state. A closed pin is
+    # recorded and not reopened — un-closing finished work has its own arc — and a caller that
+    # cannot tell the two apart would read "recorded" as "handled".
+    #
+    # Read off the event THIS call appended, not re-derived from the pin. Re-derived it was
+    # `substate == "contested"`, which is a different fact wearing the same name: `substate` is set
+    # by the reopen and never cleared, so a second, AGREEING derivation over the same pin reported
+    # `reopened: true` while its own event recorded `false`. Two carriers for one fact, disagreeing —
+    # in the return shape of the tool whose whole subject is two derivations disagreeing.
+    event = next(e for e in led.data["decision_log"] if e["id"] == record["event_id"])
     return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
+            "event_id": event["id"],
+            "reopened": event["reopened"],
             "verification": pin.get("verification")}
 
 
@@ -410,12 +632,48 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return agentready.card(led, pin_id) if pin_id else agentready.gate(led)
 
 
-def ledger_defer(ledger: str, pin_id: str) -> dict:
+def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
+                 human_answer: str = "") -> dict:
+    """Record the human's election to put this pin out of scope for now. It does not elect.
+
+    Deferring is an answer — the spec's own `incompleteness` fork offers it as an option — and it
+    settles the pin exactly as `decided` does: the question stops being asked, `interview_next` loses
+    it, `open_questions` goes down. Until v0.16 it was the one settlement with no election behind it:
+    one state check, no severity threshold, no quote, nothing in the append-only log. An agent alone
+    deferred a `blocker` `open_decision` posing a session|jwt fork, and the only trace was a question
+    that had stopped being asked.
+
+    So it is held to `record_decision`'s discipline, for the same reason and in the same words: a
+    `transcribed` defer must carry the human's answer verbatim, `flip_criteria` says what brings the
+    pin back (a defer with no return condition is a deletion with better manners), and a pin whose
+    work is already finished is refused rather than closed twice.
+
+    It is NOT held to the offered-options rule: `defer` is a meta-answer about scope, not a branch of
+    the pin's fork, and requiring every question to list a defer option would make punting depend on
+    whoever authored the pin. What holds it instead is that the human was shown THIS pin.
+
+    **The rung is not a parameter, because the caller cannot know it.** v0.16 made deferring an
+    election and then let the agent state its own provenance: one keyword, `evidence="elicited"`,
+    settled a `blocker` fork on the rung whose entire claim is that the agent never carried the
+    value — reproduced against a client declaring no elicitation capability, so nobody was asked by
+    anybody. `record_decision` has never allowed this and the shape it uses is the fix: the rung is
+    decided by WHICH PATH RAN. There is one path here — the agent relays — so the rung is
+    `transcribed` and the human's words are always required. If deferral ever gains an elicitation
+    path, that path sets the rung, exactly as `mcp/server.py::ledger_record_decision` does.
+    """
     led = _open_existing(ledger)
-    pin = led.defer(pin_id)
+    evidence = "transcribed"
+    if not human_answer:
+        raise ValueError(
+            "a defer must carry the human's answer verbatim in human_answer — deferring "
+            "settles the pin and stops the question being asked, so an unquoted one is an agent "
+            "deciding not to decide, which is the one thing no tool here may do"
+        )
+    pin = led.defer(pin_id, rationale=rationale, flip_criteria=flip_criteria,
+                    evidence=evidence, human_answer=human_answer)
     led.save()
     _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"]}
+    return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer", "evidence": evidence}
 
 
 # -- coverage manifest -------------------------------------------------------------------------

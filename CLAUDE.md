@@ -87,7 +87,7 @@ Each skill is **design-complete with the runtime largely implemented**; its `TOD
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
 Plan A); rescue's VibraFlow verdict was **re-run on a fresh graph** (2026-07-14 — WEAK cross-layer
 correspondence, so standalone extraction is Plan A). The runtime lives under `src/runtime/`
-(core stdlib-only, 344 tests in CI): `ledger.py` (spec v0.6), `shapes.py` (field-shape engine +
+(core stdlib-only, exercised by `tests/` on every PR): `ledger.py` (spec v0.16), `shapes.py` (field-shape engine +
 drift-check, 8 stacks), `treesitter_extract.py` (the **primary** extraction backend — a real grammar per language, so
 real-world TS/GraphQL/SQL parse with no per-repo patches; declarative per-grammar data, degrades to
 the stdlib parsers when absent), `generate.py` (contract generators,
@@ -110,18 +110,35 @@ running an app.
 **There IS a build step, and `plugins/` is its committed output.**
 
 ```bash
-python scripts/build.py               # src/ -> plugins/. The ONE generation step; the only thing that ships.
-python scripts/check_consistency.py   # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
-python scripts/verify_pointers.py     # every *.md cross-reference resolves; exits 1 on dangling
-python scripts/check_hypotheses.py    # every tuned number in the runtime is declared (AST, not grep)
-python scripts/verify_commands.py     # every agent-facing COMMAND resolves after install; exits 1 on drift
-python -m unittest discover -s tests  # ledger runtime, MCP tools + server, ledger gate, installed package
-bash src/tools/bootstrap.sh           # toolchain + uv (idempotent, best-effort, never hard-fails)
-bash scripts/install.sh               # link the built skills into ~/.agents/skills (opencode + Pi)
+python scripts/build.py                # src/ -> plugins/. The ONE generation step; the only thing that ships.
+python scripts/build.py --check        # the drift gate: plugins/ still equals what src/ generates
+python scripts/check_consistency.py    # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
+python scripts/verify_pointers.py      # every *.md cross-reference resolves; exits 1 on dangling
+python scripts/check_hypotheses.py     # every tuned number in the runtime is declared (AST, not grep)
+python scripts/check_schema_fields.py  # every field the ledger spec declares is read by something that ships
+python scripts/check_tool_carriers.py  # every WRITE tool the server exposes is named by a shipped playbook
+python scripts/verify_commands.py      # every agent-facing COMMAND resolves after install; exits 1 on drift
+python scripts/run_evals.py --validate # each skill's evals.json is well-formed (structure, not behaviour)
+python -m unittest discover -s tests   # ledger runtime, MCP tools + server, ledger gate, installed package
+bash src/tools/bootstrap.sh            # toolchain + uv (idempotent, best-effort, never hard-fails)
+bash scripts/install.sh                # link the built skills into ~/.agents/skills (opencode + Pi)
 ```
 
-`build.py --check` is the drift gate; every check above runs in CI. Generated output is committed
-because a marketplace installs from the repo — `--check` is what stops it drifting from `src/`.
+**That list is the whole set of gates, and it was read off its consumer** — `.github/workflows/ci.yml`
+runs every line above except bare `python scripts/build.py` (generating is what a developer does; CI
+only verifies the result with `--check`) and the two `bash` lines, which it syntax-checks with
+`bash -n` rather than executing. CI additionally installs the tree-sitter backend before the tests,
+and runs `claude plugin validate --strict` per plugin in a second job that is `continue-on-error`, so
+it advises and never blocks — neither is a gate you run here.
+
+The completeness claim matters because `docs/open-gaps.md` tells a cold session to "run every gate"
+by pointing at this list: an omission here is a gate nobody runs before committing, which is exactly
+how `check_schema_fields.py` and `check_tool_carriers.py` came to run in CI while appearing nowhere
+in this block — an enumeration asserting a completeness it did not have, the same class the gates
+themselves exist to catch.
+
+Generated output is committed because a marketplace installs from the repo — `build.py --check` is
+what stops it drifting from `src/`.
 
 **The distinction that organizes all of it:** these gates validate the package **as installed**, not
 just the repo as a repo. Every earlier gate anchored on `__file__` and so was blind to the one path
@@ -134,8 +151,14 @@ skills bind to. Each skill's `evals/evals.json` holds prompts **with assertions*
 `scripts/run_evals.py` validates their structure (CI) and executes them when an agent runner is
 available.
 
-Both Python checks run in CI on every PR (`.github/workflows/ci.yml`). On Windows use `python`
-(present) and run the `.sh` script from the Bash shell / Git Bash.
+Run the `.sh` scripts from Git Bash. On Windows, **check which `python` you got
+before trusting a green run** — this very line
+used to say "use `python` (present)", and that is the instruction that walked a session into an
+unrelated tool's virtualenv sitting earlier on the User PATH: a 3.11 venv with no extraction
+backend, so 21 tree-sitter tests skipped in a way that reads as deliberate degradation. Git Bash
+hid it (a `~/.bashrc` alias, which no subprocess inherits), so the same command in two shells ran
+two interpreters. `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter` now fails when
+another python on PATH has the backend this one lacks; its docstring holds the full condition.
 
 ## The one idea to hold in your head
 
@@ -156,7 +179,7 @@ are all unified under this one principle — which is why there is deliberately 
 - **The decisions ledger is the single source of truth.** Three surfaces — the visual map/wiki,
   the interview, and the brainstorm — hold *no state of their own*; they all read/write one
   `ledger.json`. This is deliberate: it is the exact anti-divergence property the skills enforce on
-  the codebases they touch. Schema authority: `src/core/decisions-ledger-spec.md` (shared, v0.6);
+  the codebases they touch. Schema authority: `src/core/decisions-ledger-spec.md` (shared, v0.16);
   English pointer summary: `src/core/ledger.md`.
 - **A `Pin` is a discriminated union on `kind`** (`contract_mismatch | internal_contradiction |
   ambiguity | incompleteness | design_concern | defect | open_decision | acceptance_criterion |
@@ -356,7 +379,7 @@ is not this one.
 - **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
   `src/core/*.md` is the single authoring source for the shared doctrine — **edit it there, never in
   a `plugins/**/references/core/` copy**, then run `scripts/build.py`. Within that,
-  `src/core/decisions-ledger-spec.md` (v0.6) is authoritative for the ledger schema. Do not let a
+  `src/core/decisions-ledger-spec.md` (v0.16) is authoritative for the ledger schema. Do not let a
   `SKILL.md`, a reference summary, or a vendored copy drift from them.
 - **`src/core/decisions-ledger-spec.md` is the authoritative schema** (English, like the rest of the
   repo); `src/core/ledger.md` is the short English pointer summary to it.

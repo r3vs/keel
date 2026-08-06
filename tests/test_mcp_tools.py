@@ -123,7 +123,8 @@ class TestLedgerWrites(unittest.TestCase):
         tools.ledger_add_remediation(self.ledger, pid, action="implement", ladder_rung=1)
         item_id = Ledger(self.ledger).pin(pid)["remediation"][0]["id"]
         tools.ledger_set_remediation_status(self.ledger, pid, item_id, "done")
-        out = tools.ledger_resolve(self.ledger, pid, evidence="observed: repro no longer reproduces")
+        out = tools.ledger_resolve(self.ledger, pid, evidence="observed: repro no longer reproduces",
+                                   rung="observed")
         self.assertEqual(out["state"], "resolved")
         self.assertEqual(Ledger(self.ledger).pin(pid)["evidence"], "observed: repro no longer reproduces")
 
@@ -138,6 +139,121 @@ class TestLedgerWrites(unittest.TestCase):
         # The 'no decide tool' doctrine, enforced at the tool surface.
         self.assertFalse(hasattr(tools, "ledger_decide"))
         self.assertFalse(hasattr(tools, "ledger_accept"))
+
+    #: The fork these clustered pins pose. A policy may only write an outcome the pin's own question
+    #: offers (v0.12), so a cluster with no question is a cluster no policy can cascade over.
+    FORK = {"prompt": "Which layer is truth?",
+            "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
+
+    def _cluster(self, n=3):
+        for i, sev in enumerate(("low", "medium", "high")[:n]):
+            tools.ledger_add_pin(self.ledger, kind="contract_mismatch", title=f"drift {i}",
+                                 severity=sev, confidence="extracted", cluster_id="cl_shape",
+                                 question=self.FORK,
+                                 provenance=[{"source": "recon", "detail": "shape diff"}])
+
+    def test_a_catalog_offer_is_taken_verbatim_or_not_at_all(self):
+        """The offer is the mandate the user was shown. Restating it in the caller's own words is
+        how a recorded policy comes to differ from the one anybody agreed to."""
+        self._cluster()
+        offers = tools.interview_seed_policies(self.ledger)["offers"]
+        offer = next(o for o in offers if o["cluster_id"] == "cl_persistence")
+        self.assertIn("would_decide", offer, "an offer without its blast radius is half the question")
+        with self.assertRaises(ValueError):
+            tools.record_policy(self.ledger, offer_id=offer["cluster_id"], rule="my own words",
+                                human_answer="sure")
+        out = tools.record_policy(self.ledger, offer_id=offer["cluster_id"],
+                                  human_answer="yes, take the default")
+        policy = Ledger(self.ledger).data["policies"][-1]
+        self.assertEqual(policy["rule"], offer["rule"])
+        self.assertEqual(policy["applies_to"], offer["applies_to"])
+        self.assertEqual(policy["default_outcome"], offer["default_outcome"])
+        self.assertEqual(out["evidence"], "transcribed")
+
+    def test_a_stated_default_that_no_option_carries_is_not_an_offer(self):
+        """v0.12. `nfrs` states a default naming four of its own options at once, so accepting it
+        would write a sentence as the outcome of a pin offering `validation | errors | ... `. It is
+        returned as stated-but-asked, and taking it by offer_id is refused with that reason — not
+        with silence that reads as "no default here"."""
+        self._cluster()
+        seeded = tools.interview_seed_policies(self.ledger)
+        asked = {o["cluster_id"] for o in seeded["no_default_outcome"]}
+        self.assertIn("cl_nfrs", asked)
+        self.assertNotIn("cl_nfrs", {o["cluster_id"] for o in seeded["offers"]})
+        with self.assertRaises(ValueError) as caught:
+            tools.record_policy(self.ledger, offer_id="cl_nfrs", human_answer="sure")
+        self.assertIn("no single one of its options carries it", str(caught.exception))
+
+    def test_a_policy_cannot_write_an_outcome_the_pin_never_offered(self):
+        """The blocker, at the door an agent actually reaches. `record_decision` refuses an
+        option_id the pin does not offer; `record_policy` wrote the caller's own sentence onto every
+        pin in the cluster. Reproduced verbatim from the review: an outcome no pin's question
+        offers, on pins that offer a closed set."""
+        for i in range(2):
+            tools.ledger_add_pin(self.ledger, kind="open_decision", title=f"datastore {i}",
+                                 severity="low", confidence="inferred", cluster_id="cl_data",
+                                 provenance=[{"source": "recon", "detail": "d"}],
+                                 question={"prompt": "Which datastore?",
+                                           "options": [{"id": "postgres", "label": "Postgres"},
+                                                       {"id": "mysql", "label": "MySQL"}]})
+        out = tools.record_policy(
+            self.ledger, rule="the agent's own sentence, never uttered by the user",
+            applies_to={"cluster_id": "cl_data"},
+            default_outcome="mongodb — an outcome no pin's question offers",
+            human_answer="whatever, you decide")
+        self.assertEqual(out["cascaded"], [], "nothing may be decided on an unoffered outcome")
+        self.assertEqual(out["not_offered"], ["pin_0001", "pin_0002"])
+        led = Ledger(self.ledger)
+        self.assertEqual(led.data["decision_log"], [], "no DecisionEvent may exist for it")
+        for pin in led.data["pins"]:
+            self.assertEqual(pin["state"], "needs_input")
+            self.assertEqual(pin["resolution_mode"], "asked")
+
+    def test_a_policy_reports_its_own_cascade_and_not_an_older_ones(self):
+        """The second finding. `record_policy` called `apply_policies()`, which re-ran every policy
+        in the ledger: recording pol_0002 returned pin_0002 — decided by pol_0001, over a pin added
+        after pol_0001 was elected — inside its own `cascaded` list."""
+        args = dict(question={"prompt": "Which layer is truth?",
+                              "options": [{"id": "db", "label": "the DB"},
+                                          {"id": "api", "label": "the API"}]},
+                    kind="contract_mismatch", severity="low", confidence="extracted",
+                    provenance=[{"source": "recon", "detail": "d"}])
+        tools.ledger_add_pin(self.ledger, title="one", cluster_id="cl_one", **args)
+        first = tools.record_policy(self.ledger, rule="A", applies_to={"cluster_id": "cl_one"},
+                                    default_outcome="db", human_answer="A")
+        self.assertEqual(first["cascaded"], ["pin_0001"])
+
+        tools.ledger_add_pin(self.ledger, title="two", cluster_id="cl_one", **args)   # found later
+        tools.ledger_add_pin(self.ledger, title="three", cluster_id="cl_two", **args)
+        second = tools.record_policy(self.ledger, rule="B", applies_to={"cluster_id": "cl_two"},
+                                     default_outcome="api", human_answer="B")
+
+        self.assertEqual(second["cascaded"], ["pin_0003"],
+                         "a policy reports what IT decided; pin_0002 belongs to no election")
+        led = Ledger(self.ledger)
+        self.assertEqual(led.pin("pin_0002")["state"], "needs_input",
+                         "accepting one policy must not cascade an older one over pins added since "
+                         "— nobody was shown them when they accepted it")
+        self.assertEqual([(e["pin_id"], e["policy_id"]) for e in led.data["decision_log"]],
+                         [("pin_0001", first["policy_id"]), ("pin_0003", second["policy_id"])])
+
+    def test_the_preview_writes_nothing_and_matches_what_the_cascade_does(self):
+        self._cluster()
+        args = dict(rule="the DB is truth", applies_to={"cluster_id": "cl_shape"},
+                    default_outcome="db")
+        preview = tools.policy_prompt(self.ledger, **args)
+        self.assertEqual(Ledger(self.ledger).data["policies"], [],
+                         "previewing a policy must not create one")
+        out = tools.record_policy(self.ledger, human_answer="the DB is truth here", **args)
+        self.assertEqual(out["cascaded"], preview["would_decide"])
+        self.assertEqual(out["held_back"], preview["held_back"])
+        led = Ledger(self.ledger)
+        for pin_id in out["cascaded"]:
+            event_id = led.pin(pin_id)["decision"]["event_id"]
+            event = next(e for e in led.data["decision_log"] if e["id"] == event_id)
+            self.assertEqual(event["evidence"], "cascaded",
+                             "a cascade must not be recorded as an agent's relay")
+            self.assertEqual(event["policy_id"], out["policy_id"])
 
 
 class TestUnderstandFamily(unittest.TestCase):
@@ -296,6 +412,159 @@ class TestInstructionCarrierRoundTrip(unittest.TestCase):
         out = tools.instructions_diff(self.ledger, self.tmp, bridge=False)
         self.assertEqual(out["claude_bridge"], "not_requested")
         self.assertTrue(out["in_sync"], "opting out of the bridge says nothing about the region")
+
+
+class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
+    """v0.16, at the boundary an AGENT reaches — which is the boundary the reproductions used.
+
+    Each of these was run over real `uv run --script` stdio with no human in the loop before it was
+    a test. The pure-layer versions live in `test_ledger.py`; these assert that the tool an agent
+    actually calls refuses the same thing, because the last four rounds all ended with a rule that
+    held in the library and not at the door (or the reverse).
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ledger = os.path.join(self.tmp, "ledger.json")
+
+    def _fork(self, severity="blocker"):
+        out = tools.ledger_add_pin(
+            self.ledger, kind="open_decision", title="session or JWT", severity=severity,
+            confidence="inferred", provenance=[{"source": "catalog", "detail": "identity"}],
+            question={"prompt": "Session or JWT?",
+                      "options": [{"id": "session", "label": "server sessions"},
+                                  {"id": "jwt", "label": "stateless JWT"}]})
+        return out["pin_id"]
+
+    def test_the_four_call_chain_that_closed_an_unverifiable_blocker(self):
+        """Reproduced verbatim: add_pin(defect, blocker) -> add_remediation ->
+        set_remediation_status(done) -> mark_correctness_unknown -> resolve. The fifth call
+        returned `resolved`; a pin that had just declared its own correctness unestablishable
+        closed green, with no human anywhere in the chain."""
+        pid = tools.ledger_add_pin(
+            self.ledger, kind="defect", title="double charge under retry", severity="blocker",
+            confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+            as_is={"description": "double charge"})["pin_id"]
+        item = tools.ledger_add_remediation(self.ledger, pid, action="align", ladder_rung=2)
+        tools.ledger_set_remediation_status(self.ledger, pid, item["item_id"], "done")
+        out = tools.ledger_mark_correctness_unknown(
+            self.ledger, pid, blocked_by="no runnable payments environment",
+            attempted=["tests", "typecheck", "smoke_probe"])
+        self.assertEqual(out["state"], "correctness_unknown")
+        with self.assertRaises(ValueError):
+            tools.ledger_resolve(self.ledger, pid, evidence="looks right now")
+        self.assertEqual(tools.ledger_summary(self.ledger)["by_state"],
+                         {"correctness_unknown": 1})
+
+    def test_an_agent_alone_cannot_defer_a_blocker(self):
+        """`ledger_defer` took (ledger, pin_id) and settled the pin. `interview_next` went from
+        asked_count 1 to 0, `open_questions` from 1 to 0, and `decision_log` stayed empty."""
+        pid = self._fork()
+        with self.assertRaises(ValueError) as ctx:
+            tools.ledger_defer(self.ledger, pid, rationale="out of the v1 slice",
+                               flip_criteria="a non-cookie client appears")
+        self.assertIn("human_answer", str(ctx.exception))
+        self.assertEqual(tools.interview_next(self.ledger)["asked_count"], 1,
+                         "the question must still be asked")
+        self.assertEqual(tools.ledger_summary(self.ledger)["events"], 0)
+
+    def test_a_quoted_deferral_settles_the_pin_and_says_so_in_the_log(self):
+        pid = self._fork()
+        out = tools.ledger_defer(self.ledger, pid, rationale="auth is out of the v1 slice",
+                                 flip_criteria="a second client appears that cannot hold a cookie",
+                                 human_answer="not now — v1 is one web client")
+        self.assertEqual((out["state"], out["outcome"]), ("deferred", "defer"))
+        summary = tools.ledger_summary(self.ledger)
+        self.assertEqual(summary["open_questions"], 0)
+        self.assertEqual(summary["settlements_by_door"], {"defer": 1},
+                         "a settlement no surface counts is the black hole this schema keeps "
+                         "rediscovering")
+        led = Ledger(self.ledger)
+        self.assertEqual(led.data["decision_log"][-1]["human_answer"],
+                         "not now — v1 is one web client")
+
+    def test_record_decision_and_the_unasked_predicate_answer_the_same_way(self):
+        """Two doors, two answers, one question — the LOW finding. `record_decision` re-decided a
+        resolved pin back to `decided` while `unasked_verdict` called the same pin
+        `already_settled`."""
+        pid = tools.ledger_add_pin(
+            self.ledger, kind="defect", title="d", severity="medium", confidence="extracted",
+            provenance=[{"source": "recon", "detail": "x"}], as_is={"description": "d"},
+            question={"prompt": "?", "options": [{"id": "fix", "label": "fix it"}]})["pin_id"]
+        item = tools.ledger_add_remediation(self.ledger, pid, action="align", ladder_rung=1)
+        tools.ledger_set_remediation_status(self.ledger, pid, item["item_id"], "done")
+        tools.ledger_resolve(self.ledger, pid, evidence="observed: no longer reproduces",
+                            rung="observed")
+        led = Ledger(self.ledger)
+        self.assertEqual(led.unasked_verdict(led.pin(pid), "fix"), "already_settled")
+        with self.assertRaises(Exception):
+            tools.record_decision(self.ledger, pid, "fix", rationale="r", flip_criteria="f",
+                                  human_answer="fix it")
+        self.assertEqual(Ledger(self.ledger).pin(pid)["state"], "resolved")
+
+    def test_a_policy_scope_naming_no_pin_field_is_refused_at_the_door(self):
+        """`applies_to={"nope": null}` matched EVERY pin in the ledger — reproduced end to end
+        through `ledger_record_policy`, whose radius is what a human elects the policy from."""
+        self._fork(severity="medium")
+        with self.assertRaises(Exception) as ctx:
+            tools.record_policy(self.ledger, rule="everything is a session",
+                                default_outcome="session", applies_to={"nope": None},
+                                human_answer="sessions everywhere")
+        self.assertIn("not a Pin field", str(ctx.exception))
+        self.assertEqual(Ledger(self.ledger).data["policies"], [])
+
+    def test_a_cross_derivation_disagreement_leaves_the_offered_options_alone(self):
+        pid = self._fork(severity="medium")
+        tools.record_decision(self.ledger, pid, "jwt", rationale="r", flip_criteria="f",
+                              human_answer="JWT, we have three clients")
+        out = tools.ledger_cross_derive(
+            self.ledger, pid, claim="JWT revocation is solvable here", agreement="disagree",
+            derivations=[{"provider": "anthropic", "model": "m", "result": "yes"},
+                         {"provider": "openai", "model": "n", "result": "no"}])
+        self.assertTrue(out["reopened"])
+        self.assertTrue(out["event_id"].startswith("xdr_"))
+        pin = Ledger(self.ledger).pin(pid)
+        self.assertEqual([o["id"] for o in pin["question"]["options"]], ["session", "jwt"],
+                         "the menu the human answers from belongs to the ledger, not the caller")
+        self.assertEqual(tools.decision_prompt(self.ledger, pid)["options"][0]["id"], "session")
+
+    def test_the_returned_reopened_is_the_events_own_answer(self):
+        """Two carriers for one fact, disagreeing — in the return shape of the tool whose subject is
+        two derivations disagreeing. `reopened` was re-derived as `substate == "contested"`, and
+        `substate` is written by the reopen and never cleared, so a SECOND, AGREEING derivation came
+        back `reopened: true` while the `xdr_` event it had just written said false."""
+        pid = self._fork(severity="medium")
+        tools.record_decision(self.ledger, pid, "jwt", rationale="r", flip_criteria="f",
+                              human_answer="JWT, we have three clients")
+        disagreeing = [{"provider": "anthropic", "model": "m", "result": "yes"},
+                       {"provider": "openai", "model": "n", "result": "no"}]
+        agreeing = [{"provider": "anthropic", "model": "m", "result": "yes"},
+                    {"provider": "openai", "model": "n", "result": "yes"}]
+        first = tools.ledger_cross_derive(self.ledger, pid, claim="revocation is solvable",
+                                          agreement="disagree", derivations=disagreeing)
+        self.assertTrue(first["reopened"])
+        second = tools.ledger_cross_derive(self.ledger, pid, claim="revocation is solvable",
+                                           agreement="agree", derivations=agreeing)
+        events = [e for e in Ledger(self.ledger).data["decision_log"]
+                  if e["id"].startswith("xdr_")]
+        self.assertEqual(second["event_id"], events[-1]["id"])
+        self.assertEqual(second["reopened"], events[-1]["reopened"])
+        self.assertFalse(second["reopened"], "an agreement reopens nothing")
+
+    def test_the_defer_door_does_not_let_its_caller_state_its_own_rung(self):
+        """`ledger_defer(..., evidence="elicited")` settled a `blocker` fork on the rung whose whole
+        claim is that the agent never carried the value — reproduced against a client declaring no
+        elicitation capability, so nobody was asked by anybody. `record_decision` has never allowed
+        it: the rung is decided by WHICH PATH RAN, never by a parameter."""
+        import inspect
+        self.assertNotIn("evidence", inspect.signature(tools.ledger_defer).parameters,
+                         "provenance the caller states is provenance the caller invents")
+        pid = self._fork()
+        out = tools.ledger_defer(self.ledger, pid, rationale="not now",
+                                 flip_criteria="when a second client appears",
+                                 human_answer="not now — v1 is one web client")
+        self.assertEqual(out["evidence"], "transcribed")
+        self.assertEqual(Ledger(self.ledger).data["decision_log"][-1]["evidence"], "transcribed")
 
 
 if __name__ == "__main__":

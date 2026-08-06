@@ -71,7 +71,8 @@ class TestReadiness(unittest.TestCase):
         contract, api, client = build_chain(led)
         item = contract["remediation"][0]
         led.set_remediation_status(contract["id"], item["id"], "done")
-        led.resolve(contract["id"])
+        led.resolve(contract["id"], evidence="ran the contract suite; shapes match",
+                    rung="observed")
         ready = [p["title"] for p in buildloop.ready(led)]
         self.assertEqual(ready, ["api"])             # now api is ready, client still blocked
 
@@ -87,7 +88,7 @@ class TestReadiness(unittest.TestCase):
         c, a, cl = build_chain(led)
         for p in (c, a, cl):
             led.set_remediation_status(p["id"], p["remediation"][0]["id"], "done")
-            led.resolve(p["id"])
+            led.resolve(p["id"], evidence="exercised the slice end to end", rung="observed")
         self.assertIsNone(buildloop.next_item(led))
 
 
@@ -99,7 +100,8 @@ class TestCheckpoint(unittest.TestCase):
         self.assertFalse(cp["complete"])
         self.assertIn(contract["id"], cp["pending"])
         led.set_remediation_status(contract["id"], contract["remediation"][0]["id"], "done")
-        led.resolve(contract["id"])
+        led.resolve(contract["id"], evidence="ran the contract suite; shapes match",
+                    rung="observed")
         self.assertTrue(buildloop.checkpoint(led, 0)["complete"])
 
 

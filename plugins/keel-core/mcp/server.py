@@ -118,10 +118,13 @@ _RW_CREATE = {**_RW, "idempotentHint": False}  # each call appends a new pin / r
 
 @mcp.tool(annotations={"title": "Ledger Summary", **_RO})
 def ledger_summary(ledger: str) -> dict:
-    """Counts of ledger pins by state, kind and severity.
+    """Counts of ledger pins by state, of events, and of how each decision was evidenced.
 
     The ledger is the single source of truth all three surfaces project. Read it before acting on
-    any pin.
+    any pin. `decisions_by_evidence` counts the rung each decision reached: `transcribed` ones rest
+    on an agent's relay of what the human said — weigh those before building on one. A non-empty
+    `pre_rule_events` means this file predates a rule now in force, so `version` stays where its own
+    content puts it.
 
     Args:
         ledger: Path to ledger.json.
@@ -189,11 +192,55 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
     return tools.ledger_surface_assumption(ledger, title, detail, severity, confidence)
 
 
+#: The row that offers "leave it as it is" on a design_concern. Its VALUE in the choice map is
+#: `None`, not a string: `_validate_question` requires every option id to be truthy, so `None` is
+#: the one value no option id can collide with. A sentinel string could — an agent authors option
+#: ids through `ledger_add_pin`, and an option literally called `accept_as_is` would then be
+#: recorded as an acceptance instead of as itself.
+_ACCEPT_AS_IS_ROW = "accept_as_is — leave it as it is"
+
+
+def _decision_choices(prompt: dict) -> dict:
+    """`{what the user reads: the option id it means}` — an explicit, injective map.
+
+    The elicitation protocol carries a string, so the id has to survive a round trip through display
+    text. It used to survive by being parsed back out: choices were built as `f"{id} — {label}"` and
+    the reply was read with `.split(" — ")[0]`. Nothing constrains an option id, and an agent
+    authors them (`ledger_add_pin`), so ids `keep` and `keep — and also delete the module` render two
+    distinct rows that parse to the SAME token: the human picks the second, the server writes the
+    first, on the `elicited` rung — the strongest one, the one whose whole claim is that the agent
+    never touched the value. Reproduced over real stdio.
+
+    So the mapping is carried, not re-derived: build it once, look the answer up by equality (the
+    same discipline `_POLICY_ACCEPT`/`_POLICY_DECLINE` already use), and refuse an answer that is not
+    in it. Injectivity is not assumed either — two options rendering identically would silently
+    collapse into one row, so that is refused at the source rather than resolved by guessing.
+    """
+    out: dict = {}
+    for o in prompt["options"]:
+        row = f"{o['id']} — {o['label']}" + (f" (→ {o['implication']})" if o["implication"] else "")
+        if row in out:
+            raise ValueError(
+                f"two options of {prompt['pin_id']} render the same choice ({row!r}), so a reply "
+                f"naming it would not say which was picked. Give them distinct ids or labels — a "
+                f"fork whose options a human cannot tell apart is not a fork."
+            )
+        out[row] = o["id"]
+    if prompt["can_accept_as_is"]:
+        if _ACCEPT_AS_IS_ROW in out:
+            raise ValueError(
+                f"an option of {prompt['pin_id']} renders exactly as the leave-as-is row "
+                f"({_ACCEPT_AS_IS_ROW!r}); rename it, or the two answers are indistinguishable."
+            )
+        out[_ACCEPT_AS_IS_ROW] = None      # not an option id: see the constant above
+    return out
+
+
 @mcp.tool(annotations={"title": "Interview — Ask the Human and Record the Election", **_RW_CREATE})
 async def ledger_record_decision(
     ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     option_id: str = "", human_answer: str = "", accept_as_is: bool = False,
-    apply_to_cluster: bool = False, ctx: Context = None,
+    ctx: Context = None,
 ) -> dict:
     """Move a pin to decided/accepted by recording the election the HUMAN made. Never elects.
 
@@ -209,6 +256,10 @@ async def ledger_record_decision(
     Either way the outcome must be one the pin's `question` actually offered. Read it first with
     `interview_next`, or `ledger_summary` for the pin list.
 
+    ONE pin. To settle a whole cluster with one answer, use `ledger_record_policy`: it shows the
+    user the radius before writing, holds back what a rule may not settle, and leaves a `Policy`
+    every cascaded decision points back at.
+
     Args:
         ledger: Path to ledger.json.
         pin_id: The pin being decided.
@@ -217,19 +268,15 @@ async def ledger_record_decision(
         option_id: Id of the elected option, or "freeform". Ignored on the elicitation path.
         human_answer: The user's answer, verbatim. Required when relaying.
         accept_as_is: Leave a design_concern as it is (state `accepted`).
-        apply_to_cluster: Apply the same outcome to the pin's whole cluster.
     """
     prompt = tools.decision_prompt(ledger, pin_id)
     evidence = "transcribed"
 
     if ctx is not None and _client_can_elicit(ctx):
-        choices = [f"{o['id']} — {o['label']}" + (f" (→ {o['implication']})" if o["implication"] else "")
-                   for o in prompt["options"]]
-        if prompt["can_accept_as_is"]:
-            choices.append("accept_as_is — leave it as it is")
+        by_choice = _decision_choices(prompt)
         message = f"{prompt['title']}\n\n{prompt['prompt']}"
-        result = await (ctx.elicit(message, str) if not choices
-                        else ctx.elicit(message, choices))
+        result = await (ctx.elicit(message, str) if not by_choice
+                        else ctx.elicit(message, list(by_choice)))
         if not isinstance(result, AcceptedElicitation):
             # Declined and cancelled are not outcomes. Writing one would be the fabrication this
             # whole path exists to make impossible.
@@ -238,14 +285,28 @@ async def ledger_record_decision(
                 f"An unanswered fork is not a decision — ask again, or leave it to the interview."
             )
         human_answer = str(result.data)
-        picked = "freeform" if not choices else human_answer.split(" — ")[0]
+        if not by_choice:
+            picked = "freeform"
+        elif human_answer in by_choice:
+            picked = by_choice[human_answer]
+        else:
+            # The protocol constrains the reply to the enum we sent, so this is a client that did
+            # not honour it. Guessing which option was meant is the failure this whole lookup
+            # replaced; refusing leaves the pin open, which is the correct state for an answer
+            # nobody can attribute.
+            raise ValueError(
+                f"the client answered {human_answer!r}, which is not one of the choices it was "
+                f"offered ({sorted(by_choice)}). {pin_id} stays open: an answer that maps to no "
+                f"option is not an election, and picking the nearest one would be this server "
+                f"electing."
+            )
         evidence = "elicited"
-        accept_as_is = picked == "accept_as_is"
+        accept_as_is = picked is None          # the leave-as-is row, and nothing else, maps to None
         option_id = "" if accept_as_is else picked
 
     return tools.record_decision(ledger, pin_id, option_id, rationale, flip_criteria,
                                  human_answer=human_answer, evidence=evidence,
-                                 accept_as_is=accept_as_is, apply_to_cluster=apply_to_cluster)
+                                 accept_as_is=accept_as_is)
 
 
 @mcp.tool(annotations={"title": "Interview — Expand the Decision Catalog", **_RW_CREATE})
@@ -253,15 +314,164 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
                      brief_decisions: dict | None = None) -> dict:
     """Materialize the decision catalog as open_decision / acceptance_criterion pins.
 
-    Greenfield's Phase-2 opening move: this creates the forks that `interview_next` then funnels.
+    Greenfield's Phase-1 frame step: this creates the forks that `interview_next` then funnels, so
+    an unexpanded ledger makes the funnel answer "no questions" rather than "no forks".
+
+    `brief_decisions` commits decisions, and "the brief said so" means nobody was asked — so each
+    one passes the same gate a policy cascade does. The outcome must be an option id that cluster's
+    own fork offers, and a `blocker`/`high` fork is never settled this way. Whatever the brief could
+    not carry comes back in `brief_held_back` (with the reason and the ids it did offer) and stays an
+    open question for the interview. Check that list: a fork you thought was settled may not be.
+
+    A key that matched no cluster — a typo, or an id this catalog no longer has, or one pruned for
+    this project type — comes back in `brief_unmatched`. Check that one too: it decided nothing and
+    created nothing, so it is the one input this call can receive and leave no trace of.
 
     Args:
         ledger: Path to ledger.json (created if absent — this is the first write).
         project_type: Prunes clusters that do not apply (a fork absent from the type is not a question).
-        brief_decisions: cluster_id -> outcome already settled in the brief; those pins are created
-            and committed immediately, with evidence "brief".
+        brief_decisions: cluster_id -> the OPTION ID that cluster's fork already got in the brief;
+            those pins are created and committed with evidence "brief", unless held back.
     """
     return tools.interview_expand(ledger, project_type, brief_decisions)
+
+
+@mcp.tool(annotations={"title": "Interview — The Opening Policy Offers", **_RO})
+def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict:
+    """The decision catalog's per-cluster default policies, as the offers the interview OPENS with.
+
+    Policy questions come first because they carry the most leverage — one accepted policy resolves a
+    whole cluster's low-severity tail. Run it beside `interview_expand` at frame time; kept separate
+    because it is a different act, and a tool named "expand" must not quietly do this too.
+
+    Returns `{"offers": [...], "no_default_outcome": [...]}` and WRITES NOTHING. A Policy exists only
+    once the human elects it: accepting one cascades outcomes across its cluster, so seeding them
+    unasked would decide at scale. Put each offer to the user with the pins it would decide
+    (`would_decide`, on the offer), and record what they elect with `ledger_record_policy` — that is
+    the tool that writes one.
+
+    `no_default_outcome` lists clusters whose stated default is not carried by any one of their own
+    options (`nfrs` names four at once; `delivery`'s depends on the topology fork). A cascade may
+    only write an outcome the pin's own question offers, so those are not offers — ask them.
+
+    Args:
+        ledger: Path to ledger.json (must exist — offers for a ledger that isn't there are noise).
+        project_type: Prunes the clusters that do not apply, the same way interview_expand did.
+    """
+    return tools.interview_seed_policies(ledger, project_type)
+
+
+@mcp.tool(annotations={"title": "Interview — What a Policy Would Decide", **_RO})
+def policy_preview(ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
+                   default_outcome: str = "", exceptions: list[str] | None = None,
+                   project_type: str = "web-saas") -> dict:
+    """What setting this policy WOULD decide, without setting it. Reads only.
+
+    Put this in front of the user before asking them to accept a rule: `would_decide` is the list of
+    pins that get the outcome with no further question, `held_back` the blocker/high ones the
+    threshold rule keeps `asked`, `not_offered` the ones whose own question does not offer this
+    outcome (held back too — a cascade may only write an outcome the pin offered), `excepted` the
+    ones you excluded. What a user elects when they accept a policy is that radius, not the
+    sentence — and a rule that turns out to cover 40 pins is a different question from one that
+    covers 3.
+
+    Same arguments as `ledger_record_policy`, so a previewed policy and a recorded one cannot differ.
+    Greenfield's catalog offers already arrive with this attached (`interview_seed_policies`); this
+    is how a policy the catalog never offered — every rescue policy — gets the same treatment.
+
+    Args:
+        ledger: Path to ledger.json.
+        offer_id: The `cluster_id` of a catalog offer, taken verbatim. Alone, or not at all.
+        rule: The rule in the user's terms, when this is not a catalog offer.
+        applies_to: Pin fields the policy matches, e.g. {"kind": "contract_mismatch"}.
+        default_outcome: The outcome every cascaded pin would get — an option id those pins offer.
+        exceptions: Pin ids the policy must not touch.
+        project_type: Prunes catalog offers the same way interview_expand did.
+    """
+    return tools.policy_prompt(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
+                               project_type)
+
+
+#: The two answers the policy elicitation offers. Module constants, compared by equality, so the
+#: server never has to parse a prefix out of a string to learn what the user picked.
+_POLICY_ACCEPT = "set this policy — decide the whole cluster this way"
+_POLICY_DECLINE = "do not set it — keep asking pin by pin"
+
+
+@mcp.tool(annotations={"title": "Interview — Ask the Human and Record a Policy Election", **_RW_CREATE})
+async def ledger_record_policy(
+    ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
+    default_outcome: str = "", exceptions: list[str] | None = None, human_answer: str = "",
+    project_type: str = "web-saas", ctx: Context = None,
+) -> dict:
+    """Record a POLICY the HUMAN elected, and cascade it over its cluster. Never elects.
+
+    The funnel's highest-leverage step: one accepted policy settles a whole cluster's medium/low
+    tail, so `blocker`/`high` pins are held back and stay `asked`. Because it decides many pins at
+    once, it is held to the same discipline as a single decision, not less — including the rule that
+    matters most: the outcome written on a pin must be one that pin's own `question` offered. A pin
+    that does not offer it comes back in `not_offered`, still open, and you ask it.
+
+    Two paths, and the tool chooses — you do not:
+      * If the host supports elicitation, THIS SERVER puts the rule, the outcome it will write, and
+        the pins it would decide to the user, and writes only if they accept. The answer never
+        travels through you.
+      * Otherwise you must relay, quoting the user verbatim in `human_answer`. Recorded as the
+        weaker rung.
+
+    Take a catalog offer with `offer_id` alone (read them from `interview_seed_policies`); its rule,
+    scope and outcome are copied verbatim and restating them is refused. For a policy the catalog
+    never offered — every rescue policy is one — pass `rule` + `applies_to` + `default_outcome`.
+
+    Args:
+        ledger: Path to ledger.json.
+        offer_id: The `cluster_id` of an offer from interview_seed_policies. Alone, or not at all.
+        rule: The rule in the user's terms, when this is not a catalog offer.
+        applies_to: Pin fields the policy matches, e.g. {"kind": "contract_mismatch"} or {"cluster_id": "cl_x"}.
+        default_outcome: The outcome every cascaded pin gets — an option id from those pins' own questions.
+        exceptions: Pin ids the policy must not touch; they stay `asked`.
+        human_answer: The user's answer, verbatim. Required when relaying.
+        project_type: Prunes catalog offers the same way interview_expand did.
+    """
+    prompt = tools.policy_prompt(ledger, offer_id, rule, applies_to, default_outcome,
+                                 exceptions, project_type)
+    evidence = "transcribed"
+
+    if ctx is not None and _client_can_elicit(ctx):
+        would, held, unoffered = (prompt["would_decide"], prompt["held_back"],
+                                  prompt["not_offered"])
+        # The OUTCOME is on its own line, above the radius. It used to be absent entirely: the user
+        # was shown the rule and a pin count, answered a two-value accept/decline, and the value
+        # actually stamped on every one of those pins — a string the caller composed — was never
+        # put in front of them. What the message omits was not elected, whatever rung the write
+        # then claims, and this write claims the strongest one there is.
+        message = (f"Set this policy?\n\nRule: {prompt['rule']}\n"
+                   f"Outcome written on every pin it decides: {prompt['default_outcome']}\n\n"
+                   f"It decides {len(would)} pin(s) without asking again"
+                   + (f": {', '.join(would)}" if would else "")
+                   + (f"\n{len(held)} blocker/high pin(s) are held back and still asked: "
+                      f"{', '.join(held)}" if held else "")
+                   + (f"\n{len(unoffered)} pin(s) are held back because their own question does not "
+                      f"offer {prompt['default_outcome']!r}: {', '.join(unoffered)}"
+                      if unoffered else ""))
+        result = await ctx.elicit(message, [_POLICY_ACCEPT, _POLICY_DECLINE])
+        if not isinstance(result, AcceptedElicitation):
+            raise ValueError(
+                f"the user did not answer ({type(result).__name__}); no policy was set. "
+                f"An unanswered offer is not an election — ask again, or decide the pins one by one."
+            )
+        human_answer = str(result.data)
+        if human_answer != _POLICY_ACCEPT:
+            raise ValueError(
+                "the user declined this policy; nothing was written. Their pins stay open, which is "
+                "the correct outcome — ask them individually rather than cascading a rule they "
+                "turned down."
+            )
+        evidence = "elicited"
+
+    return tools.record_policy(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
+                               human_answer=human_answer, evidence=evidence,
+                               project_type=project_type)
 
 
 @mcp.tool(annotations={"title": "Ledger — Add Remediation / Build Item", **_RW_CREATE})
@@ -300,18 +510,26 @@ def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status
 
 
 @mcp.tool(annotations={"title": "Ledger — Resolve a Pin (resolved = observed)", **_RW})
-def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
+def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> dict:
     """Resolve a pin — records the OBSERVED evidence that closed the gap. Requires every remediation done.
 
     Evidence is what you OBSERVED (the endpoint returned, the reproduction no longer reproduces) —
     not "the code is written". The tool enforces 'resolved = observed' by requiring it.
 
+    Refuses any pin whose `verification` does not reach the `observed` / `cross_derived` rung —
+    an envelope recording no rung (what marking correctness unknown leaves behind) and NO envelope
+    at all are both refused, because neither records an observation. Pass `rung` once you have
+    actually observed it; a pin `ledger_cross_derive` already agreed on carries its rung already.
+
     Args:
         ledger: Path to ledger.json.
         pin_id: The pin to resolve.
         evidence: What you observed that closed the gap (required, non-empty).
+        rung: observed | cross_derived — state it unless the pin already carries a closing rung
+            (cross_derive writes one on agreement). Needs `evidence`: a rung with nothing behind it
+            is the claim this refuses.
     """
-    return tools.ledger_resolve(ledger, pin_id, evidence)
+    return tools.ledger_resolve(ledger, pin_id, evidence, rung)
 
 
 @mcp.tool(annotations={"title": "Landing-Zone Readiness — Evidence (D0, states no verdict)", **_RO})
@@ -595,15 +813,28 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return tools.agent_ready(ledger, pin_id)
 
 
-@mcp.tool(annotations={"title": "Ledger — Defer a Pin", **_RW})
-def ledger_defer(ledger: str, pin_id: str) -> dict:
-    """Mark a pin out of scope now (YAGNI at spec level) — it stays as future backlog.
+@mcp.tool(annotations={"title": "Ledger — Record a Deferral the Human Elected", **_RW})
+def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
+                 human_answer: str) -> dict:
+    """Record the human's answer of "not now" — the pin leaves v1 scope and stays as backlog.
+
+    Deferring SETTLES the pin: the question stops being asked and `open_questions` goes down. So it
+    is an election, held to what `ledger_record_decision` is held to — you quote the user verbatim,
+    `flip_criteria` says what brings the pin back, and a pin already resolved or accepted is refused.
+    You may record a deferral; you may not decide one.
+
+    How the answer reached the ledger is NOT yours to state. This tool records the relayed rung
+    (`transcribed`) because relaying is the only path it has — exactly as `ledger_record_decision`
+    decides the rung by which path ran, and never from a parameter.
 
     Args:
         ledger: Path to ledger.json.
-        pin_id: The pin to defer.
+        pin_id: The pin the user is putting out of scope.
+        rationale: Why it is out of scope now.
+        flip_criteria: What brings it back — a defer with no return condition is a deletion.
+        human_answer: The user's words, verbatim. Required: an unquoted deferral is you deciding.
     """
-    return tools.ledger_defer(ledger, pin_id)
+    return tools.ledger_defer(ledger, pin_id, rationale, flip_criteria, human_answer)
 
 
 @mcp.tool(annotations={"title": "Contract Diff (cross-layer drift)", **_RO})

@@ -108,8 +108,10 @@ provider*, where agreement is the pass and **divergence forces human review rath
 
 Bind it through the `ledger_*` MCP tools — the server resolves paths, so they work from the user's
 cwd (see `using-the-ledger`). Call `ledger_resolve` ONLY after observing: the tool demands the
-`evidence`, so a criterion cannot close on "code written" — then `ledger_summary` to confirm nothing
-the scope claimed is still open. When the observation could not be made at all, the call is
+`evidence` **and the `rung` you reached** (`observed`, or `cross_derived` where a second provider
+agreed it), so a criterion cannot close on "code written", and it cannot close on silence either —
+a pin recording no verification is refused like one whose verification was weak. Then
+`ledger_summary` to confirm nothing the scope claimed is still open. When the observation could not be made at all, the call is
 `ledger_mark_correctness_unknown` instead, carrying what you attempted and what blocked you.
 
 An `acceptance_criterion` is the testable outcome, so it is also the verification target: what you

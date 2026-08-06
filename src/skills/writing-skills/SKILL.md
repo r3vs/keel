@@ -15,13 +15,19 @@ the directory**) and `description` (≥ 20 chars, saying what it does AND when t
 (repo-root-relative).
 
 ## Keep the invariants green (they run in CI)
-- `python scripts/build.py --check` — every generated file still equals its `src/` source.
-- `python scripts/check_consistency.py` — modules ↔ references ↔ SKILL, valid packaging manifests.
-- `python scripts/verify_pointers.py` — every `*.md` pointer resolves.
+**Run every gate — the list is the Commands block in `CLAUDE.md`**, complete against
+`.github/workflows/ci.yml`. It is not copied here; the copy that used to be here named four of them
+under a heading that reads as the set, which is the same claiming-vs-doing bug the gates catch.
+
+Two are worth knowing by name while authoring a skill:
 - `python scripts/verify_commands.py` — every command a shipped file names resolves **after
   install**, not merely here. The other gates anchor on `__file__` and cannot see that class.
-- Three-way sync: a new or renamed module updates its `modules.json`, its playbook, AND any
-  `SKILL.md` pointer together.
+- `python scripts/check_tool_carriers.py` — every WRITE tool the MCP server exposes is named by a
+  shipped playbook. Describing an act in English without naming the tool that performs it is the
+  failure this whole repo is organized around; that gate is where it gets caught.
+
+Three-way sync: a new or renamed module updates its `modules.json`, its playbook, AND any
+`SKILL.md` pointer together.
 
 ## Stay agent-agnostic
 Author to the spec once; never hard-code a platform. And when a fact has to exist in several hosts'

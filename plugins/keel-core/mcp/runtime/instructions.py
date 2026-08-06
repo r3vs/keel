@@ -59,6 +59,78 @@ would silently push the *user's own* instructions past a byte limit on one host 
 on another. So the region is an **index with a hard line budget**, and truncation is always
 **declared** (`+N more — read the ledger`), never silent: a shortened list that looks complete is the
 same lie as a clean bill of health from a scanner that did not run.
+
+What the budget bought and what it refused: `evidence` (v0.10, v0.11)
+---------------------------------------------------------------------
+Each decision records the rung its answer travelled on — `elicited` / `transcribed` / `brief` /
+`cascaded`. Two ways to project that, and only one earns its bytes:
+
+- **Per decision, refused.** The `Elected` list is the section most likely to be clipped already, and
+  a ` (transcribed)` suffix on every entry costs bytes on every line to restate a fact that is
+  identical for nearly all of them — the elicitation rung only fires on hosts that declare the
+  capability. Paying per line for a mostly-constant value is what pushes the *user's* prose past
+  Codex's byte cap.
+- **One header line, taken** — and only when a rung worth weighing is actually present: some
+  decision `transcribed` (an agent's relay), or `cascaded` (one policy election deciding a whole
+  cluster), or written with no rung recorded at all. A project with none pays nothing, and the line
+  says what the agent should DO rather than merely reporting a number. The full per-decision detail
+  is one `ledger_summary` call away (`decisions_by_evidence`) and is stated in full on the map,
+  which is where a human looks.
+
+  The line reports only rungs that were *recorded*. It used to read a missing `evidence` as
+  `transcribed`, which was a claim about pre-v0.10 events nobody had evidenced — and after v0.11 it
+  would have been wrong in a second way, since a policy cascade is the one case where a missing rung
+  is most likely. Unrecorded is now its own clause, which is what the map and `ledger_summary`
+  already do.
+
+  And the rung is READ, not copied (`ledger.decision_rung`, v0.13). A cascade written before v0.11
+  records `transcribed`, so this line told the user that N of their decisions had been relayed by an
+  agent when a policy they elected themselves had decided them. The clauses are only worth their
+  bytes if each one is true of the ledger it is generated from.
+
+  v0.15 adds one sentence for the **standing rules** the region already lists, and v0.16 makes the
+  rule behind it `ledger.policy_weakness` — the SAME predicate the map's badge reads. It was
+  re-stated here as "no rung, or a relay with no quote" while the map badged every weak rung, so
+  two surfaces counted one ledger and printed different totals (two, and one, on the repo's own
+  preview fixture). A number a reader cannot reconcile is worse than no number. A `Policy` is an
+  election over a whole cluster and is what every `cascaded` decision derives from, so weighing the
+  cascade while saying nothing about the election behind it weighs the wrong end. It is also the one
+  clause that can fire with an empty `decision_log`: a rule that cascaded over no pin still governs
+  what gets written next, and that state was visible on no surface at all.
+
+Which pins reach the region, and what the budget refused there too
+------------------------------------------------------------------
+The two lists are `ledger.SETTLED_STATES` and `ledger.OPEN_STATES` — read, never re-listed. This
+module used to keep its own pair (`("decided","accepted","resolved")` and
+`("detected","needs_input","brainstorming")`), which covered six of the schema's eight states, so a
+`deferred` pin and a `correctness_unknown` pin reached a fresh agent's always-on context **in no
+section at all**. Reproduced on a two-pin ledger — one deferred `blocker` ("Multi-tenant isolation
+is unimplemented"), one `correctness_unknown` `blocker` ("Webhook replay") — where the region
+rendered the header, the evidence note, and then *"No decisions elected yet — run the skill's
+interview before writing code."* Two blockers, and the sentence said none existed. That is the same
+bug `map.py` carried until its `SETTLED` set was sourced from `ledger.SETTLED_STATES`, in this file,
+one surface over: **a set the schema owns cannot be kept here, because a state added there will not
+come here.** The two ledger tuples are complements over `ledger.STATES`, so every state now has
+exactly one home, and `tests/test_instructions.py` holds that rather than trusting it.
+
+What the budget refused, deliberately: **no per-pin state token.** A ` (deferred)` suffix would cost
+bytes on every line of the section most likely to be clipped. The exact state of any pin is one
+`ledger_summary` call away and is in the map's sub-line, where a human looks.
+
+That refusal used to rest on a claim that was false of two states, and the claim is what was wrong,
+not the refusal. It read: *the bucket already carries the only instruction that differs between
+these pins, and that instruction is identical for all four states inside each bucket.* It is not.
+`deferred` is the one settled state whose instruction is **do not build this**, and it was landing
+first inside *"build on these"* — severity-ordered, so six deferred blockers clipped two elected
+decisions off the end of the section. And a `correctness_unknown` pin — *elected, and we could not
+establish that it worked* — reached the region as an unanswered question, because the open section
+suppressed the outcome. Both are fixed where they broke, at zero bytes per line: the settled section
+sorts `deferred` last and its heading says what a `defer` outcome means, the elected outcome is
+printed in **either** section wherever a pin has one, and the open heading says *not settled; do not
+decide one yourself*, which is true of a pin carrying an answer and of one carrying none. The
+headings are what must be true of every member — `resolved` and `deferred` are settled without being
+"elected" in the narrow sense, and `correctness_unknown` is open without anyone having failed to
+decide it, which is why neither says "decided".
 """
 from __future__ import annotations
 
@@ -89,15 +161,17 @@ _HEAD_TEMPLATE = (
     "this section does not answer your question, do not decide it silently — surface a vetoable",
     "assumption pin (`ledger_surface_assumption`) and keep going.",
 )
-#: Header + a heading + one item + its clip note. Below this a budget cannot be honoured at all, and
-#: overrunning it silently is the exact failure the budget exists to prevent — so it is refused.
-_MIN_LINES = len(_HEAD_TEMPLATE) + 4
+#: The evidence note (blank line + one line), emitted only when a weak rung is present. Counted in
+#: the floor below so a tight budget can never squeeze every section out and fall back to "nothing
+#: elected yet" on a ledger that has decisions — the note must cost the sections nothing.
+_NOTE_LINES = 2
+
+#: Header + the evidence note + a heading + one item + its clip note. Below this a budget cannot be
+#: honoured at all, and overrunning it silently is the exact failure the budget exists to prevent —
+#: so it is refused.
+_MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + 4
 
 _SEVERITY_RANK = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
-#: states in which the human has committed something — these are the elected truth
-_ELECTED = ("decided", "accepted", "resolved")
-#: states in which nothing is elected yet — an agent must NOT answer these on its own
-_OPEN = ("detected", "needs_input", "brainstorming")
 
 
 def _fingerprint(body: str) -> str:
@@ -108,15 +182,122 @@ def _order(pin: dict) -> tuple:
     return (_SEVERITY_RANK.get(pin.get("severity", "low"), 9), str(pin.get("id", "")))
 
 
-def _pin_line(pin: dict, with_outcome: bool) -> str:
+def _settled_order(pin: dict) -> tuple:
+    """Severity, but a `deferred` pin sorts after every other settled one.
+
+    The section is filled top-down against a hard line budget, so its order decides what survives a
+    clip — and `deferred` is the one settled state whose instruction is *do not build this*. Six
+    deferred blockers were emitted first and clipped two elected decisions to `(+2 more)`: the
+    pins that say what to build, dropped for the pins that say what not to, in the file an agent
+    reads before writing anything.
+
+    The two SETS still come from the ledger and are not re-listed here (the module docstring says
+    why). This names one state, to answer a question the schema does not: which settled pins are
+    settled by *not being done*. A state added to the schema later keeps today's placement rather
+    than disappearing, which is the safe direction for a default.
+    """
+    return (pin.get("state") == "deferred",) + _order(pin)
+
+
+def _pin_line(pin: dict) -> str:
+    """One pin, with its elected outcome wherever it has one — in EITHER section.
+
+    The outcome used to be suppressed for open pins, which was right for the three open states that
+    have none and wrong for the fourth: `correctness_unknown` means *elected, and we could not
+    establish that it worked*. A pin decided `request_id` and then marked unverifiable reached a
+    fresh agent's always-on context as an unanswered question, so the agent could answer again what
+    the human had already answered. A pin with no decision prints no outcome, so the honest line
+    costs nothing where there is nothing to say — which is why this is one rule, not a per-section
+    flag.
+    """
     kind = pin.get("kind", "other")
     if kind == "other" and pin.get("kind_detail"):
         kind = f"other:{pin['kind_detail']}"
     line = f"- `{pin.get('id', '?')}` [{kind}] {pin.get('title', '').strip()}"
-    outcome = (pin.get("decision") or {}).get("outcome") if with_outcome else None
+    outcome = (pin.get("decision") or {}).get("outcome")
     if outcome:
         line += f" — **{outcome}**"
     return line
+
+
+#: One clause per `ledger.POLICY_WEAKNESS` code, in the order a reader weighs them. The
+#: classification is the ledger's (one rule, one implementation); only the wording is this
+#: surface's, because a badge on a map and a line in an agent's always-on context address different
+#: readers. A code with no clause here would surface as a bare token, so the mapping is total and
+#: `tests/test_instructions.py` holds it to the tuple.
+_POLICY_WEAKNESS_CLAUSE = {
+    "no_rung": "elected with no rung recorded",
+    "unknown_rung": "elected on a rung this projection does not know",
+    "unquoted_relay": "relayed with no quote",
+}
+
+
+def _evidence_note(data: dict) -> list:
+    """One line naming which decisions are worth weighing before building on them — or nothing.
+
+    Reads the `decision_log`, not the pins: the rung is a property of the write, and `pin.decision`
+    carries only `{event_id, outcome}`. Emitted only when there is something to weigh, because a
+    line that always says "0 of N" is bytes spent to report the absence of a problem.
+
+    Four clauses, at most one line, composed from what is present. They are kept apart rather than
+    summed into "N weak" because they fail differently: a relay may be an invention, a cascade may
+    simply not fit this pin, an unrecorded rung is not weak — it is unknown — and a rung the schema
+    does not name is a road this projection cannot describe.
+
+    A second sentence covers the STANDING RULES the section below lists (v0.15). Those are elections
+    too — over a whole cluster — and their rung is the thing every `cascaded` decision rests on, so
+    a projection that weighs the cascade and not the election it derives from weighs the wrong end.
+    It costs bytes only when a rule is actually weak, and it earns them where the leverage is: a
+    policy elected on an agent's unquoted relay governs pins this file may not even list. Which
+    rules those are is `ledger.policy_weakness`'s answer and not this module's (v0.16) — the two
+    surfaces that report it must not be able to disagree about the count.
+    """
+    events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
+    policies = list(data.get("policies") or [])
+    sentences = []
+    if events:
+        # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`,
+        # and reading it literally put "N relayed by an agent" into the user's own AGENTS.md about
+        # decisions their elected policy made. One reader for that, in the module owning the schema.
+        from ledger import DECISION_EVIDENCE, decision_rung
+        rungs = [decision_rung(e) for e in events]
+        clauses = []
+        relayed = rungs.count("transcribed")
+        cascaded = rungs.count("cascaded")
+        unrecorded = sum(1 for r in rungs if not r)
+        # A rung the schema does not name is not the same as none: the file states how the answer
+        # travelled and this projection does not know that road. Counted apart for the same reason
+        # the other three are, and counted AT ALL because the map badges it weak — a rung nobody
+        # here recognises used to fall through every clause and be reported by this surface as
+        # nothing, while the map called it out. One ledger, two numbers.
+        unknown = sum(1 for r in rungs if r and r not in DECISION_EVIDENCE)
+        if relayed:
+            clauses.append(f"{relayed} relayed by an agent (`transcribed`), not elicited from the user")
+        if cascaded:
+            clauses.append(f"{cascaded} cascaded from a policy the user elected once for the cluster")
+        if unrecorded:
+            clauses.append(f"{unrecorded} with no rung recorded at all")
+        if unknown:
+            clauses.append(f"{unknown} on a rung this projection does not know")
+        if clauses:
+            sentences.append(f"of {len(events)} recorded decisions, " + "; ".join(clauses))
+    # A rule is weak on the counts `ledger.policy_weakness` names — the SAME predicate the map's
+    # badge reads (v0.16). It used to be re-stated here as "no rung, or a relay with no quote",
+    # which is a narrower rule than the map's, so the two surfaces counted one ledger and reported
+    # different numbers: the fixture in `scripts/preview_map.py` badged two and this line said one.
+    # Reported even when the log is empty: a policy that cascaded over nothing still governs what
+    # gets written next, and that is exactly the state no surface used to show.
+    from ledger import policy_weakness
+    reasons = [policy_weakness(p) for p in policies]
+    weak = sum(1 for r in reasons if r)
+    if weak:
+        why = ", or ".join(clause for code, clause in _POLICY_WEAKNESS_CLAUSE.items()
+                           if code in reasons)
+        sentences.append(f"{weak} of the standing rules below "
+                         f"{'was' if weak == 1 else 'were'} {why}")
+    if not sentences:
+        return []
+    return ["", "*Evidence: " + ". ".join(sentences) + " — weigh those before building on one.*"]
 
 
 def _section(title: str, lines: list, remaining: int, more_hint: str) -> list:
@@ -139,10 +320,19 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
            generated: Optional[list] = None) -> str:
     """The managed region's body: the ledger's elected state as instructions, markers excluded.
 
-    Four sections, in the order an agent needs them: the standing rules it must obey, the decisions
-    already elected, the forks NOT yet elected (so it surfaces an assumption instead of inventing an
-    answer), and the generated files it must never hand-edit. Ordering is severity then id — stable,
-    so an unchanged ledger re-renders byte-identically and the drift-check has no false positives.
+    Four sections, in the order an agent needs them: the standing rules it must obey, the pins that
+    have stopped being open (`ledger.SETTLED_STATES` — build on these), the pins still awaiting
+    something (`ledger.OPEN_STATES` — surface an assumption instead of inventing an answer), and the
+    generated files it must never hand-edit. Ordering is severity then id — stable, so an unchanged
+    ledger re-renders byte-identically and the drift-check has no false positives.
+
+    The two state sets come from the ledger and are complements over `ledger.STATES`, so no pin can
+    fall between them; the module docstring records why they are not listed here and why no per-pin
+    state token is projected.
+
+    Above them, the header carries one conditional line when some decision rests on an agent's relay
+    (`_evidence_note`) — see the module docstring for why that is the only shape of `evidence` this
+    projection can afford.
 
     `max_lines` bounds the WHOLE region, not each section: the budget exists because two hosts
     penalize length (one truncates by bytes, one loses adherence), and a per-section cap would let
@@ -165,18 +355,24 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     pins = list(data.get("pins") or [])
     policies = list(data.get("policies") or [])
 
-    head = [line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
+    head = ([line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
+            + _evidence_note(data))
 
-    elected = sorted((p for p in pins if p.get("state") in _ELECTED), key=_order)
-    openp = sorted((p for p in pins if p.get("state") in _OPEN), key=_order)
+    # The two sets are the ledger's, not this module's (see the module docstring). Imported here
+    # rather than at module scope for the same reason `_evidence_note` imports what it needs: the
+    # rule has one implementation, in the module that owns the schema.
+    from ledger import OPEN_STATES, SETTLED_STATES
+    settled = sorted((p for p in pins if p.get("state") in SETTLED_STATES), key=_settled_order)
+    openp = sorted((p for p in pins if p.get("state") in OPEN_STATES), key=_order)
     sections = [
         ("Standing rules",
          [f"- {p.get('rule', '').strip()} *(applies to "
           f"{', '.join(f'{k}={v}' for k, v in (p.get('applies_to') or {}).items()) or 'all pins'}; "
           f"default: {p.get('default_outcome')})*" for p in policies],
          "see `policies` in the ledger"),
-        ("Elected", [_pin_line(p, True) for p in elected], "run `ledger_summary`"),
-        ("NOT decided — do not encode an answer", [_pin_line(p, False) for p in openp],
+        ("Settled — build on these (`defer` = elected NOT to build, not now)",
+         [_pin_line(p) for p in settled], "run `ledger_summary`"),
+        ("Open — not settled; do not decide one yourself", [_pin_line(p) for p in openp],
          "run `interview_next`"),
         ("Generated — never hand-edit", [f"- `{g}`" for g in sorted(str(x) for x in (generated or []))],
          "see the contract"),

@@ -30,6 +30,13 @@ judgment. It is advisory by construction: it does not shrink the queue, it hands
 back to a named owner (`needs_interview` / `needs_research` / `needs_hardening` / `needs_challenge` /
 `human_only`). Take the route; do not start the item and discover the gap at the evidence gate.
 
+Where it reports a premortem **owed**, that is the challenger's second mode and it is written with
+`ledger_premortem`: grant the plan, assume it already failed, and name what killed it — each failure
+mode answered by a guardrail or an abort criterion (the tool refuses a failure with no response), and
+any risk you dismiss carrying the evidence that it is already mitigated. Recording it in the ledger
+rather than in the plan's prose is what lets `ledger_label_failure` be joined against it afterwards,
+in the same closed vocabulary: what we feared, versus what happened.
+
 ## Context management: reset, don't accumulate
 
 The state-of-the-art way to handle a codebase too large to hold in context is not a smarter

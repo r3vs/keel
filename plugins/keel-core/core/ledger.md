@@ -36,8 +36,41 @@ Summary of what matters here:
   pin (`confidence: inferred|ambiguous`) instead of a silent decision (the assumptions doctrine).
   Both arcs **reopen, never decide** — the feedback loop closes the loop downstream, the challenger
   upstream.
+- v0.10/v0.11 add `evidence` on the `DecisionEvent` — how the human's answer reached the log
+  (`elicited | transcribed | brief | cascaded`), with `human_answer` quoting a relay verbatim and
+  `policy_id` naming the `Policy` behind a cascade. The `Policy` carries its own rung, because a
+  policy is where the human actually answered for a whole cluster.
+- v0.12 holds the cascade to the rule a single decision was already held to: an outcome lands on a
+  pin only if that pin's own `question` offers it (so `default_outcome` is an option id), and a
+  policy cascades once, over the radius its elector was shown.
+- v0.13 makes those rules bind the READER too, since a rule enforced at the write governs no file
+  that already exists: the rung of a pre-v0.11 cascade is read from the carrier its writer left
+  (never rewritten — the log is immutable), and `version` is a floor that rises only when the file's
+  own content conforms to the newer rules.
+- v0.14 moves those rules out of the doors and into ONE predicate, because guarding a door only
+  guards that door: the same violation went through a cluster fan-out flag and through the project
+  brief. Every write that settles a pin whose fork was never put to the human — the cascade, the
+  brief — asks `unasked_verdict`; a decision writes one event for one pin; and a cluster-wide answer
+  can only be a `Policy`, which is the one thing that records the rule, the quote and the radius.
+- v0.15 does the same for v0.13's half: the write-time rules an event can be judged by live in ONE
+  table, which the writer validates against and the floor replays, so a rule added later gains its
+  reader by construction instead of being false of every file already on disk. And an elected
+  `Policy` is a decision on **all three** surfaces — its own card on the map, `policies_by_evidence`
+  in the summary, one line in the projected `AGENTS.md` — whether or not it cascaded over any pin.
+- v0.16 adds the SECOND predicate, for the question next to v0.14's: `unasked_verdict` governs what
+  may be *written* onto a pin nobody was asked about, and nothing governed whether a pin may **leave
+  the open set** at all. So `settlement_verdict(pin, door)` answers that for all five doors that
+  move a pin in or out of a settled state (`decide` · `accept` · `defer` · `resolve` ·
+  `correctness_unknown`), and each one is recorded: the three elected doors by the `DecisionEvent`
+  they already write (now stating `settles_as`), the two unelected ones by a `SettlementEvent`.
+  Concretely — **deferring is an election**, quoted and reversible like any other; a pin in
+  `correctness_unknown` (or carrying a `verification` that reaches no closing rung) does **not**
+  resolve; a CLOSED pin is not settled again by any door, it is reopened; and
+  `resolution_mode: "asked"` **binds** — the pin's own standing demand to be asked is read by the
+  unasked predicate rather than merely written by six sites.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
-  and the feedback loop only reopen.
+  and the feedback loop only reopen — and *reopening is appended before anything moves*, including
+  the cross-derivation arc, which may never rewrite the pin's `question`.
 
 **Runtime:** the spec's load-bearing rules are not left to care — they are implemented once, for
 every skill, in the ledger runtime (stdlib-only, tested in CI): pin CRUD with kind validation,

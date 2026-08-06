@@ -11,7 +11,30 @@ one" decision, resolved: share one). Rescue's pins render their `as_is` (extract
 the default view; greenfield's `open_decision`/`acceptance_criterion` pins render `to_be` (the
 elected design) — the toggle flips which side leads. `contract_mismatch` pins get the three-column
 cross-layer diff panel; every pin links its interview question; a completeness traffic-light sums
-the states.
+the states. **An elected `Policy` is a decision and leads the list in its own right** (v0.15): it
+used to be reachable only by joining backward from a pin a cascade had decided, so a rule the human
+elected that bound no pin — held back by the severity threshold, or offered by no pin's question —
+was on this page nowhere, while `ledger_summary` counted it and the projected `AGENTS.md` listed it
+under "Standing rules". Its card carries the rule, the scope, the `default_outcome` the user
+accepted, the rung it was elected on, the quote, and the decisions that name it. A decided pin
+states **how the human's answer got there** (`evidence`, spec v0.10) and
+shows the quote when an agent relayed it — the spec allows the weak rung only because it is made
+visible, and this is the surface people actually read. A pin decided by a policy cascade
+(`cascaded`, v0.11) shows the `Policy` it derives from and how *that* was elected, joined on the
+event's `policy_id`: the human answered once, for a whole cluster, and the card says so instead of
+reporting a relay that never happened. That rung binds writes, so for a ledger written before v0.11
+the card reads it off the carrier the writer did leave (`derived_rungs` → `ledger.decision_rung`)
+and states what the file records — the alternative was to keep printing *"relayed with no quote"*
+over a policy the user elected, on every ledger that already exists.
+
+**The two dangerous steps are structural, not remembered** (v0.16). A ledger is written by agents
+reading someone else's repo and may arrive from anywhere, so both places where its content becomes
+page are closed by construction rather than by a rule each site obeys: `h` is a tagged template
+whose every hole is escaped and the only thing that produces markup (`severity` was the one field
+still interpolated raw — into a row, a sub-line, and a `style` attribute), and `_inline` emits a
+JSON payload carrying no `<` at all (escaping `</` closed one way out of the inline script; `<!--`
+before a later `<script` closed the *page*, leaving a header with two empty panes and no error —
+the worst thing this surface can say, because a blank map reads as "no findings").
 
 Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
 Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
@@ -25,6 +48,7 @@ from __future__ import annotations
 import html
 import json
 import pathlib
+import re
 from typing import Optional
 
 _TEMPLATE = r"""<!doctype html>
@@ -33,9 +57,10 @@ _TEMPLATE = r"""<!doctype html>
 <title>Decisions map — __TITLE__</title>
 <style>
 :root{--bg:#fbfbfd;--fg:#1c1c1e;--mut:#6b6b70;--card:#fff;--line:#e3e3e8;--accent:#4c6ef5;
---code:#f1f1f5;--blocker:#e03131;--high:#f08c00;--medium:#1971c2;--low:#868e96;--ok:#2f9e44}
+--code:#f1f1f5;--blocker:#e03131;--high:#f08c00;--medium:#1971c2;--low:#868e96;--ok:#2f9e44;
+--warnbg:#fff7e6}
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececf1;--mut:#9a9aa2;--card:#1f1f23;
---line:#303036;--accent:#748ffc;--code:#2a2a31}}
+--line:#303036;--accent:#748ffc;--code:#2a2a31;--warnbg:#2e2413}}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 background:var(--bg);color:var(--fg)}
 header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap}
@@ -52,6 +77,10 @@ main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0;min-height
 .list{border-right:1px solid var(--line);overflow-y:auto;max-height:calc(100vh - 62px)}
 .pin{padding:11px 16px;border-bottom:1px solid var(--line);cursor:pointer}
 .pin:hover{background:var(--card)}.pin.sel{background:var(--card);box-shadow:inset 3px 0 0 var(--accent)}
+.grp{padding:9px 16px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--mut);font-weight:650;border-bottom:1px solid var(--line);background:var(--bg)}
+.pol{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;color:#fff;background:var(--accent)}
+.lnk{color:var(--accent);cursor:pointer;text-decoration:underline}
 .pin .t{font-weight:600;margin-bottom:3px}.pin .m{font-size:12px;color:var(--mut);display:flex;gap:8px;flex-wrap:wrap}
 .sev{padding:1px 7px;border-radius:20px;color:#fff;font-size:11px;font-weight:600}
 .detail{padding:22px 26px;overflow-y:auto;max-height:calc(100vh - 62px)}
@@ -91,6 +120,15 @@ dl.fields dl.fields{grid-column:1/-1;padding-left:12px;border-left:2px solid var
 .raw[open] summary::before{transform:rotate(180deg)}
 .raw pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mut);margin:8px 0 0;
   font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+.dec{border-left:3px solid var(--ok)}
+.dec.mid{border-left-color:var(--medium)}
+.dec.weak{border-left-color:var(--high);background:var(--warnbg)}
+.rung{font-size:11px;font-weight:650;padding:1px 8px;border-radius:20px;background:var(--line);color:var(--fg)}
+.rung.strong{background:var(--ok);color:#fff}.rung.weak{background:var(--high);color:#fff}
+.why{color:var(--mut);font-size:12px;margin-top:7px}
+.warn{color:var(--high);font-size:12px;font-weight:600;margin-top:7px}
+.quote{margin:9px 0 0;padding:5px 0 5px 12px;border-left:3px solid var(--line);font-style:italic;
+  overflow-wrap:anywhere}
 __LIVE_STYLE__</style></head><body>
 <header>
   <h1>🧭 Decisions map</h1>__LIVE_BADGE__
@@ -103,13 +141,46 @@ __LIVE_STYLE__</style></head><body>
 <script>
 const LEDGER = __DATA__;
 const SEV = {blocker:'var(--blocker)',high:'var(--high)',medium:'var(--medium)',low:'var(--low)'};
-const DONE = new Set(['decided','resolved','accepted']);
-let view='as_is', sel=null;
+// The states in which a pin has stopped being open, taken from `ledger.SETTLED_STATES` rather than
+// re-listed here. v0.16 made `deferred` one of them and this page went on counting a deferred
+// blocker as an OPEN blocker: the traffic light reported a question the human had already answered,
+// in the loudest colour the page has. A set the schema owns cannot fall behind the schema.
+const SETTLED = new Set(__SETTLED__);
+let view='as_is', sel=null, selPol=null;
 const ENT={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
-// Named `esc` but, until now, only a String() cast — so every pin title, extracted layer shape and
-// file path went into innerHTML raw. The ledger is written by agents reading someone else's code
-// and this page is meant to be safe to hand to anyone; it escapes for real now.
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>ENT[c]);
+function has(o,k){return Object.prototype.hasOwnProperty.call(o,k);}
+
+// -- the only way this page builds HTML -------------------------------------------------------
+// Calling `esc` at each site is a rule every site has to remember, and this file has now got it
+// wrong twice: first `esc` was a String() cast that escaped nothing at all, then `severity` — alone
+// among the fields — was interpolated raw into the list row, the detail sub-line and a `style`
+// attribute, so a ledger carrying `severity: "<img src=x onerror=…>"` put a live img node in the
+// DOM of a page whose whole promise is that it is safe to hand to anyone. Fixing the field would
+// leave the next field to be remembered by the next author.
+//
+// So the mechanism escapes, not the author. `h` is a tagged template: every hole goes through
+// `frag`, `frag` escapes anything that is not an `H`, and only `h` produces an `H`. There is no
+// opt-out to reach for — no `raw()`, no second constructor — so an unescaped interpolation is not
+// something you can write here, and a bare string that reaches the DOM sink unassembled renders as
+// visible text rather than as markup. One sink, one assembler: `mount` is the only place this page
+// writes markup into the document, which is the property `tests/test_map.py` holds.
+function H(s){this.s=s;}
+function frag(v){
+  if(v instanceof H) return v.s;
+  if(Array.isArray(v)) return v.map(frag).join('');
+  return esc(v);
+}
+function h(strings){
+  let out=strings[0];
+  for(let i=1;i<arguments.length;i++) out+=frag(arguments[i])+strings[i];
+  return new H(out);
+}
+function mount(id,node){document.getElementById(id).innerHTML=frag(node);}
+// A colour from a closed table, never a value off the file: `SEV[p.severity]` reached
+// `constructor` and every other inherited name, and put a function body inside a style attribute.
+function sevColor(s){return has(SEV,String(s))?SEV[String(s)]:'#888';}
+function sevBadge(s){return h`<span class="sev" style="background:${sevColor(s)}">${s}</span>`;}
 
 // -- as_is / to_be ---------------------------------------------------------------------------
 // The payload is free-form by design (`other` is an open escape hatch, and every kind's shape is
@@ -128,86 +199,358 @@ function isBlank(v){
     (typeof v==='object'&&!(Array.isArray(v)?v.length:Object.keys(v).length));
 }
 function scalarHTML(v){
-  if(v===null||v===undefined||v==='') return '<span class="nul">—</span>';
-  if(typeof v==='boolean') return `<span class="bool">${v?'yes':'no'}</span>`;
-  if(typeof v==='number') return `<code>${esc(v)}</code>`;
+  if(v===null||v===undefined||v==='') return h`<span class="nul">—</span>`;
+  if(typeof v==='boolean') return h`<span class="bool">${v?'yes':'no'}</span>`;
+  if(typeof v==='number') return h`<code>${v}</code>`;
   const s=String(v);
-  return /\s/.test(s) ? esc(s) : `<code>${esc(s)}</code>`;
+  return /\s/.test(s) ? h`${s}` : h`<code>${s}</code>`;
 }
 function valueHTML(v){
   if(isScalar(v)) return scalarHTML(v);
   if(Array.isArray(v)){
-    if(!v.length) return '<span class="nul">none</span>';
-    if(v.every(isScalar)) return `<span class="chips">${v.map(scalarHTML).join('')}</span>`;
-    return `<div class="items">${v.map(x=>`<div class="item">${valueHTML(x)}</div>`).join('')}</div>`;
+    if(!v.length) return h`<span class="nul">none</span>`;
+    if(v.every(isScalar)) return h`<span class="chips">${v.map(scalarHTML)}</span>`;
+    return h`<div class="items">${v.map(x=>h`<div class="item">${valueHTML(x)}</div>`)}</div>`;
   }
   const keys=Object.keys(v);
-  if(!keys.length) return '<span class="nul">—</span>';
-  return `<dl class="fields">`+keys.map(k=>
-    `<dt>${esc(labelize(k))}</dt><dd>${valueHTML(v[k])}</dd>`).join('')+`</dl>`;
+  if(!keys.length) return h`<span class="nul">—</span>`;
+  return h`<dl class="fields">${keys.map(k=>
+    h`<dt>${labelize(k)}</dt><dd>${valueHTML(v[k])}</dd>`)}</dl>`;
 }
 function sideCard(side,label){
-  return `<div class="card"><div class="ch">${esc(label)}</div>${valueHTML(side)}
-    <details class="raw"><summary>raw</summary><pre>${esc(JSON.stringify(side,null,2))}</pre></details></div>`;
+  return h`<div class="card"><div class="ch">${label}</div>${valueHTML(side)}
+    <details class="raw"><summary>raw</summary><pre>${JSON.stringify(side,null,2)}</pre></details></div>`;
+}
+
+// -- how the human's answer reached the ledger (`evidence`, spec v0.10) -----------------------
+// The spec permits the weak rung on the grounds that it is made VISIBLE — so it has to be visible
+// HERE, on the surface people actually read, and it has to read as weaker rather than merely be
+// present. `pin.decision` carries only {event_id, outcome}; the rung lives on the DecisionEvent, and
+// the whole ledger is inlined, so this is a lookup in `decision_log` and never a fetch.
+// Not a confidence score: every rung `DECISION_EVIDENCE` names has its own failure mode, and they
+// are kept apart rather than blended (`test_map.py` holds this table against that tuple, so a rung
+// added there cannot go missing here — which is the only kind of count worth writing down).
+const RUNG={
+  elicited:{label:'elicited', cls:'strong',
+    why:'the server asked the user through the host and wrote the reply itself — the agent never held the value, so it could not have invented it'},
+  brief:{label:'from the brief', cls:'mid',
+    why:'settled in the project brief at frame time; the brief is the evidence'},
+  transcribed:{label:'transcribed', cls:'weak',
+    why:'an agent relayed what the user said — an honest relay and a fabricated one are the same line here, so what you weigh is the quote'},
+  cascaded:{label:'cascaded from a policy', cls:'mid',
+    why:'the user elected a policy and this pin fell under it — the answer was given once, for the cluster, so what you weigh is not invention but FIT: whether the rule suits this pin'}};
+function policyById(id){
+  if(!id)return null;
+  const pols=LEDGER.policies||[];
+  for(let i=0;i<pols.length;i++)if(pols[i]&&pols[i].id===id)return pols[i];
+  return null;
+}
+function decisionEvent(id){
+  if(!id)return null;
+  const log=LEDGER.decision_log||[];
+  for(let i=0;i<log.length;i++)if(log[i]&&log[i].id===id)return log[i];
+  return null;
+}
+// hasOwnProperty, not `RUNG[r]`: the rung comes from a file agents write, and `constructor` would
+// otherwise resolve to a function and render as a rung nobody defined.
+// THREE states, not two. A card used to badge the rung the file records — `bogus` — and print
+// underneath it "⚠ no evidence rung recorded", which cannot both be true of one event: a rung this
+// page does not know is not an absent one. It is most likely a rung added to the schema after this
+// page was written, and saying so is a different instruction to the reader than saying nothing was
+// recorded. `known` drives the wording; both non-table cases stay `weak`, because a rung you cannot
+// weigh is not a rung you may lean on.
+function rungInfo(r){
+  const s=(r==null?'':String(r));
+  if(has(RUNG,s)) return {label:RUNG[s].label, cls:RUNG[s].cls, why:RUNG[s].why, known:true};
+  if(s) return {label:s, cls:'weak', known:false,
+    warn:'this map does not know the rung `'+s+'` — it was most likely added to the schema after '+
+         'this page was generated, so nothing here says how strong the answer’s road was'};
+  return {label:'no rung recorded', cls:'weak', known:false,
+    warn:'no evidence rung recorded — how this answer reached the ledger is unknown'};
+}
+
+// -- the Policy as its own decision (v0.15) ---------------------------------------------------
+// A policy is an election the human made over a whole cluster, so it is a DECISION and this surface
+// has to show it. Until now it could only be reached by joining BACKWARD from a cascaded pin, so a
+// policy that cascaded over nothing — held back by the threshold, or offered by no pin's question —
+// appeared on this page nowhere at all, while `ledger_summary` counted it and the projected
+// AGENTS.md listed it under "Standing rules". Three surfaces, three answers about one elected rule.
+function scopeText(P){
+  const a=P.applies_to||{}, ks=Object.keys(a);
+  return ks.length?ks.map(k=>k+'='+String(a[k])).join(' · '):'every pin';
+}
+function policyRows(P){
+  const pm=rungInfo(P.evidence);
+  return h`<div class="kv"><b>rule</b><span>${P.rule}</span></div>
+    <div class="kv"><b>applies to</b><span>${scopeText(P)}</span></div>
+    <div class="kv"><b>decides</b><span>${scalarHTML(P.default_outcome)}</span></div>
+    <div class="kv"><b>elected</b><span class="rung ${pm.cls}">${pm.label}</span></div>
+    ${P.human_answer?h`<div class="quote">“${P.human_answer}”</div>`:''}`;
+}
+// WHY a standing rule must be weighed — one code per rule, computed in Python by
+// `ledger.policy_weakness` and inlined, exactly like `DERIVED`. It used to be re-decided here, and
+// the projected AGENTS.md re-decided it a third time under a narrower rule, so the two surfaces
+// counted the same fixture and reported two and one. The classification is the schema's; only the
+// sentence below belongs to this page.
+const WEAK_POL = __WEAK_POLICIES__;
+const WEAK_WHY={
+  no_rung:'the policy itself records no rung — how the user elected it is unknown',
+  unknown_rung:'the policy records a rung this map does not know, so how the user elected it cannot be weighed here',
+  unquoted_relay:'the policy itself was relayed with no quote'};
+// A rule's badge names WHAT IS MISSING, not the rung. On a pin the badge marks a weak rung and the
+// card carries the quote to weigh; on a rule the quote is what decides whether it is weak at all,
+// so a badge reading `transcribed` would sit on the unquoted rule and NOT on the quoted one beside
+// it — the same token meaning two things, three rows apart.
+const WEAK_BADGE={no_rung:'no rung recorded', unknown_rung:'unknown rung',
+                  unquoted_relay:'relayed, no quote'};
+function policyWeakness(P){return has(WEAK_POL,P.id)?WEAK_POL[P.id]:'';}
+// One rule, two subjects: on a pin's card what rests on the policy is that pin and its cluster; on
+// the policy's own card it is every decision that names it — or, when it decided none, the work
+// that follows. `rests` carries the whole clause rather than being assembled from a subject and a
+// verb that only agree in one of the calls: the card for a rule that bound nothing printed
+// "…every decision that names it rests on that" directly above "no decision in this ledger names
+// this rule", two adjacent sentences that read as an accusation about nothing.
+function policyRungWarning(P,rests){
+  const w=policyWeakness(P);
+  if(!has(WEAK_WHY,w))return '';   // `relayed` (weak, but quoted) is badged, not warned about
+  return h`<div class="warn">⚠ ${WEAK_WHY[w]}, and ${rests}</div>`;
+}
+// The decisions a policy produced, joined on the event's own `policy_id` (or, for an event written
+// before that field existed, the id `map.render` already took out of `source` — in Python, once).
+function eventsOfPolicy(id){
+  const out=[], log=LEDGER.decision_log||[];
+  for(let i=0;i<log.length;i++){
+    const e=log[i];
+    if(!e||String(e.id||'').indexOf('ev_')!==0)continue;
+    if((e.policy_id||derived(e).policy_id||'')===id)out.push(e);
+  }
+  return out;
+}
+function pinById(id){
+  const ps=LEDGER.pins||[];
+  for(let i=0;i<ps.length;i++)if(ps[i]&&ps[i].id===id)return {pin:ps[i],i:i};
+  return null;
+}
+function policyDetail(P){
+  if(!P)return h`<div class="empty">select a rule</div>`;
+  const evs=eventsOfPolicy(P.id);
+  let did;
+  if(!evs.length)
+    // Not a warning: an elected rule that bound no pin is a legitimate state, and it is exactly the
+    // state that used to be invisible here. Say what the file records — no decision names it — and
+    // no more; WHY it bound nothing (threshold, options, or no match) is not on the event.
+    did=h`<div class="why">no decision in this ledger names this rule: it cascaded over no pin. It
+      stands as an elected rule for the work that follows — the projected <code>AGENTS.md</code>
+      carries it under “Standing rules”.</div>`;
+  else{
+    // NOT `RUNG.cascaded.why`: that sentence is written to a reader looking at one pin ("this pin
+    // fell under it"), and reusing it here would say the wrong thing about a rule that decided
+    // several. Same fact, addressed to the reader who is actually here.
+    did=h`<div class="why">the human answered once, here, for the whole radius below — so what you
+      weigh on each of these is not invention but FIT: whether this rule suits that pin.</div>
+      <div class="kv"><b>decided</b><span>${evs.length} pin(s)</span></div>
+      ${evs.map(e=>{
+        const f=pinById(e.pin_id);
+        return f?h`<div class="opt" onclick="select(${f.i})" style="cursor:pointer"><b>${f.pin.title}</b>
+          <div class="imp">→ ${e.outcome}</div></div>`
+          :h`<div class="opt"><b>${e.pin_id}</b><div class="imp">this ledger holds no such pin</div></div>`;
+      })}`;
+  }
+  const exc=(P.exceptions||[]).length
+    ? h`<div class="kv"><b>exceptions</b><span class="chips">${P.exceptions.map(scalarHTML)}</span></div>`
+    : '';
+  // The clause has to be true of THIS card: a rule that decided nothing has no decisions resting on
+  // it, and saying otherwise beside "no decision names this rule" reads as a contradiction.
+  const rests=evs.length?'every decision that names it rests on that'
+                        :'what gets written from here rests on it';
+  return h`<h2>${P.rule}</h2>
+    <div class="sub"><span class="pol">standing rule</span> · ${P.id} · elected by the ${P.set_by||'interview'}</div>
+    <div class="card dec ${rungInfo(P.evidence).cls}">${policyRows(P)}${exc}
+      ${policyRungWarning(P,rests)}${did}</div>`;
+}
+// Events whose rung this page must READ rather than take off the field, computed by `map.render`
+// from `ledger.decision_rung` — the one implementation of that rule, in the module that owns the
+// schema. A pre-v0.11 cascade records `transcribed`, and rendering that literally is how this
+// surface called the user's own elected policy an agent's unquoted relay. Empty for every ledger
+// this runtime wrote, so the branch below is visibly the exception it is.
+const DERIVED = __DERIVED__;
+function derived(ev){
+  return (ev&&ev.id&&Object.prototype.hasOwnProperty.call(DERIVED,ev.id))?DERIVED[ev.id]:{};
+}
+function rungOf(p){
+  if(!p||!p.decision)return null;
+  const ev=decisionEvent(p.decision.event_id);
+  if(!ev)return null;
+  const d=derived(ev);
+  return d.rung?String(d.rung):(ev.evidence?String(ev.evidence):'');
+}
+// Which settled state an ELECTION produced (`settles_as`, v0.16). Two of the three are not "the
+// fork was answered" at all: `accepted` leaves the finding standing, `deferred` takes the question
+// off the interview for now — and both used to render as "decided: keep" / "decided: defer", which
+// is the card telling a reader a choice was made about the thing when the choice was about the
+// scope. A value this table does not carry is shown as it stands rather than as `decided`.
+const SETTLES={decided:'decided', accepted:'accepted (left as it is)',
+               deferred:'deferred (not now)'};
+function decisionCard(p){
+  const ev=decisionEvent(p.decision.event_id)||{};
+  const d=derived(ev);
+  const r=d.rung?String(d.rung):(ev.evidence?String(ev.evidence):'');
+  const info=rungInfo(r), cls=info.cls;
+  const settles=String(ev.settles_as||'decided');
+  const quote=ev.human_answer?h`<div class="quote">“${ev.human_answer}”</div>`:'';
+  let note=info.known?h`<div class="why">${info.why}</div>`
+    :h`<div class="warn">⚠ ${info.warn}</div>`;
+  const notes=[note];
+  if(r==='transcribed'&&!ev.human_answer)
+    notes.push(h`<div class="warn">⚠ relayed with no quote — nothing here separates it from an invention</div>`);
+  // A cascaded decision was never answered here: it points at the policy election that produced it,
+  // so the card shows that policy's rule AND how the human elected it. Joined on `policy_id`, the
+  // event's own field — the `policy:<id>` in `source` is not parsed, because a surface should not
+  // have to take a string apart to find the record it needs.
+  let pol='';
+  if(r==='cascaded'){
+    // `policy_id` when the writer left one; for a pre-v0.11 event the id is in `source` and
+    // `map.render` has already taken it apart — once, in Python, not here.
+    const pid=ev.policy_id||d.policy_id||'';
+    const P=policyById(pid);
+    if(d.as_recorded)
+      notes.push(h`<div class="warn">⚠ written before the <code>cascaded</code> rung existed (this ledger is v${String(LEDGER.version||'?')}); the event records <code>${d.as_recorded}</code>, which was the default of the call it was written by — nobody relayed this, and nothing has been rewritten to say otherwise</div>`);
+    if(!P) notes.push(h`<div class="warn">⚠ cascaded from policy ${pid||'(unnamed)'}, which this ledger does not contain</div>`);
+    else{
+      const idx=(LEDGER.policies||[]).indexOf(P);
+      // a span, not an <a>: the page styles nothing else as a link, and an unstyled anchor took the
+      // browser's default blue — unreadable on the dark card this very warning sits in.
+      pol=h`<div class="kv"><b>policy</b><span class="lnk" onclick="selectPolicy(${idx})">${P.id}</span></div>
+        ${policyRows(P)}`;
+      // Two different states, and merging them was the same false sentence one level up: a policy
+      // written before v0.11 carries NO rung (they moved onto the Policy there), so calling it a
+      // relay asserts something its file never said. Unrecorded is unknown, not weak.
+      notes.push(policyRungWarning(P,'this pin and every other one in its cluster rest on that'));
+      // The rule writes ONE outcome; this pin records another. Only a file written outside the
+      // cascade can hold that, which is exactly when a reader has to be told rather than shown two
+      // values on one card and left to notice.
+      if(P.default_outcome!==undefined&&String(P.default_outcome)!==String(p.decision.outcome))
+        notes.push(h`<div class="warn">⚠ this pin records <code>${p.decision.outcome}</code>, but the rule it names decides <code>${P.default_outcome}</code> — the cascade cannot have written both</div>`);
+    }
+  }
+  return h`<div class="card dec ${cls}">
+    <div class="kv"><b>${has(SETTLES,settles)?SETTLES[settles]:settles}</b><span>${p.decision.outcome}</span></div>
+    <div class="kv"><b>evidence</b><span class="rung ${cls}">${info.label}</span></div>
+    ${pol}${quote}${notes}</div>`;
 }
 
 function trafficLight(){
-  const pins=LEDGER.pins||[]; const done=pins.filter(p=>DONE.has(p.state)).length;
-  const openBlockers=pins.filter(p=>!DONE.has(p.state)&&(p.severity==='blocker')).length;
+  const pins=LEDGER.pins||[]; const done=pins.filter(p=>SETTLED.has(p.state)).length;
+  const openBlockers=pins.filter(p=>!SETTLED.has(p.state)&&(p.severity==='blocker')).length;
   const pct=pins.length?Math.round(100*done/pins.length):100;
   document.getElementById('prog').style.width=pct+'%';
   const tl=document.getElementById('tl'); const txt=document.getElementById('tltext');
-  if(openBlockers>0){tl.style.background='var(--blocker)';txt.textContent=openBlockers+' open blocker(s) · '+pct+'% resolved';}
-  else if(pct<100){tl.style.background='var(--high)';txt.textContent=pct+'% resolved';}
-  else{tl.style.background='var(--ok)';txt.textContent='all resolved';}
+  // "settled", not "resolved": the bar counts every pin that has stopped being open, and one of
+  // those states is `deferred` — a question the human answered with "not now". Calling that
+  // resolved would be this surface reporting work that was not done as work that was.
+  if(openBlockers>0){tl.style.background='var(--blocker)';txt.textContent=openBlockers+' open blocker(s) · '+pct+'% settled';}
+  else if(pct<100){tl.style.background='var(--high)';txt.textContent=pct+'% settled';}
+  else{tl.style.background='var(--ok)';txt.textContent='all settled';}
 }
 function renderList(){
-  const el=document.getElementById('list'); const pins=LEDGER.pins||[];
-  if(!pins.length){el.innerHTML='<div class="empty">empty ledger</div>';return;}
-  el.innerHTML=pins.map((p,i)=>`<div class="pin${i===sel?' sel':''}" onclick="select(${i})">
-    <div class="t">${esc(p.title)}</div>
-    <div class="m"><span class="sev" style="background:${SEV[p.severity]||'#888'}">${p.severity}</span>
-    <span>${esc(p.kind)}</span><span>· ${esc(p.state)}</span></div></div>`).join('');
+  const pins=LEDGER.pins||[];
+  const pols=LEDGER.policies||[];
+  if(!pins.length&&!pols.length){mount('list',h`<div class="empty">empty ledger</div>`);return;}
+  // The policies lead the list because one of them decides a whole cluster, and because a rule the
+  // human elected must be reachable whether or not it happened to bind a pin.
+  const polRows=!pols.length?'':[h`<div class="grp">Standing rules — elected by the human</div>`,
+    pols.map((P,j)=>{
+      const w=policyWeakness(P);
+      return h`<div class="pin${j===selPol?' sel':''}" onclick="selectPolicy(${j})">
+      <div class="t">${P.rule}</div>
+      <div class="m"><span class="pol">policy</span><span>${P.id}</span>
+      <span>· ${eventsOfPolicy(P.id).length} pin(s)</span>
+      ${w?h`<span class="rung weak">${has(WEAK_BADGE,w)?WEAK_BADGE[w]:w}</span>`:''}</div></div>`;}),
+    pins.length?h`<div class="grp">Pins</div>`:''];
+  // Only the WEAK rung is badged in the list. Badging all three would turn the signal into
+  // decoration; the card states the rung for every decision, whichever it is.
+  mount('list',[polRows,pins.map((p,i)=>{
+    const r=rungOf(p), m=r===null?null:rungInfo(r);
+    const weak=r!==null&&m.cls==='weak';
+    return h`<div class="pin${i===sel?' sel':''}" data-pin="${i}" onclick="select(${i})">
+    <div class="t">${p.title}</div>
+    <div class="m">${sevBadge(p.severity)}
+    <span>${p.kind}</span><span>· ${p.state}</span>
+    ${weak?h`<span class="rung weak">${m.label}</span>`:''}</div></div>`;})]);
+}
+// -- the same claim, re-derived by a DIFFERENT provider (`cross_derivations`, spec v0.9) ------
+// Written by `Ledger.cross_derive` and, until this reader existed, read by NOTHING: not this page,
+// not `ledger_summary`, not the projected AGENTS.md. One writer, zero readers — while the writer's
+// own comment said "the derivations are on the pin either way, so the human sees what disagreed".
+// A disagreement is also the one branch that REOPENS the pin (state `needs_input`, substate
+// `contested`), so the reason a settled question was back in the interview was on no surface a
+// human reads, and the fork they were asked to answer said nothing about it.
+//
+// The colour vocabulary is the one this page already has for how hard a claim was checked, not a
+// second one: agreement earns the `cross_derived` rung and reads green like an elicited decision;
+// a disagreement reads amber on a tinted card, like a relay with no quote.
+const AGREE={agree:{label:'agree', cls:''},
+             partial:{label:'partially agree', cls:'weak'},
+             disagree:{label:'disagree', cls:'weak'}};
+function crossCard(x){
+  const k=String(x.agreement);
+  const a=has(AGREE,k)?AGREE[k]:{label:k||'agreement not recorded', cls:'weak'};
+  return h`<div class="card dec ${a.cls}">
+    <div class="ch">cross-derivation — ${a.label}</div>
+    <div class="kv"><b>claim</b><span>${x.claim}</span></div>
+    ${(x.derivations||[]).map(d=>h`<div class="opt"><b>${d.provider}/${d.model}</b>
+      <div class="imp">${d.result}</div></div>`)}
+    ${x.notes?h`<div class="why">${x.notes}</div>`:''}
+    ${a.cls?h`<div class="warn">⚠ two independent providers were asked and did not answer the same
+      thing — what you weigh is WHICH derivation holds, not that a check was run</div>`:''}</div>`;
 }
 function contractCols(p){
   const a=p.as_is||{}; const dis=new Set(a.disagreeing_layers||[]);
   const layers=Object.keys(a).filter(k=>k!=='disagreeing_layers');
   if(!layers.length)return '';
-  return `<div class="cols">`+layers.map(l=>`<div class="col${dis.has(l)?' dis':''}">
-    <h4>${esc(l)}${dis.has(l)?' ⚠':''}</h4><code>${esc(a[l])}</code></div>`).join('')+`</div>`;
+  return h`<div class="cols">${layers.map(l=>h`<div class="col${dis.has(l)?' dis':''}">
+    <h4>${l}${dis.has(l)?' ⚠':''}</h4><code>${a[l]}</code></div>`)}</div>`;
 }
 function detail(p){
-  if(!p)return '<div class="empty">select a pin</div>';
-  const side=p[view]; let body='';
+  if(!p)return h`<div class="empty">select a pin</div>`;
+  const side=p[view]; const body=[];
   const label = view==='as_is'?'as-is':'to-be';
   // `contractCols` answers '' for a contract_mismatch carrying no layers, so taking that branch on
   // `kind` alone rendered the pin as a bare title: no columns, no card, no message, and no `raw` to
   // fall back on. Branch on what it PRODUCED, not on what it was asked for.
   const cols = (p.kind==='contract_mismatch'&&view==='as_is') ? contractCols(p) : '';
-  if(cols) body+=cols;
-  else if(!isBlank(side)) body+=sideCard(side,label);
-  else body+=`<div class="card nul">no ${label} yet</div>`;
-  if(p.question) body+=`<div class="card q"><b>Interview question</b><p>${esc(p.question.prompt)}</p>`+
-    (p.question.options||[]).map(o=>`<div class="opt"><b>${esc(o.label)}</b>${o.implication?`<div class="imp">→ ${esc(o.implication)}</div>`:''}</div>`).join('')+`</div>`;
-  if((p.anchors||[]).length) body+=`<div class="card anchors"><b>Anchors</b>`+
-    p.anchors.map(a=>{
-      const nid=a.node_id?` <span class="nid">${esc(a.node_id)}</span>`:'';
+  if(cols) body.push(cols);
+  else if(!isBlank(side)) body.push(sideCard(side,label));
+  else body.push(h`<div class="card nul">no ${label} yet</div>`);
+  // Before the question, because it is the evidence the question rests on: `cross_derive` leaves
+  // the human's own fork untouched, so without this card the menu arrives with no account of why
+  // the pin was reopened.
+  if((p.cross_derivations||[]).length) body.push(p.cross_derivations.map(crossCard));
+  if(p.question) body.push(h`<div class="card q"><b>Interview question</b><p>${p.question.prompt}</p>
+    ${(p.question.options||[]).map(o=>h`<div class="opt"><b>${o.label}</b>${o.implication?h`<div class="imp">→ ${o.implication}</div>`:''}</div>`)}</div>`);
+  if((p.anchors||[]).length) body.push(h`<div class="card anchors"><b>Anchors</b>
+    ${p.anchors.map(a=>{
+      const nid=a.node_id?h` <span class="nid">${a.node_id}</span>`:'';
       let br='';
       if(a.blast_radius&&a.blast_radius.count){
-        const s=(a.blast_radius.sample||[]).map(esc).join(', ');
-        br=`<div class="imp">↯ impact: ${a.blast_radius.count} dependent(s)`+(s?` — ${s}`:'')+`</div>`;
+        const s=(a.blast_radius.sample||[]).join(', ');
+        br=h`<div class="imp">↯ impact: ${a.blast_radius.count} dependent(s)${s?' — '+s:''}</div>`;
       }
-      return `<code>${esc(a.layer||'')} ${esc(a.loc||a.node_id||'')}${nid}</code>${br}`;
-    }).join('')+`</div>`;
-  if(p.decision) body+=`<div class="card"><div class="kv"><b>decided</b><span>${esc(p.decision.outcome)}</span></div></div>`;
-  return `<h2>${esc(p.title)}</h2><div class="sub"><span class="sev" style="background:${SEV[p.severity]||'#888'}">${p.severity}</span> · ${esc(p.kind)} · ${esc(p.state)}${p.substate?' ('+esc(p.substate)+')':''}</div>`+body;
+      return h`<code>${a.layer||''} ${a.loc||a.node_id||''}${nid}</code>${br}`;
+    })}</div>`);
+  if(p.decision) body.push(decisionCard(p));
+  return h`<h2>${p.title}</h2><div class="sub">${sevBadge(p.severity)} · ${p.kind} · ${p.state}${p.substate?' ('+p.substate+')':''}</div>${body}`;
 }
-function select(i){sel=i;renderList();document.getElementById('detail').innerHTML=detail((LEDGER.pins||[])[i]);}
+function select(i){sel=i;selPol=null;renderList();mount('detail',detail((LEDGER.pins||[])[i]));}
+function selectPolicy(j){selPol=j;sel=null;renderList();
+  mount('detail',policyDetail((LEDGER.policies||[])[j]));}
 function setView(v){view=v;document.getElementById('bAsis').classList.toggle('on',v==='as_is');
   document.getElementById('bTobe').classList.toggle('on',v==='to_be');
-  if(sel!=null)document.getElementById('detail').innerHTML=detail(LEDGER.pins[sel]);}
+  if(sel!=null)mount('detail',detail(LEDGER.pins[sel]));}
 trafficLight();renderList();
-if((LEDGER.pins||[]).length)select(0);else document.getElementById('detail').innerHTML=detail(null);
+if((LEDGER.pins||[]).length)select(0);
+else if((LEDGER.policies||[]).length)selectPolicy(0);
+else mount('detail',detail(null));
 __LIVE_SCRIPT__</script></body></html>
 """
 
@@ -236,7 +579,9 @@ _LIVE_SCRIPT = """
     if(prev.scroll)document.getElementById('list').scrollTop=prev.scroll;
   }catch(e){}
   try{
-    var st=prev.states||{}, nodes=document.querySelectorAll('.pin');
+    // `.pin[data-pin]`, not `.pin`: the standing-rule rows share the row class and sit ABOVE the
+    // pins, so a positional query would flash the wrong row for every pin in the list.
+    var st=prev.states||{}, nodes=document.querySelectorAll('.pin[data-pin]');
     (LEDGER.pins||[]).forEach(function(p,i){var k=keyOf(p,i);if((k in st)&&st[k]!==p.state&&nodes[i])nodes[i].classList.add('changed');});
   }catch(e){}
   function snapshot(){
@@ -251,14 +596,115 @@ _LIVE_SCRIPT = """
 """
 
 
+def derived_rungs(ledger_data: dict) -> dict:
+    """`event_id -> {rung, policy_id, as_recorded}` for every DecisionEvent whose rung this page must
+    read instead of taking off the field. `{}` for anything this runtime wrote.
+
+    The rule lives in `ledger.decision_rung` and is applied here, in Python, rather than mirrored in
+    the page's JavaScript: a rule with two implementations in two languages has already begun to
+    drift, and only one of them is reachable by a test without a browser. What crosses into the page
+    is the *result* — which is also what makes the fix assertable: `test_map.py` reads this out of
+    the rendered document.
+
+    `as_recorded` carries the value the file actually holds, so the card can state the disagreement
+    instead of quietly winning it. Nothing is rewritten; the ledger inlined beside this is untouched.
+    """
+    from ledger import cascaded_from, decision_rung
+    out: dict = {}
+    for event in ledger_data.get("decision_log") or []:
+        if not str(event.get("id") or "").startswith("ev_"):
+            continue
+        rung = decision_rung(event)
+        if rung == str(event.get("evidence") or ""):
+            continue
+        entry = {"rung": rung}
+        if not event.get("policy_id") and cascaded_from(event):
+            entry["policy_id"] = cascaded_from(event)
+        if event.get("evidence"):
+            entry["as_recorded"] = str(event["evidence"])
+        out[str(event["id"])] = entry
+    return out
+
+
+def weak_policies(ledger_data: dict) -> dict:
+    """`policy_id -> why it must be weighed`, for every standing rule that must be — and nothing for
+    the rest. The classification is `ledger.policy_weakness`, applied here in Python for the same
+    reason `derived_rungs` is: a rule with an implementation in this module AND one in the page's
+    JavaScript has already begun to drift, and only one of the two is reachable by a test without a
+    browser.
+
+    It had drifted, in the direction that matters least visibly: this page asked *"is the rung
+    weak"*, the projected `AGENTS.md` asked *"is the quote missing"*, and on the repo's own preview
+    fixture one surface badged two standing rules and the other reported one. Neither number was
+    wrong on its own terms, which is precisely why a reader could act on neither.
+    """
+    from ledger import policy_weakness
+    out: dict = {}
+    for policy in ledger_data.get("policies") or []:
+        reason = policy_weakness(policy)
+        if reason:
+            out[str(policy.get("id"))] = reason
+    return out
+
+
+def _inline(value) -> str:
+    """A JSON payload safe to sit inside a `<script>` element — by carrying no `<` at all.
+
+    `.replace("</", "<\\/")` closed exactly one of the two ways out of an inline script, and the
+    other one blanked the whole page: HTML's script-data tokenizer treats `<!--` followed later by
+    `<script` as the start of a *double-escaped* span, in which `</script>` no longer closes
+    anything. A pin titled ``A <!--<script> double escape`` therefore swallowed the rest of the
+    document — `LEDGER` never got defined, both panes stayed empty, and the page rendered its
+    header and nothing else. **No error, no console message: a map that silently shows nothing
+    reads as "no findings", which is the worst thing this surface can say.**
+
+    So the escape is not a longer list of dangerous sequences — it is the character all of them
+    need. `<` cannot appear in JSON outside a string (the structural characters are `{}[],:"` and
+    the literals), so `\\u003c` is always the right encoding of it and always round-trips: the
+    payload stays valid JSON, and `json.loads` on the inlined text still returns the ledger.
+    """
+    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c")
+
+
+#: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
+#: so no substitution can ever run over content a previous one inlined.
+_PLACEHOLDER_RE = re.compile(
+    r"__(?:DATA|DERIVED|WEAK_POLICIES|SETTLED|TITLE|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
+
+
 def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
-    data = json.dumps(ledger_data, ensure_ascii=False).replace("</", "<\\/")  # script-safe
-    return (_TEMPLATE
-            .replace("__DATA__", data)
-            .replace("__TITLE__", html.escape(title or "ledger"))
-            .replace("__LIVE_STYLE__", _LIVE_STYLE if live else "")
-            .replace("__LIVE_BADGE__", _LIVE_BADGE if live else "")
-            .replace("__LIVE_SCRIPT__", _LIVE_SCRIPT if live else ""))
+    """The whole page, as one string.
+
+    Substitution is a **single pass** over the template, and that is a correctness property rather
+    than a tidy-up. Chained `.replace()` calls run each one over the output of the last, so the
+    ledger — agent-written content, from someone else's repo — was inlined first and then rewritten
+    by the four substitutions that followed it. A pin titled ``evil __DERIVED__ title`` rendered as
+    ``evil {} title``, or as the whole derived-rungs JSON when that was non-empty; ``__LIVE_SCRIPT__``
+    in a pin title injected the self-reload loop into a frozen artifact meant to be safe to hand to
+    anyone. `esc` cannot help — this happens in Python, before the page exists, to the JSON literal
+    itself.
+
+    One pass fixes it structurally: `re.sub` never re-scans what a replacement emitted, so inlined
+    content is inert by construction and cannot be un-fixed by adding a placeholder later. Which is
+    the point — the previous bug in this file was `esc` not escaping, and the lesson both times is
+    that **inlining is the dangerous step**, so the guarantee has to hold at the step rather than in
+    the order of the lines around it. An unknown placeholder raises `KeyError` here rather than
+    surviving into the page as literal text.
+    """
+    from ledger import SETTLED_STATES
+    values = {
+        # script-safe: no `<` from the data reaches the page's script text at all (`_inline`)
+        "__DATA__": _inline(ledger_data),
+        "__DERIVED__": _inline(derived_rungs(ledger_data)),
+        "__WEAK_POLICIES__": _inline(weak_policies(ledger_data)),
+        # the schema's own set, so the page cannot fall behind it (v0.16 added `deferred`)
+        "__SETTLED__": _inline(list(SETTLED_STATES)),
+        "__TITLE__": html.escape(title or "ledger"),
+        "__LIVE_STYLE__": _LIVE_STYLE if live else "",
+        "__LIVE_BADGE__": _LIVE_BADGE if live else "",
+        "__LIVE_SCRIPT__": _LIVE_SCRIPT if live else "",
+    }
+    return _PLACEHOLDER_RE.sub(lambda m: values[m.group(0)], _TEMPLATE)
 
 
 def render_file(ledger_path: str | pathlib.Path, out_path: str | pathlib.Path,

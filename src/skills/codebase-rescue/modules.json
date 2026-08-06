@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "note": "Source of truth for the module catalog. A CI drift-linter should verify every module here has a matching reference playbook and that SKILL.md phase pointers stay consistent. 'deterministic' modules run a tool and emit SARIF/JSON; 'judgment' modules require model reasoning over the graph + findings. Every deterministic module names an `engine` — an `mcp:<tool>` MCP tool (validated against src/mcp/server.py by check_consistency.py), an `external:<tool>`, or an `agent:<how>` — so none free-rides on a sibling's mechanism.",
+  "note": "Source of truth for the module catalog. A CI drift-linter should verify every module here has a matching reference playbook and that SKILL.md phase pointers stay consistent. 'deterministic' modules run a tool and emit SARIF/JSON; 'judgment' modules require model reasoning over the graph + findings. Every deterministic module names an `engine` — an `mcp:<tool>` MCP tool (validated against src/mcp/server.py by check_consistency.py), an `external:<tool>`, or an `agent:<how>` — so none free-rides on a sibling's mechanism. A judgment module MAY name one too and some must: where the module's output reaches disk through exactly one tool, naming it is the difference between a workflow and a description of a workflow. The type still governs trust (an engine never makes a judgment module deterministic), and an `mcp:` engine is checked against the server whatever the type.",
   "modules": [
     {
       "id": "architecture-fitness",
@@ -393,12 +393,13 @@
       "phase": 2,
       "kind": "core",
       "type": "judgment",
+      "engine": "mcp:ledger_record_decision",
       "tools": [],
       "produces": [
         "question",
         "policy"
       ],
-      "notes": "Materializes Question objects from needs_input pins. Runs the compression funnel (cluster -> policy -> exception -> proposed default) with the severity threshold.",
+      "notes": "Materializes Question objects from needs_input pins. Runs the compression funnel (cluster -> policy -> exception -> proposed default) with the severity threshold. type stays judgment and the engine is not a contradiction: the OUTCOME is the human's, so a model is on the path (D2), while the WRITE has exactly one carrier — ledger_record_decision, which refuses an outcome the pin's own question never offered, refuses a missing flip_criteria, and refuses a relayed answer with no verbatim quote. Naming it here is what stops the module from being an activity described in English that nothing performs. The funnel's policy step has its own door, ledger_record_policy, which creates the Policy and cascades it in one call; it is not the declared engine because a module declares one, and the per-pin commit is the one every question passes through.",
       "reference": "references/phase-2-interview.md"
     },
     {

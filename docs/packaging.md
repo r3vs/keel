@@ -79,7 +79,11 @@ from the others:
 - **The Pi bridge is a loose `.ts`, deliberately dependency-free.** Pi's jiti allowlist excludes
   `@modelcontextprotocol/sdk`, so using the SDK would force the bridge into an npm sub-package inside
   Pi's shared dependency tree — reintroducing the exact `ERESOLVE` that makes `nicobailon/pi-mcp-adapter`
-  unusable (its open issue #176). So `mcp-bridge.ts` speaks the protocol by hand (initialize →
+  unusable (its open issue #176). **That last clause is now stale and carries no current
+  verification**: the 2026-08-06 elicitation audit found the adapter importing
+  `@modelcontextprotocol/client`, not `@modelcontextprotocol/sdk`, and did not re-run the resolution.
+  The jiti-allowlist half stands on its own; do not lean on "pi-mcp-adapter is unusable" to justify
+  anything without re-checking it. So `mcp-bridge.ts` speaks the protocol by hand (initialize →
   tools/list → tools/call, newline-delimited, mirroring `tests/test_mcp_server.py`), spawns the
   vendored `../../../mcp/server.py` via `uv run`, registers ONE proxy tool `alignment` synchronously,
   connects lazily, and fails open. `install.sh` symlinks it, keeping that relative link intact — the
@@ -129,6 +133,149 @@ docker run -e TRANSPORT_MODE=http --env-file ./.env -p 8000:8000 --rm -it cognee
 Prefer **deliberate writes** (`cognee.remember("…")`) over conversational auto-capture, so the graph
 stays curated. If you don't want the container + key, skip it — the ledger + `MEMORY.md` cover
 durable memory without it.
+
+## Elicitation — does the host ask the human, or does the agent relay?
+
+`ledger_record_decision` has two rungs. The strong one (`evidence: "elicited"`) has **this server**
+ask the user through the host, so the answer never passes through the agent; the weak one
+(`transcribed`) has the agent relay a quote. `ledger_record_policy` has the same two, and the row
+below applies unchanged — it sends a two-option enum (accept / decline) with the rule and the pins
+it would decide in the message, so a host that renders our enum as a picker renders that one too.
+Which fires is decided at runtime by
+`src/mcp/server.py::_client_can_elicit`, which asks the live session rather than consulting a table
+that rots — `mcp/server/session.py::ServerSession.check_client_capability`, whose elicitation branch
+is a bare presence check (`if capability.elicitation is not None and client_caps.elicitation is
+None: return False`). **Nothing below is read by the code.** It is what an author needs to know about
+where the strong rung actually fires, and it is written down because "it degrades correctly" and "it
+is ever used" are different claims.
+
+Audited **2026-08-06**, one independent read per host, each at the function that consumes the value.
+Method for all four rows is **`read_source`** — the shipped binary or the pinned source, followed to
+its consumer. **No host's `initialize` was captured on the wire**, so this is method 2 of
+`docs/open-gaps.md`'s "Prove it", never method 1; say "read" and not "observed" when citing it.
+
+| Host | declares `elicitation` in `initialize` | what it renders for our enum |
+|---|---|---|
+| **Claude Code** 2.1.221 | **yes**, unconditional | radio list; out-of-menu answer impossible |
+| **Codex** (`openai/codex`) | **yes**, unconditional | single-select picker; same |
+| **opencode** (`anomalyco/opencode`) | **no** — the line is commented out | nothing: no handler is registered |
+| **Pi**, through our own bridge | **no** — the bridge sends `capabilities: {}` | not rendered |
+
+**What our own call puts on the wire** — the link both positive rows depend on, and the one the
+audits left open. Verified here by execution, not reading: `server.py:233` calls
+`ctx.elicit(message, choices)` with a `list[str]`; under the pinned `fastmcp==3.4.4`,
+`fastmcp/server/elicitation.py::_parse_list_syntax` takes the list branch and returns an
+`ElicitConfig` whose `.schema` is
+
+```json
+{"type": "object", "title": "ScalarElicitationType", "required": ["value"],
+ "properties": {"value": {"type": "string", "title": "Value",
+                          "enum": ["opt_a — …", "accept_as_is — leave it as it is"]}}}
+```
+
+and that dict reaches the wire verbatim: `fastmcp/server/context.py:1190` passes
+`requestedSchema=config.schema` to `ServerSession.elicit`, which forwards it into
+`ElicitRequestFormParams(requestedSchema=…)` (`mcp/server/session.py:407-413`). So what a host
+parses is **one flat string property carrying an `enum`** — inside Claude Code's flat-primitives
+limit, and matching the one Codex variant that survives its `deny_unknown_fields`.
+
+`ledger_record_policy` sends the same shape, and this one was **captured on the wire** rather than
+traced through the library: a `stdio` client that declares `elicitation` and answers `decline`
+receives `mode: "form"`, `message: "Set this policy?\n\n<rule>\n\nIt decides 1 pin(s) without
+asking again: pin_0001"`, and a `requestedSchema` whose single `value` property carries the
+two-member enum `["set this policy — …", "do not set it — …"]`. So the rows above apply to it
+unchanged, and the pins a rule would decide are in the message a host renders, not only in the
+tool's return value.
+
+- **Claude Code — declares it, and honours the enum.** Read out of the binary that actually spawned
+  our server on this machine (`…\claude-code\2.1.221\claude.exe`, found by walking the live
+  `uv run --script …/mcp/server.py` process to its parent), so it is the client, not a docs claim.
+  `Client.connect()` sends `params.capabilities = this._capabilities`; `_capabilities` comes from
+  `new Client({name:"Claude Code",…},{capabilities:Lhr()})`, and `Lhr()` → `zYy()` returns the
+  literal `{roots:{listChanged:true}, elicitation:{}}`. No flag, no config key, no transport branch
+  touches the `elicitation` key (the `tasks.requests.elicitation` extension beside it is gated on
+  `OPe()`, which is `function OPe(){return!1}`, and the v2 reshaper `VYy` strips *that* key, never
+  this one). The rendering consumer is `registerElicitationHandler` → `setRequestHandler
+  ("elicitation/create", …)` → the form component, whose enum predicate is
+  `e.type==="string" && (("enum" in e)||("oneOf" in e))`; a string-with-enum field is **excluded**
+  from the free-text path and drawn as a radio list, and validation rebuilds `z.enum([...])`, so a
+  value outside the menu cannot be submitted. It also refuses anything but flat primitives
+  ("Elicitation requestedSchema only supports flat primitive properties…") — our schema fits.
+  Two things that qualify the guarantee rather than the declaration: an elicitation arriving before
+  the REPL swaps in the interactive handler hits a placeholder that answers `{action:"cancel"}`, and
+  a user-configured hook can answer *for* the human ("Elicitation resolved by hook") with no prompt
+  ever shown — so on this host `elicited` means "the agent did not hold the value", not "a human
+  was looked in the eye". **UNVERIFIED, do not promote:** whether the interactive handler is
+  registered at all in non-interactive/`stream-json` runs (only the REPL call site was found, and
+  its absence was not ruled out); and whether an elicitation from inside a subagent reaches that
+  queue. The declaration is unconditional either way, so `_client_can_elicit` still returns True.
+- **Codex — declares it, and renders a picker.** `codex-rs/codex-mcp/src/rmcp_client.rs::
+  mcp_initialize_request_params` does `capabilities.elicitation = Some(client_elicitation_capability)`
+  with no branch, and it is the only construction site feeding `RmcpClient::initialize`. The wire
+  shape was checked at the serializer, not the type: `rmcp` is pinned `=3.0.0`, where
+  `ClientCapabilities.elicitation` carries `skip_serializing_if = "Option::is_none"` and
+  `ElicitationCapability`'s own fields are all optional, so `Some(default)` emits
+  `"elicitation": {}` — exactly what the fake client in `tests/test_mcp_server.py` declares. The
+  incoming request is handled by `rmcp-client/src/elicitation_client_service.rs::handle_request`
+  (`ServerRequest::ElicitRequest`, plus a `CustomRequest` arm matching the method name), and the
+  response is shaped by protocol version, older peers getting a `CustomResult` with the same
+  `{action, content?}` wire shape — no mismatch with FastMCP. Rendering: `tui/…/
+  mcp_server_elicitation.rs::parse_single_select_field` turns our property into
+  `McpServerElicitationFieldInput::Select`, so the user picks from the offered menu.
+  Two caveats. Every variant of `McpElicitationEnumSchema` is `#[serde(deny_unknown_fields)]`, so one
+  extra key from a future FastMCP silently degrades the rich Select to nothing — version coupling,
+  not stability. And `exec/src/lib.rs::canceled_mcp_server_elicitation_response` makes headless
+  `codex exec` answer `Cancel` while still declaring the capability: `_client_can_elicit` returns
+  True with no human present, `ctx.elicit` yields a non-`AcceptedElicitation`, and `server.py:237`
+  raises rather than writing one. That is the correct refusal to fabricate, but it means a
+  non-interactive Codex run **errors instead of degrading to the transcribed rung** — a real
+  behaviour, not detectable from the capability, and a decision to make deliberately if we want it
+  to relay. **Read at `main` with no release tag pinned**, so treat the line numbers as a moving
+  target and the facts as of the audit date.
+- **opencode — does not declare it, and would not render it.** `packages/opencode/src/mcp/index.ts::
+  createClient()` is the sole construction site for real connections; its `CLIENT_OPTIONS.capabilities`
+  contains `roots: {}` only, with `// elicitation: {},` commented out beside an issue link. That value
+  is consumed by the TS SDK's `Client` constructor (`this._capabilities = options?.capabilities ?? {}`)
+  and sent by `Client.connect()`. `registerCapabilities()`, the only other mutator, is called zero
+  times in the repo and zero times in the shipped binary. No handler either: `setRequestHandler` is
+  called exactly once in the whole MCP module, for `ListRootsRequestSchema` — `ElicitRequestSchema`
+  appears eight times in the binary and is never registered, which is the type-vs-consumer trap in
+  its purest form. Agreed across three artifacts: tag `v1.18.14`, the `dev` HEAD, and the locally
+  installed `opencode-ai@1.2.27` binary (which predates even `roots: {}` and passes no options at
+  all). **The negative is recent and reverted, not "never considered"**: PR #35064 *feat(core): MCP
+  elicitation support* merged 2026-07-03T04:25:55Z and PR #35080 reverted it 67 minutes later
+  together with the Form service it depended on. Issue #23066 is closed as *completed* with a
+  maintainer comment pointing at a `v2` branch that does not exist. Do not conflate the open PR
+  #38311 *support acp elicitation* with this: that is ACP, where opencode is the agent side, and it
+  would not make `ctx.elicit()` work.
+- **Pi — does not declare it, and the negative is ours, not Pi's.** Pi itself has no MCP client at
+  all (`grep -rIoE 'modelcontextprotocol|[^a-zA-Z]mcp[^a-zA-Z]'` over the published `dist/` of
+  `@earendil-works/pi-coding-agent` v0.81.1 returns zero, and `elicit` case-insensitively returns
+  zero), so **our bridge is the surface** — and `src/adapters/pi/extensions/mcp-bridge.ts::
+  McpStdioClient.connect()` hardcodes `capabilities: {}` in the `initialize` it sends. No code path
+  populates it, so every decision recorded through Pi is `transcribed`, always. What the bridge does
+  with a server-initiated request is *ignore* it: `onData` dispatches only when `msg.id` is in
+  `pending`, which holds client-generated ids only, so an `elicitation/create` falls out of the loop
+  with no reply written. That verifies the other half of `_client_can_elicit`'s docstring at the
+  consumer — an unguarded `ctx.elicit` here would hang until the bridge's own 60 s
+  `REQUEST_TIMEOUT_MS` rejected the in-flight `tools/call`.
+  Pi **could** render the prompt; we simply do not wire it. `ExtensionUIContext` declares
+  `select(title, options, opts)` and it reaches tools as the 5th argument of `execute`
+  (`wrapToolDefinition` → `runner.createContext()`), implemented for real in the TUI
+  (`interactive-mode.js` → `ExtensionSelectorComponent`) and as a dialog RPC in RPC mode, degrading
+  to a `noOpUIContext` whose `hasUI()` is false in print/json mode. Our bridge's `execute(_id,
+  params)` has arity 2 and never touches it. Closing this on Pi is therefore a known piece of work:
+  implement `elicitation/create` against `ctx.ui.select` and declare
+  `capabilities: {elicitation: {}}` **only when `ctx.hasUI`**. `nicobailon/pi-mcp-adapter` is the
+  proof it is reachable — it gates on `config.settings?.elicitation !== false && hasUI`, declares
+  `{elicitation:{form:{},…}}` from `buildClientCapabilities()`, registers the handler, and branches
+  on `schema.type === "string" && ("enum" in schema || "oneOf" in schema)` to `ui.select`, keeping
+  free text as the last fallback.
+
+**The rung stays on the two hosts that cannot use it.** It costs nothing — `_client_can_elicit` is
+one session lookup — and it arms itself the day support lands, which is exactly why the capability is
+asked and never assumed. opencode has the line sitting commented out with an issue link; Pi needs
+only the bridge work above.
 
 ## Memory
 
@@ -235,10 +382,11 @@ ordinary English (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a
 word-match would "find" a server nobody declared. Correspondence comes from a declared fact or not
 at all.
 
-The gates: `scripts/build.py --check` (every generated file still equals its source),
-`scripts/check_consistency.py`, `scripts/verify_pointers.py`, `scripts/verify_commands.py` (every
-command a shipped file tells an agent to run resolves *after install*, not just here), and
-`python -m unittest discover -s tests`. All run in CI (`.github/workflows/ci.yml`).
+The gates that hold the above shut are `scripts/build.py --check` (every generated file still equals
+its source) and `scripts/verify_commands.py` (every command a shipped file tells an agent to run
+resolves *after install*, not just here). They are two of the set; **the whole list is the Commands
+block in `CLAUDE.md`**, complete against `.github/workflows/ci.yml`, and is not restated here —
+this sentence used to read "The gates: …" over a copy that was short by four.
 
 The residual none of them close: **a plugin cannot ship a selective, agent-scoped `Bash` rule.**
 Claude Code restricts `Bash` fine — `Bash(rm *)`-style matchers exist, with `deny → ask → allow`
