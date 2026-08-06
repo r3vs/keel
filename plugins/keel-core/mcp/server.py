@@ -323,6 +323,10 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     not carry comes back in `brief_held_back` (with the reason and the ids it did offer) and stays an
     open question for the interview. Check that list: a fork you thought was settled may not be.
 
+    A key that matched no cluster — a typo, or an id this catalog no longer has, or one pruned for
+    this project type — comes back in `brief_unmatched`. Check that one too: it decided nothing and
+    created nothing, so it is the one input this call can receive and leave no trace of.
+
     Args:
         ledger: Path to ledger.json (created if absent — this is the first write).
         project_type: Prunes clusters that do not apply (a fork absent from the type is not a question).

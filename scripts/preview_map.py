@@ -20,7 +20,9 @@ What to check, in both light and dark:
   1. prose reads as prose; paths, identifiers and enums read as monospace
   2. nested objects indent under their label; arrays of objects become separate items
   3. empty string, null and `{}` all render as "—" or "no as-is yet", never as `null` or `{}`
-  4. the last pin's `<script>` and `<img onerror>` appear as TEXT, and no dialog opens
+  4. the hostile pin's `<script>` and `<img onerror>` appear as TEXT, and no dialog opens — INCLUDING
+     its `severity`, which is the field that was still interpolated raw into the row, the sub-line
+     and a `style` attribute (open the console: no `img` node, no `onerror`, no request for `x`)
   5. `raw` still reveals the exact JSON — the projection may reformat, never hide
   6. the decided pins read as different strengths WITHOUT reading the words: `elicited` is green,
      `from the brief` and `cascaded from a policy` neutral, `transcribed` amber on a tinted card. If
@@ -45,6 +47,19 @@ What to check, in both light and dark:
      must land on that pin.
  12. no pin title is rewritten by the page's own assembly: the `__DERIVED__` pin renders its title
      verbatim, and this frozen page carries no LIVE badge and no self-reload.
+ 13. the page RENDERS AT ALL with the `A <!--<script> double escape` pin present. It did not: that
+     sequence opens HTML's script-data-double-escaped span, `</script>` stops closing anything, and
+     the document ended inside the inlined ledger — header, two empty panes, no error in the
+     console. Check the panes, not the header.
+ 14. the `oracle` pin says the rung is one this map does not know — and does NOT also say no rung
+     was recorded. Both were printed on one card, and they cannot both be true.
+ 15. the DEFERRED blocker is not counted as an open blocker by the traffic light (the bar reads
+     "settled", not "resolved" — one of those states means "not now"), and its card says
+     `deferred (not now)` rather than `decided`.
+ 16. the correctness-unknown defect reads as OPEN and blocked: the state in the sub-line, and the
+     question `mark_correctness_unknown` wrote, naming what blocked verification.
+ 17. `pol_0001` (transcribed WITH the quote) carries no weak badge in the list, and `pol_0002` (no
+     rung) does — the same two the projected `AGENTS.md` counts. Two surfaces, one number.
 """
 from __future__ import annotations
 
@@ -139,6 +154,19 @@ def build() -> Ledger:
                 title="<img src=x onerror=alert('title')>",
                 as_is={"payload": "<script>alert('as_is')</script>",
                        "quoted": 'he said "ciao" & left <b>bold</b>'})
+    # ...and hostile in the ONE field that never went through `esc`: `severity` was interpolated
+    # raw into the list row, the detail sub-line and a `style` attribute, so this put a live `img`
+    # node with a live `onerror` into a page whose whole promise is that it is safe to hand to
+    # anyone. `add_pin` refuses the value, which is the point — a ledger can arrive from anywhere,
+    # and every renderer must survive one that this runtime did not write.
+    led.data["pins"][-1]["severity"] = "<img src=x onerror=alert('SEVERITY-XSS')>"
+    # The sequence that blanked the WHOLE page: `<!--` unclosed, then a later `<script`. HTML's
+    # tokenizer stops honouring `</script>` inside that span, so the inlined ledger swallowed the
+    # rest of the document — no LEDGER, two empty panes, no error. A blank map reads as "no
+    # findings", which is the worst thing this surface can say.
+    led.add_pin(kind="other", kind_detail="renderer", severity="low", confidence="inferred",
+                provenance=P, title="A <!--<script> double escape",
+                as_is={"payload": "<!-- <script> -->"})
 
     # The page assembles itself by substituting placeholders into a template, and the ledger is
     # inlined into it — so content carrying a placeholder used to be REWRITTEN by the substitutions
@@ -284,6 +312,63 @@ def build() -> Ledger:
                           evidence="elicited")
     radius = led.apply_policy(held)
     assert radius["would_decide"] == [], radius     # the fixture is only useful if it decided none
+
+    # The SAME state, weakly elected — and the card that used to contradict itself. A rule that
+    # bound no pin printed "⚠ …relayed with no quote — every decision that names it rests on that"
+    # directly above "no decision in this ledger names this rule": vacuously true, and reading as an
+    # accusation about nothing. The clause has to be true of the card it is on.
+    led.apply_policy(led.add_policy(
+        applies_to={"cluster_id": "cl_observability"},
+        rule="every service ships a health endpoint and structured logs",
+        default_outcome="both", evidence="transcribed"))
+
+    # -- a rung this page does not know (v0.16) ------------------------------------------------
+    # `decide()` refuses it, so it can only come from a hand-edit or from a runtime NEWER than this
+    # artifact — which is the likeliest case and the one the wording has to serve. The card used to
+    # badge `oracle` and print "no evidence rung recorded" underneath it: one card, two claims,
+    # and they cannot both be true.
+    led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
+                title="Rate limiting (decided on a rung this map does not know)",
+                as_is={"current_design": "no limiter anywhere"},
+                question={"prompt": "Where does rate limiting live?",
+                          "options": [{"id": "gateway", "label": "at the gateway"}]})
+    future = led.data["pins"][-1]
+    led.data["decision_log"].append({
+        "id": "ev_future", "pin_id": future["id"], "timestamp": "2026-01-01T00:00:00+00:00",
+        "outcome": "gateway", "rationale": "the user picked the gateway",
+        "flip_criteria": "a second entry point appears", "source": "interview",
+        "evidence": "oracle"})
+    future["state"] = "decided"
+    future["decision"] = {"event_id": "ev_future", "outcome": "gateway"}
+
+    # -- the settled states that are not `decided` (v0.16) --------------------------------------
+    # A DEFERRED blocker. Deferring is an election and leaves the open set, so the traffic light
+    # must not count this as an open blocker — it did, in the loudest colour the page has, because
+    # the page kept its own list of settled states and that list never learned `deferred`.
+    led.add_pin(kind="incompleteness", severity="blocker", confidence="extracted", provenance=P,
+                title="Multi-tenant isolation is unimplemented",
+                as_is={"present": "one shared schema", "missing": "any tenant boundary"},
+                question={"prompt": "Does v1 carry more than one tenant?",
+                          "options": [{"id": "single", "label": "single tenant"},
+                                      {"id": "multi", "label": "multi-tenant from day one"}]})
+    led.defer(led.data["pins"][-1]["id"],
+              rationale="v1 ships to one customer; the boundary is v2 work",
+              flip_criteria="a second customer signs",
+              human_answer="not now - v1 is one web client, one customer")
+
+    # A pin whose correctness could NOT be established: it is open, it blocks its own closure, and
+    # `mark_correctness_unknown` writes the question a reader has to answer to move it.
+    led.add_pin(kind="defect", severity="high", confidence="extracted", provenance=P,
+                title="Webhook signature check may accept a replayed body",
+                as_is={"file": "api/webhooks.py", "riga": 62,
+                       "sintomo": "the timestamp window is never compared"})
+    unknown = led.data["pins"][-1]
+    led.add_remediation(unknown["id"], action="implement", ladder_rung=3,
+                        canonical_target="api/webhooks.py")
+    led.mark_correctness_unknown(
+        unknown["id"],
+        attempted=["tests", "smoke_probe"],
+        blocked_by="no fixture reproduces the provider's signing key")
 
     led.data["version"] = "0.9"
     return led

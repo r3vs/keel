@@ -88,8 +88,11 @@ Each decision records the rung its answer travelled on — `elicited` / `transcr
   agent when a policy they elected themselves had decided them. The clauses are only worth their
   bytes if each one is true of the ledger it is generated from.
 
-  v0.15 adds one sentence for the **standing rules** the region already lists, on the same two
-  counts and under the same rule (present only when a rule is actually weak). A `Policy` is an
+  v0.15 adds one sentence for the **standing rules** the region already lists, and v0.16 makes the
+  rule behind it `ledger.policy_weakness` — the SAME predicate the map's badge reads. It was
+  re-stated here as "no rung, or a relay with no quote" while the map badged every weak rung, so
+  two surfaces counted one ledger and printed different totals (two, and one, on the repo's own
+  preview fixture). A number a reader cannot reconcile is worse than no number. A `Policy` is an
   election over a whole cluster and is what every `cascaded` decision derives from, so weighing the
   cascade while saying nothing about the election behind it weighs the wrong end. It is also the one
   clause that can fire with an empty `decision_log`: a rule that cascaded over no pin still governs
@@ -160,6 +163,18 @@ def _pin_line(pin: dict, with_outcome: bool) -> str:
     return line
 
 
+#: One clause per `ledger.POLICY_WEAKNESS` code, in the order a reader weighs them. The
+#: classification is the ledger's (one rule, one implementation); only the wording is this
+#: surface's, because a badge on a map and a line in an agent's always-on context address different
+#: readers. A code with no clause here would surface as a bare token, so the mapping is total and
+#: `tests/test_instructions.py` holds it to the tuple.
+_POLICY_WEAKNESS_CLAUSE = {
+    "no_rung": "elected with no rung recorded",
+    "unknown_rung": "elected on a rung this projection does not know",
+    "unquoted_relay": "relayed with no quote",
+}
+
+
 def _evidence_note(data: dict) -> list:
     """One line naming which decisions are worth weighing before building on them — or nothing.
 
@@ -167,15 +182,18 @@ def _evidence_note(data: dict) -> list:
     carries only `{event_id, outcome}`. Emitted only when there is something to weigh, because a
     line that always says "0 of N" is bytes spent to report the absence of a problem.
 
-    Three clauses, at most one line, composed from what is present. They are kept apart rather than
+    Four clauses, at most one line, composed from what is present. They are kept apart rather than
     summed into "N weak" because they fail differently: a relay may be an invention, a cascade may
-    simply not fit this pin, and an unrecorded rung is not weak — it is unknown.
+    simply not fit this pin, an unrecorded rung is not weak — it is unknown — and a rung the schema
+    does not name is a road this projection cannot describe.
 
-    A fourth clause covers the STANDING RULES the section below lists (v0.15). Those are elections
+    A second sentence covers the STANDING RULES the section below lists (v0.15). Those are elections
     too — over a whole cluster — and their rung is the thing every `cascaded` decision rests on, so
     a projection that weighs the cascade and not the election it derives from weighs the wrong end.
     It costs bytes only when a rule is actually weak, and it earns them where the leverage is: a
-    policy elected on an agent's unquoted relay governs pins this file may not even list.
+    policy elected on an agent's unquoted relay governs pins this file may not even list. Which
+    rules those are is `ledger.policy_weakness`'s answer and not this module's (v0.16) — the two
+    surfaces that report it must not be able to disagree about the count.
     """
     events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
     policies = list(data.get("policies") or [])
@@ -184,28 +202,42 @@ def _evidence_note(data: dict) -> list:
         # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`,
         # and reading it literally put "N relayed by an agent" into the user's own AGENTS.md about
         # decisions their elected policy made. One reader for that, in the module owning the schema.
-        from ledger import decision_rung
+        from ledger import DECISION_EVIDENCE, decision_rung
         rungs = [decision_rung(e) for e in events]
         clauses = []
         relayed = rungs.count("transcribed")
         cascaded = rungs.count("cascaded")
         unrecorded = sum(1 for r in rungs if not r)
+        # A rung the schema does not name is not the same as none: the file states how the answer
+        # travelled and this projection does not know that road. Counted apart for the same reason
+        # the other three are, and counted AT ALL because the map badges it weak — a rung nobody
+        # here recognises used to fall through every clause and be reported by this surface as
+        # nothing, while the map called it out. One ledger, two numbers.
+        unknown = sum(1 for r in rungs if r and r not in DECISION_EVIDENCE)
         if relayed:
             clauses.append(f"{relayed} relayed by an agent (`transcribed`), not elicited from the user")
         if cascaded:
             clauses.append(f"{cascaded} cascaded from a policy the user elected once for the cluster")
         if unrecorded:
             clauses.append(f"{unrecorded} with no rung recorded at all")
+        if unknown:
+            clauses.append(f"{unknown} on a rung this projection does not know")
         if clauses:
             sentences.append(f"of {len(events)} recorded decisions, " + "; ".join(clauses))
-    # A rule is weak on the same two counts a decision is, and it is reported even when the log is
-    # empty: a policy that cascaded over nothing still governs what gets written next, and that is
-    # exactly the state no surface used to show.
-    weak = sum(1 for p in policies if not p.get("evidence")
-               or (str(p["evidence"]) == "transcribed" and not p.get("human_answer")))
+    # A rule is weak on the counts `ledger.policy_weakness` names — the SAME predicate the map's
+    # badge reads (v0.16). It used to be re-stated here as "no rung, or a relay with no quote",
+    # which is a narrower rule than the map's, so the two surfaces counted one ledger and reported
+    # different numbers: the fixture in `scripts/preview_map.py` badged two and this line said one.
+    # Reported even when the log is empty: a policy that cascaded over nothing still governs what
+    # gets written next, and that is exactly the state no surface used to show.
+    from ledger import policy_weakness
+    reasons = [policy_weakness(p) for p in policies]
+    weak = sum(1 for r in reasons if r)
     if weak:
-        sentences.append(f"{weak} of the standing rules below was elected with no rung recorded, "
-                         f"or relayed with no quote")
+        why = ", or ".join(clause for code, clause in _POLICY_WEAKNESS_CLAUSE.items()
+                           if code in reasons)
+        sentences.append(f"{weak} of the standing rules below "
+                         f"{'was' if weak == 1 else 'were'} {why}")
     if not sentences:
         return []
     return ["", "*Evidence: " + ". ".join(sentences) + " — weigh those before building on one.*"]

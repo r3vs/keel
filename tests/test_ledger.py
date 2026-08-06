@@ -823,6 +823,47 @@ class TestARuleEnforcedAtTheWriteGovernsNoExistingFile(unittest.TestCase):
         self.assertEqual(heading, f"# Decisions Ledger — Spec v{SCHEMA_VERSION}")
 
 
+class TestWhyAStandingRuleMustBeWeighed(unittest.TestCase):
+    """One classification, because two surfaces had one each and printed different totals for one
+    ledger: the map badged every weak rung, the projected `AGENTS.md` counted every missing quote.
+    Neither was wrong on its own terms, which is why a reader could act on neither.
+
+    Here rather than on either surface for the reason `decision_rung` is here: the module that owns
+    the schema answers questions about the schema, and a rule with two implementations has already
+    begun to drift."""
+
+    BASE = {"id": "pol_0001", "applies_to": {}, "rule": "r", "default_outcome": "x"}
+
+    def test_the_reasons_are_the_declared_ones(self):
+        from ledger import POLICY_WEAKNESS, policy_weakness
+        cases = {
+            "no_rung": dict(self.BASE),
+            "unknown_rung": dict(self.BASE, evidence="oracle"),
+            "unquoted_relay": dict(self.BASE, evidence="transcribed"),
+        }
+        for expected, policy in cases.items():
+            self.assertEqual(policy_weakness(policy), expected)
+        self.assertEqual(set(cases), set(POLICY_WEAKNESS),
+                         "a weakness code with no case here is one no surface has been shown")
+
+    def test_a_properly_elected_rule_is_not_weak(self):
+        """A relay WITH the words is the rung the spec permits — permitted *because* the quote is
+        there to be weighed. Badging it as missing something would say the opposite."""
+        from ledger import policy_weakness
+        self.assertEqual(policy_weakness(dict(self.BASE, evidence="elicited")), "")
+        self.assertEqual(policy_weakness(dict(self.BASE, evidence="brief")), "")
+        self.assertEqual(policy_weakness(dict(self.BASE, evidence="transcribed",
+                                              human_answer="take it for all of these")), "")
+
+    def test_the_rung_a_policy_may_carry_is_the_schemas(self):
+        """`unknown_rung` is defined against `POLICY_EVIDENCE`, so a rung added there stops being
+        unknown on the day it is added — not on the day someone remembers this function."""
+        from ledger import POLICY_EVIDENCE, policy_weakness
+        for rung in POLICY_EVIDENCE:
+            self.assertNotEqual(policy_weakness(dict(self.BASE, evidence=rung, human_answer="q")),
+                                "unknown_rung")
+
+
 class TestViewsAndPersistence(unittest.TestCase):
     def test_interview_orders_by_information_gain(self):
         led = make_ledger()

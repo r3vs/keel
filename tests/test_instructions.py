@@ -145,6 +145,16 @@ class TestEvidenceNote(unittest.TestCase):
         self.assertIn("1 with no rung recorded at all", body)
         self.assertNotIn("relayed by an agent", body)
 
+    def test_a_rung_this_projection_does_not_know_is_counted_as_that(self):
+        """It used to fall through all three clauses and be reported as nothing — while the map
+        badged it weak. Unrecorded is not the same as unrecognised: one says nobody wrote how the
+        answer travelled, the other says the file did and this projection cannot read the road."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "oracle"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("1 on a rung this projection does not know", body)
+        self.assertNotIn("with no rung recorded at all", body)
+
     def test_only_decision_events_are_counted(self):
         """`decision_log` also holds challenges, reopens and failures. Counting those would report a
         rung for events that never carried a human's answer at all."""
@@ -204,6 +214,19 @@ class TestTheStandingRulesAreWeighedToo(unittest.TestCase):
         self.assertNotIn("standing rules below was elected", body)
         body = ins.render(self._with(dict(self.BASE, evidence="elicited")))
         self.assertNotIn("standing rules below was elected", body)
+
+    def test_the_count_is_the_ledgers_and_not_this_modules(self):
+        """The map badged two standing rules on the preview fixture and this line said one, because
+        each surface had its own rule for "weak". `ledger.policy_weakness` is the single answer now;
+        what stays here is the wording, and every code it can return must have some."""
+        from ledger import POLICY_WEAKNESS
+        self.assertEqual(set(ins._POLICY_WEAKNESS_CLAUSE), set(POLICY_WEAKNESS),
+                         "a weakness code with no clause here surfaces as a bare token")
+
+    def test_a_rung_the_schema_does_not_name_is_reported_as_its_own_thing(self):
+        body = ins.render(self._with(dict(self.BASE, evidence="oracle")))
+        self.assertIn("elected on a rung this projection does not know", body)
+        self.assertNotIn("with no rung recorded", body)
 
     def test_the_note_is_still_one_line_with_both_halves(self):
         """`_NOTE_LINES` is budget arithmetic: a second sentence must not become a second line."""

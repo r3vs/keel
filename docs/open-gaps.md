@@ -1,7 +1,9 @@
 # Open gaps — a plan any session can pick up
 
-> **STATUS 2026-08-06: the original four are closed; a fifth is OPEN** (§5, below — both reopen arcs
-> are reachable by no host). The file stays
+> **STATUS 2026-08-06: the original four are closed; three are OPEN** — §5 (both reopen arcs are
+> reachable by no host), §6 (the map's amber fails contrast in light mode, which is where the weak
+> rung is made visible) and §7 (`resolution_mode` reaches no reader). §6 and §7 were found by
+> opening the page in a browser, which is the only way either could have been. The file stays
 > because its value is the record — what was wrong, where the answer now lives, and which sub-claims
 > were deliberately left `UNVERIFIED` rather than rounded up. Each section keeps its original text
 > and carries a closing note at the top.
@@ -491,6 +493,107 @@ listing, the capability does not exist on any host, whatever the runtime can do.
   may not rewrite `question.options`). Widening it back would undo that in a different shape.
 - Do not let `reopen` grow an outcome parameter. Both arcs **reopen and never decide**; a reopen
   that can also set a state is the fan-out flag returning under a new name.
+
+---
+
+## 6. The map's palette fails contrast where it carries the warning — **OPEN, found 2026-08-06**
+
+Found while walking the rendering surface in a browser, and deliberately **not** fixed in that
+scope: it is one palette decision affecting every badge and every warning on the page, and the round
+that found it was fixing what the page *says*, not what it looks like. Changing `--high` touches
+every state at once, which is a change that has to be looked at in both themes on purpose rather
+than as a side effect.
+
+### Verified
+
+Measured in Chrome on the light path of `.preview/map.html` (`scripts/preview_map.py`), computing
+WCAG contrast from the elements' own computed colours — not from the stylesheet:
+
+- `.warn` amber text (`--high` = `#f08c00`) on the card it sits on: **2.48:1**. WCAG AA wants 4.5:1
+  for body text.
+- `.rung.weak` badge (white on `#f08c00`): **2.48:1**. AA wants 3:1 for a UI component or large
+  text; this is 11px bold.
+- `.sev` badge for `low` (white on `--low` = `#868e96`): **2.48:1**. `blocker` is 4.51:1 and
+  `medium` 5.02:1, so the palette is not uniformly weak — these two tokens are.
+
+Dark mode is not affected in the same way (the same hues sit on `#1f1f23`), so this is a light-mode
+finding specifically, which is why looking at only one theme would have missed it.
+
+### Why it matters
+
+The amber is not decoration: it is the entire mechanism by which *"⚠ relayed with no quote — nothing
+here separates it from an invention"* reads as weaker than a green elicited card. The spec permits
+the weak rung **on the grounds that it is made visible**, and this is the surface where "visible"
+is cashed. A warning nobody can read at a glance is the same failure as a warning nobody prints,
+arriving by a different route — and the preview checklist's item 6 says so outright: *"if they look
+alike, the fix did not land — presence is not visibility."*
+
+### Done looks like
+
+- `--high` and `--low` given light-mode values that clear 4.5:1 for text and 3:1 for a badge, with
+  the dark-mode overrides kept separate (they already are: `@media(prefers-color-scheme:dark)`
+  re-declares the palette).
+- The ratios asserted where they can be: the colours are constants in `map._TEMPLATE`, so a test can
+  parse the `:root` block and compute the ratio without a browser. That is a fact about the
+  stylesheet, not a claim about a DOM — state the limit rather than overselling it.
+
+### Prove it
+
+`python scripts/preview_map.py`, open the file in a browser **in light mode**, select the
+`Background jobs` pin (transcribed, no quote) and the `Retries` pin (legacy cascade). The amber
+warning must read as a warning at a glance, next to the green `role enum drift` card. Chrome's
+"auto dark mode for web contents" force-darkens light pages in a dark-themed browser — check
+`matchMedia('(prefers-color-scheme: dark)').matches` before trusting a screenshot of either theme.
+
+### Traps
+
+- Do not "fix" it by making the warning bigger or bolder. The finding is contrast, and a heavier
+  weight at 2.5:1 is still 2.5:1.
+- Do not collapse `--high` and `--blocker`. The severity badge and the rung badge share the token
+  today; if a fix has to split them, split them deliberately — the page's whole colour vocabulary is
+  four severities plus one warning, and a fifth colour costs the reader more than it buys.
+
+---
+
+## 7. The map renders no `resolution_mode` — **OPEN, found 2026-08-06**
+
+### Verified
+
+`resolution_mode` (`asked` · `policy_default` · `proposed_default`) is written by six sites, read by
+`interview_view` and `unasked_verdict`, projected into `AGENTS.md` nowhere and rendered by
+`src/runtime/map.py` nowhere. Confirmed by reading the template: the string does not occur in it.
+
+Two of its three values are the reader-facing ones. `proposed_default` means *this pin will be
+settled with the proposed answer unless you object* — the funnel's whole compression argument — and
+on the map that pin is a row saying `needs_input`, identical to one nobody will settle without
+asking. `asked` means the opposite: *this one may not be defaulted by anybody*, which is what v0.16
+added `must_be_asked` for.
+
+### Why it matters
+
+It is the same shape as the gap this round closed one level up: a state the ledger tracks, that
+changes what a reader should do, on a surface that shows every neighbouring field. The map already
+renders `state`, `substate`, `severity`, `kind` and the whole decision card — `resolution_mode` is
+the one field of the envelope that a human reading the page cannot see, and it is the field that
+says whether their silence will be taken as an answer.
+
+### Done looks like
+
+- The sub-line (or the row) distinguishes the three, in the page's existing vocabulary — a
+  proposed default is not a warning, it is a countdown.
+- The preview fixture carries one of each: today it carries none with `proposed_default`, because
+  nothing in it calls `assign_resolution_modes`, which is also why the browser walk could not see
+  this state at all. A fixture that cannot show a state cannot check it.
+
+### Prove it
+
+Build a fixture pin through `interview.funnel` (which calls `assign_resolution_modes`), render, and
+read the row without opening the JSON: it must say whether an unanswered question will be defaulted.
+
+### Traps
+
+- Do not badge all three. Only `proposed_default` changes what a reader must do *now*; badging
+  `policy_default` duplicates the decision card, and badging `asked` decorates the common case.
 
 ---
 

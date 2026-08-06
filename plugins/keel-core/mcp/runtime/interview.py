@@ -70,8 +70,15 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
     and named in the return, so an agent reading the result knows the brief did not carry it rather
     than assuming it did.
 
+    **Nor is a key that matched no cluster** (v0.16). `brief_decisions` is agent-supplied, and a key
+    naming no cluster of this catalog — or one pruned for this `project_type` — used to fall through
+    every branch: it landed in neither `pre_decided` nor `brief_held_back`, and the caller was told
+    to check a list that would never mention it. Silently dropping an input while reporting on the
+    inputs beside it is the same class this module's own gate exists to close, one layer up. They
+    come back in `brief_unmatched` with which of the two it was.
+
     depends_on is wired from catalog cluster ids to the freshly-created pin ids. Returns
-    {created, pruned, pre_decided, brief_held_back, id_map}.
+    {created, pruned, pre_decided, brief_held_back, brief_unmatched, id_map}.
     """
     brief_decisions = brief_decisions or {}
     id_map: dict[str, str] = {}       # catalog cluster id -> ledger pin id
@@ -116,8 +123,13 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
                       flip_criteria=f"if the brief's {cid} choice is contradicted downstream",
                       evidence="brief")
         pre_decided.append(cid)
+    # Sorted, not in the caller's dict order: this is a report about a set, and a report whose order
+    # depends on how the argument was typed is one two runs can disagree about.
+    unmatched = [{"cluster_id": cid, "outcome": brief_decisions[cid],
+                  "reason": "pruned_for_project_type" if cid in pruned else "no_such_cluster"}
+                 for cid in sorted(brief_decisions) if cid not in id_map]
     return {"created": created, "pruned": pruned, "pre_decided": pre_decided,
-            "brief_held_back": held_back, "id_map": id_map}
+            "brief_held_back": held_back, "brief_unmatched": unmatched, "id_map": id_map}
 
 
 def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> dict:

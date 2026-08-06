@@ -247,6 +247,11 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     with an outcome its own fork does not offer, or a `blocker`/`high` fork, comes back under
     `brief_held_back` with the reason and stays an open question. Un-gated, this door wrote any
     string onto any cluster at any severity — the third way into `decide` and the quietest.
+
+    A key naming no cluster of this catalog, or one pruned for this `project_type`, comes back under
+    `brief_unmatched` (v0.16). It used to come back nowhere: the docstring told the caller to check
+    `brief_held_back`, and a typo'd or obsolete cluster id appeared on no list at all, so a fork the
+    brief believed it had settled was reported as neither settled nor held.
     """
     import interview
     led = _open_or_create(ledger)

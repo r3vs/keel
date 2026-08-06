@@ -256,6 +256,126 @@ class TestALedgerWrittenBeforeTheRungExisted(unittest.TestCase):
         self.assertEqual(mapmod.derived_rungs(led.data), {})
 
 
+class TestTheSafePathIsTheOnlyPath(unittest.TestCase):
+    """`esc` at every site is a rule every site must remember, and this file got it wrong twice:
+    once `esc` was a String() cast that escaped nothing, and then `severity` — alone among the
+    fields — went into the list row, the detail sub-line and a `style` attribute raw, so a ledger
+    carrying `severity: "<img src=x onerror=…>"` put a live img node in the DOM.
+
+    Fixing the field would leave the next field to whoever writes it. What CI can hold without a
+    browser is the *shape* of the mechanism, and it is worth holding precisely because it is the
+    thing that makes the field-level bug unwritable: markup reaches the document through ONE sink,
+    the sink escapes anything that is not an assembled fragment, and the tagged template is the only
+    thing that assembles one. The behaviour itself is verified rendered — `scripts/preview_map.py`,
+    check 4 — because a DOM is what it is about.
+
+    The honest limit: this reads our own template as text. It cannot tell a sink in code from the
+    word in a comment, which is why the assertion is an exact count and the message says so."""
+
+    #: Every DOM API that writes markup rather than text. A closed list of names with exact
+    #: meanings — not a guess about what some code does.
+    SINKS = ("outerHTML", "insertAdjacentHTML", "document.write", "createContextualFragment")
+
+    def test_markup_reaches_the_document_through_exactly_one_sink(self):
+        body = mapmod._TEMPLATE
+        self.assertEqual(body.count("innerHTML"), 1,
+                         "the page writes markup in more than one place (or a comment says the "
+                         "word). Every write goes through `mount`, which escapes anything that is "
+                         "not an assembled fragment — a second sink is a second escaping rule.")
+        line = next(ln for ln in body.splitlines() if "innerHTML" in ln)
+        self.assertIn("function mount(", line)
+        for sink in self.SINKS:
+            self.assertNotIn(sink, body, f"{sink} bypasses `mount` and its escaping")
+
+    def test_only_the_tagged_template_can_produce_an_unescaped_fragment(self):
+        """`frag` escapes everything that is not an `H`, so `new H(` IS the escape hatch. There is
+        exactly one, inside `h`, and it exists to let fragments nest. A `raw()` helper added later
+        would show up here — which is the point: an opt-out you can reach for is an opt-out someone
+        reaches for with a pin title in their hand."""
+        self.assertEqual(mapmod._TEMPLATE.count("new H("), 1)
+        self.assertEqual(mapmod._TEMPLATE.count("function H("), 1)
+
+
+class TestNothingInTheDataCanEndTheDocument(unittest.TestCase):
+    """A `</script>` was escaped; `<!--` was not, and it was the worse of the two. HTML's script-data
+    tokenizer treats `<!--` followed later by `<script` as a double-escaped span in which `</script>`
+    closes nothing, so a pin titled ``A <!--<script> double escape`` swallowed the rest of the
+    document: `LEDGER` undefined, both panes empty, **no error anywhere**. A map that silently shows
+    nothing reads as "no findings", which is the worst thing this surface can say.
+
+    So the rule is not a longer list of sequences but the character all of them need."""
+
+    HOSTILE = "A <!--<script> double escape"
+
+    def _rendered(self) -> str:
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(kind="other", kind_detail="renderer", title=self.HOSTILE, severity="low",
+                    confidence="inferred", provenance=[{"source": "recon", "detail": "x"}],
+                    as_is={"payload": "<!-- <script> -->"})
+        led.data["policies"].append({"id": "pol_x", "rule": "<b>r</b>", "default_outcome": "x",
+                                     "applies_to": {}, "exceptions": []})
+        return mapmod.render(led.data, title="hostile")
+
+    @staticmethod
+    def _payload(html: str, name: str) -> str:
+        return html.split(name, 1)[1].split(";\n", 1)[0]
+
+    def test_no_inlined_payload_carries_an_angle_bracket(self):
+        html = self._rendered()
+        for name in ("const LEDGER =", "const DERIVED =", "const WEAK_POL =", "const SETTLED ="):
+            self.assertNotIn("<", self._payload(html, name),
+                             f"{name} can still start an HTML token inside the script it rides in")
+
+    def test_the_data_survives_the_escape_intact(self):
+        """An escape that loses the data is not an escape. `\\u003c` is JSON's own encoding of the
+        character, so the payload stays valid JSON and reads back byte-identical."""
+        payload = json.loads(self._payload(self._rendered(), "const LEDGER ="))
+        self.assertEqual(payload["pins"][0]["title"], self.HOSTILE)
+        self.assertEqual(payload["pins"][0]["as_is"]["payload"], "<!-- <script> -->")
+
+    def test_the_document_still_closes_after_the_script(self):
+        html = self._rendered()
+        self.assertIn("</script></body></html>", html.replace("\n", ""))
+
+
+class TestTheSurfacesAgreeAboutOneLedger(unittest.TestCase):
+    """Two surfaces counted the same standing rules and printed different numbers — the map badged
+    two on the repo's own preview fixture, the projected `AGENTS.md` said one — because the map
+    asked *is the rung weak* and the projection asked *is the quote missing*. Neither was wrong on
+    its own terms, which is exactly why a reader could act on neither.
+
+    The classification is `ledger.policy_weakness` now, in the module that owns the schema, and the
+    map gets its RESULT inlined the way it already gets `derived_rungs`. Asserted over the preview
+    fixture because that is the ledger a human actually looks at."""
+
+    @staticmethod
+    def _fixture() -> dict:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import preview_map
+        return preview_map.build().data
+
+    def test_the_map_and_the_projection_weigh_the_same_rules(self):
+        import instructions
+        data = self._fixture()
+        weak = mapmod.weak_policies(data)
+        self.assertTrue(weak, "the fixture no longer carries a weak rule — this guard went vacuous")
+        self.assertIn(f"{len(weak)} of the standing rules below", instructions.render(data))
+
+    def test_the_reasons_reach_the_page(self):
+        data = self._fixture()
+        inlined = json.loads(mapmod.render(data).split("const WEAK_POL = ", 1)[1]
+                             .split(";\n", 1)[0])
+        self.assertEqual(inlined, mapmod.weak_policies(data))
+
+    def test_the_pages_settled_states_are_the_schemas(self):
+        """v0.16 made `deferred` a settled state and the page kept its own hand-written list, so a
+        deferred blocker was counted as an OPEN blocker in the loudest colour the page has."""
+        from ledger import SETTLED_STATES
+        html = mapmod.render(demo_ledger().data)
+        inlined = json.loads(html.split("const SETTLED = new Set(", 1)[1].split(");", 1)[0])
+        self.assertEqual(inlined, list(SETTLED_STATES))
+
+
 class TestLiveMode(unittest.TestCase):
     """live=True turns the map into a self-reloading dev monitor; live=False (the default) stays the
     frozen single-file artifact. The self-contained invariant must survive live mode."""

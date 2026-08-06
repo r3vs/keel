@@ -58,7 +58,8 @@ per surviving fork with the catalog's options, implications, `cluster_id`, `seve
 `depends_on` already wired to the freshly-created pin ids, and takes the Step-2 givens as
 `brief_decisions` (cluster id → **the option id** that fork already got in the brief), which it
 commits as pre-decided with `evidence: "brief"` instead of asking again. It returns `created` /
-`pruned` / `pre_decided` / `brief_held_back`, which is the audit of what Steps 1–2 actually did.
+`pruned` / `pre_decided` / `brief_held_back` / `brief_unmatched`, which is the audit of what Steps
+1–2 actually did.
 
 **`brief` is a rung, not a shortcut, and `brief_held_back` is where that bites.** It means
 *answered from the brief, without asking* — so each one passes the same gate a policy cascade
@@ -66,7 +67,10 @@ passes: the outcome must be one of that fork's **own option ids** (`"relational"
 Mongo"*), and a `blocker`/`high` fork is never settled this way, because the whole point of the rung
 is that nobody was asked. Anything the brief could not carry comes back in `brief_held_back` with
 the reason (`held_back` = severity, `not_offered` = the fork does not offer that outcome) and the
-ids it does offer, and stays an open question. **Read that list before Phase 2**: a fork you
+ids it does offer, and stays an open question. A given whose cluster id this catalog does not have
+— a typo, a renamed cluster, or one pruned for this project type — comes back in `brief_unmatched`
+with which of the two it was: it created no pin and decided nothing, so it is the one input that
+would otherwise leave no trace. **Read both lists before Phase 2**: a fork you
 recorded as settled in Step 2 may be one the brief only gestured at, and the interview is where it
 gets settled properly.
 

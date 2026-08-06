@@ -113,6 +113,40 @@ class TestExpand(unittest.TestCase):
         self.assertEqual((held["cluster_id"], held["reason"], held["severity"]),
                          ("persistence", "held_back", "high"))
 
+    def test_a_key_matching_no_cluster_comes_back_rather_than_vanishing(self):
+        """It landed in neither `pre_decided` nor `brief_held_back`, and the tool's docstring told
+        the agent to check a list that would never mention it — so a fork the brief believed it had
+        settled was reported as neither settled nor held. Same class this branch polices elsewhere:
+        an input consumed silently while the inputs beside it are reported on."""
+        led = fresh_ledger()
+        result = interview.expand_catalog(led, self.cat, project_type="web-saas",
+                                          brief_decisions={"persistance": "relational"})
+        self.assertEqual(result["brief_unmatched"],
+                         [{"cluster_id": "persistance", "outcome": "relational",
+                           "reason": "no_such_cluster"}])
+        # and it appears on no other list, so a reader cannot mistake it for handled
+        self.assertNotIn("persistance", result["pre_decided"])
+        self.assertEqual([h["cluster_id"] for h in result["brief_held_back"]], [])
+
+    def test_a_key_the_project_type_pruned_says_which_of_the_two_it_was(self):
+        """A real cluster id and a typo are not the same problem: one means the brief answered a
+        question this project does not have, the other means nobody answered anything."""
+        led = fresh_ledger()
+        pruned = interview.expand_catalog(led, self.cat, project_type="cli")["pruned"]
+        self.assertTrue(pruned, "no cluster is pruned for a cli — this guard went vacuous")
+        led2 = fresh_ledger()
+        result = interview.expand_catalog(led2, self.cat, project_type="cli",
+                                          brief_decisions={pruned[0]: "whatever"})
+        self.assertEqual(result["brief_unmatched"],
+                         [{"cluster_id": pruned[0], "outcome": "whatever",
+                           "reason": "pruned_for_project_type"}])
+
+    def test_a_matched_key_is_never_reported_as_unmatched(self):
+        led = fresh_ledger()
+        result = interview.expand_catalog(led, self.cat, project_type="web-saas",
+                                          brief_decisions={"persistence": "relational"})
+        self.assertEqual(result["brief_unmatched"], [])   # held back, but matched
+
     def test_pruned_cluster_with_dependents_still_wires_surviving_deps(self):
         # client depends_on api_contract; in an api-service, client is pruned but api survives
         led = fresh_ledger()

@@ -130,6 +130,11 @@ DECISION_EVIDENCE = ("elicited", "transcribed", "brief", "cascaded")
 # silently tolerated.
 POLICY_EVIDENCE = ("elicited", "transcribed", "brief")
 
+# Why a standing rule is one a reader must WEIGH before trusting what cascaded out of it. `""` when
+# it is not one of these. Three codes rather than a boolean, for the reason every count in this file
+# is kept apart: they fail differently, and "1 weak" says which sentence to write nowhere.
+POLICY_WEAKNESS = ("no_rung", "unknown_rung", "unquoted_relay")
+
 # severities that must never be silently defaulted (the threshold rule, v0.3)
 _NEVER_SILENT = ("blocker", "high")
 
@@ -257,6 +262,37 @@ def decision_rung(event: dict) -> str:
     if cascaded_from(event):
         return "cascaded"
     return str(event.get("evidence") or "")
+
+
+def policy_weakness(policy: dict) -> str:
+    """Why this standing rule must be weighed before what cascaded out of it is trusted — one of
+    `POLICY_WEAKNESS`, or `""`.
+
+    One rule, one implementation, for the same reason `decision_rung` is one: two surfaces were
+    counting the SAME ledger and reporting different numbers. On the repo's own preview fixture the
+    map badged two standing rules weak and the projected `AGENTS.md` said one — because the map
+    asked "is the rung weak" and the projection asked "is the quote missing". Neither was wrong on
+    its own terms, which is exactly why a reader could not act on either: one ledger, two numbers.
+
+    The classification is here, in the module that owns the schema; the *sentence* stays with each
+    surface, because a badge and a projected instruction line address different readers. The map
+    gets this result inlined (`map.weak_policies`), the way it already gets `derived_rungs` —
+    a second implementation in the page's JavaScript would be reachable by no test without a
+    browser, and would drift.
+
+    A relay WITH the human's words is not on the list, and that is the same judgement the spec
+    makes about `transcribed` everywhere else: the weak rung is permitted precisely because the
+    quote is there to be weighed. What the map's card still shows for one is the rung and the
+    quote; what it no longer shows is a badge saying something is missing when nothing is.
+    """
+    rung = str(policy.get("evidence") or "")
+    if not rung:
+        return "no_rung"
+    if rung not in POLICY_EVIDENCE:
+        return "unknown_rung"
+    if rung == "transcribed" and not policy.get("human_answer"):
+        return "unquoted_relay"
+    return ""
 
 
 # -- the rules a DecisionEvent carries on its own (v0.15) --------------------------------------
