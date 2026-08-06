@@ -319,7 +319,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 13 composable ones, with the runtime **largely
-implemented**: 32 modules, 58 MCP tools, **720 tests green in CI**, 4 hosts.
+implemented**: 32 modules, 58 MCP tools, **738 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

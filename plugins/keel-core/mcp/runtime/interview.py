@@ -93,9 +93,12 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
     fork settles it with one of the fork's own options; anything else is a fork the brief left open,
     and the funnel exists to ask those.
 
-    A held-back cluster is NOT dropped: its pin is created open, marked `resolution_mode: asked`,
-    and named in the return, so an agent reading the result knows the brief did not carry it rather
-    than assuming it did.
+    A held-back cluster is NOT dropped: its pin is created open, named in the return so an agent
+    reading the result knows the brief did not carry it rather than assuming it did, and marked
+    `resolution_mode: asked` when — and only when — the refusal is a standing property of the pin
+    (`ledger.STANDING_REFUSALS`, v0.18). A `blocker` fork demands to be asked whatever any rule
+    says; a fork whose menu did not contain the brief's word does not, and that mark had no
+    clearing door.
 
     **Nor is a key that matched no cluster** (v0.16). `brief_decisions` is agent-supplied, and a key
     naming no cluster of this catalog — or one pruned for this `project_type` — used to fall through
@@ -139,7 +142,18 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
         verdict = ledger.unasked_verdict(pin, outcome)
         if verdict != "would_decide":
             # Held back for the reason the predicate gives, and the pin joins the questions to ask.
-            pin["resolution_mode"] = "asked"
+            #
+            # The mark is written only for a refusal that is a standing property of the PIN
+            # (v0.18). This door had the identical defect `apply_policy` had, for the identical
+            # reason — `verdict != "would_decide"` includes `not_offered`, which says the BRIEF's
+            # answer is not on this fork's menu, and stamping that on the pin made it permanent:
+            # nothing clears `resolution_mode`, so a later policy that fits the pin exactly would
+            # be refused for ever by a sentence somebody typed into a brief. Reading the shared
+            # tuple rather than repeating the rule is the point; a rule spelled out at two doors is
+            # a rule one of them will be fixed without.
+            from ledger import STANDING_REFUSALS
+            if verdict in STANDING_REFUSALS:
+                pin["resolution_mode"] = "asked"
             created.append(pin["id"])
             held_back.append({"cluster_id": cid, "pin_id": pin["id"], "outcome": outcome,
                               "reason": verdict, "severity": pin["severity"],

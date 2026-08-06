@@ -77,6 +77,19 @@ Summary of what matters here:
   required — a fork composed after the fact may not bound what the human may answer — and a pin in
   `brainstorming` stays in the interview view, because asking the brainstorm for options used to be
   what took the fork off the agenda.
+- v0.18 corrects four rules that were false of the thing they were printed on. A policy scope whose
+  value is `null` selects the pins carrying **no value** for that field — legitimate, and
+  indistinguishable from a wildcard by reading the scope — so the radius now carries `scope_note`
+  saying which, and how many of how many. `resolution_mode: "asked"` is written only for a refusal
+  that is a **standing property of the pin** (`held_back` · `must_be_asked`): `not_offered` is a
+  fact about the *rule's* fit, and recording it on the pin put that pin beyond every later policy,
+  permanently, with no clearing door — deliberately still none, since a door that unsets *must be
+  asked* can silence the threshold rule. The `correctness_unknown` fork's `accept` option states
+  what the door will actually do with it, asked of `settlement_verdict` rather than written beside
+  it. `defer` no longer takes a caller-stated rung at the library either: one path reaches it, and
+  only the code that ran a path may name it. And `summary` survives a log entry with no `id` —
+  reading a ledger is never the operation that fails on it — with the unrecognised entry reported
+  under `pre_rule_events`, never skipped in silence.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.

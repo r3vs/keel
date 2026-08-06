@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.17
+# Decisions Ledger — Spec v0.18
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -56,7 +56,8 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "brainstorm": null,            // { proposals: [...], notes } | null
   "decision": null,              // { event_id, outcome } | null — only from interview
   "resolution_mode": "asked",    // v0.3 asked | policy_default | proposed_default — and `asked`
-                                 // BINDS: no unasked write may settle this pin (v0.16)
+                                 // BINDS: no unasked write may settle this pin (v0.16), so it is
+                                 // written only for a STANDING property of the pin (v0.18)
   "premortem": null,             // v0.9 — { failure_modes[], guardrails[], abort_criteria[], paper_tigers[] } | null
   "depends_on": [],              // DECISION 6
   "remediation": []              // [ RemediationItem ]
@@ -247,6 +248,8 @@ Pins that share a decision (same kind of mismatch, same duplicated helper, same 
 - `asked` — a real question (ambiguity, design_concern, blocker)
 - `policy_default` — resolved by a user-set Policy (passive review)
 - `proposed_default` — a low-confidence long-tail guess (skim in bulk, override by exception)
+
+`asked` is **permanent** — nothing clears it, and since v0.16 the unasked predicate reads it — so it is written only where the reason is a standing property of the *pin* (v0.18, `STANDING_REFUSALS`). See below.
 
 ### New entity `Policy`
 A category rule the user sets in the interview that auto-resolves matching pins.
@@ -877,3 +880,50 @@ The only writer of the `brainstorming` state, reachable by no tool: on every hos
 ### The general shape
 
 v0.16's was *"name the state transition, and say which predicate governs it."* This one is the question that comes before it, and it is cheaper to ask: **name the tool that performs it, and run it.** Five state transitions this schema describes in detail — two arcs back into the open set, one fork posed late, one brainstorm write, one funnel state — were fully implemented, individually tested, and reachable by nobody, for as long as the surface that reaches them has existed. A predicate cannot govern a transition no caller can make, and a test that calls the library directly cannot tell the difference.
+
+---
+
+## v0.18 — Four rules that were false of the thing they were printed on
+
+v0.17 asked *"name the tool that performs it, and run it."* Asked of things that already had a tool, a different answer comes back: **the tool ran, and the sentence beside it was not true of what it did.** Four of these, found by two adversarial reviews of the v0.16 settlement work and carried in `docs/open-gaps.md` until now. None is a missing surface — every one is a rule whose writer and whose reader disagree about what it means, which is why none of them showed up as a failure anywhere.
+
+### A `null` in a policy scope selects by absence, and now says so
+
+v0.16 refused a scope key naming **no** pin field, because `pin.get("nope") == None` is true of every pin. That closed the misspelt key and not the class: most `Pin` fields are **optional**, so a scope naming a *real* one with a `null` value still selects every pin that carries no value for it. `applies_to={"cluster_id": null}` was reproduced selecting *"every pin in no cluster"* — narrow to read, and on a ledger where almost nothing is clustered, the whole ledger again, this time past the v0.16 check.
+
+It is **not refused**, and the reason is the one a refusal would have had to state: scoping a rule to the un-clustered pins is a legitimate thing to want, and a refusal with no replacement is a wall people route around. It does **not** get an operator (`{"$exists": false}`) either — a query language arriving one operator at a time is how the scope stops being something the human electing it can read. So the matcher says what it does: `policy_preview` returns **`scope_note`**, empty unless a scope value is `null`, and otherwise *"this scope selects by ABSENCE: it matches every pin that carries no value for `cluster_id` — 14 of 16."* Counted with the matcher's own comparison, in the matcher's own function, so the preview and the cascade cannot describe the radius differently — `apply_policy` returns that call.
+
+Its readers are named rather than assumed: `policy_prompt` and `record_policy` spread the radius, so the note rides on both; and `mcp/server.py::ledger_record_policy` puts it in the **elicited message**, above the pin counts, because that is the surface a human actually reads before electing. A radius shown without it is a narrow-looking rule that matched by absence.
+
+### `resolution_mode: "asked"` is a standing property of the pin, not a verdict on the last rule
+
+The mark is **permanent**: nothing clears it, `assign_resolution_modes` fills only where it is absent, and since v0.16 `unasked_verdict` reads it as `must_be_asked`. That is correct for what it was introduced to carry — *a reopened truth is never re-defaulted silently*, and the four other statements of the same kind. It was also written on every pin a policy did **not** decide, including the `not_offered` ones, and `not_offered` says *this rule's outcome is not on this pin's menu*: a fact about the **rule's fit**, recorded on the **pin**, for ever.
+
+Reproduced end to end: a `medium` `open_decision` offering `{a, b}`; one policy defaulting to `zzz` marks it `asked`; the *next* policy — outcome `a`, which the fork offers, severity under the threshold, written for exactly this pin — comes back `must_be_asked` and is refused. The medium/low long tail is what the funnel exists to compress, and one badly scoped rule stopped that compression working, silently, on every pin it touched.
+
+So the buckets that produce the mark are declared (`STANDING_REFUSALS = held_back | must_be_asked`) and read by **both** writers — `Ledger.apply_policy` and `interview.expand_catalog`, which had the identical defect for the identical reason, its `verdict != "would_decide"` sweeping `not_offered` in with the threshold. A rule spelled out at two doors is a rule one of them gets fixed without. Nothing new is written and nothing is cleared: **no door clears `resolution_mode`, deliberately**, because a door that unsets *this must be asked* is a door that can silence the threshold rule, and an agent could reach it. The fix is at the writer.
+
+**What this rule is now false of, stated rather than repaired.** Ledgers written by v0.12–v0.17 may carry `asked` on a pin marked only because an unrelated policy's outcome was not on its menu, and **nothing distinguishes it from a standing demand** — the stamp recorded no reason, so no reader can recover one, and reconstructing it from the policies still in the file would be exactly the heuristic this package refuses. Those pins stay open and stay in the funnel; what they have lost is the chance of ever being cascaded, which is the pre-v0.18 behaviour they were written under. The version floor is untouched for the same reason: `nonconforming` replays rules decidable **from the event alone**, and this one is decidable from nothing.
+
+### An offered option states what actually happens on the pin it is printed on
+
+`mark_correctness_unknown` generates a five-option fork whose last option promised *"state becomes accepted, with the unverified remainder recorded"*. The offered-options rule is what makes an option list a **promise about what can happen** rather than a list of suggestions — an agent may record only an outcome this pin's own question offered — and this one was offered exactly where it is refused:
+
+- on a **`defect`** — the kind that reaches `correctness_unknown` without a decision, so the kind that most often carries the generated fork — `settlement_verdict(pin, "accept")` is `wrong_kind`; leaving-as-is resolves a `design_concern` and nothing else;
+- on a **`design_concern`** the door does open, but a non-defect reaches this state only from `decided`, where the pin already carries the human's own fork that v0.16 stopped overwriting. The generated menu was never written on the pin where its promise held.
+
+The sentence is now **computed** — `Ledger._accept_implication(pin)` asks `settlement_verdict`, which is the authority on it and is one call away — so it cannot drift from the door again. Neither branch loosens `accept`'s kind rule, which was moved into the predicate precisely so it would stop being re-litigated at each door.
+
+### `defer` does not take a rung, at the library either
+
+v0.16 removed `evidence` from `mcp:ledger_defer` after one keyword settled a `blocker` fork on the `elicited` rung with nobody asked. `Ledger.defer` kept the parameter, defaulting to `transcribed`, with its own docstring already stating why it should not exist: *there is exactly ONE path here and it is the relay*. A default is not a refusal — the next caller passes `elicited` and the library writes it, which is the precise write the door above refuses, and the door was the only thing stopping it. `decide` keeps the parameter legitimately, because two paths do reach it and the rung is a fact about **which one ran**; a parameter naming a path that does not exist is a claim, not a default. The tool now reports the rung by reading it back off the event it just appended, rather than restating a constant it also passed in.
+
+### Reading a ledger is never the operation that fails on it — the dispatch key included
+
+`Ledger.summary` dispatched on `e["id"]`, so a `decision_log` entry with **no** `id` made it die with a bare `KeyError`. No version of this package wrote that shape, so it is hand-editing rather than a legacy file — but v0.16 established the principle without that qualification, one branch further down the same loop, and `summary` is what an agent calls **before** acting, on a file it did not write. Every read in that loop is a `.get` now; a recognised entry missing the field its own kind is counted by lands in `unrecorded`, the same answer `decision_rung` already gives.
+
+Skipping in silence is what the branch below it does not do, so this does not either: `LOG_ENTRY_PREFIXES` declares every id prefix a log entry may carry, and an entry matching none is reported by `nonconforming` under **`log_entry_kind`** — visible in `pre_rule_events`, beside the counts it is missing from, and named by position, because the thing wrong with it is that it has no name. It is not an `EVENT_RULES` entry, and that is the table's own membership question rather than an exception to it: the rule is about every entry rather than about a DecisionEvent, and `decide` cannot violate it because `_next_id` composes the id. There is nothing for the writer half to check; what it buys is the reader.
+
+### The general shape
+
+v0.17's was *"name the tool that performs it, and run it."* This one is what to ask once it runs: **read the sentence the surface prints, and check it against the door — on the object it is printed on.** Each of these four is a true statement about some pin, some scope or some caller, printed on the ones it is false of. That is not caught by asking whether the rule is sound, and it is not caught by a test that asserts the rule; it is caught by taking the artifact a human is handed and asking what would happen if they believed it.

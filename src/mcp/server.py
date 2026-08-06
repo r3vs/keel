@@ -375,6 +375,11 @@ def policy_preview(ledger: str, offer_id: str = "", rule: str = "", applies_to: 
     sentence — and a rule that turns out to cover 40 pins is a different question from one that
     covers 3.
 
+    Show `scope_note` with it whenever it is non-empty. A scope value of `null` matches every pin
+    that carries no value for that field, so `{"cluster_id": null}` reads as "the unclustered ones"
+    and behaves as "nearly everything" on a ledger where almost nothing is clustered. The note says
+    which, and how many of how many.
+
     Same arguments as `ledger_record_policy`, so a previewed policy and a recorded one cannot differ.
     Greenfield's catalog offers already arrive with this attached (`interview_seed_policies`); this
     is how a policy the catalog never offered — every rescue policy — gets the same treatment.
@@ -445,8 +450,16 @@ async def ledger_record_policy(
         # actually stamped on every one of those pins — a string the caller composed — was never
         # put in front of them. What the message omits was not elected, whatever rung the write
         # then claims, and this write claims the strongest one there is.
+        # The scope note is on the elicited message and not only in the returned dict, because this
+        # is the surface a human actually reads before electing (v0.18). A scope keyed on a real but
+        # OPTIONAL pin field with a null value selects every pin carrying no value for it — narrow
+        # to read, potentially the whole ledger in effect — and the radius alone does not show which
+        # of the two a `{"cluster_id": null}` was. Empty string when there is nothing to say, so the
+        # common message is unchanged.
+        note = prompt.get("scope_note") or ""
         message = (f"Set this policy?\n\nRule: {prompt['rule']}\n"
-                   f"Outcome written on every pin it decides: {prompt['default_outcome']}\n\n"
+                   + (f"Scope: {note}\n" if note else "")
+                   + f"Outcome written on every pin it decides: {prompt['default_outcome']}\n\n"
                    f"It decides {len(would)} pin(s) without asking again"
                    + (f": {', '.join(would)}" if would else "")
                    + (f"\n{len(held)} blocker/high pin(s) are held back and still asked: "

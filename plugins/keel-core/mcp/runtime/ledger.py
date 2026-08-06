@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.15). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.18). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -54,6 +54,16 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   from a substate that is never cleared. `set_question` becomes write-if-absent (a pin recorded with
   no fork could not reach the interview at all), and `interview_view` selects `brainstorming` too:
   asking the brainstorm for options used to be what took a fork off the agenda.
+- v0.18 four rules that were false of the thing they were printed on. A policy scope naming a real
+  field with a `null` value still selected every pin that carries no value for it, so `scope_note`
+  makes the preview SAY what the matcher does — v0.16 closed the misspelt key, not the class.
+  `resolution_mode: "asked"` is written only for a refusal that is a standing property of the PIN
+  (`STANDING_REFUSALS`): `not_offered` says the RULE did not fit, and recording a fact about a rule
+  on a pin put that pin beyond every later policy, for ever, with no clearing door. The generated
+  `correctness_unknown` fork stated an implication its own door refuses, so the sentence is now
+  computed from `settlement_verdict` rather than written beside it. And `defer` no longer takes a
+  caller-stated rung: there is one path there and it is the relay, so only the code that ran it may
+  name it — the shape `mcp:ledger_defer` already had, one layer down.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -66,7 +76,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.17"
+SCHEMA_VERSION = "0.18"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -79,7 +89,7 @@ SCHEMA_VERSION = "0.17"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17")
+                     "0.14", "0.15", "0.16", "0.17", "0.18")
 
 KINDS = {
     "contract_mismatch",
@@ -237,6 +247,30 @@ REOPEN_BUCKETS = ("would_reopen", "nothing_settled")
 # shape from this tuple, so adding a bucket cannot leave one surface reporting four and another six.
 UNASKED_BUCKETS = ("would_decide", "held_back", "must_be_asked", "not_offered", "excepted",
                    "already_settled")
+
+# Which of those refusals is a standing property OF THE PIN, and therefore the only ones worth
+# recording on it as `resolution_mode: "asked"` (v0.18). Both entries here are already true of the
+# pin before any rule was written: `held_back` is its severity, `must_be_asked` is the mark it
+# already carries. `not_offered` is deliberately absent — it says *this RULE's outcome is not on
+# this pin's menu*, which is a fact about the rule, and stamping it on the pin turned a fit problem
+# into a permanent property with no clearing door. One badly scoped policy therefore put a `medium`
+# pin beyond every later policy, including the one that fitted it, and `assign_resolution_modes`
+# only ever fills the field where it is ABSENT, so nothing could undo it. The compression of the
+# medium/low long tail is the whole reason the funnel exists, and it stopped working silently.
+#
+# Both callers of `unasked_verdict` that create this mark read this tuple (`Ledger.apply_policy`,
+# `interview.expand_catalog`), so the rule has one home rather than one per door — v0.14's lesson,
+# applied to the thing the predicate's answer is written INTO rather than to the answer itself.
+STANDING_REFUSALS = ("held_back", "must_be_asked")
+
+# Every id prefix a `decision_log` entry may carry, and therefore every kind of entry a reader may
+# dispatch on (v0.18). Declared because `summary()` dispatches on the prefix: an entry carrying no
+# id at all made it die with a bare `KeyError`, on the one call an agent makes BEFORE acting, on a
+# file it did not write. No version of this package ever wrote such an entry — it is hand-editing —
+# which is exactly why the read path must survive it: **reading a ledger is never the operation that
+# fails on it.** Unrecognised entries are reported by `nonconforming` under `log_entry_kind` rather
+# than skipped in silence, on the same rule the `settles_as` skip one function down already follows.
+LOG_ENTRY_PREFIXES = ("ev_", "stl_", "chl_", "xdr_", "fal_", "rev_")
 
 # The `Pin` fields a `Policy` scope may match on (v0.16). A scope key naming no field of a pin
 # matched EVERY pin — `pin.get("nope") == None` is true of all of them — so `applies_to={"nope":
@@ -427,13 +461,26 @@ def nonconforming(data: dict) -> dict:
 
     The narrowness is unchanged and is the table's own membership rule: only violations decidable
     **from the event alone**. See `EVENT_RULES` for what that excludes and why.
+
+    One rule here is NOT an `EVENT_RULES` entry, and the reason is that table's own membership
+    question rather than an exception to it (v0.18). `log_entry_kind` is about *every* entry in the
+    log, not about a DecisionEvent, and `decide` cannot violate it — `_next_id` composes the id — so
+    there is nothing for the writer half of that table to check. What it buys is a reader: an entry
+    whose id names no kind is dispatched by nothing, and `summary()` used to die on it with a bare
+    `KeyError`. Reporting it here means the one surface that already says *"this file predates or
+    breaks a rule"* says this too, instead of the count quietly being short by one.
     """
     out: dict = {}
-    for event in data.get("decision_log") or []:
-        if not str(event.get("id") or "").startswith("ev_"):
+    for index, event in enumerate(data.get("decision_log") or []):
+        eid = str(event.get("id") or "")
+        if not eid.startswith(LOG_ENTRY_PREFIXES):
+            # Named by position, because the thing that is wrong with it is that it has no name.
+            out.setdefault("log_entry_kind", []).append(f"decision_log[{index}]")
+            continue
+        if not eid.startswith("ev_"):
             continue
         for rule in event_violations(event):
-            out.setdefault(rule, []).append(str(event.get("id")))
+            out.setdefault(rule, []).append(eid)
     return out
 
 
@@ -910,7 +957,7 @@ class Ledger:
         return False
 
     def defer(self, pin_id: str, rationale: str, flip_criteria: str,
-              evidence: str = "transcribed", human_answer: str = "") -> dict:
+              human_answer: str = "") -> dict:
         """Out of scope now (YAGNI at spec level) — stays as future backlog. **An election.**
 
         It used to be a bare `pin["state"] = "deferred"` behind ONE check (`state != "resolved"`):
@@ -935,9 +982,19 @@ class Ledger:
         a choice among the fork's branches, and demanding that every question list a `defer` option
         would make punting depend on whoever authored the pin. What holds it instead is the same
         thing that holds `accept`: the human was shown THIS pin, and said not now, in their words.
+
+        **And the rung is not a parameter here either (v0.18).** v0.16 removed it from `ledger_defer`
+        and left it on this method with the paragraph above already saying why it should not be
+        there: *there is exactly ONE path here and it is the relay*. A default is not a refusal —
+        the next caller passes `evidence="elicited"` and the library writes it, which is precisely
+        the write the tool one layer up refuses, and the tool is the only thing that was stopping
+        it. `decide` keeps the parameter legitimately, because two paths do reach it and the rung is
+        a fact about WHICH ONE RAN; a parameter naming a path that does not exist is a claim, not a
+        default. If deferral ever gains an elicitation path, that path sets the rung — by calling
+        `decide` with it, exactly as `mcp/server.py::ledger_record_decision` does.
         """
         self.decide(pin_id, outcome="defer", rationale=rationale, flip_criteria=flip_criteria,
-                    evidence=evidence, human_answer=human_answer, settles_as="deferred")
+                    evidence="transcribed", human_answer=human_answer, settles_as="deferred")
         return self.pin(pin_id)
 
     def accept(self, pin_id: str, rationale: str, flip_criteria: str,
@@ -1247,6 +1304,17 @@ class Ledger:
         that read as a filter — reproduced end to end through `mcp:ledger_record_policy`. The radius
         is the thing a human elects a policy from, so a scope key that matches by not existing is
         not a narrow bug, it is the preview describing a different policy than the one being set.
+
+        v0.18: that closed the misspelt key, not the class. **Most `Pin` fields are optional**, so a
+        scope naming a REAL one with a `null` value still selects every pin carrying no value for it
+        — `{"cluster_id": null}` reproduced as *"every pin in no cluster"*, which on a ledger where
+        almost nothing is clustered is the whole ledger again, this time past the v0.16 check. It is
+        not refused, because selecting the un-clustered pins is a legitimate thing to want and a
+        refusal with no replacement is a wall; and it is not given an operator (`{"$exists": false}`)
+        either, because a query language arriving one operator at a time is how a scope stops being
+        readable by the human electing it. So the matcher SAYS what it does, in `scope_note`, and it
+        says it here — in the one function `apply_policy` calls — so the preview and the cascade
+        cannot describe the radius differently.
         """
         for key in applies_to or {}:
             _require(key in PIN_FIELDS,
@@ -1259,7 +1327,31 @@ class Ledger:
             if not all(pin.get(k) == v for k, v in applies_to.items()):
                 continue
             out[self.unasked_verdict(pin, default_outcome, excepted)].append(pin["id"])
+        out["scope_note"] = self._absence_note(applies_to)
         return out
+
+    def _absence_note(self, applies_to: dict) -> str:
+        """What a `null` in the scope actually selects, in words, or `""` when there is none.
+
+        Counted with the matcher's own comparison rather than a second one: `pin.get(k) == v` is
+        what admits the pin, so `== None` is what the sentence has to count. `to_be`, `question`
+        and `decision` are written as explicit nulls, which is why the wording is *carries no value
+        for* rather than *does not have the key* — the two differ on exactly those fields, and a
+        sentence that got it backwards would be the preview lying more precisely.
+        """
+        parts = []
+        total = len(self.data["pins"])
+        for key, value in (applies_to or {}).items():
+            if value is not None:
+                continue
+            matched = sum(1 for p in self.data["pins"] if p.get(key) == value)
+            parts.append(f"every pin that carries no value for `{key}` — {matched} of {total}")
+        if not parts:
+            return ""
+        return ("this scope selects by ABSENCE: it matches " + "; ".join(parts)
+                + ". A null is not a wildcard and not a typo, but on an optional field the two "
+                  "look identical from the radius — scope on a value the pins actually carry if "
+                  "that is what you meant.")
 
     def apply_policy(self, policy: dict) -> dict:
         """Cascade ONE policy — the one just elected — and report exactly what it did.
@@ -1289,11 +1381,17 @@ class Ledger:
         """
         radius = self.policy_preview(policy["applies_to"], policy["default_outcome"],
                                      policy["exceptions"])
-        # never silent, for any of the three reasons: all stay open and go to the top of the review
-        # batch. `must_be_asked` (v0.16) is the pin that already said so, and re-stamping it is a
-        # no-op by construction — which is the point: the mark persists across cascades.
-        for pin_id in radius["held_back"] + radius["must_be_asked"] + radius["not_offered"]:
-            self.pin(pin_id)["resolution_mode"] = "asked"
+        # Every refusal stays open; only the ones that are a standing property of the PIN are
+        # recorded on it (v0.18, `STANDING_REFUSALS`). `not_offered` used to be recorded here too,
+        # and that mark is permanent: nothing clears `resolution_mode`, `assign_resolution_modes`
+        # fills only where it is absent, and `unasked_verdict` reads `"asked"` as the pin's own
+        # standing demand. So one policy whose outcome a pin did not offer put that pin beyond
+        # EVERY later policy — including the one written for it, whose outcome its question does
+        # offer and whose severity is under the threshold. `not_offered` is a fact about the rule's
+        # fit, and it is reported as one, in the radius this call returns.
+        for bucket in STANDING_REFUSALS:
+            for pin_id in radius[bucket]:
+                self.pin(pin_id)["resolution_mode"] = "asked"
         for pin_id in radius["would_decide"]:
             pin = self.pin(pin_id)
             self.decide(
@@ -1798,6 +1896,37 @@ class Ledger:
         self._settle(pin, "resolve", verification_rung=(pin.get("verification") or {}).get("rung"))
         return pin
 
+    def _accept_implication(self, pin: dict) -> str:
+        """What choosing `accept` on THIS pin actually does — asked of `settlement_verdict`, which
+        is the authority on it and is one call away (v0.18).
+
+        The sentence used to be a constant reading *"state becomes accepted, with the unverified
+        remainder recorded"*, and it was false wherever it was printed. On a `defect` — the kind
+        that reaches `correctness_unknown` without a decision, and therefore the kind that most
+        often carries this generated fork — `settlement_verdict(pin, "accept")` is `wrong_kind`:
+        leaving-as-is is the resolution of a `design_concern` and of nothing else. On a
+        `design_concern` the door does open, but a non-defect reaches this state only from
+        `decided`, where the pin already carries the human's own fork that v0.16 stopped
+        overwriting — so the promise held on exactly the pins the menu was never written on.
+
+        That inversion matters more than its severity suggests. The offered-options rule makes the
+        option list a **promise about what can happen**, not a list of suggestions: an agent may
+        record only an outcome this pin's own question offered. An option whose stated implication
+        the machinery refuses turns that promise into decoration, on the one pin kind whose reader
+        has already been told *we could not establish this is right*.
+
+        Neither branch loosens `accept`'s kind rule, which is load-bearing and was moved into the
+        predicate precisely so it would stop being re-litigated at each door. The kind is what the
+        predicate answers on, so this reads the same before and after `_settle` moves the state.
+        """
+        if self.settlement_verdict(pin, "accept") == "would_settle":
+            return ("the risk becomes the recorded decision; recording it as leave-as-is "
+                    "(`accept_as_is`) then closes the pin as `accepted`, with the unverified "
+                    "remainder recorded")
+        return ("the risk becomes the recorded decision and the pin becomes `decided` — "
+                f"leaving-as-is closes a design_concern and nothing else, so a {pin['kind']} "
+                "cannot reach `accepted` from here")
+
     def mark_correctness_unknown(
         self,
         pin_id: str,
@@ -1855,7 +1984,7 @@ class Ledger:
                     {"id": "takeover", "label": "Manual takeover"},
                     {"id": "narrow", "label": "Narrow the scope to what IS verifiable"},
                     {"id": "accept", "label": "Accept the risk, unknown named",
-                     "implication": "state becomes accepted, with the unverified remainder recorded"},
+                     "implication": self._accept_implication(pin)},
                 ],
                 "allow_freeform": True,
             }
@@ -1939,11 +2068,25 @@ class Ledger:
         # count over one of the two would be exactly the half-blind reading v0.13 was about.
         by_door: dict[str, int] = {}
         for e in self.data["decision_log"]:
-            if e["id"].startswith("fal_"):
-                by_failure[e["class"]] = by_failure.get(e["class"], 0) + 1
-            elif e["id"].startswith("stl_"):
-                by_door[e["door"]] = by_door.get(e["door"], 0) + 1
-            elif e["id"].startswith("ev_"):
+            # v0.18: every read here is a `.get`, and the dispatch key most of all. It was
+            # `e["id"]`, which made a log entry with no id a bare `KeyError` — `ledger_summary`
+            # returned `isError` over the wire and the agent's FIRST call on a file it did not
+            # write was the one that failed. No version of this package wrote such an entry, so it
+            # is hand-editing rather than a legacy shape; the principle is the same one the
+            # `settles_as` skip below already follows and does not carry that qualification.
+            # Reading a ledger is never the operation that fails on it. An entry this loop cannot
+            # dispatch is reported by `nonconforming` under `log_entry_kind` (visible in
+            # `pre_rule_events`, right beside this count), and a recognised entry missing the field
+            # its own kind is counted by lands in `unrecorded` — the same answer `decision_rung`
+            # already gives one line down, rather than a second vocabulary for absence.
+            eid = str(e.get("id") or "")
+            if eid.startswith("fal_"):
+                cls = e.get("class") or "unrecorded"
+                by_failure[cls] = by_failure.get(cls, 0) + 1
+            elif eid.startswith("stl_"):
+                door = e.get("door") or "unrecorded"
+                by_door[door] = by_door.get(door, 0) + 1
+            elif eid.startswith("ev_"):
                 rung = decision_rung(e) or "unrecorded"
                 by_evidence[rung] = by_evidence.get(rung, 0) + 1
                 # Counted only where this runtime can name the door. `_door_for` REFUSES a

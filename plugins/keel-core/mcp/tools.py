@@ -320,6 +320,11 @@ def policy_prompt(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     matching pin's own question offers it (`not_offered`, v0.12). That is the half that used to be
     missing on the freeform path: the caller's own sentence became the outcome of every pin in the
     cluster, including pins whose question offered a closed set that did not contain it.
+
+    The radius also carries `scope_note` (v0.18), non-empty exactly when a scope key's value is
+    `null`: the matcher is a flat equality test, so a null selects the pins that carry no value for
+    that field — legitimate, and indistinguishable from a wildcard by reading the scope alone. Put
+    it in front of the user with the pin lists.
     """
     led = _open_existing(ledger)
     exceptions = [str(x) for x in (exceptions or [])]
@@ -426,7 +431,10 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     # of them is another policy's work reported as this one's. The refusal buckets are spread from
     # the radius rather than named one by one: they used to be hardcoded here while `policy_preview`
     # built its shape from `UNASKED_BUCKETS`, so the constant's own comment ("adding a bucket cannot
-    # leave one surface reporting four and another five") was false of this surface.
+    # leave one surface reporting four and another five") was false of this surface. The spread
+    # also carries `scope_note` (v0.18), which is not a bucket: what a null-valued scope key
+    # selected is part of the radius this call reports, and a caller handed the pin lists without
+    # it has been handed a narrow-looking rule that matched by absence.
     out = {"policy_id": policy["id"], "rule": policy["rule"],
            "default_outcome": policy["default_outcome"], "evidence": evidence,
            "cascaded": radius["would_decide"]}
@@ -660,9 +668,13 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     decided by WHICH PATH RAN. There is one path here — the agent relays — so the rung is
     `transcribed` and the human's words are always required. If deferral ever gains an elicitation
     path, that path sets the rung, exactly as `mcp/server.py::ledger_record_decision` does.
+
+    v0.18 finished that one layer down. `Ledger.defer` kept `evidence="transcribed"` as a parameter
+    for two versions after this door dropped it, so the rule was held by the door and not by the
+    thing the door protects: the next caller of the library writes a rung nobody earned, and every
+    sentence above still says it cannot. A default is not a refusal.
     """
     led = _open_existing(ledger)
-    evidence = "transcribed"
     if not human_answer:
         raise ValueError(
             "a defer must carry the human's answer verbatim in human_answer — deferring "
@@ -670,10 +682,16 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
             "deciding not to decide, which is the one thing no tool here may do"
         )
     pin = led.defer(pin_id, rationale=rationale, flip_criteria=flip_criteria,
-                    evidence=evidence, human_answer=human_answer)
+                    human_answer=human_answer)
     led.save()
     _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer", "evidence": evidence}
+    # Read off the event this call appended, not restated here (v0.18). It used to be a local
+    # `evidence = "transcribed"` that was passed down AND reported back — one fact with two
+    # carriers, and the parameter it was passed into is the one that has just been removed. The
+    # rung the caller is told about is now the rung the log actually holds.
+    event = next(e for e in led.data["decision_log"] if e["id"] == pin["decision"]["event_id"])
+    return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer",
+            "evidence": event["evidence"]}
 
 
 # -- the two reopen arcs, and the two doors that put a pin back in front of a human ---------------

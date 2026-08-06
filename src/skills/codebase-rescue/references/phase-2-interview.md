@@ -32,13 +32,18 @@ in `references/core/interview-funnel.md`. Read it first.** How *rescue* sources 
   touch; `blocker`/`high` matches are held back by the threshold rule and stay `asked`. Ask
   `mcp:policy_preview` **first**, with the same arguments: it writes nothing and answers with the
   pins the rule would decide. Put that list to the user, because what they are electing is the blast
-  radius, not the sentence.
+  radius, not the sentence — and put `scope_note` with it when it is non-empty: a scope value of
+  `null` matches every pin carrying no value for that field, so `{"cluster_id": null}` reads as *the
+  unclustered ones* and behaves as *nearly everything* on a ledger where little is clustered.
 
   **`default_outcome` is an option id those pins already offer** — `"db"`, the id on their
   `question`, not *"the DB is the source of truth"*. A matching pin whose own question does not
-  offer it comes back in `not_offered`, held back and still `asked`, exactly like a blocker: the
+  offer it comes back in `not_offered`, held back and still open, exactly like a blocker: the
   single-pin door has always refused an outcome the pin never offered, and a policy decides more
-  pins, so it is not allowed to write what one decision could not. If a cluster's pins carry no
+  pins, so it is not allowed to write what one decision could not. It is not marked
+  `resolution_mode: "asked"` the way a blocker is (v0.18) — that mark is permanent and says *this
+  pin* demands a human, while `not_offered` says *this rule* did not fit, so stamping it would put
+  the pin beyond the next policy, including the one written for it. If a cluster's pins carry no
   question, or carry questions with different option sets, that is the finding: they are not one
   decision, and no policy will cascade over them.
 - **Exception questions:** pins a policy doesn't cover, plus genuine `ambiguity` and

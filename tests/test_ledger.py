@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.15). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.18). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -11,6 +11,11 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
 from ledger import SCHEMA_VERSION, Ledger, LedgerError  # noqa: E402
+
+
+#: The greenfield catalog, for the one test that has to reach the OTHER unasked door.
+_CATALOG = os.path.join(os.path.dirname(__file__), "..", "src", "skills", "greenfield-forge",
+                        "assets", "decision-catalog.json")
 
 
 def make_ledger() -> Ledger:
@@ -342,7 +347,9 @@ class TestThresholdAndPolicies(unittest.TestCase):
                          "question at all — must be held back, not decided on a value nobody "
                          "offered it")
         self.assertEqual(other["state"], "needs_input")
-        self.assertEqual(other["resolution_mode"], "asked")
+        # v0.18: held back, and NOT marked. `not_offered` is a fact about this rule's fit, and the
+        # mark is permanent — see TestAMarkThatCannotBeClearedIsWrittenOnlyForAStandingReason.
+        self.assertNotIn("resolution_mode", other)
         self.assertEqual(mute["state"], "detected")
         self.assertEqual([e["pin_id"] for e in led.data["decision_log"]], [offers["id"]])
 
@@ -1546,6 +1553,267 @@ class TestOneWriterForTheSettledStates(unittest.TestCase):
                          sorted(ledger_mod._STATE_BY_DOOR),
                          "a door with no target state, or a state no door produces")
 
+
+
+class TestARuleIsTrueOfTheThingItIsPrintedOn(unittest.TestCase):
+    """v0.18 — four rules whose writer and whose reader disagreed about what they meant.
+
+    None of these is a missing surface: every one had a tool, ran, and printed a sentence that was
+    not true of what it did. They are grouped because that is the shape, and the shape is what the
+    next round has to look for.
+    """
+
+    # -- 1. a scope key with a null value selects by ABSENCE, and the preview says so -------------
+
+    def test_a_null_scope_value_is_reported_as_the_absence_selector_it_is(self):
+        """v0.16 refused a scope key naming no pin field. Most pin fields are OPTIONAL, so a scope
+        naming a REAL one with a null value still selects every pin carrying no value for it — the
+        same universal-looking radius, past the same check. The radius is what makes an election
+        legitimate, so the matcher says what it did."""
+        led = make_ledger()
+        clustered = add_simple_pin(led, severity="low", cluster_id="cl_one")
+        loose_a = add_simple_pin(led, severity="low")
+        loose_b = add_simple_pin(led, severity="low")
+
+        radius = led.policy_preview({"cluster_id": None}, "opt_a")
+        self.assertEqual(radius["would_decide"], [loose_a["id"], loose_b["id"]],
+                         "the matcher is unchanged — a null still selects by absence")
+        self.assertNotIn(clustered["id"], radius["would_decide"])
+        self.assertIn("selects by ABSENCE", radius["scope_note"])
+        self.assertIn("`cluster_id`", radius["scope_note"])
+        self.assertIn("2 of 3", radius["scope_note"],
+                      "the count is the whole point: a reader has to be able to see that a scope "
+                      "reading as narrow covers most of the ledger")
+
+    def test_a_scope_on_a_value_the_pins_carry_says_nothing(self):
+        """The note is not a wall and not a warning banner: it appears only where the ambiguity is
+        real, so the common message is the one it was before."""
+        led = make_ledger()
+        add_simple_pin(led, severity="low", cluster_id="cl_one")
+        self.assertEqual(led.policy_preview({"cluster_id": "cl_one"}, "opt_a")["scope_note"], "")
+        self.assertEqual(led.policy_preview({"severity": "low"}, "opt_a")["scope_note"], "")
+        self.assertEqual(led.policy_preview({}, "opt_a")["scope_note"], "")
+
+    def test_the_note_counts_what_the_matcher_matches_and_not_what_a_key_check_would(self):
+        """`to_be`, `question` and `decision` are written as explicit nulls, so "does not have the
+        key" and "carries no value" disagree on exactly the fields where a second implementation
+        would drift. The note is counted with the matcher's own comparison."""
+        led = make_ledger()
+        add_simple_pin(led, severity="low")            # to_be is an explicit null
+        add_simple_pin(led, severity="low")
+        radius = led.policy_preview({"to_be": None}, "opt_a")
+        self.assertEqual(len(radius["would_decide"]), 2)
+        self.assertIn("2 of 2", radius["scope_note"])
+
+    def test_the_cascade_reports_the_same_note_because_it_is_the_same_call(self):
+        led = make_ledger()
+        add_simple_pin(led, severity="low")
+        pol = led.add_policy(applies_to={"cluster_id": None}, rule="the loose ones",
+                             default_outcome="opt_a", human_answer="yes")
+        self.assertEqual(led.apply_policy(pol)["scope_note"],
+                         led.policy_preview({"cluster_id": None}, "opt_a")["scope_note"])
+
+    # -- 2. the mark that cannot be cleared is written only for a standing reason -----------------
+
+    def test_one_ill_fitting_policy_no_longer_puts_a_pin_beyond_every_later_one(self):
+        """The reproduction from the register, end to end. `not_offered` says *this rule's outcome
+        is not on this pin's menu* — a fact about the rule — and it was recorded on the pin as
+        `resolution_mode: "asked"`, which nothing clears and which `unasked_verdict` reads as the
+        pin's own standing demand. So the SECOND policy, whose outcome the fork does offer and whose
+        severity is under the threshold, was refused for ever by an unrelated first one."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        misfit = led.add_policy(applies_to={"severity": "medium"}, rule="unrelated",
+                                default_outcome="zzz", human_answer="whatever")
+        self.assertEqual(led.apply_policy(misfit)["not_offered"], [pin["id"]])
+        self.assertNotIn("resolution_mode", pin,
+                         "a fact about the rule is reported in the radius, not stamped on the pin")
+
+        fitting = led.add_policy(applies_to={"severity": "medium"}, rule="DB wins",
+                                 default_outcome="opt_a", human_answer="the DB wins")
+        self.assertEqual(led.apply_policy(fitting)["would_decide"], [pin["id"]])
+        self.assertEqual((pin["state"], pin["resolution_mode"]), ("decided", "policy_default"))
+
+    def test_the_standing_reasons_still_mark_and_still_bind(self):
+        """The mark is not weakened where it means something. Severity is a standing property, and
+        so is a pin that already carries the demand — both keep it, and `unasked_verdict` keeps
+        refusing them."""
+        led = make_ledger()
+        blocker = add_simple_pin(led, severity="blocker")
+        reopened = add_simple_pin(led, severity="medium")
+        led.decide(reopened["id"], "opt_a", "r", "f")
+        led.challenge(reopened["id"], target="decision", challenge_class="unstated_assumption",
+                      argument="the enum widened upstream", severity="medium", upheld=True)
+
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
+                             default_outcome="opt_a", human_answer="db wins")
+        radius = led.apply_policy(pol)
+        self.assertEqual(radius["held_back"], [blocker["id"]])
+        self.assertEqual(radius["must_be_asked"], [reopened["id"]])
+        self.assertEqual(blocker["resolution_mode"], "asked")
+        self.assertEqual(reopened["resolution_mode"], "asked")
+
+    def test_the_brief_door_had_the_identical_defect_and_reads_the_same_tuple(self):
+        """`interview.expand_catalog`'s `verdict != "would_decide"` swept `not_offered` in with the
+        threshold, so one word in a project brief that no fork offered marked that fork permanently
+        un-cascadable. Same rule, second door — which is the thing v0.14 exists to stop — so both
+        read `STANDING_REFUSALS` rather than spelling it out twice.
+
+        The two verdicts are produced deliberately, in one call: `client` is a `medium` fork given a
+        word it does not offer (`not_offered`), `domain` is a `blocker` given one of its own option
+        ids (`held_back`). Nothing here depends on guessing which branch the catalog happens to take.
+        """
+        import interview
+        from ledger import STANDING_REFUSALS
+        self.assertNotIn("not_offered", STANDING_REFUSALS)
+        led = make_ledger()
+        out = interview.expand_catalog(
+            led, interview.load_catalog(_CATALOG), project_type="web-saas",
+            brief_decisions={"client": "carrier-pigeon", "domain": "elicit_entities"})
+        held = {h["cluster_id"]: h for h in out["brief_held_back"]}
+        self.assertEqual(held["client"]["reason"], "not_offered")
+        self.assertEqual(held["domain"]["reason"], "held_back")
+
+        misfit, threshold = led.pin(held["client"]["pin_id"]), led.pin(held["domain"]["pin_id"])
+        self.assertNotIn("resolution_mode", misfit,
+                         "the brief's word was not on this fork's menu — a fact about the brief, "
+                         "and the mark it used to leave had no clearing door")
+        self.assertEqual(threshold["resolution_mode"], "asked")
+        for pin in (misfit, threshold):
+            self.assertIn(pin["id"], out["created"], "held back is never dropped")
+
+    # -- 3. an offered option states what actually happens on the pin it is printed on ------------
+
+    def _unverifiable_defect(self, led):
+        pin = led.add_pin(kind="defect", title="flaky retry", severity="medium",
+                          confidence="extracted",
+                          provenance=[{"source": "test", "detail": "d"}],
+                          as_is={"description": "retries twice"})
+        led.add_remediation(pin["id"], action="refactor", ladder_rung=3)
+        led.set_remediation_status(pin["id"], pin["remediation"][0]["id"], "done")
+        led.mark_correctness_unknown(pin["id"], blocked_by="no staging queue",
+                                     attempted=["tests", "typecheck"])
+        return pin
+
+    def test_the_accept_option_on_a_defect_no_longer_promises_a_state_the_door_refuses(self):
+        """Measured both ways in one run, as the register did. On a `defect` — the kind that reaches
+        this state without a decision, so the kind that most often carries the generated fork —
+        `settlement_verdict(pin, "accept")` is `wrong_kind`, and the option promised `accepted`
+        anyway."""
+        led = make_ledger()
+        pin = self._unverifiable_defect(led)
+        option = next(o for o in pin["question"]["options"] if o["id"] == "accept")
+        self.assertEqual(led.settlement_verdict(pin, "accept"), "wrong_kind")
+        self.assertNotIn("becomes `accepted`", option["implication"])
+        self.assertIn("`decided`", option["implication"])
+        self.assertIn("defect", option["implication"])
+
+    def test_the_implication_is_what_recording_that_outcome_actually_does(self):
+        """The proof the register asked for: record the offered outcome and read the state."""
+        led = make_ledger()
+        pin = self._unverifiable_defect(led)
+        led.decide(pin["id"], outcome="accept", rationale="risk named",
+                   flip_criteria="a staging queue exists", human_answer="live with it")
+        self.assertEqual(pin["state"], "decided")
+
+    def test_the_option_says_accepted_where_accepted_is_reachable(self):
+        """The other half: a `design_concern` with no prior fork. The door does open there, and the
+        sentence is computed from the same predicate, so it says so."""
+        led = make_ledger()
+        pin = led.add_pin(kind="design_concern", title="one service does two jobs",
+                          severity="medium", confidence="inferred",
+                          provenance=[{"source": "review", "detail": "d"}],
+                          as_is={"concern": "coupling"})
+        led.decide(pin["id"], outcome="keep", rationale="fine for v1",
+                   flip_criteria="a module needs independent scaling", human_answer="leave it")
+        led.mark_correctness_unknown(pin["id"], blocked_by="no load profile",
+                                     attempted=["diff_review"])
+        option = next(o for o in pin["question"]["options"] if o["id"] == "accept")
+        self.assertEqual(led.settlement_verdict(pin, "accept"), "would_settle")
+        self.assertIn("`accepted`", option["implication"])
+
+    def test_computing_the_sentence_did_not_make_this_a_writer_of_forks(self):
+        """v0.16's rule is untouched: a pin that already poses a fork keeps it, whatever the
+        implication would have said."""
+        led = make_ledger()
+        pin = self._unverifiable_defect(led)
+        offered = [o["id"] for o in pin["question"]["options"]]
+        led.decide(pin["id"], outcome="retry", rationale="try again", flip_criteria="f",
+                   human_answer="retry it")
+        led.mark_correctness_unknown(pin["id"], blocked_by="still no queue", attempted=["tests"])
+        self.assertEqual([o["id"] for o in pin["question"]["options"]], offered)
+
+    # -- 4. `defer` states no rung, because only the code that ran a path may name it -------------
+
+    def test_defer_takes_no_caller_stated_rung_at_the_library_either(self):
+        """The MCP door dropped the parameter in v0.16 and the library kept it, so the rule was held
+        by the door rather than by the thing the door protects. A default is not a refusal: the next
+        caller passes `elicited` and the library writes it."""
+        import inspect
+        self.assertNotIn("evidence", inspect.signature(Ledger.defer).parameters)
+        self.assertIn("evidence", inspect.signature(Ledger.decide).parameters,
+                      "`decide` keeps it legitimately — two paths reach it and the rung is a fact "
+                      "about which one ran")
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.defer(pin["id"], rationale="v2", flip_criteria="a customer asks",
+                  human_answer="not now")
+        self.assertEqual(led.data["decision_log"][-1]["evidence"], "transcribed")
+
+    # -- 5. reading a ledger is never the operation that fails on it ------------------------------
+
+    def _hand_corrupted(self, entry: dict) -> Ledger:
+        led = make_ledger()
+        add_simple_pin(led, severity="medium")
+        led.save()
+        with open(led.path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        raw["decision_log"].append(entry)
+        with open(led.path, "w", encoding="utf-8") as fh:
+            json.dump(raw, fh)
+        return Ledger(led.path)
+
+    def test_a_log_entry_with_no_id_does_not_kill_the_call_an_agent_makes_first(self):
+        """`summary` dispatched on `e["id"]`. No version of this package wrote an entry without one,
+        so it is hand-editing — but `summary` is what an agent calls BEFORE acting, on a file it did
+        not write, and the principle carries no such qualification."""
+        reloaded = self._hand_corrupted({"pin_id": "pin_0001", "outcome": "opt_a"})
+        summary = reloaded.summary()                      # must not raise
+        self.assertEqual(summary["events"], 1)
+        self.assertEqual(summary["pre_rule_events"], {"log_entry_kind": 1},
+                         "skipped in the counts, reported by name — the same rule the settles_as "
+                         "skip one branch down already follows")
+        self.assertEqual(reloaded.pre_rule["log_entry_kind"], ["decision_log[0]"],
+                         "named by position, because the thing wrong with it is that it has no name")
+
+    def test_a_recognised_entry_missing_its_own_field_is_counted_as_unrecorded(self):
+        self.assertEqual(self._hand_corrupted({"id": "fal_0001", "pin_id": "pin_0001"})
+                         .summary()["failures_by_class"], {"unrecorded": 1})
+        self.assertEqual(self._hand_corrupted({"id": "stl_0001", "pin_id": "pin_0001"})
+                         .summary()["settlements_by_door"], {"unrecorded": 1})
+
+    def test_every_prefix_a_writer_writes_is_a_prefix_a_reader_knows(self):
+        """`LOG_ENTRY_PREFIXES` is a declaration, so it is held to the writers rather than trusted:
+        a new event kind whose prefix is not here would be reported as corruption by the very check
+        that exists to report corruption, and its events would vanish from every count."""
+        import ast
+        import ledger as ledger_mod
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        written = set()
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "_next_id" and len(node.args) > 1):
+                continue
+            target = node.args[1]
+            if not (isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant)
+                    and target.slice.value == "decision_log"):
+                continue
+            prefix = node.args[0]
+            self.assertIsInstance(prefix, ast.Constant, "a computed log id prefix has no reader")
+            written.add(prefix.value)
+        self.assertEqual(written, set(ledger_mod.LOG_ENTRY_PREFIXES))
 
 if __name__ == "__main__":
     unittest.main()

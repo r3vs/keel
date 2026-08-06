@@ -11,8 +11,8 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06.** §1–§5 and §10 are **closed**, and §17b with them. **§6–§9, §11–§16 and the
-> rest of §17 are open.**
+> **STATUS 2026-08-06.** §1–§5, §9–§12 are **closed**, and §17b, §17f, §17g with them. **§6–§8,
+> §13–§16 and four residuals of §17 are open.**
 >
 > | # | Open gap | One line |
 > |---|---|---|
@@ -20,15 +20,15 @@ wrong* is the part that stops it coming back.
 > | 6 | map palette contrast | `--high` is 2.48:1 in light mode, on the badge that carries the warning |
 > | 7 | `resolution_mode` has no reader on the map | the field that says whether silence counts as an answer |
 > | 8 | the `verification` envelope has no reader | `blocked_by` / `attempted` are written, gated on, rendered nowhere |
-> | 9 | a policy scope on a null-valued optional field is a universal selector | v0.16 closed the typo case, not the class |
+> | ~~9~~ | ~~a null-valued scope key is a universal selector~~ | **CLOSED** — `scope_note` says what the matcher matched, on the elicited message |
 > | ~~10~~ | ~~no door gives an existing pin a question~~ | **CLOSED** — `mcp:ledger_set_question`, write-if-absent, freeform required |
-> | 11 | the `correctness_unknown` fork offers an outcome it cannot produce | offered exactly where it is refused |
-> | 12 | `resolution_mode: "asked"` is permanent | one unrelated policy puts a pin beyond every later one |
+> | ~~11~~ | ~~the `correctness_unknown` fork offers an outcome it cannot produce~~ | **CLOSED** — the implication is computed from `settlement_verdict` |
+> | ~~12~~ | ~~`resolution_mode: "asked"` is permanent~~ | **CLOSED** — only a STANDING refusal writes it, at both unasked doors |
 > | 13 | `ensure_ascii=False` emits raw U+2028/U+2029 | a stated escape discipline with a hole in it |
 > | 14 | five more pin fields, and four of five log kinds, reach the map nowhere | the class §8 is one instance of |
 > | 15 | two gates check less than their names claim | an AST gate that only sees constants; a name-match gate |
 > | 16 | an unknown `settles_as` renders as a bare label | its sibling `rung` gets a warning for the same condition |
-> | 17 | six residuals of the final review, untriaged | **17b closed**; the rest include a `contested` answer that reads as elected in `AGENTS.md` |
+> | 17 | four residuals of the final review, untriaged | **17b, 17f, 17g closed**; the rest include a `contested` answer that reads as elected in `AGENTS.md` |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -43,6 +43,7 @@ wrong* is the part that stops it coming back.
 > | 3. elicitation had never met a real host | `3a0be05` | `docs/packaging.md` → *Elicitation — does the host ask the human, or does the agent relay?* |
 > | 4. 21 tree-sitter skips | `92d2e17` | `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter` |
 > | 5. + 10. + 17b. five transitions no host could make | ledger v0.17 | `mcp:ledger_reopen` · `ledger_challenge` · `ledger_set_question` · `ledger_add_proposals`; `Ledger.reopen_verdict` + `_reopen_minimal`; `tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo`; `test_invariants.py::…::test_an_INTERNAL_mutator_is_actually_reached` |
+> | 9. + 11. + 12. + 17f. + 17g. five rules false of what they were printed on | ledger v0.18 | `Ledger.policy_preview` → `scope_note` (and `server.py`'s elicited message); `ledger.STANDING_REFUSALS`, read by `apply_policy` and `interview.expand_catalog`; `Ledger._accept_implication`; `Ledger.defer`'s signature; `ledger.LOG_ENTRY_PREFIXES` + `nonconforming`'s `log_entry_kind`; gates `tests/test_ledger.py::TestARuleIsTrueOfTheThingItIsPrintedOn` and `test_invariants.py::TestAMarkWithNoClearingDoorIsWrittenForAStandingReason` |
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
 > a Claude Code hook can answer an elicitation *for* the human, so `elicited` means "the agent did
@@ -53,12 +54,21 @@ wrong* is the part that stops it coming back.
 >
 > **The pattern the register makes visible, stated once so each section does not have to.** Most of
 > the open gaps are one shape: *a field, a state or an arc that something WRITES and nothing
-> READS.* §5, §7, §8, §10, §14 and half of §11 were all that — §5 and §10 are now closed, and both
+> READS.* §5, §7, §8, §10, §14 and half of §11 were all that — §5, §10 and §11 are now closed, and the first two
 > turned out to be the harsher variant of it: an arc nothing could **write** either. It is the repo's signature class
 > (`MEMORY.md` → *"the claiming-vs-doing failure"*) at the surface layer rather than the path layer,
 > and the reason it keeps recurring is structural: adding a writer is a change inside one module, and
 > giving it a reader is a change on somebody else's surface. So the question to ask of any new field
 > is not "is it stored" but **"name the surface a human reads it on, and open that surface."**
+>
+> **The second shape, which §9, §11, §12, §17f and §17g turned out to share.** Not a missing reader:
+> *a sentence, a default or a mark that is true of some object and is printed on the ones it is
+> false of.* An option promising a state its own door refuses; a scope reading as a filter and
+> matching by absence; a permanent mark recording a fact about the last rule; a parameter naming a
+> path that does not exist. Each had a tool, ran, and passed every gate — because a gate asserts the
+> rule, and what was wrong was the rule's claim about the thing in front of it. The question that
+> catches it: **read the sentence the surface prints and ask what happens if a human believes it,
+> on the object it is printed on.**
 
 Two of the original four (§1 and §2) were introduced *by the same session that closed four older bugs
 of the identical class*, and the same thing has happened in every round since — §5 and §8 were opened
@@ -78,13 +88,14 @@ The original suggested order was **1 → 2 → 4 → 3**, and it was followed; 3
 outcomes it anticipated — two hosts yes, two no. §1–§4 below are that report, kept verbatim under
 their closing notes. §5 onwards were opened later and each says where it came from.
 
-**Suggested order for what is open.** §5 was done first and is closed, so §8's *"reopen it first"*
-and §12's stuck `asked` now point at an arc that exists. Then §9 and §12, which are rules that mis-fire rather than surfaces that are
-missing — they can decide a user's pins wrongly today. Then the reader cluster §7, §8, §14, which is
-one afternoon on one file and should be done as **one** change to the map rather than four, because
-four separate additions to one surface is how a page acquires four vocabularies. §15 and §16 are
-small. §6 is one palette decision that has to be looked at in both themes on purpose. §10, §11 and
-§13 are the least urgent and say so in their own sections.
+**Suggested order for what is left.** §5 was done first and is closed, then §9, §11, §12, §17f and
+§17g — the rules that mis-fired rather than the surfaces that were missing, because those could
+decide a user's pins wrongly today. What remains is mostly the reader cluster **§7, §8, §14**, which
+is one afternoon on one file and should be done as **one** change to the map rather than three,
+because three separate additions to one surface is how a page acquires three vocabularies — and §14
+is now unblocked, since it deliberately waited for §5. §15 and §16 are small. §6 is one palette
+decision that has to be looked at in both themes on purpose. §13 is the least urgent and says so in
+its own section. Four residuals of §17 (a, c, d, e) are still untriaged.
 
 ---
 
@@ -678,6 +689,14 @@ warning must read as a warning at a glance, next to the green `role enum drift` 
 `interview_view` and `unasked_verdict`, projected into `AGENTS.md` nowhere and rendered by
 `src/runtime/map.py` nowhere. Confirmed by reading the template: the string does not occur in it.
 
+> **Amended 2026-08-06 by §12's close, which is the half of this that was about the write.** The
+> writers of `"asked"` are now enumerated by AST set equality with a declared reason each
+> (`test_invariants.py::TestAMarkWithNoClearingDoorIsWrittenForAStandingReason`) — **seven**, and
+> the seventh is `interview.expand_catalog`, which this count missed because it is not in
+> `ledger.py`. Nothing about the missing reader changed: still projected nowhere, still rendered
+> nowhere, and the fixture still carries no `proposed_default` pin. Read that list before building
+> the sub-line — it is the vocabulary a reader would be shown.
+
 Two of its three values are the reader-facing ones. `proposed_default` means *this pin will be
 settled with the proposed answer unless you object* — the funnel's whole compression argument — and
 on the map that pin is a row saying `needs_input`, identical to one nobody will settle without
@@ -790,7 +809,29 @@ there.
 
 ---
 
-## 9. A policy scope naming a null-valued optional field is still a universal selector — **OPEN, found 2026-08-06**
+## 9. A policy scope naming a null-valued optional field is still a universal selector — **CLOSED 2026-08-06** (ledger v0.18)
+
+**The preview says what the matcher did: `policy_preview` returns `scope_note`.** Non-empty exactly
+when a scope value is `null` — *"this scope selects by ABSENCE: it matches every pin that carries no
+value for `cluster_id` — 3 of 4"* — and empty otherwise, so the common message is unchanged. Built
+in the matcher's own function, counted with the matcher's own comparison (`== None`, which is what
+admits the pin; `to_be` and `question` are explicit nulls, so a key-presence check would have been a
+second implementation that disagrees on exactly those fields), and therefore returned by
+`apply_policy` too, since that is the same call.
+
+Not refused, and the section's own two branches decided it: a refusal would have had to say how to
+express *the pins in no cluster*, and there is no other way to express it — that is the wall the
+section's Prove-it warned against. Not given an operator either (`{"$exists": false}`), for the
+reason its Traps give. Its readers are named rather than assumed: `policy_prompt` and `record_policy`
+spread the radius, and `mcp/server.py::ledger_record_policy` puts the note in the **elicited
+message**, above the pin counts, because that is the surface a human reads before electing.
+
+Verified over real `uv run --script` stdio against `plugins/keel-core/mcp/server.py` from a foreign
+cwd: `{"cluster_id": null}` → `would_decide` the 3 unclustered pins with the note; `{"cluster_id":
+"cl_one"}` → 1 pin, note `""`; `{"nope": null}` → v0.16's refusal, untouched. Tests:
+`test_ledger.py::TestARuleIsTrueOfTheThingItIsPrintedOn`, first four.
+
+<details><summary>The original report, kept verbatim</summary>
 
 v0.16 closed the **typo** case (`applies_to={"nope": null}` matched every pin, because
 `pin.get("nope") == None` is true of all of them) by requiring every scope key to be a member of
@@ -847,6 +888,8 @@ a scope where `null` is the intended meaning, and check the message is not a wal
   match so that a human can read it.
 - Do not widen `PIN_FIELDS` into an allowlist of *required* fields. Optionality is correct; the
   problem is that equality against `None` conflates two questions.
+
+</details>
 
 ---
 
@@ -957,7 +1000,28 @@ capability does not exist on any host, whatever the runtime can do.
 
 ---
 
-## 11. The `correctness_unknown` fork offers an outcome it cannot produce — **OPEN, found 2026-08-06**
+## 11. The `correctness_unknown` fork offers an outcome it cannot produce — **CLOSED 2026-08-06** (ledger v0.18)
+
+**The wording is corrected, and it is corrected by being computed.** `Ledger._accept_implication(pin)`
+asks `settlement_verdict(pin, "accept")` — the authority the section named, one call away — so the
+sentence cannot drift from the door a second time. On a kind the door refuses it reads *"the risk
+becomes the recorded decision and the pin becomes `decided` — leaving-as-is closes a design_concern
+and nothing else, so a defect cannot reach `accepted` from here"*; where the door opens it says
+`accepted`, and names `accept_as_is` as what gets it there. That is the section's own preferred
+branch (*correct the wording*) and its own parenthetical (*choosing it records a decision; the pin
+becomes `decided`*), not a third answer.
+
+Neither trap was taken: `accept`'s kind rule is untouched, and the fork is still generated
+write-if-absent, so v0.16's rule that an agent may not replace a human's menu holds.
+
+Verified over stdio on the shipped tree: a defect walked `add_pin → add_remediation → done →
+mark_correctness_unknown` carries the refusing implication, and `ledger_record_decision(option_id=
+"accept")` on it returns `state: "decided"` — the sentence and the state now agree. The
+`design_concern` half was measured on the same session and confirms v0.16's other rule instead: it
+reached the state from `decided`, so it kept its own `['keep']` fork and no menu was generated over
+it, which is the second half of what the section verified.
+
+<details><summary>The original report, kept verbatim</summary>
 
 ### Verified
 
@@ -1014,9 +1078,43 @@ match both.
 - Do not delete the whole generated fork. It is what makes the state actionable at all, and the
   write-if-absent guard already keeps it away from the human's own menu.
 
+</details>
+
 ---
 
-## 12. `resolution_mode: "asked"` is permanent, and any policy can set it — **OPEN, found 2026-08-06**
+## 12. `resolution_mode: "asked"` is permanent, and any policy can set it — **CLOSED 2026-08-06** (ledger v0.18)
+
+**The cheapest correct version, taken as written: the `not_offered` branch no longer writes the
+mark.** `STANDING_REFUSALS = ("held_back", "must_be_asked")` declares which unasked refusals are a
+standing property of the **pin**, and both writes that settle a pin nobody was shown read it —
+`Ledger.apply_policy` and `interview.expand_catalog`. The second is the part the section did not
+report: the brief door had the identical defect for the identical reason, its `verdict !=
+"would_decide"` sweeping `not_offered` in with the threshold, so one word in a project brief that a
+fork did not offer marked that fork permanently un-cascadable. Closing one and not the other would
+have left the rule false at the door next to it, which is this register's own recurring finding.
+
+Both traps held. **No door clears `resolution_mode`** — the fix is entirely at the writer — and
+§7 is untouched. The enumeration is now enforced rather than described:
+`test_invariants.py::TestAMarkWithNoClearingDoorIsWrittenForAStandingReason` asserts by AST **set
+equality** that the seven writers of `"asked"` are exactly the seven declared, each with the reason
+it is a standing property, and a second test asserts that nothing anywhere `del`s or `pop`s the
+field. Both were verified by planting: an eighth writer and a clearing door each fail the gate.
+The two remaining readers of `STANDING_REFUSALS` are asserted to be exactly the two doors.
+
+Verified over stdio on the shipped tree: `ledger_record_policy(default_outcome="zzz")` cascades
+nothing and returns all four pins in `not_offered`; the next policy — `default_outcome="db"`, which
+their forks do offer — cascades all four, with `must_be_asked` empty. Before v0.18 the second call
+returned all four as `must_be_asked`, for ever.
+
+**The residual, stated rather than repaired.** A ledger written by v0.12–v0.17 may carry `asked` on
+a pin marked only for this reason, and **nothing can tell it from a standing demand**: the stamp
+recorded no reason, so no reader can recover one, and reconstructing it from the policies still in
+the file would be the heuristic this repo forbids. Those pins stay open and stay in the funnel; what
+they have lost is the chance of being cascaded, which is the behaviour they were written under. The
+version floor is deliberately not raised against them either — `nonconforming` replays rules
+decidable **from the event alone**, and this one is decidable from nothing.
+
+<details><summary>The original report, kept verbatim</summary>
 
 ### Verified
 
@@ -1076,6 +1174,8 @@ about *that* pin).
 - Do not merge this with §7. §7 is that the field reaches no reader; this is that the field is
   written wrongly. Fixing either alone leaves the other, and fixing §7 first would at least make
   this one visible.
+
+</details>
 
 ---
 
@@ -1299,11 +1399,11 @@ this map cannot describe, not print it as though it were understood.
 
 ---
 
-## 17. Seven residuals of the final review — **17b CLOSED; six OPEN, not triaged**
+## 17. Seven residuals of the final review — **17b, 17f, 17g CLOSED; four OPEN, not triaged**
 
 Two adversarial reviewers closed the seventh round. Their findings are here rather than fixed,
 because the round's rule was that only defects it had *introduced* could be fixed in it — and
-because a report dies with its session while this file does not. None is triaged: each states what
+because a report dies with its session while this file does not. The four still open are not triaged: each states what
 was verified and why it matters, and stops there.
 
 **17a. `AGENTS.md` prints a `contested` pin's disputed outcome with no marker.** Round 7 deleted
@@ -1364,11 +1464,38 @@ here, because a state added there does not come here*). No gate forbids it, so a
 with "do not build" semantics silently gets today's placement. Declared in the function's docstring;
 this is the entry that makes it survive the branch.
 
+**17f — CLOSED 2026-08-06 (ledger v0.18).** The parameter is gone; `defer` passes `"transcribed"` to
+`decide` itself. The argument is the section's own: there is one path here and it is the relay, so a
+default was not a refusal — the next caller passes `elicited` and the library writes it, which is
+exactly the write `mcp:ledger_defer` refuses, and the door was the only thing stopping it. `decide`
+keeps the parameter, and the test asserts that asymmetry rather than describing it
+(`inspect.signature` on both). The tool also stopped restating the rung it passed in: it reads it
+back off the event it just appended, so one fact has one carrier. Verified over stdio: `ledger_defer`
+advertises five properties and none is `evidence`, and the call returns `evidence: "transcribed"`
+from the log. The finding below is kept verbatim.
+
 **17f. `Ledger.defer` still takes `evidence: str = "transcribed"`.** The MCP door refuses a
 caller-stated rung (round 6 removed the parameter there, and the advertised schema proves it); the
 library layer still accepts one for a path that has no elicitation. Unreachable from any agent today
 — `tools.ledger_defer` is the only caller and hardcodes the value — so this is about the next caller,
 not this one. Compare `decide`, where the same parameter is legitimate because two paths exist.
+
+**17g — CLOSED 2026-08-06 (ledger v0.18).** Every read in that loop is a `.get`, the dispatch key
+included. Skipping in silence was not an option, because the branch directly below it already states
+why (*"nothing is hidden by skipping: the same event is already reported by `pre_rule_events`"*), so
+`LOG_ENTRY_PREFIXES` declares the six prefixes a log entry may carry and `nonconforming` reports an
+entry matching none under **`log_entry_kind`**, named by position because the thing wrong with it is
+that it has no name. It is not an `EVENT_RULES` entry and the reason is that table's own membership
+question: the rule is about every entry rather than about a DecisionEvent, and `decide` cannot
+violate it because `_next_id` composes the id — there is nothing for the writer half to check, and
+what it buys is the reader. A recognised entry missing the field its own kind is counted by lands in
+`unrecorded`, the answer `decision_rung` already gives one line down. A test holds
+`LOG_ENTRY_PREFIXES` to the `_next_id` calls by AST, so a seventh event kind cannot be reported as
+corruption by the check that exists to report corruption. The pre-fix crash was **observed, not
+assumed**: `git show HEAD:src/runtime/ledger.py` on that file raises `KeyError: 'id'`; the shipped
+tree now returns the summary with `pre_rule_events: {"log_entry_kind": 1}` and
+`failures_by_class: {"unrecorded": 1}`, and `interview_next` still answers on the same file. The
+finding below is kept verbatim.
 
 **17g. A `decision_log` entry with no `id` makes `ledger_summary` die with a bare `KeyError`.**
 `Ledger.summary` dispatches on `e["id"].startswith(...)` (`src/runtime/ledger.py`, ~:1742).

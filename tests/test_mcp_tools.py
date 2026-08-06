@@ -207,7 +207,9 @@ class TestLedgerWrites(unittest.TestCase):
         self.assertEqual(led.data["decision_log"], [], "no DecisionEvent may exist for it")
         for pin in led.data["pins"]:
             self.assertEqual(pin["state"], "needs_input")
-            self.assertEqual(pin["resolution_mode"], "asked")
+            # v0.18: still open, still reported, and NOT stamped. The stamp has no clearing door,
+            # so recording "that rule did not fit" on the pin refused the next rule that does.
+            self.assertNotIn("resolution_mode", pin)
 
     def test_a_policy_reports_its_own_cascade_and_not_an_older_ones(self):
         """The second finding. `record_policy` called `apply_policies()`, which re-ran every policy

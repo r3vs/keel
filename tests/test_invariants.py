@@ -605,5 +605,117 @@ class TestGovernanceIsStamped(unittest.TestCase):
         self.assertIn("roster", rec["missing"])
 
 
+
+class TestAMarkWithNoClearingDoorIsWrittenForAStandingReason(unittest.TestCase):
+    """v0.18. `resolution_mode: "asked"` is **permanent** — nothing in this package clears it, and
+    since v0.16 `unasked_verdict` reads it as the pin's own standing demand. That makes every writer
+    of it a decision about the pin's whole future, so the writers are enumerated by set EQUALITY
+    over the AST, each with the reason, exactly as the callers of `decide` and `_settle` are.
+
+    The gap this closes is the one that made §12 possible: a seventh writer could be added for a
+    seventh reason, and none of the six carried its reason anywhere a reader could compare. Two of
+    them carried it as a code comment while a policy cascade contradicted them.
+
+    **No door clears the mark, and none should** — a door that unsets *this must be asked* is a door
+    that can silence the severity threshold, and an agent could reach it. So the correctness of the
+    field rests entirely on this list.
+    """
+
+    AST = TestEveryPathToDecideIsGated
+
+    #: `(module, function)` -> why this pin's demand to be asked is a STANDING property of the pin.
+    #: Every entry has to survive the question "would this still be true after any later rule runs?"
+    #: — which `not_offered` does not, and which is why `apply_policy` and `expand_catalog` now
+    #: consult `ledger.STANDING_REFUSALS` instead of marking every pin they did not decide.
+    WRITERS = {
+        ("ledger.py", "surface_assumption"):
+            "a forced assumption is vetoable BY A HUMAN — that is the whole of what surfacing it "
+            "means, and no cascade may take the veto away",
+        ("ledger.py", "apply_policy"):
+            "the severity threshold and a mark the pin already carries, via STANDING_REFUSALS. It "
+            "used to mark `not_offered` too, which is a fact about the RULE's fit and put the pin "
+            "beyond every later policy for ever",
+        ("ledger.py", "assign_resolution_modes"):
+            "the funnel's opening split: blocker|high are asked, the medium|low tail may batch",
+        ("ledger.py", "cross_derive"):
+            "a contested claim is never re-defaulted silently — two providers disagreed, so the "
+            "tie-break belongs to a human and not to the next rule",
+        ("ledger.py", "_reopen_minimal"):
+            "a reopened truth is never re-defaulted silently — production or the challenger just "
+            "falsified the last answer, and re-defaulting it would answer it the same way again",
+        ("ledger.py", "mark_correctness_unknown"):
+            "the pin carries the fork that asks what to do about work nobody could verify; a "
+            "cascade answering it would be the silent close this state exists to prevent",
+        ("interview.py", "expand_catalog"):
+            "the brief's own threshold half, via STANDING_REFUSALS — same predicate, same tuple, "
+            "and it had the identical `not_offered` defect for the identical reason",
+    }
+
+    def _asked_writers(self) -> set:
+        """Every function that assigns the literal `"asked"` to a `resolution_mode` subscript.
+
+        Anchored on the assignment node, not on a grep for the word: the carrier is the write."""
+        found = set()
+        for module, tree in self.AST._modules().items():
+            for fn_name, fn in self.AST._functions(tree).items():
+                for node in ast.walk(fn):
+                    if not isinstance(node, ast.Assign):
+                        continue
+                    if not any(isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Constant)
+                               and t.slice.value == "resolution_mode" for t in node.targets):
+                        continue
+                    if any(isinstance(c, ast.Constant) and c.value == "asked"
+                           for c in ast.walk(node.value)):
+                        found.add((module, fn_name))
+        return found
+
+    def test_the_enumeration_of_writers_is_complete(self):
+        self.assertEqual(self._asked_writers(), set(self.WRITERS),
+                         "a writer of a mark nothing can clear needs its reason declared here. If "
+                         "the reason is about a RULE rather than about the pin, it does not belong "
+                         "on the pin at all — that is what v0.18 removed.")
+
+    def test_nothing_clears_the_mark_anywhere(self):
+        """The other half, and the reason the list above is load-bearing rather than documentation.
+        A `del pin["resolution_mode"]`, or an assignment of anything else over an existing `asked`,
+        would be a door that can silence the threshold rule."""
+        offenders = []
+        for module, tree in self.AST._modules().items():
+            for fn_name, fn in self.AST._functions(tree).items():
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Delete):
+                        for t in node.targets:
+                            if (isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Constant)
+                                    and t.slice.value == "resolution_mode"):
+                                offenders.append((module, fn_name, "del"))
+                    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "pop" and node.args
+                            and isinstance(node.args[0], ast.Constant)
+                            and node.args[0].value == "resolution_mode"):
+                        offenders.append((module, fn_name, "pop"))
+        self.assertEqual(offenders, [],
+                         "nothing clears `resolution_mode`, deliberately — fix the writer instead")
+
+    def test_the_shared_tuple_is_what_both_unasked_doors_read(self):
+        """One rule, one home. The two writers that turn an `unasked_verdict` bucket into the mark
+        are the two that had the same bug, and a rule spelled out at two doors is a rule one of them
+        gets fixed without."""
+        import ledger as ledgermod_
+        self.assertEqual(ledgermod_.STANDING_REFUSALS, ("held_back", "must_be_asked"))
+        for bucket in ledgermod_.STANDING_REFUSALS:
+            self.assertIn(bucket, ledgermod_.UNASKED_BUCKETS)
+        self.assertNotIn("not_offered", ledgermod_.STANDING_REFUSALS)
+
+        readers = set()
+        for module, tree in self.AST._modules().items():
+            for fn_name, fn in self.AST._functions(tree).items():
+                if any(isinstance(n, ast.Name) and n.id == "STANDING_REFUSALS"
+                       for n in ast.walk(fn)):
+                    readers.add((module, fn_name))
+        self.assertEqual(readers, {("ledger.py", "apply_policy"),
+                                   ("interview.py", "expand_catalog")},
+                         "these are the two writes that settle a pin nobody was shown, so these "
+                         "are the two that decide what a refusal records on the pin")
+
 if __name__ == "__main__":
     unittest.main()

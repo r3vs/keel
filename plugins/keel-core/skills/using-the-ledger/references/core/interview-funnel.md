@@ -46,10 +46,19 @@ pins  →  clusters  →  policies  →  real questions (asked)  →  proposed d
    offer is taken verbatim by `offer_id`, any other policy must state its rule, scope and outcome
    and quote the user, and where the host can elicit, the server asks and writes only on acceptance.
 
-   **Two rules hold a pin back, and both leave it `asked`.** `blocker`/`high` pins by the severity
+   **Read `scope_note` out too, whenever it is non-empty.** A scope value of `null` is a legal,
+   sometimes intended filter — it matches the pins carrying no value for that field — and it is
+   indistinguishable from a wildcard by reading the scope. `{"cluster_id": null}` says *the pins in
+   no cluster* and behaves as *nearly everything* wherever little is clustered. The note says which,
+   and how many of how many; the radius alone does not.
+
+   **Two rules hold a pin back, and both leave it open.** `blocker`/`high` pins by the severity
    threshold below; and any pin whose own `question` does not offer the policy's outcome
    (`not_offered`) — a policy decides more pins than a single decision does, so it is not allowed to
-   write what a single decision could not. A `default_outcome` is therefore an **option id**, not a
+   write what a single decision could not. Only the first is recorded on the pin as
+   `resolution_mode: "asked"`: severity is a standing property, while `not_offered` is a fact about
+   *that policy's* fit, and the mark is permanent, so recording it would put the pin beyond the
+   later policy written for it (v0.18). A `default_outcome` is therefore an **option id**, not a
    sentence: `"relational"`, not *"one relational datastore until a concrete need proves
    otherwise"*. The second rule is why a cluster can state a default and still make no offer — if no
    one of its options carries that default, it is advice, and advice is asked.
@@ -121,10 +130,16 @@ door)` is that second question, asked at all five doors. Two consequences for th
   with better manners. It is *not* held to the offered-options rule: `defer` is a meta-answer about
   scope, not a branch of this pin's fork.
 - **`resolution_mode: "asked"` binds.** A pin that was reopened, contested, surfaced as an
-  assumption, left unverifiable, or already held back by an earlier policy carries that mark, and no
-  unasked write may settle it — it comes back as `must_be_asked`, beside `held_back` and
-  `not_offered`. The mark was written by six places and read by none, which made "never re-defaulted
-  silently" a comment rather than a rule.
+  assumption, or left unverifiable carries that mark, and no unasked write may settle it — it comes
+  back as `must_be_asked`, beside `held_back` and `not_offered`. The mark was written by six places
+  and read by none, which made "never re-defaulted silently" a comment rather than a rule.
+- **And it is written only for a standing property of the pin** (v0.18). Every item in the list
+  above is one: being reopened, contested, assumed or unverifiable is a fact about *this* pin that
+  no later rule can undo. Being `not_offered` is not — it says the last policy's outcome was not on
+  this pin's menu, which is a fact about that policy — and stamping it made the pin permanently
+  un-cascadable, so an early badly-scoped rule quietly switched the long-tail compression off for
+  every pin it touched. Nothing clears the mark and no door should: a door that unsets *this must be
+  asked* can silence the threshold rule. The fix is at the writer, and both writers read one tuple.
 
 Which is why there is no third door and no fan-out flag. A fan-out **is** a policy: one answer
 covering pins nobody was shown individually is exactly what a `Policy` records — the rule, the
