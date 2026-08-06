@@ -11,24 +11,24 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06.** §1–§5, §9–§12 are **closed**, and §17b, §17f, §17g with them. **§6–§8,
-> §13–§16 and four residuals of §17 are open.**
+> **STATUS 2026-08-06 (third pass).** §1–§14 and §16 are **closed**, and §17a, §17b, §17d, §17e,
+> §17f, §17g with them. **Only §15 and §17c are open.**
 >
 > | # | Open gap | One line |
 > |---|---|---|
 > | ~~5~~ | ~~reopen arcs unreachable~~ | **CLOSED** — both arcs, `set_question` and `add_proposals` now have doors |
-> | 6 | map palette contrast | `--high` is 2.48:1 in light mode, on the badge that carries the warning |
-> | 7 | `resolution_mode` has no reader on the map | the field that says whether silence counts as an answer |
-> | 8 | the `verification` envelope has no reader | `blocked_by` / `attempted` are written, gated on, rendered nowhere |
+> | ~~6~~ | ~~map palette contrast~~ | **CLOSED** — measured before/after in a browser; three hues needed a paired foreground, not one darker hue |
+> | ~~7~~ | ~~`resolution_mode` has no reader on the map~~ | **CLOSED** — one line under the sub-line, and only `proposed_default` is a countdown |
+> | ~~8~~ | ~~the `verification` envelope has no reader~~ | **CLOSED** — a verification card says *this pin cannot close: …*; the funnel carries `blocked_by` |
 > | ~~9~~ | ~~a null-valued scope key is a universal selector~~ | **CLOSED** — `scope_note` says what the matcher matched, on the elicited message |
 > | ~~10~~ | ~~no door gives an existing pin a question~~ | **CLOSED** — `mcp:ledger_set_question`, write-if-absent, freeform required |
 > | ~~11~~ | ~~the `correctness_unknown` fork offers an outcome it cannot produce~~ | **CLOSED** — the implication is computed from `settlement_verdict` |
 > | ~~12~~ | ~~`resolution_mode: "asked"` is permanent~~ | **CLOSED** — only a STANDING refusal writes it, at both unasked doors |
-> | 13 | `ensure_ascii=False` emits raw U+2028/U+2029 | a stated escape discipline with a hole in it |
-> | 14 | five more pin fields, and four of five log kinds, reach the map nowhere | the class §8 is one instance of |
+> | ~~13~~ | ~~`ensure_ascii=False` emits raw U+2028/U+2029~~ | **CLOSED** — one table of holes, and `_inline` proved by AST to be the only path |
+> | ~~14~~ | ~~five more pin fields, and four of five log kinds, reach the map nowhere~~ | **CLOSED** — one stack of cards plus a trail, decided once |
 > | 15 | two gates check less than their names claim | an AST gate that only sees constants; a name-match gate |
-> | 16 | an unknown `settles_as` renders as a bare label | its sibling `rung` gets a warning for the same condition |
-> | 17 | four residuals of the final review, untriaged | **17b, 17f, 17g closed**; the rest include a `contested` answer that reads as elected in `AGENTS.md` |
+> | ~~16~~ | ~~an unknown `settles_as` renders as a bare label~~ | **CLOSED** — one `unknownNote` sentence, six callers, tables kept apart |
+> | 17 | **17c only** — two phase-4 playbooks still say `resolved` needs two things | 17a/b/d/e/f/g closed |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -44,6 +44,7 @@ wrong* is the part that stops it coming back.
 > | 4. 21 tree-sitter skips | `92d2e17` | `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter` |
 > | 5. + 10. + 17b. five transitions no host could make | ledger v0.17 | `mcp:ledger_reopen` · `ledger_challenge` · `ledger_set_question` · `ledger_add_proposals`; `Ledger.reopen_verdict` + `_reopen_minimal`; `tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo`; `test_invariants.py::…::test_an_INTERNAL_mutator_is_actually_reached` |
 > | 9. + 11. + 12. + 17f. + 17g. five rules false of what they were printed on | ledger v0.18 | `Ledger.policy_preview` → `scope_note` (and `server.py`'s elicited message); `ledger.STANDING_REFUSALS`, read by `apply_policy` and `interview.expand_catalog`; `Ledger._accept_implication`; `Ledger.defer`'s signature; `ledger.LOG_ENTRY_PREFIXES` + `nonconforming`'s `log_entry_kind`; gates `tests/test_ledger.py::TestARuleIsTrueOfTheThingItIsPrintedOn` and `test_invariants.py::TestAMarkWithNoClearingDoorIsWrittenForAStandingReason` |
+> | 6. + 7. + 8. + 13. + 14. + 16. + 17a. + 17d. + 17e. the reading surfaces never grew | ledger v0.19 | `src/runtime/map.py` — the palette block's three foreground pairs, `unknownNote`, and the card stack `verificationCard` · `brainstormCard` · `modeLine` · `readinessCard` · `remediationCard` · `premortemCard` · `trailCard`; `_SCRIPT_UNSAFE` + `_inline`; `interview.funnel`'s `blocked_by`; `instructions._pin_line`'s dispute clause and the two settled sections; `ledger.LEAVE_AS_IS_STATES` + `ledger.REOPENED_SUBSTATES`; gates `tests/test_map.py::TestThePaletteCarriesTheWarningItIsUsedFor` · `TestTheOnlyWayDataEntersThePage` · `TestEveryClosedTableThePageReadsIsTheSchemas` · `TestTheWholeEnvelopeHasAReader`, `tests/test_instructions.py::TestNoStateNameIsKeptInThisFile`, `tests/test_ledger.py::TestTheDistinctionsASurfaceSortsAndTITLESBy` |
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
 > a Claude Code hook can answer an elicitation *for* the human, so `elicited` means "the agent did
@@ -53,8 +54,8 @@ wrong* is the part that stops it coming back.
 > strong rung buys, which is the sort of thing this file exists to keep honest.
 >
 > **The pattern the register makes visible, stated once so each section does not have to.** Most of
-> the open gaps are one shape: *a field, a state or an arc that something WRITES and nothing
-> READS.* §5, §7, §8, §10, §14 and half of §11 were all that — §5, §10 and §11 are now closed, and the first two
+> the open gaps were one shape: *a field, a state or an arc that something WRITES and nothing
+> READS.* §5, §7, §8, §10, §14 and half of §11 were all that — **all of them are now closed**, and the first two
 > turned out to be the harsher variant of it: an arc nothing could **write** either. It is the repo's signature class
 > (`MEMORY.md` → *"the claiming-vs-doing failure"*) at the surface layer rather than the path layer,
 > and the reason it keeps recurring is structural: adding a writer is a change inside one module, and
@@ -88,14 +89,19 @@ The original suggested order was **1 → 2 → 4 → 3**, and it was followed; 3
 outcomes it anticipated — two hosts yes, two no. §1–§4 below are that report, kept verbatim under
 their closing notes. §5 onwards were opened later and each says where it came from.
 
-**Suggested order for what is left.** §5 was done first and is closed, then §9, §11, §12, §17f and
-§17g — the rules that mis-fired rather than the surfaces that were missing, because those could
-decide a user's pins wrongly today. What remains is mostly the reader cluster **§7, §8, §14**, which
-is one afternoon on one file and should be done as **one** change to the map rather than three,
-because three separate additions to one surface is how a page acquires three vocabularies — and §14
-is now unblocked, since it deliberately waited for §5. §15 and §16 are small. §6 is one palette
-decision that has to be looked at in both themes on purpose. §13 is the least urgent and says so in
-its own section. Four residuals of §17 (a, c, d, e) are still untriaged.
+**Suggested order for what is left.** §5 was done first, then §9, §11, §12, §17f and §17g — the
+rules that mis-fired rather than the surfaces that were missing — then the reader cluster **§6, §7,
+§8, §13, §14, §16, §17a, §17d, §17e** as **one** change to the two reading surfaces, which is what
+§14 asked for and is why they closed together. **What is left is §15 and §17c.**
+
+§17c is prose: two phase-4 playbooks and rescue's `SKILL.md` still say `resolved` requires two
+things when it now requires three, and the refusal text happens to name the fix. §15 is the harder
+one and is the right next scope, because it is the class every round keeps finding: *a gate that has
+been asked and answered stops anyone asking again.* The round that closed the reader cluster nearly
+added a fourth instance and caught it in the DOM rather than in CI — a new test named *"a badge is
+readable against its own foreground"* that listed the two tokens the finding named and would have
+skipped the two more that were failing (see §6). Read that before starting §15: the shape is always
+a gate whose name quantifies over more than its body does.
 
 ---
 
@@ -622,7 +628,54 @@ listing, the capability does not exist on any host, whatever the runtime can do.
 
 ---
 
-## 6. The map's palette fails contrast where it carries the warning — **OPEN, found 2026-08-06**
+## 6. The map's palette fails contrast where it carries the warning — **CLOSED 2026-08-06** (ledger v0.19)
+
+**The answer lives in `src/runtime/map.py`'s `:root` block and the comment above it, and in
+`tests/test_map.py::TestThePaletteCarriesTheWarningItIsUsedFor`.** Re-measured before and after, in
+Chrome, from the elements' own computed colours, in **both** themes — because the section's own note
+said its numbers were not re-verified since the day they were filed, and one of them was wrong.
+
+| | light before | light after | dark before | dark after |
+|---|---|---|---|---|
+| `.warn` text on `--warnbg` (the tinted relay card) | **2.33** | **4.65** | 6.14 | 6.14 |
+| `.rung.weak` badge (the amber pill) | **2.48** | **4.95** | **2.48** | **6.61** |
+| `.sev` badge, `high` | **2.48** | **4.95** | **2.48** | **6.61** |
+| `.sev` badge, `low` | **3.32** | **4.69** | **3.32** | **4.69** |
+
+Two corrections to the filing, both material. **`--low` measured 3.32:1, not 2.48:1** — the three
+numbers in the original were the same number written three times, and only two of them were right.
+And **dark mode WAS affected**: the section says it is not, which is true of the amber as *text* and
+false of the amber as a *badge*, because a badge's contrast is with its own foreground and does not
+change with the theme. The `--high` pill was 2.48:1 in dark too.
+
+That is also why the fix is not "a darker amber". One token cannot serve both uses: as text it must
+contrast with the surface (dark on light, light on dark), as a fill it must contrast with its
+foreground (dark, always). **So the hue stays one hue and the FOREGROUND splits** — `--onhigh`,
+white in light and near-black in dark. The trap said not to add a fifth colour, and none was added.
+
+**Scope grew by two tokens, deliberately, and the reason is §15.** A DOM sweep of every badge and
+every text node over all 32 fixture pins and all 4 policies found two more below the bar that the
+filing never measured: `--ok` (the *strong* rung pill, 3.45:1; and the live badge's green text,
+3.33:1) and `--accent` (the `policy` pill — 4.32:1 in light and **2.97:1 in dark** — and the same
+token is the link colour, 4.32:1 as text). Stopping at the two named tokens would have shipped a
+gate called *"a badge is readable against its own foreground"* that skipped the two badges it would
+have failed on, which is exactly what §15 is about. Both took the identical fix, and at three
+instances it stopped being three fixes: **a hue that is both a badge fill and a text colour needs a
+paired foreground, and the pair — not the hue — is what switches by theme.** `--blocker`,
+`--medium` and `--low` need no pair because they are only ever fills. The unknown-severity fallback
+(`#888`, 3.54:1 under white — the badge a *hostile* severity lands on) was fixed with them and is
+held by its own test, read off the object literal that supplies it.
+
+**Final state, measured in the DOM over every pin and policy in both themes: worst text 4.65:1
+(light) / 5.46:1 (dark); worst badge 4.51:1 in both** — which is `blocker`, unchanged, and was
+already passing. Every text node and every badge on the page clears 4.5:1.
+
+The gate computes WCAG ratios from the `:root` block and states its limit rather than overselling
+it: that is a fact about the declared palette, not a claim about a DOM. It was verified
+non-vacuously by planting the old values (5 subtests fail, and they are exactly the right 5) and
+again by planting the old `--ok`. The original text is kept below.
+
+### The original finding, kept verbatim
 
 Found while walking the rendering surface in a browser, and deliberately **not** fixed in that
 scope: it is one palette decision affecting every badge and every warning on the page, and the round
@@ -681,7 +734,38 @@ warning must read as a warning at a glance, next to the green `role enum drift` 
 
 ---
 
-## 7. The map renders no `resolution_mode` — **OPEN, found 2026-08-06**
+## 7. The map renders no `resolution_mode` — **CLOSED 2026-08-06** (ledger v0.19)
+
+**The answer lives in `map.py`'s `MODE` table and `modeLine`, and in the preview fixture's closing
+`assign_resolution_modes()` call.** One line, directly under the sub-line, in the page's existing
+vocabulary — and the trap was obeyed: only `proposed_default` takes a colour, and it takes it as a
+left border rather than as accent-coloured text (`--accent` measured 4.32:1 as text in light mode,
+so a new 12px text element in it would have re-committed §6 while closing it).
+
+- `proposed_default` → *⏳ if you say nothing, the interview settles this with the proposed answer —
+  here, silence IS the answer.*
+- `asked` → *this one must be ASKED: no standing rule and no proposed default may settle it for you.*
+- `policy_default` → *a standing rule may settle this one on your behalf — the rule, and how you
+  elected it, are on its own card.*
+
+The line is suppressed on a settled pin, because there the mode is history and *"a rule may settle
+this without you"* over an answered question is v0.18's own finding one surface over.
+
+**The fixture gap the section named is closed twice over.** Nothing in it called
+`assign_resolution_modes`, so `proposed_default` existed on no pin and the state could not be seen in
+a browser; it is now called last, so it fills only what the blocks above left absent. And a second
+gap the section did not name: with the settled-pin suppression, `policy_default` became unreachable
+too — `apply_policy` writes that mode in the same breath as the decision, so on a ledger this runtime
+wrote it only ever sits on a settled pin. That clause fires only on a file we did not write, which is
+stated at the site, and the fixture carries a hand-composed pin in exactly that shape so the sentence
+is looked at rather than assumed. `test_the_fixture_carries_all_three_resolution_modes` asserts all
+three on OPEN pins for that reason.
+
+Verified in a browser, light and dark: `Config: files or flags` shows the countdown, `Secrets: env
+vars or a manager` says it must be asked, `Cache eviction policy` shows the standing-rule sentence,
+and `Validation lives in the handler` (decided, `policy_default`) shows nothing at all.
+
+### The original finding, kept verbatim
 
 ### Verified
 
@@ -731,7 +815,33 @@ read the row without opening the JSON: it must say whether an unanswered questio
 
 ---
 
-## 8. The `verification` envelope reaches no surface — **OPEN, found 2026-08-06**
+## 8. The `verification` envelope reaches no surface — **CLOSED 2026-08-06** (ledger v0.19)
+
+**The answer lives in `map.py`'s `verificationCard` (with `VRUNG` / `vrungInfo`) and in
+`interview.funnel`'s `blocked_by` key.** Closed as one instance of §14's class rather than on its
+own, which is what that section asked for.
+
+The card reuses the rung vocabulary and its colours rather than inventing a second, exactly as the
+section's trap demands — but the *values* are their own closed set, because `VERIFICATION_RUNGS`
+answers *how hard was the work checked* and `DECISION_EVIDENCE` answers *how did the human's answer
+travel*. Two tests hold it: the keys against `ledger.VERIFICATION_RUNGS`, and the ones the page
+colours `strong` against `ledger._CLOSING_RUNGS` — so the two rungs a pin may close on cannot drift
+from the two this page shows as solid.
+
+Both halves of *why will this pin not close* are now on the page, in the two carriers the predicate
+actually reads: `⚠ this pin cannot close: <blocked_by>` from the envelope, and `⚠ N of M done — this
+pin cannot be resolved until every item is` from `remediation`. Absence is rendered as the weakest
+rung and says so, matching what `settlement_verdict` now does with it.
+
+No field was added and the overwrite was not restored in a softer form: `blocked_by` travels to the
+funnel as **its own key beside the prompt**, so the human's `question.options[].id` is untouched.
+
+Verified in a browser (light and dark) on `.preview/map.html`: the `Webhook signature` pin states
+what blocked verification and that 0 of 1 remediation items are done; `The rate limiter counted
+retries` states the observation that earned `resolved`; `Export streams the whole table` states 0 of
+2. Three cards, one vocabulary.
+
+### The original finding, kept verbatim
 
 Found while removing `mark_correctness_unknown`'s question overwrite, and deliberately not fixed in
 that scope: the fix was a deletion, and this is a missing reader. Recorded rather than bundled,
@@ -1179,7 +1289,34 @@ about *that* pin).
 
 ---
 
-## 13. The map inlines raw U+2028 / U+2029 into its own script — **OPEN, found 2026-08-06**
+## 13. The map inlines raw U+2028 / U+2029 into its own script — **CLOSED 2026-08-06** (ledger v0.19)
+
+**The answer lives in `map._SCRIPT_UNSAFE` and in
+`tests/test_map.py::TestTheOnlyWayDataEntersThePage`.** They are escaped — the section allowed
+either escaping or a stated omission, and escaping costs nothing (an escaped U+2028 inside a JSON
+string is the same character, so the existing round-trip assertion covers them for free).
+
+The fix is deliberately **structural, not a third `.replace()` at the site**, because this file has
+been wrong about escaping twice and both times the bug was a site that did not go through the
+mechanism. `_inline`'s claim — *"not a longer list of dangerous sequences, it is the character all
+of them need"* — was true of the HTML hole and silent about the JavaScript one, so the table now
+names **one character per hole** and says which hole each closes. What makes that enumeration worth
+anything is the other half: two AST tests assert that `json.dumps` is called in exactly one function
+in the module, and that **every** substitution in `render`'s dict except the three declared
+non-payloads is produced by `_inline`. The previous shape of that second test named the four
+payloads that existed when it was written; it is an exclusion list now, which is why adding
+`__REOPENED__` in this same change was covered by default instead of when someone remembered.
+
+Recorded at the strength the section set: this is a stated discipline being made whole, not an
+observed breakage. A page carrying both raw was opened in Chromium and there was no failure, because
+ES2019's JSON-superset proposal made them legal in string literals. `ensure_ascii=True` was not
+taken, for the reason the trap gives.
+
+Verified in a browser: the preview fixture carries a pin titled `line ␤ sep ␤ para`, the characters
+round-trip into `LEDGER` intact (code points `2028` / `2029` read back off the parsed payload), the
+raw characters appear nowhere inside the `<script>` element, and the console is empty.
+
+### The original finding, kept verbatim
 
 ### Verified
 
@@ -1228,7 +1365,54 @@ value must be unchanged. Then open the page — that is the half that says wheth
 
 ---
 
-## 14. Five more pin fields, and four of five log kinds, reach the map nowhere — **OPEN, found 2026-08-06**
+## 14. Five more pin fields, and four of five log kinds, reach the map nowhere — **CLOSED 2026-08-06** (ledger v0.19)
+
+**The answer lives in `map.py`'s card stack and its `TRAIL` table, and the architecture is stated
+once in a comment above them.** The section asked for *one change, not five*, and the choice made —
+recorded here because it is the part worth arguing with — is: **the detail pane is a fixed stack of
+cards in the order a reader asks the questions, each answering `''` when its field is absent.**
+
+```
+what is it        as-is / to-be         how it may die    premortem
+how hard checked  verification (§8)     how it got here   the trail
+who else checked  cross_derivations     what is asked     question + resolution (§7)
+what was proposed brainstorm            where it lives    anchors
+what was elected  decision              can it land       readiness
+what will be done remediation
+```
+
+`premortem` and `readiness` are rendered rather than omitted, and the section explicitly allowed
+either. They earn the page because each answers a question a reader of a pin actually has — *can the
+ground bear this* and *what did we already decide would kill it* — with a closed verdict vocabulary
+the page can colour honestly. Nothing is dumped: the trap is obeyed, `sideCard`'s `raw` already
+exists for the free-form payloads, and everything else is projected because a projection is a claim
+about what matters.
+
+**The trail was built, and only because §5 is closed.** The section says a timeline is worth
+resisting until three of the event kinds are producible on a host; they now are, and the preview
+fixture produces all six (`ev_` `stl_` `chl_` `xdr_` `fal_` `rev_`) through the real doors rather
+than by hand. `TRAIL`'s keys are held against `ledger.LOG_ENTRY_PREFIXES`, so a seventh kind arrives
+rather than being dropped, and an unrecognised entry gets §16's sentence. No schema gate was added —
+the section forbids it and §15 says why.
+
+**One defect was found by looking at the rendered page, which is the whole argument for this
+procedure.** The trail's decision row read the rung off `e.evidence` while the decision card three
+cards up read it through `derived`, so on the pre-v0.11 cascade one page printed *"cascaded from a
+policy"* and *"transcribed"* about one event. That is `derived_rungs`' own reason for existing,
+re-introduced by a second reader on the same page, within the change that added the reader. Fixed;
+the row now goes through `derived` too.
+
+**A second one, in the same spirit:** the decision card describes an *event*, which is a historical
+fact, so on a pin since handed back it read `decided → request_id` while the sub-line said
+`needs_input (challenged)`. That is §17a's finding on the surface §17a says gets it right. The card
+now carries `⚠ this answer is under dispute (<substate>)`, read from `REOPENED` — inlined from
+`ledger.REOPENED_SUBSTATES`, not a hand-kept list.
+
+Verified in a browser, light and dark, over every fixture state; `tests/test_map.py::TestTheWholeEnvelopeHasAReader`
+holds both halves in CI — the template must reference each field, and the fixture must carry it,
+because either alone is vacuous.
+
+### The original finding, kept verbatim
 
 §8 is one instance; this is the rest of the class, listed so a fix can be scoped once instead of
 five times.
@@ -1353,7 +1537,26 @@ schema gate, add a field to the spec whose only mention is a write in `ledger.py
 
 ---
 
-## 16. An unknown `settles_as` renders as a bare label, while an unknown `rung` gets a warning — **OPEN, found 2026-08-06**
+## 16. An unknown `settles_as` renders as a bare label, while an unknown `rung` gets a warning — **CLOSED 2026-08-06** (ledger v0.19)
+
+**The answer lives in `map.py`'s `unknownNote` and `settlesInfo`.** The trap is obeyed exactly: the
+tables are **not** merged — they answer different questions off one event — and what is shared is the
+*sentence*. `unknownNote(what, value, consequence)` is the one place the page says it does not know
+something, and it now has six callers: the decision rung, the settled state, the verification rung,
+the resolution mode, the readiness verdict, and a log entry whose id matches no prefix. Every reader
+added in this round was written against it, so §16 closed as a rule rather than as an instance.
+
+The card's `cls` is deliberately untouched by an unknown `settles_as`: the colour is the rung's
+answer, and letting a second axis recolour it would be the merge the trap forbids, arriving through
+the back.
+
+The gate the section named exists: `SETTLES`' keys are held against `ledger._ELECTION_STATES`, and
+the fixture carries an event with `settles_as: "quarantined"` so the browser walk has it to look at.
+Verified rendered: *"⚠ this map does not know the settled state `quarantined` — it was most likely
+added to the schema after this page was generated, so nothing here says what this election produced
+— the pin's own state, in the line under the title, is what the file records."*
+
+### The original finding, kept verbatim
 
 ### Verified
 
@@ -1399,12 +1602,32 @@ this map cannot describe, not print it as though it were understood.
 
 ---
 
-## 17. Seven residuals of the final review — **17b, 17f, 17g CLOSED; four OPEN, not triaged**
+## 17. Seven residuals of the final review — **only 17c is OPEN**
 
 Two adversarial reviewers closed the seventh round. Their findings are here rather than fixed,
 because the round's rule was that only defects it had *introduced* could be fixed in it — and
 because a report dies with its session while this file does not. The four still open are not triaged: each states what
 was verified and why it matters, and stops there.
+
+**17a — CLOSED 2026-08-06 (ledger v0.19), and it was three substates rather than one.**
+`instructions._pin_line` now appends `*(<substate> — do not build on this answer)*` to a pin whose
+outcome is under dispute. Read from **`ledger.REOPENED_SUBSTATES`** and not from the word
+`contested`, because fixing only the substate the reviewer happened to see would be §17e's defect
+in the same file at the same time: the feedback arc leaves `reopened` and an upheld challenge leaves
+`challenged`, and both keep the outcome exactly as `cross_derive` does. The set is composed from
+`_SUBSTATE_BY_ARC` rather than re-listed, `decide` clears the substate (so the mark means *disputed
+and not re-answered*), and an AST test holds every `pin["substate"]` write in `ledger.py` to it in
+both shapes it comes in.
+
+The byte argument, since the region is budgeted: the clause fires on the pins that carry the
+substate and on no others, which is what separates it from the per-pin state token the module
+refuses. The test it must pass — stated in the module docstring so the next clause has to pass it
+too — is *does the default reading of the line without it say something FALSE?* Here it does: the
+line asserts an elected answer that is currently contradicted.
+
+The same finding turned out to be true of the MAP, which this section credits with getting it right:
+the decision card describes the *event*, so it read `decided → request_id` on a pin whose sub-line
+said `needs_input (challenged)`. Fixed there too — see §14. The original finding is kept verbatim.
 
 **17a. `AGENTS.md` prints a `contested` pin's disputed outcome with no marker.** Round 7 deleted
 `_pin_line`'s `with_outcome` flag so a `correctness_unknown` pin would stop reaching a fresh agent
@@ -1448,6 +1671,27 @@ matters:** it is the signature class — a door tightened, the prose describing 
 rule — and it is recoverable only because the refusal text happens to name the fix. Note while
 fixing: `rung` now means two different things inside the same eight-step loop (the ladder rung at
 step 4, the verification rung at step 7).
+
+**17d + 17e — CLOSED 2026-08-06 (ledger v0.19), together, because they are one bug seen from two
+ends.** The heading was false because the sort key was a literal, and the sort key was a literal
+because the schema had no name for the distinction. So the schema got one —
+**`ledger.LEAVE_AS_IS_STATES = ("accepted", "deferred")`**, anchored on `_STATE_BY_DOOR` so
+membership is the doors' answer — and `_settled_order` is **gone**.
+
+The settled half is now **two sections**, not one section with an ordering trick and a
+parenthetical. That is more than the minimum, and the argument is written into the module docstring
+rather than left implicit: a single heading cannot be true of both groups, which is this file's own
+stated standard for a heading; a reader can then tell WHICH pins are the do-not-build ones without
+the per-pin state token the budget refuses, because membership is carried by a heading that costs 2
+lines **once** instead of a suffix on every line; and the clip now falls on the do-not-build pins
+first, which is strictly better than the ordering hack it replaces. It costs nothing when either
+group is empty, since `_section` drops an empty section whole.
+
+17e is closed structurally rather than by a docstring note:
+`tests/test_instructions.py::TestNoStateNameIsKeptInThisFile` walks the module's AST and fails on
+any string constant equal to a member of `ledger.STATES`, excluding docstrings — with a companion
+test that plants one to prove the walk is not looking in the wrong place. Its limit is stated: a
+name assembled at runtime would not be seen. Both findings are kept verbatim below.
 
 **17d. The settled heading claims `defer` is the only "do not build" state.** `### Settled — build on
 these (`defer` = elected NOT to build, not now)` is followed, in the rendered region, by
@@ -1507,6 +1751,12 @@ what an agent calls **before** acting, on a file it did not write.
 **One more, not a defect:** §6 (the 2.48:1 `--high` palette) was **not re-verified** in the final
 round. It is the one open gap whose evidence only a browser can produce, and no browser was opened
 for it. Treat its measurement as of the day it was filed.
+
+> **Re-verified 2026-08-06, and the caution was right.** A browser was opened, the before/after
+> numbers are in §6's closing note, and one of the three filed figures was wrong (`--low` was
+> 3.32:1, not 2.48:1) while one whole half was missing (the badge failed in dark mode too). The
+> lesson generalises past the palette: **a number nobody re-ran is a claim, and this file's own
+> standard applies to its own contents.**
 
 ---
 

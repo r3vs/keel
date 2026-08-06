@@ -66,6 +66,38 @@ What to check, in both light and dark:
      pin that came back to the interview said nowhere why. The `export endpoint` pin, where the two
      providers agreed, must read as agreement and NOT as a warning: if they look alike, the reader
      is decoration.
+ 19. CONTRAST, in LIGHT mode specifically, and on purpose: the amber warning must read as a warning
+     at a glance beside the green `role enum drift` card. It measured 2.48:1 as text and 2.33:1 on
+     the tinted card — a warning nobody can read at a glance is a warning nobody printed, arriving
+     by another route. Chrome's "auto dark mode for web contents" force-darkens light pages in a
+     dark-themed browser: check `matchMedia('(prefers-color-scheme: dark)').matches` before trusting
+     a screenshot of either theme.
+ 20. `Config: files or flags` (and every medium/low open pin) carries a COUNTDOWN line under the
+     sub-line: *if you say nothing, the interview settles this with the proposed answer*. `Secrets:
+     env vars or a manager` says the opposite — it must be asked. `Validation lives in the handler`
+     is decided, so it says nothing at all: a settled pin's resolution mode is history, and printing
+     "a rule may settle this without you" over an answered question is a rule on the wrong object.
+ 21. the `Webhook signature` pin says WHAT BLOCKED VERIFICATION on the page — read it without
+     opening the JSON. Its neighbour `The rate limiter counted retries` says what was observed and
+     why that earned `resolved`; `Export streams the whole table` says it cannot close and how many
+     remediation items are outstanding. Three cards, one vocabulary.
+ 22. `Export streams the whole table` also carries the landing-zone verdict (harden first, blocked on
+     the rate-limiter pin) and the premortem, including the dismissed risk WITH its evidence.
+ 23. `Background job runner` shows the two proposals and which one the brainstorm recommends —
+     above the fork they are supposed to be answerable from.
+ 24. the TRAIL, at the bottom of a pin: `Checkout completes under 800ms` shows decision → settlement
+     → reopen, in order, and says what production reported. `Idempotency key` shows the upheld
+     challenge and its argument; `Export streams` shows the recorded failure. Five of these six kinds
+     of entry were in the page and on no part of it.
+ 25. `Feature flags` says its `settles_as` is one this map does not know — in the SAME sentence the
+     `oracle` rung uses (item 14), not a bare token in the card's key position.
+ 26. the `line U+2028 sep U+2029 para` pin renders its title intact and the page still works: those
+     two characters are legal in a JSON string and were statement terminators in a pre-ES2019 JS
+     string literal, and `ensure_ascii=False` emitted them raw into the inline script.
+ 27. and in the projected `AGENTS.md` (`instructions.render`, not this page): the three pins whose
+     elected outcome is under dispute — `Checkout` (reopened), `Idempotency key` (challenged),
+     `outbox` (contested) — say so beside the outcome, and `The importer duplicates the CSV parser`
+     sits under a heading that says it is NOT to be built, beside the deferred one.
 """
 from __future__ import annotations
 
@@ -414,6 +446,204 @@ def build() -> Ledger:
                      {"provider": "openai", "model": "gpt-5", "result": "yes — the cursor "
                       "parameter is parsed and then never used"}],
         agreement="agree")
+
+    # -- the rest of the pin envelope, and the rest of the log (v0.19) --------------------------
+    # Eight fields and five of the six log kinds were written by the runtime and rendered by
+    # nothing. Each block below exists so the manual pass has the state to look at: a fixture that
+    # cannot show a state cannot check it, which is why §7 could not be seen in a browser at all.
+
+    # A pin that went the whole way: decided → remediation done → observed → resolved. Its trail is
+    # the only place a reader can see HOW it stopped being open (`stl_`), and its verification card
+    # is the only place the observation that earned `resolved` is stated.
+    led.add_pin(kind="defect", severity="medium", confidence="extracted", provenance=P,
+                title="The rate limiter counted retries against the caller's budget",
+                anchors=[{"node_id": "token_bucket", "layer": "backend", "role": "src",
+                          "loc": "api/limits.py:88"}],
+                as_is={"file": "api/limits.py", "riga": 88,
+                       "sintomo": "a 429 retry decremented the bucket a second time"})
+    fixed = led.data["pins"][-1]
+    item = led.add_remediation(fixed["id"], action="implement", ladder_rung=2,
+                               canonical_target="api/limits.py")
+    led.set_remediation_status(fixed["id"], item["id"], "done")
+    led.resolve(fixed["id"], rung="observed",
+                evidence="drove 200 requests with induced 429s and watched the bucket: one "
+                         "decrement per request, not two")
+
+    # ...and the SAME shape with the remediation still open, so the card that says why a pin cannot
+    # close is on the page beside the one that closed. `resolve` is refused here (`remediation_open`)
+    # and until now that refusal was readable nowhere but the JSON.
+    led.add_pin(kind="defect", severity="high", confidence="extracted", provenance=P,
+                title="Export streams the whole table into memory before writing",
+                as_is={"file": "api/export.py", "riga": 34,
+                       "sintomo": "resident memory tracks row count"})
+    open_plan = led.data["pins"][-1]
+    led.add_remediation(open_plan["id"], action="refactor", ladder_rung=3,
+                        canonical_target="api/export.py")
+    led.add_remediation(open_plan["id"], action="implement", ladder_rung=2,
+                        canonical_target="tests/test_export.py")
+    led.set_remediation_status(open_plan["id"], open_plan["remediation"][0]["id"], "in_progress")
+    # ...carrying the terrain verdict and the premortem, the two cards addressed to a builder.
+    led.set_readiness(open_plan["id"], verdict="harden_first",
+                      zone={"files": ["api/export.py", "api/limits.py"], "nodes": [1, 2, 3]},
+                      evidence={"cochange": "export.py and limits.py move together in 7 of 9 PRs",
+                                "coverage": "no test names export.py"},
+                      hardens=[fixed["id"]],
+                      rationale="the zone has no test naming it, so the refactor lands blind")
+    led.premortem(open_plan["id"],
+                  failure_modes=[{"class": "untested_path",
+                                  "description": "the streaming path is exercised by nothing, so a "
+                                                 "regression ships silently"},
+                                 {"class": "nondeterminism",
+                                  "description": "chunk boundaries depend on row width; a flake "
+                                                 "reads as a pass"}],
+                  guardrails=["a fixture with 100k rows before any refactor"],
+                  abort_criteria=["memory does not fall below 200MB on the fixture"],
+                  paper_tigers=[{"risk": "the client cannot consume a chunked response",
+                                 "evidence": "the only two clients already stream (checked in "
+                                             "clients/*.py)"}])
+    led.label_failure(open_plan["id"], failure_class="untested_path", phase="build",
+                      detail="the first attempt passed CI and broke the nightly export",
+                      source="measurer")
+
+    # A pin the production signal reopened: elected, closed, then falsified. `rev_` was the arc no
+    # host could run until v0.17 and no surface could show until now — a page that reports a pin as
+    # settled and never that it was UN-settled answers the wrong question.
+    led.add_pin(kind="acceptance_criterion", severity="high", confidence="extracted", provenance=P,
+                title="Checkout completes under 800ms at p95",
+                as_is={"measured": "p95 620ms at release"},
+                to_be={"statement": "p95 under 800ms with the payment provider in the loop"},
+                question={"prompt": "What is the checkout latency budget?",
+                          "options": [{"id": "800ms", "label": "p95 under 800ms"},
+                                      {"id": "2s", "label": "p95 under 2s"}]})
+    slo = led.data["pins"][-1]
+    led.decide(slo["id"], outcome="800ms", rationale="the payment provider's own p99 is 400ms",
+               flip_criteria="p95 exceeds the budget for three consecutive days",
+               evidence="transcribed", human_answer="800ms — anything slower and people abandon")
+    slo_item = led.add_remediation(slo["id"], action="implement", ladder_rung=2,
+                                   canonical_target="checkout/handler.py")
+    led.set_remediation_status(slo["id"], slo_item["id"], "done")
+    led.resolve(slo["id"], rung="observed",
+                evidence="load test at release: p95 620ms over 10k checkouts")
+    led.reopen(slo["id"], fired="flip_signal", source="feedback:metrics",
+               reason="p95 has been 1.4s for six days since the provider changed region")
+
+    # An upheld CHALLENGE (`chl_`): the upstream arc. The pin keeps the outcome the human elected
+    # and is handed back to them — which is exactly the state the projected AGENTS.md printed as a
+    # build instruction, because `grep -c substate` over that file returned 0.
+    led.add_pin(kind="open_decision", severity="high", confidence="inferred", provenance=P,
+                title="Idempotency key: client-supplied or server-derived",
+                as_is={"givens": [], "built": None},
+                question={"prompt": "Where does the idempotency key come from?",
+                          "options": [{"id": "client", "label": "the client sends one"},
+                                      {"id": "request_id", "label": "derived from the request id"}],
+                          "allow_freeform": True})
+    idem = led.data["pins"][-1]
+    led.decide(idem["id"], outcome="request_id", rationale="one less thing for a caller to get wrong",
+               flip_criteria="a caller needs to retry across two request ids",
+               evidence="transcribed", human_answer="derive it — I don't trust callers with this")
+    led.challenge(idem["id"], target="decision", challenge_class="unstated_assumption",
+                  argument="a derived key assumes the retry carries the same request id, and the "
+                           "mobile client generates a new one per attempt — so the guarantee is "
+                           "void on exactly the path it was elected for",
+                  severity="high", upheld=True)
+
+    # A DECIDED pin two providers then contradicted (`xdr_` + substate `contested`). The pair to the
+    # challenge above: same outcome-under-dispute state, reached by the other arc.
+    led.add_pin(kind="ambiguity", severity="medium", confidence="ambiguous", provenance=P,
+                title="Does the outbox flush before or after the transaction commits?",
+                as_is={"claim": "the comment says after", "code": "the call sits inside the block"},
+                question={"prompt": "When is the outbox flushed?",
+                          "options": [{"id": "after", "label": "after commit"},
+                                      {"id": "inside", "label": "inside the transaction"}],
+                          "allow_freeform": True})
+    outbox = led.data["pins"][-1]
+    led.decide(outbox["id"], outcome="after", rationale="the comment is the documented contract",
+               flip_criteria="a duplicate delivery is traced to a pre-commit flush",
+               evidence="transcribed", human_answer="after commit — that's what we documented")
+    led.cross_derive(
+        outbox["id"], claim="the flush runs after the transaction commits",
+        derivations=[{"provider": "anthropic", "model": "opus",
+                      "result": "no — the call is inside the `with` block, so it runs first"},
+                     {"provider": "openai", "model": "gpt-5",
+                      "result": "yes — the session commits on block exit before the flush task runs"}],
+        agreement="disagree",
+        notes="the two readings differ on when the session commits, which is the whole question")
+
+    # A pin the brainstorm worked on: `brainstorming` is the state `add_proposals` writes, and the
+    # proposals are what the fork is supposed to be answerable from.
+    led.add_pin(kind="open_decision", severity="medium", confidence="inferred", provenance=P,
+                title="Background job runner", cluster_id="cl_platform",
+                as_is={"givens": ["one deploy target"], "built": None},
+                question={"prompt": "What runs the background jobs?",
+                          "options": [{"id": "rq", "label": "RQ on the existing Redis"},
+                                      {"id": "celery", "label": "Celery with a broker"}],
+                          "allow_freeform": True})
+    led.add_proposals(
+        led.data["pins"][-1]["id"],
+        proposals=[{"summary": "RQ on the Redis that already exists", "effort": "S",
+                    "recommended": True,
+                    "tradeoffs": {"pros": ["no new infrastructure"], "cons": ["no native chaining"]}},
+                   {"summary": "Celery with a dedicated broker", "effort": "L",
+                    "tradeoffs": {"pros": ["chaining, retries, beat"], "cons": ["a broker to run"]}}],
+        notes="both were priced against the single deploy target the frame records")
+
+    # A design_concern the human elected to LEAVE AS IS. `accepted` is a settled state whose
+    # instruction is *do not build this* — the same instruction as `deferred` — and the projected
+    # AGENTS.md listed it under a heading that named only `defer`.
+    led.add_pin(kind="design_concern", severity="high", confidence="inferred", provenance=P,
+                title="The importer duplicates the CSV parser instead of reusing it",
+                as_is={"current_design": "two parsers, one per entry point"})
+    led.accept(led.data["pins"][-1]["id"],
+               rationale="the duplication is 40 lines and the importer is scheduled for deletion",
+               flip_criteria="the importer outlives the next release",
+               human_answer="leave it — that whole module goes away in Q4")
+
+    # A `settles_as` this page does not carry. Hand-composed, because `decide` refuses it: it can
+    # only come from a runtime NEWER than this artifact, which is the likeliest case and the one the
+    # wording has to serve. Its sibling one field over (the `oracle` rung) got three states and a
+    # sentence; this one printed the bare token in the card's key position.
+    led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
+                title="Feature flags (settled in a way this map does not know)",
+                as_is={"current_design": "flags read straight from the environment"},
+                question={"prompt": "Where do feature flags live?",
+                          "options": [{"id": "config", "label": "in the config file"}]})
+    future_state = led.data["pins"][-1]
+    led.data["decision_log"].append({
+        "id": "ev_future_state", "pin_id": future_state["id"],
+        "timestamp": "2026-01-01T00:00:00+00:00", "outcome": "config",
+        "rationale": "the user picked the config file",
+        "flip_criteria": "a flag has to change without a deploy", "source": "interview",
+        "evidence": "elicited", "settles_as": "quarantined"})
+    future_state["state"] = "decided"
+    future_state["decision"] = {"event_id": "ev_future_state", "outcome": "config"}
+
+    # The two characters `ensure_ascii=False` emitted raw into the inline script: legal in a JSON
+    # string, statement terminators in a pre-ES2019 JavaScript one. The title must round-trip and
+    # the page must render.
+    led.add_pin(kind="other", kind_detail="renderer", severity="low", confidence="inferred",
+                provenance=P, title="line \u2028 sep \u2029 para (JSON is not a JS subset)",
+                as_is={"payload": "U+2028 and U+2029 ride inside the inlined ledger"})
+
+    # An OPEN pin carrying `policy_default`. Hand-composed, because no path in this runtime produces
+    # it — `apply_policy` writes that mode in the same breath as the decision, so on a ledger we
+    # wrote it only ever sits on a settled pin, where the decision card already tells the story and
+    # the mode line deliberately says nothing. A ledger arrives from anywhere, `RESOLUTION_MODES` is
+    # closed, and the page must have a true sentence for each of the three or the third would
+    # surface as "a mode this map does not know" — which would be a lie, since it does.
+    led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
+                title="Cache eviction policy (a rule may settle this without asking)",
+                cluster_id="cl_nfrs",
+                as_is={"current_design": "each cache picks its own TTL"},
+                question={"prompt": "Who owns cache eviction?",
+                          "options": [{"id": "central", "label": "one shared policy"},
+                                      {"id": "per_cache", "label": "per cache"}]})
+    led.data["pins"][-1]["resolution_mode"] = "policy_default"
+
+    # LAST, so it fills the field only where the blocks above left it absent: this is what the
+    # funnel calls before it asks anything, and it is the only writer of `proposed_default` — the
+    # mode that means *silence settles this*. Nothing in this fixture called it, which is why the
+    # browser walk could not see that state at all.
+    led.assign_resolution_modes()
 
     led.data["version"] = "0.9"
     return led

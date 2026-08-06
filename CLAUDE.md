@@ -87,7 +87,7 @@ Each skill is **design-complete with the runtime largely implemented**; its `TOD
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
 Plan A); rescue's VibraFlow verdict was **re-run on a fresh graph** (2026-07-14 — WEAK cross-layer
 correspondence, so standalone extraction is Plan A). The runtime lives under `src/runtime/`
-(core stdlib-only, exercised by `tests/` on every PR): `ledger.py` (spec v0.16), `shapes.py` (field-shape engine +
+(core stdlib-only, exercised by `tests/` on every PR): `ledger.py` (spec v0.19), `shapes.py` (field-shape engine +
 drift-check, 8 stacks), `treesitter_extract.py` (the **primary** extraction backend — a real grammar per language, so
 real-world TS/GraphQL/SQL parse with no per-repo patches; declarative per-grammar data, degrades to
 the stdlib parsers when absent), `generate.py` (contract generators,

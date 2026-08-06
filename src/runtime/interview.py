@@ -231,7 +231,15 @@ def funnel(ledger) -> dict:
     arriving at the top of the funnel with the options it was opened for invisible would waste the
     fix. Neutrality is unchanged: a proposal is not an option id, `record_decision` still admits
     only what `question.options[].id` offers or a freeform answer the question permits, and
-    `recommended` is carried as the brainstorm's own mark rather than as a default."""
+    `recommended` is carried as the brainstorm's own mark rather than as a default.
+
+    An entry carries `blocked_by` when the pin's `verification` envelope records one (v0.19). A
+    `correctness_unknown` pin is sorted to the FRONT of this funnel by `interview_view`, and the one
+    sentence that makes it answerable is what stopped verification — which used to arrive here only
+    because `mark_correctness_unknown` pasted it into the human's own `question.prompt`, i.e. by
+    deleting their fork. v0.16 rightly stopped doing that and the reach went with it: the pin
+    arrived first, and blank. So the reason travels as its own key, beside the prompt rather than
+    inside it, and the fork stays exactly where its author left it."""
     ledger.assign_resolution_modes()
     view = ledger.interview_view()
 
@@ -247,6 +255,9 @@ def funnel(ledger) -> dict:
         entry = {"pin_id": pin["id"], "title": pin["title"], "severity": pin["severity"],
                  "prompt": (pin.get("question") or {}).get("prompt", ""),
                  "downstream": transitive_downstream(pin["id"])}
+        blocked_by = (pin.get("verification") or {}).get("blocked_by")
+        if blocked_by:
+            entry["blocked_by"] = blocked_by
         proposals = (pin.get("brainstorm") or {}).get("proposals") or []
         if proposals:
             entry["proposals"] = [{"id": p.get("id"), "summary": p.get("summary"),

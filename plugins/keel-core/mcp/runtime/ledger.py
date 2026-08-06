@@ -76,7 +76,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.18"
+SCHEMA_VERSION = "0.19"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -89,7 +89,7 @@ SCHEMA_VERSION = "0.18"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19")
 
 KINDS = {
     "contract_mismatch",
@@ -168,6 +168,20 @@ SETTLED_STATES = ("decided", "resolved", "accepted", "deferred")
 # `CLOSED_STATES` is "may any door settle this again" (no, and ask `reopen` instead).
 CLOSED_STATES = ("resolved", "accepted", "deferred")
 
+# The settled states whose instruction to a builder is **do not build this** (v0.19). A third
+# reading of `SETTLED_STATES`, beside `CLOSED_STATES`, and it exists because a surface was answering
+# it with a hardcoded state name: `instructions.py` sorted on `state == "deferred"` and printed a
+# heading claiming `defer` was the only settled state that means "not built" — while `accept` is
+# defined one function up as leaving the concern exactly as it is, which is the same instruction.
+# So a blocker-severity `accepted` pin outranked an elected `decided` medium under the byte clip,
+# inside a section headed *build on these*.
+#
+# `decided` and `resolved` are the complement: something was elected to be built, or was built and
+# observed. Named here rather than in the projection for the reason every set in this block is:
+# a state added to the schema with "leave it alone" semantics must arrive at the surfaces that sort
+# and title by it, and a name written into one of them does not travel.
+LEAVE_AS_IS_STATES = ("accepted", "deferred")
+
 # Pins awaiting something. The complement of `SETTLED_STATES`, named rather than derived because
 # `correctness_unknown` belongs here on purpose: it blocks closure and joins the interview view.
 OPEN_STATES = ("detected", "needs_input", "brainstorming", "correctness_unknown")
@@ -220,6 +234,20 @@ REOPEN_ARCS = ("reopen", "challenge")
 # same reason `_STATE_BY_DOOR` is one: the substate IS which arc ran, so a second carrier for that
 # fact is a divergence waiting to happen.
 _SUBSTATE_BY_ARC = {"reopen": "reopened", "challenge": "challenged"}
+
+# Every substate a pin carries because something put it BACK in front of the human (v0.19), composed
+# from the arc table rather than re-listed beside it — `cross_derive` is the third writer and the
+# only one that is not an arc, so it is the only literal here.
+#
+# It is named because a pin in one of these carries an **outcome that is under dispute**, and a
+# surface that prints that outcome without saying so prints a build instruction. `instructions.py`
+# did exactly that: `grep -c substate` over it returned 0, so a pin two providers had contradicted
+# reached every host's always-on context formatted identically to an elected decision. The map has
+# distinguished them loudly since v0.16; the one file every host loads unprompted had no reader.
+#
+# `decide` clears it (`pin.pop("substate", None)`), so the mark means *disputed and not re-answered*
+# rather than *was disputed once*.
+REOPENED_SUBSTATES = ("contested",) + tuple(_SUBSTATE_BY_ARC[a] for a in REOPEN_ARCS)
 
 # What put a settled pin back in front of the human, on the DOWNSTREAM arc. `flip_signal` is the
 # decision's own declared tripwire; `manual_checkpoint` is what a `flip_signal` with no telemetry

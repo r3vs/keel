@@ -36,6 +36,20 @@ JSON payload carrying no `<` at all (escaping `</` closed one way out of the inl
 before a later `<script` closed the *page*, leaving a header with two empty panes and no error —
 the worst thing this surface can say, because a blank map reads as "no findings").
 
+**The pin's whole envelope reaches the page, and the log with it** (v0.19). Eight fields were
+written by the runtime and read here by nothing — `verification`, `resolution_mode`, `brainstorm`,
+`remediation`, `premortem`, `readiness`, the pin's `evidence`, and five of the six kinds of
+`decision_log` entry. Two of them were load-bearing rather than decorative: `verification` is what
+`settlement_verdict` reads to decide whether ANY pin may close (absence is the weakest rung, not a
+neutral one), so the reader asking *why will this pin not close* had nowhere to look but the JSON;
+and `remediation` is the other half of that gate. `resolution_mode` is the field that says whether
+the reader's SILENCE counts as an answer, which is the funnel's whole compression argument.
+The fix is one change with one information architecture — a fixed stack of cards in the order a
+reader asks the questions, each empty when its field is absent — because five independent additions
+to one pane is how a surface acquires five vocabularies. The order and the reasoning are stated once
+at the cards themselves. Nothing is dumped: `sideCard`'s `raw` already exists for the free-form
+payloads, and everything else is projected because a projection is a claim about what matters.
+
 Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
 Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
 pins land, preserving selection / view / scroll across reloads and flashing pins whose state
@@ -56,11 +70,43 @@ _TEMPLATE = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Decisions map — __TITLE__</title>
 <style>
-:root{--bg:#fbfbfd;--fg:#1c1c1e;--mut:#6b6b70;--card:#fff;--line:#e3e3e8;--accent:#4c6ef5;
---code:#f1f1f5;--blocker:#e03131;--high:#f08c00;--medium:#1971c2;--low:#868e96;--ok:#2f9e44;
---warnbg:#fff7e6}
+/* The amber is not decoration: it is the whole mechanism by which a weak rung reads as weaker at a
+   glance, and at #f08c00 it measured 2.48:1 as text on the light card and 2.33:1 on the tinted warn
+   card — a warning nobody can read is the same failure as a warning nobody prints. `--low` measured
+   3.32:1 as a badge fill (not the 2.48 first reported; the number is stated here because the
+   correction is the point).
+   ONE token cannot serve both uses of amber, and that is why the dark block re-declares it: as TEXT
+   it must contrast with the surface, so it has to be dark on light and light on dark; as a BADGE
+   FILL it must contrast with its own foreground. So the hue stays one hue (a fifth colour costs the
+   reader more than it buys) and what splits is the foreground, `--onhigh`. Light: #ad5a00 gives
+   4.95:1 as text on the card, 4.65:1 on `--warnbg`, 4.79:1 as the traffic dot, and 4.95:1 for white
+   on the badge. Dark: #f08c00 stays (6.61:1 / 6.14:1 as text) and the badge takes a dark foreground
+   for 6.61:1 instead of white's 2.48:1 — which is the half the finding did not report, because the
+   badge pair is theme-independent and was failing in BOTH. `--low` #6c757d is 4.69:1 under white in
+   both themes (it measured 3.32:1 before, not the 2.48:1 first written down).
+   `--ok` was NOT in the finding and is fixed with it, because a sweep of every badge on every pin
+   found the strong rung at 3.45:1 (and the live badge's green text at 3.33:1) — leaving it would
+   have meant a gate named "a badge is readable against its own foreground" that skipped the one
+   badge it would have failed on, which is the other defect this register is currently carrying.
+   Same split, same reason: light #28802f (4.98:1 under white, 4.82:1 as the live badge's text),
+   dark #2f9e44 kept for that text (5.25:1) with a dark badge foreground (4.77:1).
+   `--accent` was the third and last, found the same way: the `policy` pill measured 4.32:1 in light
+   and 2.97:1 in DARK (white on the lighter indigo), and the same token is the link colour, which was
+   4.32:1 as text. Light #4263eb (4.98:1 both ways), dark #748ffc kept (5.54:1 as text) with the dark
+   badge foreground (5.54:1).
+   At three, this stopped being three fixes and became ONE RULE, which is why it is stated here
+   rather than at each site: **a hue that is both a badge fill and a text colour needs a paired
+   foreground, and the pair — not the hue — is what switches by theme.** `--blocker`, `--medium` and
+   `--low` need no pair because they are only ever fills; the other three are both, and all three
+   were failing on the use the palette was not designed around.
+   `tests/test_map.py::TestThePaletteCarriesTheWarningItIsUsedFor` computes these from this block —
+   a fact about the stylesheet, not a claim about a DOM; the DOM half is the preview walk. */
+:root{--bg:#fbfbfd;--fg:#1c1c1e;--mut:#6b6b70;--card:#fff;--line:#e3e3e8;--accent:#4263eb;
+--code:#f1f1f5;--blocker:#e03131;--high:#ad5a00;--medium:#1971c2;--low:#6c757d;--ok:#28802f;
+--onhigh:#ffffff;--onok:#ffffff;--onaccent:#ffffff;--warnbg:#fff7e6}
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececf1;--mut:#9a9aa2;--card:#1f1f23;
---line:#303036;--accent:#748ffc;--code:#2a2a31;--warnbg:#2e2413}}
+--line:#303036;--accent:#748ffc;--code:#2a2a31;--high:#f08c00;--onhigh:#1f1f23;--ok:#2f9e44;
+--onok:#1f1f23;--onaccent:#1f1f23;--warnbg:#2e2413}}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 background:var(--bg);color:var(--fg)}
 header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap}
@@ -71,7 +117,7 @@ h1{font-size:16px;margin:0;font-weight:650}
 .bar>i{display:block;height:100%;background:var(--ok)}
 .toggle{margin-left:auto;display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .toggle button{border:0;background:var(--card);color:var(--mut);padding:6px 12px;cursor:pointer;font:inherit}
-.toggle button.on{background:var(--accent);color:#fff}
+.toggle button.on{background:var(--accent);color:var(--onaccent)}
 main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0;min-height:calc(100vh - 62px)}
 @media(max-width:720px){main{grid-template-columns:1fr}}
 .list{border-right:1px solid var(--line);overflow-y:auto;max-height:calc(100vh - 62px)}
@@ -79,10 +125,11 @@ main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0;min-height
 .pin:hover{background:var(--card)}.pin.sel{background:var(--card);box-shadow:inset 3px 0 0 var(--accent)}
 .grp{padding:9px 16px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
   color:var(--mut);font-weight:650;border-bottom:1px solid var(--line);background:var(--bg)}
-.pol{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;color:#fff;background:var(--accent)}
+.pol{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;
+  color:var(--onaccent);background:var(--accent)}
 .lnk{color:var(--accent);cursor:pointer;text-decoration:underline}
 .pin .t{font-weight:600;margin-bottom:3px}.pin .m{font-size:12px;color:var(--mut);display:flex;gap:8px;flex-wrap:wrap}
-.sev{padding:1px 7px;border-radius:20px;color:#fff;font-size:11px;font-weight:600}
+.sev{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600}
 .detail{padding:22px 26px;overflow-y:auto;max-height:calc(100vh - 62px)}
 .detail h2{font-size:18px;margin:0 0 4px}.detail .sub{color:var(--mut);margin-bottom:18px}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
@@ -124,9 +171,20 @@ dl.fields dl.fields{grid-column:1/-1;padding-left:12px;border-left:2px solid var
 .dec.mid{border-left-color:var(--medium)}
 .dec.weak{border-left-color:var(--high);background:var(--warnbg)}
 .rung{font-size:11px;font-weight:650;padding:1px 8px;border-radius:20px;background:var(--line);color:var(--fg)}
-.rung.strong{background:var(--ok);color:#fff}.rung.weak{background:var(--high);color:#fff}
+.rung.strong{background:var(--ok);color:var(--onok)}.rung.weak{background:var(--high);color:var(--onhigh)}
 .why{color:var(--mut);font-size:12px;margin-top:7px}
 .warn{color:var(--high);font-size:12px;font-weight:600;margin-top:7px}
+/* The one line that says whether SILENCE settles this pin. It sits under the sub-line rather than
+   in a card because it is not a finding about the pin, it is an instruction to the reader — and
+   only one of the three modes is a countdown, so only that one takes a colour. */
+.mode{font-size:12px;color:var(--mut);margin:-13px 0 16px}
+/* The countdown carries the accent as a BORDER and not as text: `--accent` on `--bg` measures
+   4.32:1 in light mode, and adding a new 12px text element below the text bar while fixing two
+   other tokens for failing it would be this section's own finding, re-committed. A border is a
+   non-text UI element, where 3:1 is the bar, and the words stay at `--fg`. */
+.mode.cd{color:var(--fg);font-weight:600;border-left:3px solid var(--accent);padding-left:9px}
+.trail .item{padding:0 0 0 12px}
+.trail b{font-weight:650}.trail .imp{color:var(--mut);padding:1px 0 0}
 .quote{margin:9px 0 0;padding:5px 0 5px 12px;border-left:3px solid var(--line);font-style:italic;
   overflow-wrap:anywhere}
 __LIVE_STYLE__</style></head><body>
@@ -140,12 +198,20 @@ __LIVE_STYLE__</style></head><body>
 <main><div class="list" id="list"></div><div class="detail" id="detail"></div></main>
 <script>
 const LEDGER = __DATA__;
-const SEV = {blocker:'var(--blocker)',high:'var(--high)',medium:'var(--medium)',low:'var(--low)'};
+// Background AND foreground, because they are not independent: white on the amber that is dark
+// enough to be readable as text is fine, white on the amber that is light enough to be readable ON
+// a dark card is 2.48:1. The pair travels together so a theme cannot change one without the other.
+const SEV = {blocker:{bg:'var(--blocker)',fg:'#fff'}, high:{bg:'var(--high)',fg:'var(--onhigh)'},
+             medium:{bg:'var(--medium)',fg:'#fff'}, low:{bg:'var(--low)',fg:'#fff'}};
 // The states in which a pin has stopped being open, taken from `ledger.SETTLED_STATES` rather than
 // re-listed here. v0.16 made `deferred` one of them and this page went on counting a deferred
 // blocker as an OPEN blocker: the traffic light reported a question the human had already answered,
 // in the loudest colour the page has. A set the schema owns cannot fall behind the schema.
 const SETTLED = new Set(__SETTLED__);
+// The marks a pin carries because something put it BACK in front of the human. From
+// `ledger.REOPENED_SUBSTATES` for the same reason `SETTLED` is from `SETTLED_STATES`: a fourth arc
+// leaving a fourth mark must arrive here rather than be silently unrecognised.
+const REOPENED = new Set(__REOPENED__);
 let view='as_is', sel=null, selPol=null;
 const ENT={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>ENT[c]);
@@ -179,8 +245,28 @@ function h(strings){
 function mount(id,node){document.getElementById(id).innerHTML=frag(node);}
 // A colour from a closed table, never a value off the file: `SEV[p.severity]` reached
 // `constructor` and every other inherited name, and put a function body inside a style attribute.
-function sevColor(s){return has(SEV,String(s))?SEV[String(s)]:'#888';}
-function sevBadge(s){return h`<span class="sev" style="background:${sevColor(s)}">${s}</span>`;}
+// The fallback is a real badge and is held to the same bar as the four named ones: at `#888` it
+// measured 3.54:1 under white, and it is the badge a HOSTILE severity lands on — the one case where
+// the reader most needs to see the value they were handed. `#495057` is 8.18:1 and is deliberately
+// darker than `--low`, so an unrecognised severity never reads as the quietest one.
+const SEV_UNKNOWN={bg:'#495057',fg:'#ffffff'};
+function sevStyle(s){
+  const e=has(SEV,String(s))?SEV[String(s)]:SEV_UNKNOWN;
+  return 'background:'+e.bg+';color:'+e.fg;
+}
+function sevBadge(s){return h`<span class="sev" style="${sevStyle(s)}">${s}</span>`;}
+
+// -- one vocabulary for NOT KNOWING ------------------------------------------------------------
+// The rung case was thought through carefully — THREE states, because "a rung this page does not
+// know" and "no rung recorded" cannot both be true of one card — and then the settlement table,
+// added in the same version, took the older two-state shape and printed an unrecognised
+// `settles_as` as a bare label in the card's key position. One page, one condition, two behaviours.
+// What is shared is the SENTENCE, not the tables: they answer different questions off the same
+// event, and merging them would be the fix overshooting the finding.
+function unknownNote(what,v,consequence){
+  return 'this map does not know the '+what+' `'+v+'` — it was most likely added to the schema '+
+         'after this page was generated, so '+consequence;
+}
 
 // -- as_is / to_be ---------------------------------------------------------------------------
 // The payload is free-form by design (`other` is an open escape hatch, and every kind's shape is
@@ -263,8 +349,7 @@ function rungInfo(r){
   const s=(r==null?'':String(r));
   if(has(RUNG,s)) return {label:RUNG[s].label, cls:RUNG[s].cls, why:RUNG[s].why, known:true};
   if(s) return {label:s, cls:'weak', known:false,
-    warn:'this map does not know the rung `'+s+'` — it was most likely added to the schema after '+
-         'this page was generated, so nothing here says how strong the answer’s road was'};
+    warn:unknownNote('rung',s,'nothing here says how strong the answer’s road was')};
   return {label:'no rung recorded', cls:'weak', known:false,
     warn:'no evidence rung recorded — how this answer reached the ledger is unknown'};
 }
@@ -391,16 +476,37 @@ function rungOf(p){
 // scope. A value this table does not carry is shown as it stands rather than as `decided`.
 const SETTLES={decided:'decided', accepted:'accepted (left as it is)',
                deferred:'deferred (not now)'};
+// ...and a value it does not carry SAYS SO, in the sentence `rungInfo` already uses for the
+// identical condition — a schema that grew after this artifact was written. It used to print the
+// bare token in the card's key position, formatted exactly like the three it understands, so a
+// reader was shown a word the page could not describe and given no sign of it. The `cls` is
+// deliberately NOT touched: the card's colour is the rung's answer, and letting a second axis
+// recolour it would merge two tables that answer different questions off one event.
+function settlesInfo(v){
+  const s=String(v||'decided');
+  if(has(SETTLES,s)) return {label:SETTLES[s], known:true};
+  return {label:s, known:false,
+    warn:unknownNote('settled state',s,'nothing here says what this election produced — the pin’s '+
+                     'own state, in the line under the title, is what the file records')};
+}
 function decisionCard(p){
   const ev=decisionEvent(p.decision.event_id)||{};
   const d=derived(ev);
   const r=d.rung?String(d.rung):(ev.evidence?String(ev.evidence):'');
   const info=rungInfo(r), cls=info.cls;
-  const settles=String(ev.settles_as||'decided');
+  const settles=settlesInfo(ev.settles_as);
   const quote=ev.human_answer?h`<div class="quote">“${ev.human_answer}”</div>`:'';
   let note=info.known?h`<div class="why">${info.why}</div>`
     :h`<div class="warn">⚠ ${info.warn}</div>`;
   const notes=[note];
+  if(!settles.known) notes.push(h`<div class="warn">⚠ ${settles.warn}</div>`);
+  // The card describes the EVENT, which is a historical fact; the pin may since have been handed
+  // back. Without this line the card reads `decided → request_id` on a pin whose sub-line says
+  // `needs_input (challenged)`, which is the same false reading the projected AGENTS.md was fixed
+  // for one surface over — an outcome under dispute formatted exactly like an elected one.
+  if(REOPENED.has(p.substate))
+    notes.push(h`<div class="warn">⚠ this answer is under dispute (${p.substate}) — the pin is back
+      in front of the human, and nothing should be built on it until they answer again</div>`);
   if(r==='transcribed'&&!ev.human_answer)
     notes.push(h`<div class="warn">⚠ relayed with no quote — nothing here separates it from an invention</div>`);
   // A cascaded decision was never answered here: it points at the policy election that produced it,
@@ -434,7 +540,7 @@ function decisionCard(p){
     }
   }
   return h`<div class="card dec ${cls}">
-    <div class="kv"><b>${has(SETTLES,settles)?SETTLES[settles]:settles}</b><span>${p.decision.outcome}</span></div>
+    <div class="kv"><b>${settles.label}</b><span>${p.decision.outcome}</span></div>
     <div class="kv"><b>evidence</b><span class="rung ${cls}">${info.label}</span></div>
     ${pol}${quote}${notes}</div>`;
 }
@@ -504,6 +610,232 @@ function crossCard(x){
     ${a.cls?h`<div class="warn">⚠ two independent providers were asked and did not answer the same
       thing — what you weigh is WHICH derivation holds, not that a check was run</div>`:''}</div>`;
 }
+// -- the rest of the envelope: six fields that were WRITTEN and read here by nothing -------------
+//
+// One change, one information architecture, decided once — because five independent additions to
+// one pane is how a surface acquires five vocabularies. The detail pane is a fixed stack of cards
+// in the order a reader asks the questions, and each card answers '' when its field is absent, so
+// the order below IS the design:
+//
+//   what is it        as-is / to-be           (or the three-column contract diff)
+//   how hard checked  verification            ← the field that decides whether ANY pin may close
+//   who else checked  cross_derivations
+//   what was proposed brainstorm              ← proposals become the options of the fork below
+//   what is asked     question + resolution   ← and whether SILENCE settles it
+//   where it lives    anchors
+//   what was elected  decision
+//   can it land       readiness
+//   what will be done remediation             ← what `resolve` is refused on
+//   how it may die    premortem
+//   how it got here   the trail
+//
+// Nothing here is a raw dump: `sideCard` already offers `raw` for the free-form payloads, and the
+// reason the REST is projected is that a projection is a claim about what matters. Two fields were
+// weighed for exclusion and kept: `premortem` and `readiness` are the only two addressed to a
+// builder rather than to a decider, and they earn the page because each answers a question a reader
+// of a pin actually has — *can the ground bear this* and *what did we already decide would kill it*
+// — with a closed verdict vocabulary the page can colour honestly. They are last for that reason.
+
+// How hard the claim was CHECKED (`verification`, spec v0.7) — three axes reported together, never
+// blended into one number. The rung is a DIFFERENT closed set from a decision's (`how the answer
+// travelled` vs `how the work was verified`), so it is its own table; what is reused is the badge,
+// the strong/weak colouring, and the not-knowing sentence. `test_map.py` holds these keys against
+// `ledger.VERIFICATION_RUNGS` and the `strong` ones against `ledger._CLOSING_RUNGS`, so the two
+// rungs a pin may close on cannot drift from the two this page shows as strong.
+const VRUNG={
+  self_check:{label:'self-check', cls:'weak',
+    why:'the agent re-read its own work — the weakest rung there is, and not one a pin may close on'},
+  re_read:{label:'re-read', cls:'weak',
+    why:'the artifact was read again, over the full diff rather than the output; nothing was run'},
+  observed:{label:'observed', cls:'strong',
+    why:'the behaviour was exercised and watched — this is what `resolved` means, and nothing weaker earns it'},
+  cross_derived:{label:'cross-derived', cls:'strong',
+    why:'a second provider re-derived the same claim independently and agreed — a single-provider invention rarely reproduces cross-provider'}};
+function vrungInfo(r){
+  const s=(r==null?'':String(r));
+  if(has(VRUNG,s)) return {label:VRUNG[s].label, cls:VRUNG[s].cls, why:VRUNG[s].why, known:true};
+  if(s) return {label:s, cls:'weak', known:false,
+    warn:unknownNote('verification rung',s,'nothing here says how hard this was actually checked')};
+  return {label:'no rung recorded', cls:'weak', known:false,
+    warn:'no verification rung recorded — a pin carrying none records LESS than one at a weak rung, '+
+         'so this cannot close as `resolved` until something is observed'};
+}
+const DET={D0:'D0 — a carrier computed it; the same input gives the same answer',
+           D1:'D1 — reconstructible from a pinned artifact',
+           D2:'D2 — model judgment on the path, not a computation'};
+function verificationCard(p){
+  const v=p.verification||null;
+  if(!v&&!p.evidence)return '';
+  const info=vrungInfo(v?v.rung:null);
+  const det=v&&v.determinism?String(v.determinism):'';
+  return h`<div class="card dec ${info.cls}">
+    <div class="ch">verification — how hard this was checked</div>
+    <div class="kv"><b>rung</b><span class="rung ${info.cls}">${info.label}</span></div>
+    ${det?h`<div class="kv"><b>reproduces</b><span>${has(DET,det)?DET[det]:det}</span></div>`:''}
+    ${p.evidence?h`<div class="kv"><b>observation</b><span>${p.evidence}</span></div>`:''}
+    ${v&&(v.attempted||[]).length?h`<div class="kv"><b>attempted</b>
+      <span class="chips">${v.attempted.map(scalarHTML)}</span></div>`:''}
+    ${v&&(v.cross_derived_by||[]).length?h`<div class="kv"><b>agreed by</b>
+      <span class="chips">${v.cross_derived_by.map(scalarHTML)}</span></div>`:''}
+    ${v&&!isBlank(v.evidence)?h`<div class="kv"><b>checks</b><span>${valueHTML(v.evidence)}</span></div>`:''}
+    ${info.known?h`<div class="why">${info.why}</div>`:h`<div class="warn">⚠ ${info.warn}</div>`}
+    ${v&&v.blocked_by?h`<div class="warn">⚠ this pin cannot close: ${v.blocked_by}</div>`:''}</div>`;
+}
+
+// What the brainstorm proposed. `add_proposals` is the only writer of the `brainstorming` state and
+// its proposals are what the fork below is supposed to be answerable from, so a page that shows the
+// fork and not the proposals shows the menu with the dishes removed. Neutral by construction: a
+// proposal carries no outcome (the writer refuses one), and `recommended` is the brainstorm's own
+// mark, never a default.
+function brainstormCard(p){
+  const b=p.brainstorm||null; const props=b?(b.proposals||[]):[];
+  if(!props.length&&!(b&&b.notes))return '';
+  return h`<div class="card"><div class="ch">brainstorm — proposals, not decisions</div>
+    ${props.map(x=>h`<div class="opt"><b>${x.summary||x.id}</b>
+      ${x.recommended?h`<span class="rung strong">recommended</span>`:''}
+      <div class="imp">${x.id}${x.effort?' · effort '+x.effort:''}${x.tradeoff?' — '+x.tradeoff:''}</div></div>`)}
+    ${b&&b.notes?h`<div class="why">${b.notes}</div>`:''}</div>`;
+}
+
+// Whether SILENCE settles this pin. `proposed_default` is the funnel's whole compression argument —
+// *this one will be settled with the proposed answer unless you object* — and on this page such a
+// pin was a row reading `needs_input`, identical to one nobody will settle without asking.
+// Only the countdown is coloured: badging all three would turn the signal into decoration, and
+// `policy_default` is already the decision card's story one card down.
+// Rendered only while the pin is open — on a settled pin the mode is history, and printing "a rule
+// may settle this without you" over an answered question is the rule-printed-on-the-wrong-object
+// bug this register spent a round removing.
+// One honest consequence of that gate, stated rather than left to be discovered: on a ledger THIS
+// runtime wrote, `policy_default` only ever sits on a settled pin (`apply_policy` writes the mode
+// in the same breath as the decision), so that clause fires only on a file we did not write. It is
+// here because `RESOLUTION_MODES` is closed and a value with no sentence would fall through to
+// "a mode this map does not know" — which would be false, and the preview fixture carries such a
+// pin so the clause is looked at rather than assumed.
+const MODE={
+  asked:{cd:false,
+    why:'this one must be ASKED: no standing rule and no proposed default may settle it for you'},
+  policy_default:{cd:false,
+    why:'a standing rule may settle this one on your behalf — the rule, and how you elected it, are on its own card'},
+  proposed_default:{cd:true,
+    why:'if you say nothing, the interview settles this with the proposed answer — here, silence IS the answer'}};
+function modeLine(p){
+  if(SETTLED.has(p.state))return '';
+  const m=p.resolution_mode; if(m==null||m==='')return '';
+  const s=String(m);
+  if(!has(MODE,s))
+    return h`<div class="mode cd">⚠ ${unknownNote('resolution mode',s,
+      'nothing here says whether your silence would settle this pin')}</div>`;
+  return MODE[s].cd ? h`<div class="mode cd">⏳ ${MODE[s].why}</div>`
+                    : h`<div class="mode">${MODE[s].why}</div>`;
+}
+
+// Can the ground bear the change (`readiness`, v0.8) — a D2 verdict over D0 evidence, and the
+// object records both rather than blending them, so this card does too.
+const READY={ready:{label:'ready', cls:'strong'},
+             harden_first:{label:'harden first', cls:'weak'},
+             redesign:{label:'redesign', cls:'weak'}};
+function readinessCard(p){
+  const r=p.readiness||null; if(!r)return '';
+  const v=String(r.verdict||'');
+  const info=has(READY,v)?READY[v]:{label:v||'no verdict recorded', cls:'weak'};
+  const zone=r.zone||{};
+  return h`<div class="card dec ${info.cls}"><div class="ch">landing zone — can the ground bear it</div>
+    <div class="kv"><b>verdict</b><span class="rung ${info.cls}">${info.label}</span></div>
+    ${(zone.files||[]).length?h`<div class="kv"><b>zone</b>
+      <span class="chips">${zone.files.map(scalarHTML)}</span></div>`:''}
+    ${(r.hardens||[]).length?h`<div class="kv"><b>blocked on</b>
+      <span class="chips">${r.hardens.map(scalarHTML)}</span></div>`:''}
+    ${r.rationale?h`<div class="why">${r.rationale}</div>`:''}
+    ${has(READY,v)?'':h`<div class="warn">⚠ ${unknownNote('readiness verdict',v,
+      'nothing here says whether the ground was judged fit')}</div>`}</div>`;
+}
+
+// The plan, and the reason a pin will not close. `resolve` is refused while ANY item is open
+// (`remediation_open`), and that refusal was readable on this page nowhere: the reader who asks
+// *why is this still open* had to open the JSON to find an item at `todo`.
+const REM_STATUS={todo:'to do', in_progress:'in progress', done:'done'};
+function remediationCard(p){
+  const items=p.remediation||[]; if(!items.length)return '';
+  const done=items.filter(i=>i&&i.status==='done').length;
+  return h`<div class="card"><div class="ch">remediation — what has to happen</div>
+    ${items.map(i=>{
+      const st=String(i.status||'');
+      return h`<div class="opt"><b>${i.action}</b>
+        <span class="bool">${has(REM_STATUS,st)?REM_STATUS[st]:st}</span>
+        <div class="imp">${i.id} · ladder rung ${i.ladder_rung}${
+          i.canonical_target?' → '+i.canonical_target:''}${
+          i.build_track?' · track '+i.build_track:''}${
+          i.contract_carrier?' · carrier '+i.contract_carrier:''}</div></div>`;})}
+    ${done<items.length
+      ? h`<div class="warn">⚠ ${done} of ${items.length} done — this pin cannot be resolved until every item is</div>`
+      : h`<div class="why">every item is done, so this pin is resolvable once an observation reaches the closing rung</div>`}</div>`;
+}
+
+// How the work dies anyway (`premortem`, v0.9) — the challenger's second mode. It writes guardrails
+// and abort criteria and never a decision, so this card carries no colour of election: it is D2 and
+// says so. A `paper_tiger` is a risk already mitigated and must carry the evidence of that, which is
+// the only part of it worth reading twice.
+function premortemCard(p){
+  const m=p.premortem||null; if(!m)return '';
+  const chips=(xs)=>h`<span class="chips">${(xs||[]).map(scalarHTML)}</span>`;
+  return h`<div class="card"><div class="ch">premortem — assume it already failed</div>
+    ${(m.failure_modes||[]).map(f=>h`<div class="opt"><b>${f.class}</b>
+      <div class="imp">${f.description||f.detail||''}</div></div>`)}
+    ${(m.guardrails||[]).length?h`<div class="kv"><b>guardrails</b>${chips(m.guardrails)}</div>`:''}
+    ${(m.abort_criteria||[]).length?h`<div class="kv"><b>abort if</b>${chips(m.abort_criteria)}</div>`:''}
+    ${(m.paper_tigers||[]).map(t=>h`<div class="opt"><b>dismissed: ${t.risk}</b>
+      <div class="imp">already mitigated — ${t.evidence}</div></div>`)}
+    <div class="why">imagining how it dies is judgment (D2), recorded as judgment</div></div>`;
+}
+
+// -- how this pin got where it is: the whole trail, not only the decisions ----------------------
+// The page read exactly one of the six kinds of entry the runtime appends (`ev_`), so it could show
+// that a pin was settled and never HOW it stopped being open, or that it had ever been un-closed —
+// which is the question `SETTLEMENT_DOORS` and the two reopen arcs exist to answer. Every entry is
+// already inlined; none of them was on the page.
+// A timeline was deliberately not built until the reopen arcs were reachable (they now are), because
+// a timeline whose rows no host can produce is verified against fixtures only.
+// This does NOT duplicate the decision card: that card weighs the CURRENT answer's rung, this says
+// what happened, in order. One label and one sentence per kind, from a closed table held against
+// `ledger.LOG_ENTRY_PREFIXES`, so a seventh kind arrives here instead of being silently dropped.
+const TRAIL={
+  // The rung is READ through `derived`, exactly as the decision card reads it, and not taken off
+  // `e.evidence`. Caught by looking at the page: on the pre-v0.11 cascade the card said "cascaded
+  // from a policy" and this row said "transcribed" — one page, one event, two answers, which is the
+  // divergence `derived_rungs` exists to prevent and which a second reader re-introduced.
+  ev_:{label:'decision', line:e=>{
+    const d=derived(e), r=d.rung?String(d.rung):(e.evidence?String(e.evidence):'');
+    return h`elected ${e.outcome} → ${settlesInfo(e.settles_as).label}${
+      r?' · '+rungInfo(r).label:''}`;}},
+  stl_:{label:'settlement', line:e=>h`${e.door}: ${e.from_state} → ${e.to_state}${
+    e.verification_rung?' · '+vrungInfo(e.verification_rung).label:''}`},
+  chl_:{label:'challenge', line:e=>h`${e.class} against the ${e.target} — ${
+    e.upheld?'upheld':'not upheld'}${e.reopened?', pin reopened':''}. ${e.argument||''}`},
+  xdr_:{label:'cross-derivation', line:e=>h`${e.agreement} on: ${e.claim}${
+    e.reopened?' — pin reopened':''}`},
+  fal_:{label:'failure', line:e=>h`${e.class} in ${e.phase} — ${e.detail}`},
+  rev_:{label:'reopen', line:e=>h`${e.fired} (${e.source})${e.reopened?'':' — nothing was settled to reopen'} — ${e.reason}`}};
+function trailKind(id){
+  const s=String(id||'');
+  const keys=Object.keys(TRAIL);
+  for(let i=0;i<keys.length;i++) if(s.indexOf(keys[i])===0) return keys[i];
+  return '';
+}
+function trailCard(p){
+  const log=LEDGER.decision_log||[];
+  const mine=[];
+  for(let i=0;i<log.length;i++) if(log[i]&&log[i].pin_id===p.id) mine.push(log[i]);
+  if(!mine.length)return '';
+  return h`<div class="card trail"><div class="ch">trail — how this pin got here</div>
+    <div class="items">${mine.map(e=>{
+      const k=trailKind(e.id);
+      if(!k) return h`<div class="item"><b>unrecognised entry</b>
+        <div class="imp">⚠ ${unknownNote('log entry',String(e.id||'(no id)'),
+          'this step is in the file and cannot be described here')}</div></div>`;
+      return h`<div class="item"><b>${TRAIL[k].label}</b> ${TRAIL[k].line(e)}
+        <div class="imp">${e.id} · ${e.timestamp||'no timestamp'}</div></div>`;})}</div></div>`;
+}
+
 function contractCols(p){
   const a=p.as_is||{}; const dis=new Set(a.disagreeing_layers||[]);
   const layers=Object.keys(a).filter(k=>k!=='disagreeing_layers');
@@ -522,10 +854,13 @@ function detail(p){
   if(cols) body.push(cols);
   else if(!isBlank(side)) body.push(sideCard(side,label));
   else body.push(h`<div class="card nul">no ${label} yet</div>`);
-  // Before the question, because it is the evidence the question rests on: `cross_derive` leaves
+  // Before the question, because they are the evidence the question rests on: `cross_derive` leaves
   // the human's own fork untouched, so without this card the menu arrives with no account of why
-  // the pin was reopened.
+  // the pin was reopened — and `verification.blocked_by` is the one sentence that makes a
+  // `correctness_unknown` pin answerable at all.
+  body.push(verificationCard(p));
   if((p.cross_derivations||[]).length) body.push(p.cross_derivations.map(crossCard));
+  body.push(brainstormCard(p));
   if(p.question) body.push(h`<div class="card q"><b>Interview question</b><p>${p.question.prompt}</p>
     ${(p.question.options||[]).map(o=>h`<div class="opt"><b>${o.label}</b>${o.implication?h`<div class="imp">→ ${o.implication}</div>`:''}</div>`)}</div>`);
   if((p.anchors||[]).length) body.push(h`<div class="card anchors"><b>Anchors</b>
@@ -539,7 +874,11 @@ function detail(p){
       return h`<code>${a.layer||''} ${a.loc||a.node_id||''}${nid}</code>${br}`;
     })}</div>`);
   if(p.decision) body.push(decisionCard(p));
-  return h`<h2>${p.title}</h2><div class="sub">${sevBadge(p.severity)} · ${p.kind} · ${p.state}${p.substate?' ('+p.substate+')':''}</div>${body}`;
+  body.push(readinessCard(p));
+  body.push(remediationCard(p));
+  body.push(premortemCard(p));
+  body.push(trailCard(p));
+  return h`<h2>${p.title}</h2><div class="sub">${sevBadge(p.severity)} · ${p.kind} · ${p.state}${p.substate?' ('+p.substate+')':''}</div>${modeLine(p)}${body}`;
 }
 function select(i){sel=i;selPol=null;renderList();mount('detail',detail((LEDGER.pins||[])[i]));}
 function selectPolicy(j){selPol=j;sel=null;renderList();
@@ -647,8 +986,28 @@ def weak_policies(ledger_data: dict) -> dict:
     return out
 
 
+#: The characters JSON may hold that JavaScript-inside-HTML may not, and their JSON escapes. Two
+#: different holes, one table, because the mistake both times was fixing a SITE instead of the step.
+#:
+#: `<` is the HTML side: it cannot appear in JSON outside a string (the structural characters are
+#: `{}[],:"` and the literals), so `<` is always the right encoding of it and always
+#: round-trips.
+#:
+#: U+2028 / U+2029 are the JavaScript side, and they are the classic JSON-is-not-a-JS-subset hole:
+#: legal inside a JSON string, statement terminators inside a pre-ES2019 string literal. Measured
+#: rather than assumed — a page carrying both raw was opened in Chromium and there was no failure,
+#: because ES2019's JSON-superset proposal made them legal in string literals. So this is a stated
+#: discipline being made whole, not an observed breakage, and it is written down at that strength.
+#: Escaping them costs nothing: an escaped U+2028 inside a JSON string is the same character, so
+#: `test_the_data_survives_the_escape_intact` covers them for free.
+#:
+#: What is deliberately NOT done is `ensure_ascii=True`. The ledger is full of non-ASCII prose (the
+#: preview fixture is largely Italian) and escaping all of it would multiply the page for no reader.
+_SCRIPT_UNSAFE = str.maketrans({"<": "\\u003c", "\u2028": "\\u2028", "\u2029": "\\u2029"})
+
+
 def _inline(value) -> str:
-    """A JSON payload safe to sit inside a `<script>` element — by carrying no `<` at all.
+    """A JSON payload safe to sit inside a `<script>` element — the ONLY way data gets there.
 
     `.replace("</", "<\\/")` closed exactly one of the two ways out of an inline script, and the
     other one blanked the whole page: HTML's script-data tokenizer treats `<!--` followed later by
@@ -659,17 +1018,25 @@ def _inline(value) -> str:
     reads as "no findings", which is the worst thing this surface can say.**
 
     So the escape is not a longer list of dangerous sequences — it is the character all of them
-    need. `<` cannot appear in JSON outside a string (the structural characters are `{}[],:"` and
-    the literals), so `\\u003c` is always the right encoding of it and always round-trips: the
-    payload stays valid JSON, and `json.loads` on the inlined text still returns the ledger.
+    need. That sentence was true of the HTML hole and said nothing about the second one: U+2028 and
+    U+2029 are legal in a JSON string and were statement terminators inside a pre-ES2019 JavaScript
+    string literal, and `ensure_ascii=False` emitted them raw. One character per HOLE, and the holes
+    are enumerated in `_SCRIPT_UNSAFE` above with what each is.
+
+    **This function is the only path, which is what makes that enumeration worth anything.** Every
+    payload the page carries is substituted by `render` from a call to this function — `__DATA__`,
+    `__DERIVED__`, `__WEAK_POLICIES__`, `__SETTLED__` — and `json.dumps` is called nowhere else in
+    this module. `tests/test_map.py::TestTheOnlyWayDataEntersThePage` asserts both by AST, because
+    the two escaping bugs this file has had were both a SITE that did not go through the mechanism,
+    and a fifth payload inlined by hand would be the third.
     """
-    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c")
+    return json.dumps(value, ensure_ascii=False).translate(_SCRIPT_UNSAFE)
 
 
 #: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
 #: so no substitution can ever run over content a previous one inlined.
 _PLACEHOLDER_RE = re.compile(
-    r"__(?:DATA|DERIVED|WEAK_POLICIES|SETTLED|TITLE|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
+    r"__(?:DATA|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|TITLE|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
 
 
 def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
@@ -691,7 +1058,7 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
     the order of the lines around it. An unknown placeholder raises `KeyError` here rather than
     surviving into the page as literal text.
     """
-    from ledger import SETTLED_STATES
+    from ledger import REOPENED_SUBSTATES, SETTLED_STATES
     values = {
         # script-safe: no `<` from the data reaches the page's script text at all (`_inline`)
         "__DATA__": _inline(ledger_data),
@@ -699,6 +1066,9 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
         "__WEAK_POLICIES__": _inline(weak_policies(ledger_data)),
         # the schema's own set, so the page cannot fall behind it (v0.16 added `deferred`)
         "__SETTLED__": _inline(list(SETTLED_STATES)),
+        # the marks the two reopen arcs and `cross_derive` leave, so a disputed answer cannot read
+        # as an elected one on the card that prints it (v0.19)
+        "__REOPENED__": _inline(list(REOPENED_SUBSTATES)),
         "__TITLE__": html.escape(title or "ledger"),
         "__LIVE_STYLE__": _LIVE_STYLE if live else "",
         "__LIVE_BADGE__": _LIVE_BADGE if live else "",

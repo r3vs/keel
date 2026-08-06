@@ -8,7 +8,9 @@ bridge is idempotent and parseable by Claude Code's own import rules.
 """
 from __future__ import annotations
 
+import ast
 import os
+import pathlib
 import sys
 import unittest
 
@@ -146,38 +148,129 @@ class TestArrivingInASectionThatInvertsTheMeaning(unittest.TestCase):
     this file is: bytes an agent reads before it writes anything.
     """
 
-    def test_a_deferred_pin_does_not_clip_the_decisions_that_say_what_to_build(self):
-        """Six deferred blockers + six decided mediums at `max_lines=22`: severity-then-id put all
-        six `— **defer**` lines FIRST and clipped two elected decisions to `(+2 more)`. `deferred`
-        is the one settled state whose instruction is *do not build this*, so in a byte-budgeted
-        always-on context it was outranking the pins that say what to build."""
-        pins = [_pin(f"p_{i:04d}", "incompleteness", f"deferred blocker {i}", "deferred",
-                     "blocker", outcome="defer") for i in range(6)]
+    def test_a_leave_as_is_pin_does_not_clip_the_decisions_that_say_what_to_build(self):
+        """Six do-not-build blockers + six decided mediums at `max_lines=22`: severity-then-id put
+        all six FIRST and clipped two elected decisions to `(+2 more)`, in the file an agent reads
+        before writing anything.
+
+        Three of the six are `accepted` and three `deferred`, because the first fix at this line
+        named only `deferred` and an `accepted` blocker went on outranking an elected medium under
+        exactly the same clip. What survives the budget is now decided by which SECTION a pin is in,
+        not by a boolean in a sort key."""
+        pins = [_pin(f"p_{i:04d}", "design_concern", f"left as it is {i}", "accepted",
+                     "blocker", outcome="keep") for i in range(3)]
+        pins += [_pin(f"p_{i:04d}", "incompleteness", f"deferred blocker {i}", "deferred",
+                      "blocker", outcome="defer") for i in range(3, 6)]
         pins += [_pin(f"p_{i:04d}", "open_decision", f"elected medium {i}", "decided",
                       "medium", outcome=f"choice_{i}") for i in range(6, 12)]
         log = [{"id": f"ev_{i:04d}", "pin_id": p["id"], "evidence": "transcribed",
                 "human_answer": "yes"} for i, p in enumerate(pins)]
         body = ins.render({"pins": pins, "decision_log": log, "policies": []}, max_lines=22)
-        self.assertRegex(body, r"\(\+2 more")               # the budget still clips two
+        self.assertRegex(body, r"\(\+4 more")               # the budget clips, and says so
         clipped = [p["id"] for p in pins if f"`{p['id']}`" not in body]
-        self.assertEqual(len(clipped), 2)
         elected = {p["id"] for p in pins if p["state"] == "decided"}
         self.assertEqual(elected & set(clipped), set(),
-                         f"an elected decision was clipped while a deferral survived: {clipped}")
+                         f"an elected decision was clipped while a do-not-build pin survived: "
+                         f"{clipped}")
         lines = [ln for ln in body.splitlines() if ln.startswith("- `p_")]
         last_elected = max(i for i, ln in enumerate(lines) if "**choice_" in ln)
-        first_defer = min((i for i, ln in enumerate(lines) if "**defer**" in ln), default=len(lines))
-        self.assertLess(last_elected, first_defer,
-                        "every deferral sorts after every other settled pin, so the budget "
-                        "reaches them last")
+        first_leave = min((i for i, ln in enumerate(lines)
+                           if "**defer**" in ln or "**keep**" in ln), default=len(lines))
+        self.assertLess(last_elected, first_leave,
+                        "the do-not-build section must come after the one that says what to build, "
+                        "so the budget reaches it last")
 
-    def test_the_settled_heading_says_what_a_defer_outcome_means(self):
-        """A `deferred` pin listed under a bare *build on these* reads as the opposite of itself."""
-        body = ins.render({"pins": [_pin("p_0001", "open_decision", "multi-tenant isolation",
-                                         "deferred", "blocker", outcome="defer")],
-                           "decision_log": [], "policies": []})
-        heading = [ln for ln in body.splitlines() if ln.startswith("### Settled")][0]
-        self.assertIn("defer", heading)
+    def test_each_settled_heading_is_true_of_every_pin_under_it(self):
+        """A `deferred` pin listed under a bare *build on these* reads as the opposite of itself,
+        and so does an `accepted` one — which the first version of this heading did not say, because
+        it named `defer` and stopped. The states are read out of `ledger.LEAVE_AS_IS_STATES`, so the
+        heading cannot fall behind the set it describes."""
+        from ledger import LEAVE_AS_IS_STATES
+        pins = [_pin("p_0001", "open_decision", "multi-tenant isolation", "deferred", "blocker",
+                     outcome="defer"),
+                _pin("p_0002", "design_concern", "duplicated parser", "accepted", "high",
+                     outcome="keep"),
+                _pin("p_0003", "open_decision", "persistence", "decided", "high", outcome="pg")]
+        body = ins.render({"pins": pins, "decision_log": [], "policies": []}, max_lines=200)
+        build_on, leave = body.split("### Settled — elected NOT to be built")
+        self.assertIn("`p_0003`", build_on)
+        for state in LEAVE_AS_IS_STATES:
+            self.assertIn(f"`{state}`", leave.splitlines()[0],
+                          f"the heading does not name {state}, so a pin in it reads as buildable")
+        self.assertIn("`p_0001`", leave)
+        self.assertIn("`p_0002`", leave)
+        self.assertNotIn("`p_0002`", build_on)
+
+    def test_an_outcome_under_dispute_is_not_printed_as_a_build_instruction(self):
+        """A pin reopened by the feedback arc, by an upheld challenge or by a cross-derivation
+        disagreement still carries the outcome it was elected with. Printing it bare formats a
+        contradicted answer exactly like an elected one — and the heading above forbids *deciding*,
+        not *building on*. Every substate the schema names is walked, not the one that was found."""
+        from ledger import REOPENED_SUBSTATES
+        for substate in REOPENED_SUBSTATES:
+            with self.subTest(substate=substate):
+                pin = _pin("p_0001", "ambiguity", "outbox flush order", "needs_input", "high",
+                           outcome="after")
+                pin["substate"] = substate
+                body = ins.render({"pins": [pin], "decision_log": [], "policies": []})
+                line = [ln for ln in body.splitlines() if ln.startswith("- `p_0001`")][0]
+                self.assertIn("**after**", line)
+                self.assertIn(substate, line, "the outcome is printed with no sign it is disputed")
+                self.assertIn("do not build on this answer", line)
+
+    def test_an_undisputed_outcome_pays_nothing_for_that_clause(self):
+        """The mark is bought on the pins that carry the substate and on no others — which is what
+        separates it from the per-pin state token this file refuses on byte grounds."""
+        pin = _pin("p_0001", "open_decision", "persistence", "decided", "high", outcome="pg")
+        line = [ln for ln in ins.render({"pins": [pin], "decision_log": [], "policies": []})
+                .splitlines() if ln.startswith("- `p_0001`")][0]
+        self.assertTrue(line.endswith("**pg**"), line)
+
+
+class TestNoStateNameIsKeptInThisFile(unittest.TestCase):
+    """`TestEveryStateReachesTheRegion` states the rule — *a set the schema owns cannot be kept
+    here, because a state added there does not come here* — and this module went on comparing
+    `pin.get("state") == "deferred"` inside `_settled_order`, which is the same rule broken by one
+    literal. No gate forbade it, so a fifth settled state with leave-as-is semantics would have
+    silently inherited today's placement.
+
+    Asserted over the AST rather than over the text, and with docstrings excluded, because the
+    words are legitimately in the prose of this file — what must not exist is a state name used as a
+    VALUE. The honest limit: a state name assembled at runtime (`"defer" + "red"`) would not be
+    seen. That is not a limit worth closing; it is a limit worth stating."""
+
+    @staticmethod
+    def _docstring_nodes(tree) -> set:
+        out = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                first = node.body[0] if node.body else None
+                if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                        and isinstance(first.value.value, str)):
+                    out.add(id(first.value))
+        return out
+
+    def test_no_schema_state_is_written_as_a_literal(self):
+        from ledger import STATES
+        tree = ast.parse(pathlib.Path(ins.__file__).read_text(encoding="utf-8"))
+        docstrings = self._docstring_nodes(tree)
+        found = [node.value for node in ast.walk(tree)
+                 if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                 and id(node) not in docstrings and node.value in STATES]
+        self.assertEqual(found, [], f"a state name is a value in this module: {found}. The sets are "
+                                    "the schema's — read them, do not name their members.")
+
+    def test_the_guard_sees_a_planted_one(self):
+        """Non-vacuous by construction: the same walk over a module that DOES name a state finds it,
+        so a green run above means the names are gone rather than that the walk is looking wrong."""
+        from ledger import STATES
+        tree = ast.parse('def f(p):\n    """docstring naming deferred"""\n'
+                         '    return p["state"] == "deferred"\n')
+        docstrings = self._docstring_nodes(tree)
+        found = [n.value for n in ast.walk(tree)
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                 and id(n) not in docstrings and n.value in STATES]
+        self.assertEqual(found, ["deferred"])
 
     def test_a_correctness_unknown_pin_does_not_reach_the_agent_as_an_unanswered_question(self):
         """The state means *elected, and we could not establish that it worked*. Its outcome was

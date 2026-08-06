@@ -1555,6 +1555,110 @@ class TestOneWriterForTheSettledStates(unittest.TestCase):
 
 
 
+class TestTheDistinctionsASurfaceSortsAndTITLESBy(unittest.TestCase):
+    """v0.19 — two sets a projection was answering with literals.
+
+    `instructions.py` sorted on `state == "deferred"` and headed the section *build on these
+    (`defer` = elected NOT to build)*, while `settlement_verdict` defines `accept` as leaving the
+    concern exactly as it is — the same instruction, one state over, unnamed. And `_pin_line`
+    printed a reopened pin's disputed outcome with no marker at all, because nothing in that file
+    read `substate`: `grep -c substate` returned 0.
+
+    Both sets belong to the schema for the reason every set in that block does — a state added here
+    must arrive at the surfaces that sort and title by it — so both are asserted against the
+    carriers rather than against a second copy of the list."""
+
+    @staticmethod
+    def _tree():
+        import ast
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            return ast.parse(fh.read(), filename=path), ast
+
+    def test_the_leave_as_is_states_are_settled_states_and_not_all_of_them(self):
+        import ledger as mod
+        self.assertLess(set(mod.LEAVE_AS_IS_STATES), set(mod.SETTLED_STATES),
+                        "a leave-as-is state that is not settled, or a set covering every settled "
+                        "state — either way the split it exists to make has stopped being a split")
+
+    def test_the_two_doors_whose_outcome_is_leave_it_alone_produce_exactly_these(self):
+        """Anchored on `_STATE_BY_DOOR`, which is what the doors actually write, so the membership
+        question is answered by the table and not by remembering which two doors those were."""
+        import ledger as mod
+        self.assertEqual(set(mod.LEAVE_AS_IS_STATES),
+                         {mod._STATE_BY_DOOR["accept"], mod._STATE_BY_DOOR["defer"]})
+        self.assertEqual(set(mod.SETTLED_STATES) - set(mod.LEAVE_AS_IS_STATES),
+                         {mod._STATE_BY_DOOR["decide"], mod._STATE_BY_DOOR["resolve"]},
+                         "the complement must be exactly the two doors that DO produce work")
+
+    def test_every_substate_a_writer_writes_is_one_a_reader_knows(self):
+        """AST over every assignment to `pin["substate"]`, in both shapes it comes in.
+
+        Two writers, two shapes, and the test has to hold both or it holds nothing: `cross_derive`
+        assigns the literal `"contested"`, `_reopen_minimal` assigns a lookup in `_SUBSTATE_BY_ARC`.
+        So every literal must be a member of the set, every non-literal must come out of the one
+        table the set is COMPOSED from, and the literals must not be an empty set — a fourth arc
+        introducing a fourth mark, or reading a second table, fails here rather than printing a
+        disputed outcome as an elected one on a surface that never heard of it."""
+        import ledger as mod
+        tree, ast = self._tree()
+        literals, tables = set(), set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if not (isinstance(target, ast.Subscript)
+                        and isinstance(target.slice, ast.Constant)
+                        and target.slice.value == "substate"):
+                    continue
+                if isinstance(node.value, ast.Constant):
+                    literals.add(node.value.value)
+                elif isinstance(node.value, ast.Name):
+                    tables.add(node.value.id)      # the local the table lookup was bound to
+                elif (isinstance(node.value, ast.Subscript)
+                      and isinstance(node.value.value, ast.Name)):
+                    tables.add(node.value.value.id)
+                else:
+                    self.fail(f"a substate written by an expression this guard cannot follow: "
+                              f"{ast.dump(node.value)[:80]}")
+        self.assertTrue(literals, "no substate literal anywhere — this guard just went vacuous")
+        self.assertLessEqual(literals, set(mod.REOPENED_SUBSTATES),
+                             "a mark written by a writer and known to no reader")
+        self.assertEqual(tables, {"substate"},
+                         "the table-driven writer stopped being the one this set is composed from")
+        arc_local = next(fn for fn in ast.walk(tree)
+                         if isinstance(fn, ast.FunctionDef) and fn.name == "_reopen_minimal")
+        source = ast.dump(arc_local)
+        self.assertIn("_SUBSTATE_BY_ARC", source,
+                      "`_reopen_minimal` no longer reads the arc table `REOPENED_SUBSTATES` is "
+                      "built from, so the two have begun to drift")
+        self.assertEqual(set(mod.REOPENED_SUBSTATES),
+                         literals | set(mod._SUBSTATE_BY_ARC.values()))
+
+    def test_a_re_election_clears_the_mark(self):
+        """The mark means *disputed and not re-answered*, not *was disputed once* — otherwise a pin
+        the human answered again would keep telling every reader not to build on it."""
+        led = make_ledger()
+        pin = led.add_pin(kind="ambiguity", title="outbox order", severity="high",
+                          confidence="ambiguous", provenance=[{"source": "r", "detail": "d"}],
+                          as_is={"claim": "after"},
+                          question={"prompt": "when?",
+                                    "options": [{"id": "after", "label": "after commit"},
+                                                {"id": "inside", "label": "inside"}],
+                                    "allow_freeform": True})
+        led.decide(pin["id"], outcome="after", rationale="documented", flip_criteria="a duplicate",
+                   evidence="transcribed", human_answer="after commit")
+        led.cross_derive(pin["id"], claim="the flush runs after commit",
+                         derivations=[{"provider": "anthropic", "model": "opus", "result": "no"},
+                                      {"provider": "openai", "model": "gpt-5", "result": "yes"}],
+                         agreement="disagree")
+        self.assertEqual(pin["substate"], "contested")
+        led.decide(pin["id"], outcome="inside", rationale="the code is the contract",
+                   flip_criteria="the comment is corrected", evidence="transcribed",
+                   human_answer="inside — the code wins")
+        self.assertIsNone(pin.get("substate"))
+
+
 class TestARuleIsTrueOfTheThingItIsPrintedOn(unittest.TestCase):
     """v0.18 — four rules whose writer and whose reader disagreed about what they meant.
 

@@ -17,8 +17,10 @@ everywhere else; it would pass on a renderer that never runs.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
+import pathlib
 import re
 import sys
 import tempfile
@@ -439,6 +441,408 @@ class TestACrossDerivationHasAReader(unittest.TestCase):
         self.assertEqual(record["agreement"], "disagree")
         self.assertEqual([d["result"] for d in record["derivations"]],
                          ["yes — the ack deadline expires", "no — the row is marked taken first"])
+
+
+class TestThePaletteCarriesTheWarningItIsUsedFor(unittest.TestCase):
+    """The amber is not decoration: it is the entire mechanism by which *"⚠ relayed with no quote"*
+    reads as weaker than a green elicited card, and the spec permits the weak rung **on the grounds
+    that it is made visible**. At `#f08c00` it measured 2.48:1 as text on the light card and 2.33:1
+    on the tinted warn card — a warning nobody can read at a glance is the same failure as a warning
+    nobody prints, arriving by a different route.
+
+    The honest limit, stated rather than oversold: this computes WCAG ratios from the `:root` block
+    of our own stylesheet. It is a fact about the declared palette, NOT a claim about any DOM — the
+    cascade, an override, a force-dark browser and a user stylesheet all sit between the two. The
+    DOM half is `scripts/preview_map.py`, item 19, in a browser, in light mode on purpose.
+
+    Both themes are computed, because the badge case is theme-independent (white on amber is white
+    on amber wherever the card sits) and the text case is not — which is exactly why one token could
+    not serve both and the foreground had to split.
+    """
+
+    #: WCAG 2.x: 4.5:1 for body text, 3:1 for a UI component or large text. The badge is 11px bold,
+    #: which is neither, so it is held to the text bar wherever the palette can reach it — and where
+    #: it cannot, the number is in the stylesheet comment rather than absent.
+    TEXT, UI = 4.5, 3.0
+
+    @staticmethod
+    def _luminance(value: str) -> float:
+        value = value.lstrip("#")
+        if len(value) == 3:
+            value = "".join(c * 2 for c in value)
+        parts = [int(value[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in parts]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+    @classmethod
+    def _ratio(cls, a: str, b: str) -> float:
+        la, lb = cls._luminance(a), cls._luminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+    @classmethod
+    def _palettes(cls) -> tuple[dict, dict]:
+        light = dict(re.findall(r"--([a-z]+):(#[0-9a-f]{3,6})",
+                                re.search(r":root\{(.*?)\}", mapmod._TEMPLATE, re.S).group(1)))
+        dark = dict(light)
+        dark.update(re.findall(
+            r"--([a-z]+):(#[0-9a-f]{3,6})",
+            re.search(r"prefers-color-scheme:dark\)\{:root\{(.*?)\}",
+                      mapmod._TEMPLATE, re.S).group(1)))
+        return light, dark
+
+    def test_the_palette_block_is_still_readable_here(self):
+        """A guard on the guard: if the stylesheet stops matching, every assertion below passes on
+        an empty dict and this class silently stops measuring anything."""
+        for name, palette in zip(("light", "dark"), self._palettes()):
+            with self.subTest(theme=name):
+                for token in ("high", "low", "card", "warnbg", "bg", "onhigh", "blocker"):
+                    self.assertIn(token, palette, f"--{token} vanished from the {name} palette")
+
+    def test_the_warning_text_is_readable_on_both_surfaces_it_lands_on(self):
+        """`.warn` sits on `.card`, and inside `.dec.weak` it sits on `--warnbg` — the tinted card
+        that marks an unquoted relay, i.e. the exact place the warning matters most."""
+        for name, p in zip(("light", "dark"), self._palettes()):
+            for surface in ("card", "warnbg"):
+                with self.subTest(theme=name, surface=surface):
+                    self.assertGreaterEqual(self._ratio(p["high"], p[surface]), self.TEXT,
+                                            f"--high on --{surface} ({name}) is unreadable as text")
+
+    #: Every badge fill on this page, with the foreground it is actually printed in. A pair, not a
+    #: colour: `--onhigh` and `--onok` exist because no single hue can be both dark enough for white
+    #: text and light enough to read AS text on a dark card, and both hues are used both ways.
+    #: EVERY badge is here — including `--ok`, which the finding did not name and which a DOM sweep
+    #: of every pin found at 3.45:1. A list that skipped it would be a gate checking less than its
+    #: name claims, which is another open entry in the same register.
+    BADGES = (("high", "onhigh"), ("ok", "onok"), ("accent", "onaccent"), ("low", None),
+              ("blocker", None), ("medium", None))
+
+    def test_a_badge_is_readable_against_its_own_foreground(self):
+        """Every `.sev` and `.rung` badge is a filled pill with text on it, so the pair matters and
+        not the surface under it — which is why these numbers are the same in both themes for the
+        tokens whose foreground does not switch, and why the two that do switch have their own."""
+        for name, p in zip(("light", "dark"), self._palettes()):
+            for token, fg_token in self.BADGES:
+                fg = p[fg_token] if fg_token else "#ffffff"
+                with self.subTest(theme=name, badge=token):
+                    self.assertGreaterEqual(self._ratio(p[token], fg), self.TEXT,
+                                            f"{fg} on --{token} ({name}) is an unreadable badge")
+
+    def test_the_fallback_badge_is_a_badge_too(self):
+        """The pair a severity this page does not know lands on lives in the script, not in `:root`,
+        so a gate that read only the palette skipped the badge a HOSTILE value is printed in — and a
+        DOM sweep found it at 3.54:1 while every named token passed. Read off the object literal
+        that supplies it, so it cannot be changed without this seeing it."""
+        pair = re.search(r"const SEV_UNKNOWN=\{bg:'(#[0-9a-f]{3,6})',fg:'(#[0-9a-f]{3,6})'\}",
+                         mapmod._TEMPLATE)
+        self.assertIsNotNone(pair, "the unknown-severity pair changed shape — this guard is vacuous")
+        self.assertGreaterEqual(self._ratio(pair.group(1), pair.group(2)), self.TEXT)
+        light, _ = self._palettes()
+        self.assertGreater(self._ratio(pair.group(1), light["low"]), 1.4,
+                           "an unrecognised severity reads as `low`, which is a claim about it")
+
+    def test_the_colours_used_as_text_are_readable_as_text(self):
+        """`--ok` is `.livebadge`'s text colour in live mode and `--high` is `.warn`'s everywhere.
+        Held on `--bg` because that is where the live badge sits, in both themes."""
+        for name, p in zip(("light", "dark"), self._palettes()):
+            for token in ("high", "ok", "accent", "mut", "fg"):
+                with self.subTest(theme=name, text=token):
+                    self.assertGreaterEqual(self._ratio(p[token], p["bg"]), self.TEXT,
+                                            f"--{token} ({name}) is unreadable as text on --bg")
+
+    def test_a_hue_used_both_ways_carries_a_paired_foreground(self):
+        """The rule the third instance made visible, asserted rather than described: every token
+        that is BOTH a badge fill and a text colour has an `--on<token>` beside it in both themes,
+        and every `--on<token>` names a token that exists. Three of the six badge fills need one and
+        three do not, which is the whole content of the design."""
+        paired = {token: fg for token, fg in self.BADGES if fg}
+        self.assertEqual(set(paired.values()), {f"on{t}" for t in paired},
+                         "an `--on<x>` that does not name the token it is the foreground of")
+        for name, p in zip(("light", "dark"), self._palettes()):
+            for token, fg in paired.items():
+                with self.subTest(theme=name, pair=token):
+                    self.assertIn(fg, p, f"--{fg} is missing from the {name} palette, so the badge "
+                                         f"falls back to whatever the cascade supplies")
+
+    def test_the_warning_hue_is_not_the_blocker_hue(self):
+        """The page's colour vocabulary is four severities plus one warning. Darkening the amber far
+        enough drags it toward `--blocker`, and a warning that reads as a blocker is a different lie
+        from a warning nobody can read.
+
+        Measured as HUE and not as a contrast ratio, deliberately: the two are 1.10:1 apart in
+        luminance because they were darkened to similar lightness on purpose, and a luminance test
+        here would fail on a palette that is perfectly distinguishable. What separates them is the
+        angle, and that is what is asserted."""
+        for name, p in zip(("light", "dark"), self._palettes()):
+            with self.subTest(theme=name):
+                gap = abs(self._hue(p["high"]) - self._hue(p["blocker"]))
+                self.assertGreaterEqual(min(gap, 360 - gap), 20,
+                                        "--high and --blocker have collapsed into one hue")
+
+    @staticmethod
+    def _hue(value: str) -> float:
+        value = value.lstrip("#")
+        if len(value) == 3:
+            value = "".join(c * 2 for c in value)
+        r, g, b = (int(value[i:i + 2], 16) / 255 for i in (0, 2, 4))
+        hi, lo = max(r, g, b), min(r, g, b)
+        if hi == lo:
+            return 0.0
+        if hi == r:
+            return (60 * ((g - b) / (hi - lo))) % 360
+        if hi == g:
+            return 60 * ((b - r) / (hi - lo)) + 120
+        return 60 * ((r - g) / (hi - lo)) + 240
+
+
+class TestTheOnlyWayDataEntersThePage(unittest.TestCase):
+    """`_inline` says the escape *"is not a longer list of dangerous sequences — it is the character
+    all of them need"*, and that sentence was true of `<` and of nothing else. U+2028 and U+2029 are
+    legal inside a JSON string and were statement terminators inside a pre-ES2019 JavaScript string
+    literal, and `ensure_ascii=False` emitted them raw into the inline script.
+
+    This file has been wrong about escaping twice, and both times the bug was a SITE that did not go
+    through the mechanism — `esc` that escaped nothing, then `severity` interpolated raw. So the fix
+    is not the two `.replace` calls: it is that `_inline` is provably the only way a payload reaches
+    the page, asserted by AST rather than by reading the four lines that happen to call it today."""
+
+    @staticmethod
+    def _module() -> ast.Module:
+        return ast.parse(pathlib.Path(mapmod.__file__).read_text(encoding="utf-8"))
+
+    def test_json_is_serialized_in_exactly_one_function(self):
+        tree = self._module()
+        sites = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for inner in ast.walk(node):
+                    if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+                            and inner.func.attr == "dumps"):
+                        sites.append(node.name)
+        self.assertEqual(sites, ["_inline"],
+                         f"a payload is serialized outside `_inline` ({sites}) — the escaping is "
+                         "whatever that site remembered, which is how both previous holes got in")
+
+    #: The three substitutions that are NOT data: a title (HTML-escaped, and it lands in an element
+    #: rather than in script text) and the live-mode fragments (this module's own constants, not
+    #: content). Everything else in `render`'s dict is agent-written and must be inlined — stated as
+    #: an exclusion list rather than an inclusion one, so a payload added later is covered by
+    #: default instead of being covered when someone remembers to add it here.
+    NOT_DATA = {"__TITLE__", "__LIVE_STYLE__", "__LIVE_BADGE__", "__LIVE_SCRIPT__"}
+
+    def test_every_inlined_placeholder_is_produced_by_that_one_function(self):
+        """Checked at the assignment rather than at the reader, and by exclusion: the previous
+        version of this test named the four payloads that existed when it was written, so a fifth
+        added by hand would have been a fifth escaping rule that no gate asked about."""
+        tree = self._module()
+        render = next(n for n in tree.body
+                      if isinstance(n, ast.FunctionDef) and n.name == "render")
+        values = next(node for node in ast.walk(render) if isinstance(node, ast.Dict))
+        inlined = {}
+        for key, value in zip(values.keys, values.values):
+            if isinstance(key, ast.Constant):
+                inlined[key.value] = (isinstance(value, ast.Call)
+                                      and isinstance(value.func, ast.Name)
+                                      and value.func.id == "_inline")
+        self.assertTrue(inlined, "render's substitution dict changed shape — this guard is vacuous")
+        payloads = set(inlined) - self.NOT_DATA
+        self.assertIn("__DATA__", payloads, "the ledger payload vanished — the guard went vacuous")
+        not_inlined = sorted(k for k in payloads if not inlined[k])
+        self.assertEqual(not_inlined, [], f"{not_inlined} reaches the script without `_inline`")
+
+    def test_every_placeholder_the_template_carries_is_substituted(self):
+        """The other direction, and it is not decoration: `render` raises `KeyError` on an unknown
+        placeholder, so a `__FOO__` added to the template and not to the dict does not survive into
+        the page as text — it takes the whole render down. Held here so the failure is a named test
+        rather than a stack trace in someone's MCP call."""
+        placeholders = set(re.findall(r"__[A-Z_]+__", mapmod._TEMPLATE))
+        tree = self._module()
+        render = next(n for n in tree.body
+                      if isinstance(n, ast.FunctionDef) and n.name == "render")
+        values = next(node for node in ast.walk(render) if isinstance(node, ast.Dict))
+        keys = {k.value for k in values.keys if isinstance(k, ast.Constant)}
+        self.assertEqual(placeholders - keys, set(),
+                         "a placeholder in the template that `render` does not substitute")
+
+    def test_the_two_javascript_line_terminators_do_not_reach_the_script_raw(self):
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        title = "line \u2028 sep \u2029 para"
+        led.add_pin(kind="other", kind_detail="renderer", title=title, severity="low",
+                    confidence="inferred", provenance=[{"source": "recon", "detail": "x"}],
+                    as_is={"payload": "\u2029 leading"})
+        html = mapmod.render(led.data, title="separators")
+        script = html.split("<script>", 1)[1].split("</script>", 1)[0]
+        for char in ("\u2028", "\u2029"):
+            self.assertNotIn(char, script,
+                             "a raw JS line terminator is inside the inline script")
+        # ...and the escape did not lose the data, which is what makes it an escape
+        payload = json.loads(html.split("const LEDGER =", 1)[1].split(";\n", 1)[0]
+                             .replace("\\u003c", "<"))
+        self.assertEqual(payload["pins"][0]["title"], title)
+        self.assertEqual(payload["pins"][0]["as_is"]["payload"], "\u2029 leading")
+
+
+class TestEveryClosedTableThePageReadsIsTheSchemas(unittest.TestCase):
+    """`TestARungTheTableDoesNotKnow` holds ONE of the page's tables to the schema tuple it mirrors.
+    Six more arrived with the envelope reader, and a hand-kept list beside the schema's is the bug
+    this repo keeps finding one surface over — so they are held the same way, as keys read off the
+    object literal rather than as a search for the words in the file.
+
+    The limit is the same one that class carries: this reads our own template as text, so it proves
+    the table's KEYS, not that the card renders. The rendering is the preview walk."""
+
+    @staticmethod
+    def _keys(name: str) -> set:
+        """The table's TOP-LEVEL keys, by tracking brace depth rather than by indentation.
+
+        Depth, because two of these tables hold objects and two hold strings, and a pattern tuned to
+        one shape reads the other's inner keys as if they were entries — which is a guard that
+        passes on the wrong set, i.e. the thing this file exists not to do."""
+        start = mapmod._TEMPLATE.index(f"const {name}={{") + len(f"const {name}=")
+        depth, keys, at_key = 0, set(), False
+        i = start
+        while i < len(mapmod._TEMPLATE):
+            ch = mapmod._TEMPLATE[i]
+            if ch == "/" and mapmod._TEMPLATE[i + 1:i + 2] == "/":
+                # a comment is not structure either, and the tables carry them inline
+                i = mapmod._TEMPLATE.index("\n", i) + 1
+                continue
+            if ch in "'\"`":
+                # a string literal is not structure: a value reading "…on the path, not a
+                # computation" put `not` in the key set, which is a guard passing on the wrong set
+                end = mapmod._TEMPLATE.index(ch, i + 1)
+                i = end + 1
+                continue
+            if ch in "{[":
+                depth += 1
+                at_key = depth == 1
+            elif ch in "}]":
+                depth -= 1
+                if depth == 0:
+                    break
+            elif depth == 1 and ch == ",":
+                at_key = True
+            elif depth == 1 and at_key and (ch.isalpha() or ch == "_"):
+                match = re.match(r"\w+", mapmod._TEMPLATE[i:])
+                keys.add(match.group(0))
+                at_key = False
+                i += match.end() - 1
+            i += 1
+        assert depth == 0 and keys, f"the {name} table's shape changed — this guard went vacuous"
+        return keys
+
+    def test_the_verification_rungs_are_the_schemas(self):
+        from ledger import VERIFICATION_RUNGS
+        self.assertEqual(self._keys("VRUNG"), set(VERIFICATION_RUNGS))
+
+    def test_the_rungs_this_page_shows_as_strong_are_the_rungs_a_pin_may_close_on(self):
+        """The card's colour is a claim about whether the work is done, and `settlement_verdict`
+        answers that from `_CLOSING_RUNGS`. Two lists, one question — so they are one list."""
+        from ledger import _CLOSING_RUNGS
+        block = re.search(r"const VRUNG=\{(.*?)\}\};", mapmod._TEMPLATE, re.S).group(1)
+        strong = {m.group(1) for m in re.finditer(r"(\w+):\{[^}]*?cls:'strong'", block, re.S)}
+        self.assertEqual(strong, set(_CLOSING_RUNGS))
+
+    def test_the_settlement_table_is_the_states_an_election_produces(self):
+        from ledger import _ELECTION_STATES
+        self.assertEqual(self._keys("SETTLES"), set(_ELECTION_STATES))
+
+    def test_the_resolution_modes_are_the_schemas(self):
+        from ledger import RESOLUTION_MODES
+        self.assertEqual(self._keys("MODE"), set(RESOLUTION_MODES))
+
+    def test_the_readiness_verdicts_are_the_schemas(self):
+        from ledger import READINESS_VERDICTS
+        self.assertEqual(self._keys("READY"), set(READINESS_VERDICTS))
+
+    def test_the_determinism_levels_are_the_schemas(self):
+        from ledger import DETERMINISM
+        self.assertEqual(self._keys("DET"), set(DETERMINISM))
+
+    def test_the_trail_knows_every_kind_of_entry_the_runtime_appends(self):
+        """The page read `ev_` and dropped the other five in silence. `LOG_ENTRY_PREFIXES` is the
+        schema's own answer to *what may a log entry be*, and it is what a seventh kind will be
+        added to — so a seventh kind arrives here rather than being skipped."""
+        from ledger import LOG_ENTRY_PREFIXES
+        self.assertEqual(self._keys("TRAIL"), set(LOG_ENTRY_PREFIXES))
+
+    def test_not_knowing_is_said_in_one_sentence_and_not_two(self):
+        """§16's finding was a residue: the rung case got three states and a sentence about a schema
+        that grew after the page was written; the settlement case, added in the same version, took
+        the older two-state shape and printed a bare token in the card's key position. What is
+        shared is the SENTENCE — `unknownNote` — and deliberately not the tables, which answer
+        different questions off one event."""
+        body = mapmod._TEMPLATE
+        self.assertEqual(body.count("function unknownNote("), 1)
+        callers = set(re.findall(r"unknownNote\('([a-z ]+)'", body))
+        self.assertLessEqual({"rung", "settled state", "verification rung", "resolution mode",
+                              "readiness verdict", "log entry"}, callers)
+
+
+class TestTheWholeEnvelopeHasAReader(unittest.TestCase):
+    """Eight fields and five of the six log kinds were WRITTEN by the runtime and read by nothing.
+    Two were load-bearing rather than decorative: `verification` is what `settlement_verdict` reads
+    to decide whether ANY pin may close, and `remediation` is the other half of the same gate — so
+    the reader who asks *why will this pin not close* had nowhere to look but the JSON.
+
+    Two halves, because either alone is vacuous: the template must REFERENCE the field (§14's own
+    method — `p.<field>`, not a word search), and the preview fixture must CARRY it, or the browser
+    walk that verifies the rendering has nothing to look at."""
+
+    FIELDS = ("verification", "resolution_mode", "brainstorm", "remediation", "premortem",
+              "readiness", "evidence", "cross_derivations")
+
+    @staticmethod
+    def _fixture() -> dict:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import preview_map
+        return preview_map.build().data
+
+    def test_every_envelope_field_is_read_by_the_page(self):
+        for field in self.FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(f"p.{field}", mapmod._TEMPLATE,
+                              f"`{field}` is stored, gated on, and on this page nowhere")
+
+    def test_the_preview_fixture_carries_each_of_them(self):
+        pins = self._fixture()["pins"]
+        for field in self.FIELDS:
+            with self.subTest(field=field):
+                self.assertTrue(any(not _is_blank(p.get(field)) for p in pins),
+                                f"no fixture pin carries `{field}` — the browser walk cannot see it")
+
+    def test_the_preview_fixture_carries_every_kind_of_log_entry(self):
+        from ledger import LOG_ENTRY_PREFIXES
+        ids = [str(e.get("id", "")) for e in self._fixture()["decision_log"]]
+        missing = [p for p in LOG_ENTRY_PREFIXES if not any(i.startswith(p) for i in ids)]
+        self.assertEqual(missing, [], f"no fixture entry of kind {missing} — the trail card's rows "
+                                      "for those kinds are verified by nobody")
+
+    def test_the_fixture_carries_all_three_resolution_modes(self):
+        """`proposed_default` is the one that changes what a reader must do NOW, and until this
+        fixture called `assign_resolution_modes` nothing in it carried that mode at all — which is
+        why the state could not be seen in a browser and the gap went unfound for a version."""
+        from ledger import RESOLUTION_MODES, SETTLED_STATES
+        pins = self._fixture()["pins"]
+        self.assertLessEqual(set(RESOLUTION_MODES), {p.get("resolution_mode") for p in pins})
+        # ...and each of the three on an OPEN pin, because the line is suppressed on settled ones:
+        # `policy_default` sat only on cascaded (therefore settled) pins, so its clause rendered
+        # nowhere and the fixture proved nothing about it.
+        open_modes = {p.get("resolution_mode") for p in pins
+                      if p.get("state") not in SETTLED_STATES}
+        self.assertLessEqual(set(RESOLUTION_MODES), open_modes,
+                             "a resolution mode whose sentence the browser walk cannot reach")
+
+    def test_the_fixture_carries_a_settled_state_the_page_cannot_describe(self):
+        """§16's worked example, the same shape as the `oracle` rung one field over."""
+        from ledger import _ELECTION_STATES
+        settles = {e.get("settles_as") for e in self._fixture()["decision_log"]
+                   if str(e.get("id", "")).startswith("ev_")}
+        self.assertTrue(settles - set(_ELECTION_STATES) - {None},
+                        "no fixture event carries an unknown `settles_as` — the fix is unlookable-at")
+
+
+def _is_blank(value) -> bool:
+    return value is None or value == "" or value == [] or value == {}
 
 
 class TestLiveMode(unittest.TestCase):

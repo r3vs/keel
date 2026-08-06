@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.18
+# Decisions Ledger — Spec v0.19
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -927,3 +927,37 @@ Skipping in silence is what the branch below it does not do, so this does not ei
 ### The general shape
 
 v0.17's was *"name the tool that performs it, and run it."* This one is what to ask once it runs: **read the sentence the surface prints, and check it against the door — on the object it is printed on.** Each of these four is a true statement about some pin, some scope or some caller, printed on the ones it is false of. That is not caught by asking whether the rule is sound, and it is not caught by a test that asserts the rule; it is caught by taking the artifact a human is handed and asking what would happen if they believed it.
+
+---
+
+## v0.19 — The surfaces read the envelope, and two distinctions stopped being literals
+
+v0.18 asked what a surface *says*. This one asks what it **does not say at all**: eight fields the runtime writes and five of the six kinds of `decision_log` entry reached the visual map nowhere, and two of them were load-bearing rather than decorative — `verification` is what `settlement_verdict` reads to decide whether ANY pin may close, and `remediation` is the other half of the same gate. The reader asking *why will this pin not close* had nowhere to look but `ledger.json`. Nothing about the schema was wrong; every writer had zero readers, which is this register's signature class one layer up from where it usually lands.
+
+### `LEAVE_AS_IS_STATES` — which settled pins are settled by NOT being done
+
+`SETTLED_STATES` answers *may an unasked write touch this*; `CLOSED_STATES` answers *may any door settle this again*. Neither answers the question a **builder** asks, which is *do I build this*, and the projection into `AGENTS.md` was answering it with a literal: it sorted on `state == "deferred"` and headed the section *build on these (`defer` = elected NOT to build)*. But `accept` is defined right here as leaving the concern exactly as it is — the same instruction — so an `accepted` blocker outranked an elected `decided` medium under the byte clip, inside a heading that named only `defer`.
+
+```
+LEAVE_AS_IS_STATES = ("accepted", "deferred")     # the complement is ("decided", "resolved")
+```
+
+Anchored on `_STATE_BY_DOOR`, so membership is the doors' answer and not a memory of which two they were. The projection now emits **two** sections rather than one section with an ordering trick, because a heading is an instruction and must be true of every pin under it — and because the reader can then tell which pins are which without the per-pin state token the byte budget refuses.
+
+### `REOPENED_SUBSTATES` — an outcome under dispute is not an elected one
+
+A pin reopened by the feedback arc, by an upheld challenge, or by a `cross_derive` disagreement **keeps the outcome it was elected with**. Printing that outcome bare formats a contradicted answer exactly like a build instruction, and the heading above it forbids *deciding*, not *building on*.
+
+```
+REOPENED_SUBSTATES = ("contested",) + tuple(_SUBSTATE_BY_ARC[a] for a in REOPEN_ARCS)
+```
+
+Composed from the arc table rather than re-listed beside it; `decide` clears the substate, so the mark means *disputed and not re-answered* rather than *was disputed once*. Both the map's decision card and the projected `AGENTS.md` line now say so, and a fourth arc leaving a fourth mark arrives at both.
+
+### What the surfaces owe the envelope
+
+The map renders `verification` (with `blocked_by` as *this pin cannot close: …*), `remediation` (with the open-item count that is what `resolve` refuses on), `readiness`, `premortem`, `brainstorm`, the pin's `evidence`, `resolution_mode`, and a **trail** built from every kind in `LOG_ENTRY_PREFIXES`. `interview.funnel` carries `blocked_by` on the entry for a `correctness_unknown` pin — beside the prompt rather than inside it, so the fork stays the human's. Every closed vocabulary the page reads (`VERIFICATION_RUNGS`, `RESOLUTION_MODES`, `READINESS_VERDICTS`, `DETERMINISM`, `_ELECTION_STATES`, `LOG_ENTRY_PREFIXES`) is held to this file by a test, and a value none of them carries is reported in the one sentence the rung case already used — *this map does not know …, it was most likely added to the schema after this page was generated* — rather than as a bare token.
+
+### The general shape
+
+v0.18's was *"read the sentence the surface prints."* This one is the question before it: **name the surface a human reads this field on, and open it.** A field that is stored, gated on, and rendered nowhere is not a capability — it is a claim the artifact does not keep, and adding a writer is a change inside one module while giving it a reader is a change on somebody else's surface. That asymmetry is why this class keeps recurring, and the only defence is to ask the question at the write.
