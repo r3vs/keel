@@ -1289,6 +1289,209 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
                          "a scopeable field no writer writes")
 
 
+class TestComingBackIntoTheOpenSetIsGovernedToo(unittest.TestCase):
+    """v0.17 — the mirror of `TestLeavingTheOpenSetIsGovernedToo`.
+
+    v0.16 gave the five doors that settle a pin one predicate, one writer and one event. The two
+    arcs that un-settle one had none of the three — and, invisibly from inside this module, no MCP
+    tool either, so `settlement_verdict`'s own refusal (*"Reopen it first"*) named an arc no host
+    could run. Each test below is written from that condition rather than from the fix.
+    """
+
+    def _resolved(self, led, severity="medium"):
+        pin = led.add_pin(kind="defect", title="double charge on retry", severity=severity,
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="replayed it on staging; one charge", rung="observed")
+        return pin
+
+    # -- the arc the settlement table pointed at ------------------------------------------------
+
+    def test_the_way_back_out_of_finished_work_exists_and_is_recorded(self):
+        led = make_ledger()
+        pin = self._resolved(led)
+        with self.assertRaises(LedgerError) as ctx:
+            led.mark_correctness_unknown(pin["id"], blocked_by="no oracle", attempted=["tests"])
+        self.assertIn("Reopen it first", str(ctx.exception))
+        event = led.reopen(pin["id"], reason="the double charge came back: 3 in 24h on prod")
+        self.assertTrue(event["reopened"])
+        self.assertEqual((pin["state"], pin["substate"], pin["resolution_mode"]),
+                         ("needs_input", "reopened", "asked"))
+        self.assertEqual(event["reason"], "the double charge came back: 3 in 24h on prod")
+
+    def test_an_observation_about_an_unsettled_pin_is_recorded_and_moves_nothing(self):
+        """`nothing_settled` is deliberately not a refusal. `cross_derive` was corrected to exactly
+        this shape in v0.16, and dropping the event would lose the one signal `learning.divergences`
+        and `challenger.premortem_required` both read."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        self.assertEqual(led.reopen_verdict(pin, "reopen"), "nothing_settled")
+        event = led.reopen(pin["id"], reason="p95 blew the threshold again")
+        self.assertFalse(event["reopened"])
+        self.assertEqual(pin["state"], "needs_input")
+        self.assertIsNone(pin.get("substate"))
+        self.assertEqual([e["id"] for e in led.data["decision_log"]], ["rev_0001"])
+
+    def test_upheld_and_reopened_are_two_facts_and_the_event_records_both(self):
+        """Reading the move back off `substate` is the two-carriers bug v0.16 found one arc over:
+        the substate is written by whichever arc moved the pin and is never cleared."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        event = led.challenge(pin["id"], target="to_be", challenge_class="unfalsifiable",
+                              argument="the elected to_be has no verify that could fail",
+                              severity="high", upheld=True)
+        self.assertEqual((event["upheld"], event["reopened"]), (True, False))
+        self.assertIsNone(pin.get("substate"))
+
+    def test_a_reopen_states_what_was_observed_and_where_it_came_from(self):
+        led = make_ledger()
+        pin = self._resolved(led)
+        for bad in ("", "   "):
+            with self.assertRaises(LedgerError):
+                led.reopen(pin["id"], reason=bad)
+        with self.assertRaises(LedgerError):
+            led.reopen(pin["id"], reason="r", fired="i felt like it")
+        with self.assertRaises(LedgerError):
+            led.reopen(pin["id"], reason="r", source="agent")
+        self.assertEqual(led.data["decision_log"][-1]["id"], "stl_0001",
+                         "a refused reopen appends nothing")
+
+    def test_an_upheld_challenge_with_no_argument_is_an_assertion(self):
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.decide(pin["id"], "opt_a", "r", "f")
+        with self.assertRaises(LedgerError) as ctx:
+            led.challenge(pin["id"], target="decision", challenge_class="unstated_assumption",
+                          argument="   ", severity="high", upheld=True)
+        self.assertIn("argument", str(ctx.exception))
+
+    # -- the structural half: one writer, and neither arc can decide ----------------------------
+
+    @staticmethod
+    def _tree():
+        import ast
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            return ast.parse(fh.read(), filename=path), ast
+
+    def test_every_arc_reaches_the_single_writer_and_these_are_all_the_arcs(self):
+        import ledger as ledger_mod
+        tree, ast = self._tree()
+        fns = {n.name: n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        callers = {name for name, fn in fns.items()
+                   if any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                          and c.func.attr == "_reopen_minimal" for c in ast.walk(fn))}
+        self.assertEqual(callers, set(ledger_mod.REOPEN_ARCS),
+                         "an arc that reopens a pin outside `_reopen_minimal` is a reopen with no "
+                         "predicate and no minimality — which is how both of these shipped")
+        self.assertEqual(sorted(ledger_mod.REOPEN_ARCS),
+                         sorted(ledger_mod._SUBSTATE_BY_ARC),
+                         "an arc with no substate, or a substate no arc leaves")
+
+    def test_neither_arc_can_decide_anything(self):
+        """The claim that makes these safe to expose where `decide` is not, asserted from the
+        source: a reopen that can also set a state is the cluster fan-out flag under a new name."""
+        import inspect
+
+        import ledger as ledger_mod
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "mcp"))
+        import tools as mcp_tools
+        for fn in (ledger_mod.Ledger.reopen, ledger_mod.Ledger.challenge,
+                   ledger_mod.Ledger.set_question, ledger_mod.Ledger.add_proposals,
+                   mcp_tools.ledger_reopen, mcp_tools.ledger_challenge,
+                   mcp_tools.ledger_set_question, mcp_tools.ledger_add_proposals):
+            params = set(inspect.signature(fn).parameters)
+            self.assertEqual(params & {"outcome", "settles_as", "option_id", "default_outcome"},
+                             set(), f"{fn.__qualname__} can elect")
+        tree, ast = self._tree()
+        fns = {n.name: n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        for name in ("reopen", "challenge", "_reopen_minimal", "set_question", "add_proposals"):
+            called = {c.func.attr for c in ast.walk(fns[name])
+                      if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
+            self.assertEqual(called & {"decide", "_settle", "accept", "defer"}, set(),
+                             f"{name} reaches a settlement door")
+
+    # -- the two forks nobody could pose (§10, §17b) --------------------------------------------
+
+    def test_a_pin_recorded_without_a_fork_can_be_given_one(self):
+        led = make_ledger()
+        pin = led.add_pin(kind="ambiguity", title="two auth flows", severity="high",
+                          confidence="ambiguous", provenance=[{"source": "recon", "detail": "x"}])
+        self.assertEqual((pin["state"], pin["question"]), ("detected", None))
+        self.assertEqual(led.interview_view(), [])
+        led.set_question(pin["id"], {"prompt": "Which flow is intended?",
+                                     "options": [{"id": "session", "label": "server sessions"},
+                                                 {"id": "jwt", "label": "stateless JWT"}],
+                                     "allow_freeform": True})
+        self.assertEqual(pin["state"], "needs_input")
+        self.assertEqual([p["id"] for p in led.interview_view()], [pin["id"]])
+
+    def test_a_fork_composed_after_the_fact_may_not_bound_the_human(self):
+        led = make_ledger()
+        pin = led.add_pin(kind="ambiguity", title="t", severity="low", confidence="inferred",
+                          provenance=[{"source": "recon", "detail": "x"}])
+        with self.assertRaises(LedgerError) as ctx:
+            led.set_question(pin["id"], {"prompt": "p", "options": [{"id": "a", "label": "A"}]})
+        self.assertIn("allow_freeform", str(ctx.exception))
+        self.assertEqual(pin["state"], "detected")
+
+    def test_it_will_not_replace_a_fork_that_already_exists(self):
+        """`question.options[].id` is the carrier the offered-options rule anchors on at both
+        election doors, so a general-purpose setter dismantles it from the side — which is exactly
+        what `cross_derive` and `mark_correctness_unknown` were caught doing in v0.16."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        with self.assertRaises(LedgerError):
+            led.set_question(pin["id"], {"prompt": "p", "options": [{"id": "z", "label": "Z"}],
+                                         "allow_freeform": True})
+        self.assertEqual([o["id"] for o in pin["question"]["options"]], ["opt_a", "opt_b"])
+
+    def test_posing_a_question_to_finished_work_is_the_reopen_arc(self):
+        led = make_ledger()
+        pin = self._resolved(led)
+        with self.assertRaises(LedgerError) as ctx:
+            led.set_question(pin["id"], {"prompt": "p", "options": [], "allow_freeform": True})
+        self.assertIn("reopen", str(ctx.exception))
+
+    def test_asking_the_brainstorm_no_longer_takes_the_fork_off_the_agenda(self):
+        """`add_proposals` moves a pin out of `needs_input`, the view selected two states, and
+        nothing moved it back — while `summary()` went on counting it under `open_questions`."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.add_proposals(pin["id"], [{"summary": "keep the DB enum", "effort": "S"},
+                                      {"summary": "widen it", "effort": "M",
+                                       "recommended": True}])
+        self.assertEqual(pin["state"], "brainstorming")
+        self.assertEqual([p["id"] for p in led.interview_view()], [pin["id"]])
+        self.assertEqual(led.summary()["open_questions"], 1)
+
+    def test_two_proposals_do_not_share_one_id(self):
+        """Found by running the new tool over real stdio, not by reading it: the auto-id was
+        `f"prop_{len(proposals)}"` — the LIST's length, constant across the loop — so two proposals
+        both came back `prop_2`. Unreachable code cannot be wrong in a way anybody notices."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.add_proposals(pin["id"], [{"summary": "keep it"}, {"summary": "widen it"}])
+        self.assertEqual([p["id"] for p in pin["brainstorm"]["proposals"]], ["prop_1", "prop_2"])
+        with self.assertRaises(LedgerError):
+            led.add_proposals(pin["id"], [{"id": "a", "summary": "x"}, {"id": "a", "summary": "y"}])
+
+    def test_the_proposals_ride_along_on_the_funnel_entry(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
+        import interview
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.add_proposals(pin["id"], [{"summary": "widen it", "effort": "M", "recommended": True}])
+        entry = interview.funnel(led)["asked"][0]
+        self.assertEqual(entry["pin_id"], pin["id"])
+        self.assertEqual(entry["proposals"], [{"id": "prop_1", "summary": "widen it",
+                                               "effort": "M", "recommended": True}])
+
+
 class TestOneWriterForTheSettledStates(unittest.TestCase):
     """The structural half, and the reason this round is not a fifth one: the rule cannot live in
     the doors, because a door added later will not know it.

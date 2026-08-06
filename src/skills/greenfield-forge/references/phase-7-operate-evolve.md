@@ -32,10 +32,18 @@ that gap opens without anyone seeing it.
 ## Evolve — turn the loop (via the shared feedback loop)
 
 Run `references/core/feedback-loop.md`: evaluate the `flip_signal`s against the manifest's telemetry, and on
-a fired signal emit a `ReopenEvent` and move the affected pin (plus its genuine dependents) back
-to `needs_input` (`reopened`). The reopened pins flow into the interview via `slice` mode; the
-new truth then flows forward through contract → build → validate → release again. The arc
-**reopens, never decides** — neutrality holds exactly as in the brainstorm.
+a fired signal call **`mcp:ledger_reopen`** — it emits the `ReopenEvent` and moves the affected pin
+(plus its genuine dependents) back to `needs_input` (`reopened`). Put the actual reading in `reason`
+and name what tripped in `fired` (`flip_signal` · `manual_checkpoint` · `incident`); the tool refuses
+a blank reason, because this un-settles work a human elected. The reopened pins flow into the
+interview via `slice` mode; the new truth then flows forward through contract → build → validate →
+release again. The arc **reopens, never decides** — it takes no outcome, neutrality holds exactly as
+in the brainstorm, and the human re-elects with `mcp:ledger_record_decision`.
+
+This is also the only way back out of a **closed** pin. Every settlement door refuses to close
+finished work twice and says so in those words (*"Reopen it first"*); until ledger v0.17 that
+sentence named an arc no host could run, so the only route was hand-editing `ledger.json` — which
+every playbook here forbids, correctly, because it bypasses every rule in the runtime silently.
 
 Cadence is the `evolve` mode: a scheduled run or an incident-triggered one, each a fresh
 invocation reading the ledger + manifest from disk.

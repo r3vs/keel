@@ -23,7 +23,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **37** | the deterministic engine, typed and discoverable |
+| MCP tools | **58** | the deterministic engine, typed and discoverable |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
 | Skills | **2** | `using-the-ledger`, `run-workflow` |
@@ -32,13 +32,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 54 MCP tools
+## The 58 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (17)
+### Ledger — the single source of truth (21)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -61,6 +61,10 @@ holds no state of its own; it projects this file.
 | `ledger_premortem` | the challenger's second mode — assume the plan already failed; guardrails and abort criteria required, and a dismissed risk must carry its evidence | ✎ |
 | `ledger_label_failure` | what actually went wrong, in the **same closed vocabulary** the premortem used, so the two can be joined | ✎ |
 | `ledger_cross_derive` | the `cross_derived` rung: two derivations, two **distinct** providers. Agreement lifts the rung; disagreement appends the event and contests the pin — never rewriting its question, never un-closing finished work | ✎ |
+| `ledger_reopen` | production falsified an elected decision — the **only** way back out of finished work, and what every settlement door means by *"reopen it first"*. Takes no outcome | ✎ |
+| `ledger_challenge` | refute an elected oracle *before* it is built on; an upheld challenge hands the pin back to the interview. Refuses a challenge with no argument | ✎ |
+| `ledger_set_question` | give a pin recorded without a fork the one that puts it to the human. Write-if-absent, and the composed menu must leave freeform open | ✎ |
+| `ledger_add_proposals` | the brainstorm's options on one pin. Neutral by schema — a proposal carrying a decision is refused — and the pin stays in the funnel while it is explored | ✎ |
 | `agent_ready` | is this item *handable*, or merely unblocked? Preconditions (D0) and quality (D2), reported apart, routed to a named owner | — |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview

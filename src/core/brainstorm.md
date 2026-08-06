@@ -17,8 +17,11 @@ from the interview to preserve neutrality. It reads and writes the same `ledger.
     sources** via `core/knowledge-sources.md`: DeepWiki on exemplar repos, Context7 for the current
     API of a candidate library, Exa/web for open SOTA — each cited, confidence set by the source.
     Never reason in a vacuum; never let an uncited result decide.
-- **Writes ONLY proposals.** NEVER sets `state: decided`, NEVER writes a `DecisionEvent`, NEVER
-  edits code. Neutrality is enforced by the schema, not by good intentions.
+- **Writes ONLY proposals**, through **`mcp:ledger_add_proposals`** — one pin per call. NEVER sets
+  `state: decided`, NEVER writes a `DecisionEvent`, NEVER edits code. Neutrality is enforced by the
+  schema, not by good intentions: a proposal carrying a `decision` or an `outcome` is refused, and
+  at most one may be marked `recommended` — two make the gap between what was recommended and what
+  the human elected uncomputable, and that gap is the point of the mark.
 
 ## Why separate from the interview
 If the agent that proposes a solution also asks the question, it phrases the question to lead
@@ -30,6 +33,13 @@ decides — and a proposal becomes the decision only if the user picks it there.
 ## UI
 The "brainstorm" button on a pin opens this agent; its proposals surface back as options on
 that pin's interview question, so the user's exploration flows straight into their answer.
+
+That sentence was false for as long as it existed, and the correction is worth carrying here rather
+than only in the spec: writing proposals moves the pin to `brainstorming`, and the interview view
+used to select `needs_input` and `correctness_unknown` only — so opening the brainstorm on a hard
+fork is what took that fork **off** the interview's list, while `ledger_summary` went on counting it
+as an open question. Since ledger v0.17 the view selects `brainstorming` too and each funnel entry
+carries the proposals, which is what makes the sentence above describe the machine.
 
 ## v1 note
 In v1 this can be a *mode* invoked on a pin (same agent, fresh context) rather than a truly

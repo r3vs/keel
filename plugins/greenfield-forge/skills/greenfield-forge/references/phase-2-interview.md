@@ -123,12 +123,16 @@ strong also makes a bad oracle harder to walk back. So before Phase 3, the `chal
 > — a criterion with no `verify` is unfalsifiable as a matter of fact — and returns proposals
 > without writing. That output is where the `challenger` agent begins; its judgment belongs on the
 > classes a checker cannot reach (`unsatisfiable` against the givens, `unstated_assumption`).
+> Applying any of them — proposed or judged — is `mcp:ledger_challenge`; the scan writes nothing.
 
-A sustained challenge emits an immutable `ChallengeEvent`, returns the pin to `needs_input`
-(`challenged`), and reopens the **minimum** (the fork + genuine dependents) back into this interview.
-The challenger **challenges, never decides**; only a re-answer commits. Catching an unsound decision
-now costs one question; catching it after the contract is generated costs a regeneration across
-every layer.
+A sustained challenge is recorded with **`mcp:ledger_challenge`**: it appends the immutable
+`ChallengeEvent` and, when `upheld`, returns the pin to `needs_input` (`challenged`), reopening the
+**minimum** (the fork + genuine dependents) back into this interview. State the `argument` — a blank
+one is refused, because upholding a challenge un-does an election on your say-so and the refutation
+has to be in the ledger. `upheld` and `reopened` come back separately: a sound refutation of a fork
+nobody has elected yet is recorded and moves nothing. The challenger **challenges, never decides**;
+only a re-answer commits. Catching an unsound decision now costs one question; catching it after the
+contract is generated costs a regeneration across every layer.
 
 ## Output
 

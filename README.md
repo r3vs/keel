@@ -91,7 +91,7 @@ those are the manuals.
 
 | Plugin | What it is | Ships |
 |---|---|---|
-| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **54 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
+| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **58 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
 | **[`codebase-rescue`](plugins/codebase-rescue/README.md)** | **curative** — align a codebase that already drifted | 5 modes · 5 phases · 28 analysis modules · `/rescue` |
 | **[`greenfield-forge`](plugins/greenfield-forge/README.md)** | **preventive** — build one that can't drift | 5 modes · 7 phases · 15 modules · `/forge` |
 | **[`keel-kit`](plugins/keel-kit/README.md)** | the composable engineering loop, each skill bound to the ledger | 11 skills |
@@ -187,15 +187,15 @@ so *why* survives, not just *what*.
 carry high confidence and skip the false-positive gate. Model judgment is *labelled as such*, every
 time. If Keel can't prove something, it says so instead of sounding confident.
 
-### The engine: 32 modules, 8.4k lines, Python stdlib only — reaching your agent as 54 typed MCP tools
+### The engine: 32 modules, 8.4k lines, Python stdlib only — reaching your agent as 58 typed MCP tools
 
 Your agent **discovers** these. It is never told a file path. Full signatures and semantics:
 [`keel-core`](plugins/keel-core/README.md).
 
 <details>
-<summary><b>All 54 tools</b></summary>
+<summary><b>All 58 tools</b></summary>
 
-**Ledger (17)** — the append-only source of truth. None of these elect anything; the two recording
+**Ledger (21)** — the append-only source of truth. None of these elect anything; the two recording
 tools write down an election the **human** made and refuse a relay with no quote.
 `ledger_summary` · `interview_next` · `policy_preview` (what a policy would decide, before setting
 it) · `ledger_add_pin` · `ledger_record_decision` · `ledger_record_policy` (one election, cascaded
@@ -204,7 +204,11 @@ over a cluster) · `ledger_surface_assumption` ·
 item is open) · `ledger_mark_correctness_unknown` (the honest exit when correctness cannot be
 established) · `ledger_defer` · `ledger_set_readiness` · `ledger_premortem` (assume it already
 failed) · `ledger_label_failure` (the same words, afterwards) · `ledger_cross_derive` (two
-providers; disagreement is the signal) · `agent_ready` (handable, or merely unblocked?)
+providers; disagreement is the signal) · `ledger_reopen` (production falsified it — the only way
+back out of finished work) · `ledger_challenge` (refute an elected oracle before it is built on) ·
+`ledger_set_question` (a pin recorded without a fork gets one; write-if-absent) ·
+`ledger_add_proposals` (the brainstorm writes here, and can never decide) ·
+`agent_ready` (handable, or merely unblocked?)
 
 **Cross-layer contract (3)** — 8 stacks reduced to one field descriptor, then diffed: Postgres DDL ·
 Drizzle · Prisma · Django · SQLAlchemy · GraphQL · TypeScript · Pydantic.
@@ -315,7 +319,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 13 composable ones, with the runtime **largely
-implemented**: 32 modules, 54 MCP tools, **592 tests green in CI**, 4 hosts.
+implemented**: 32 modules, 58 MCP tools, **720 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

@@ -114,18 +114,18 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                         "an agent can take alone or re-run over pins nobody was shown",
     }
     #: Mutators reached through another governed entry point rather than a tool of their own.
+    #:
+    #: Four entries left here in v0.16, and every one of them was a state the product could not
+    #: reach. `set_question` had ZERO call sites anywhere and was exempted as "the interview funnel
+    #: writes it" (`interview.funnel` reads). `add_proposals` is the only writer of the
+    #: `brainstorming` state and nothing called it. `reopen`'s reason described *when* it should run
+    #: and never said what runs it. `challenge`'s said "exposed as challenge_oracle, which applies
+    #: upheld ChallengeEvents" — false of that function, which only proposes. All four now have
+    #: tools, and `TestAnINTERNALMutatorIsActuallyReached` is why a fifth cannot be parked here on a
+    #: sentence: an exemption whose stated reason is wrong is worse than none, because the check has
+    #: then been asked and answered.
     INTERNAL = {
-        "set_question": "NOTHING calls it — verified, zero call sites in src/ and plugins/. The "
-                        "reason here used to read 'the interview funnel writes it (interview_next "
-                        "drives the surface)', which is false: `interview.funnel` reads. It is the "
-                        "runtime half of the door docs/open-gaps.md §10 records as missing, kept "
-                        "rather than deleted because that is what §10 would expose — and an "
-                        "exemption whose stated reason is wrong is worse than none, because the "
-                        "check has then been asked and answered",
-        "add_proposals": "the brainstorm agent's own write path; neutral by schema",
         "assign_resolution_modes": "runs inside the interview funnel",
-        "reopen": "the feedback loop's downstream arc, driven by a fired flip_signal",
-        "challenge": "exposed as challenge_oracle, which applies upheld ChallengeEvents",
         "set_governance": "stamped automatically by tools._open_or_create — the server knows its "
                           "own root and version, so this is never a question put to a model",
         "save": "persistence, not a state transition",
@@ -135,7 +135,7 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
         readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview",
-                    "question_offers", "unasked_verdict", "settlement_verdict"}
+                    "question_offers", "unasked_verdict", "settlement_verdict", "reopen_verdict"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -265,6 +265,49 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         mutators = self._mutators()
         stale = sorted((set(self.HUMAN_ONLY) | set(self.INTERNAL)) - mutators)
         self.assertEqual(stale, [], "these exemptions name methods that are gone")
+
+    def test_an_INTERNAL_mutator_is_actually_reached(self):
+        """The inverse gate, and the one that would have caught four exemptions at once.
+
+        `test_no_mutator_is_unclassified` asks whether every writer has a *declared* channel. It
+        cannot ask whether the declaration is TRUE, and for four versions it was not: `set_question`
+        and `add_proposals` had zero call sites in anything that ships, `reopen` had none either, and
+        `challenge`'s only caller was `challenger.run`, which nothing calls. Each carried a sentence
+        naming an entry point, and the sentences were prose. `check_tool_carriers.py` sees write
+        tools that EXIST and are named by nobody; it cannot see a capability that was never given a
+        tool, and this is the direction it does not cover.
+
+        So the carrier is the call graph, not the reason string: an INTERNAL mutator must be reached
+        transitively from something an agent can call, computed over the ASTs of `src/runtime/*.py`
+        and `src/mcp/*.py`, rooted at the functions of `tools.py` that `server.py` actually serves.
+        `HUMAN_ONLY` is held to the same standard — `decide` is withheld from agents, not from the
+        product, and a `decide` nothing reaches is the state nobody can produce all over again.
+        """
+        ast_ = TestEveryPathToDecideIsGated
+        modules = ast_._modules()
+        served = {n.name for n in modules["server.py"].body
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                          and d.func.attr == "tool" for d in n.decorator_list)}
+        self.assertGreater(len(served), 40, "no @mcp.tool functions found — this gate went vacuous")
+        edges = {}
+        for tree in modules.values():
+            for name, fn in ast_._functions(tree).items():
+                edges.setdefault(name, set()).update(ast_._calls(fn))
+        reachable, frontier = set(), list(served)
+        while frontier:
+            name = frontier.pop()
+            for callee in edges.get(name, ()):  # names, by final component — the same rule as above
+                if callee not in reachable:
+                    reachable.add(callee)
+                    frontier.append(callee)
+        unreached = sorted(n for n in (set(self.INTERNAL) | set(self.HUMAN_ONLY))
+                           if n not in reachable)
+        self.assertEqual(unreached, [],
+                         "these ledger mutators are exempted from having a tool AND are called by "
+                         "nothing an agent can reach. That is not a governed channel, it is a state "
+                         "the runtime can produce and the product cannot — give it a door or delete "
+                         "it, and never leave the reason as a sentence nobody re-checked.")
 
 
 class TestEveryPathToDecideIsGated(unittest.TestCase):

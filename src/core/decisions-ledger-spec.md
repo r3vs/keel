@@ -1,4 +1,4 @@
-# Decisions Ledger — Spec v0.16
+# Decisions Ledger — Spec v0.17
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -206,21 +206,23 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
 ## Lifecycle
 
 ```
-detected ──(generates question)──▶ needs_input ──(opens brainstorm)──▶ brainstorming
-                                     │                                   │
-                                     │◀────────(proposals written)───────┘
-                                     │
-                          (user commits in interview)
+detected ──(question posed: at creation, or later via set_question)──▶ needs_input
+                                     │                                    │
+                                     └──────(opens brainstorm)──────▶ brainstorming
+                                     │                                    │
+                          (user commits in interview) ◀──────(both are in the interview view)
                                      ▼
                                   decided ──(spawn remediation)──▶ resolved
-                                     │           │        ▲
-                              (or deferred /     │        │ (behavior finally observed)
-                                  accepted)      ▼        │
-                                        correctness_unknown
+                                     │           │        ▲            │
+                              (or deferred /     │        │            │
+                                  accepted)      ▼        │            │
+                                        correctness_unknown            │
                                        (work done, correctness NOT establishable)
+                                     ▲                                 │
+                                     └───(reopen / upheld challenge)◀───┘
 ```
 
-`brainstorming` is transient/optional. `deferred` = out of scope now (YAGNI at the spec level). `accepted` = acknowledged, intentionally left as-is (the legitimate outcome of a `design_concern`). `correctness_unknown` (v0.7) = the work was done and the behavior could **not** be observed with the available evidence — see below.
+`brainstorming` is transient/optional — but it is **not** off the agenda. This diagram used to draw a `brainstorming ──(proposals written)──▶ needs_input` return arrow that nothing implemented: `add_proposals` moves a pin *out* of `needs_input`, `interview_view` selected two states, and no method moved it back — so asking the brainstorm for options was what took a fork off the interview's list, while `summary()` kept counting it under `open_questions`. Since v0.17 the view selects `brainstorming` too and the pin simply stays where it is. `deferred` = out of scope now (YAGNI at the spec level). `accepted` = acknowledged, intentionally left as-is (the legitimate outcome of a `design_concern`). `correctness_unknown` (v0.7) = the work was done and the behavior could **not** be observed with the available evidence — see below.
 
 ---
 
@@ -827,3 +829,49 @@ Same rule as the rung table one section up, one turn further: **a surface that r
 ### The general shape
 
 v0.14's was *"a rule enforced at a door is a rule every future door must remember."* This one is one layer out and is not the same: **a predicate answers the question it was written for, and says nothing about the question next to it.** `unasked_verdict` was correct, complete and well-tested — for *what may be written*. Nothing asked *whether this pin may stop being open at all*, so four doors answered it independently and one of them answered it with nothing. The question that catches it is not "is the predicate sound" but *"name the state transition, and say which predicate governs it"* — asked of every transition, not only of the one that was just fixed.
+
+---
+
+## v0.17 — The way back: two arcs nobody could reach, and two forks nobody could pose
+
+v0.16 asked *"name the state transition, and say which predicate governs it"* and asked it of the transitions that **settle** a pin. Asked of the ones that un-settle one, the answer was worse than "nothing governs it": nothing could *perform* it. `Ledger.reopen()` and `Ledger.challenge()` — the downstream and upstream arcs the doctrine calls load-bearing — had no MCP tool, and MCP is the only runtime channel on all four hosts. So `settlement_verdict` shipped a refusal reading *"the way back is `reopen`, which records why"* about an arc no agent could run, `mark_correctness_unknown` refused finished work with *"Reopen it first"*, and the correct handling of a wrongly-closed pin was to hand-edit `ledger.json`, which every playbook forbids. The whole settlement table was a one-way door.
+
+Three more methods were in the same condition, and they are here rather than in their own version because they are one shape: **a state the runtime can produce that the product cannot leave, or cannot enter.**
+
+### `reopen_verdict(pin, arc)` — and why it is not a third gate
+
+`REOPEN_ARCS` is `reopen | challenge`, `_reopen_minimal` is the single writer of the reopened state (the twin of `_settle`), and `reopen_verdict` answers one question: **would this arc actually move this pin?** `would_reopen` when the pin is in `SETTLED_STATES`, `nothing_settled` otherwise.
+
+`nothing_settled` is deliberately **not a refusal**. Both arcs append their event either way and report `reopened`, which is the shape `cross_derive` was corrected to in v0.16 for the identical condition: a signal that fired against a pin nobody had settled is a true observation, and a refutation of an unelected oracle is a true refutation. Dropping either would lose the one signal `learning.divergences` and `challenger.premortem_required` both read (*"this pin has been reopened before"*).
+
+**Neither existing predicate governs these arcs, and that is stated rather than assumed.** `unasked_verdict` governs *what outcome may land on a pin nobody was asked about*; both arcs write no outcome at all — no `DecisionEvent`, no `settles_as`, no `outcome` parameter on either signature — which is exactly why they are safe to hand an agent when `decide` is not. `settlement_verdict` governs *a pin leaving the open set*; these move it the other way and can produce only `needs_input`. Both claims are asserted from the AST rather than promised in prose.
+
+### `reopened` on the `ReopenEvent` and the `ChallengeEvent`
+
+```jsonc
+{ "id": "rev_0003", …, "fired": "flip_signal", "reopened": true,  "source": "feedback:metrics" }
+{ "id": "chl_0002", …, "upheld": true,         "reopened": false, "source": "challenge:challenger" }
+```
+
+`upheld` and `reopened` are different facts and the second is now recorded, not inferred. Inferring it means reading `pin.substate`, which whichever arc moved the pin wrote and nothing ever clears — so a second falsification of an already-open pin would report itself as having moved it. That is the same two-carriers-for-one-fact bug v0.16 found in `cross_derive`'s return shape, one arc over.
+
+### What the arcs owe, in carriers rather than in prose
+
+Neither is an election, so neither demands a quote or an offered option — there is nothing being chosen. What each owes instead is the thing that makes its claim checkable:
+
+- **downstream** — `reason` (what was actually observed, non-blank), `fired` from the closed `REOPEN_TRIGGERS` (`flip_signal | manual_checkpoint | incident` — a signal with no telemetry degrades to a manual checkpoint, it does not become a new word), and `source` from `feedback:<FLIP_SIGNAL_SOURCES>`, composed from the same vocabulary a `flip_signal` declares its own source with.
+- **upstream** — the `argument`, required and non-blank. **`upheld` is a judgment and v0.17 says whose: the challenger's.** "Read-only" in the roster means *about decisions* — reopening is the challenger's mandate and electing is what it may never do — so upholding belongs to it and the re-answer belongs to the human. An upheld challenge with nothing stated un-does a human's election on an agent's say-so, which is the unquoted relay wearing the neutral arc's clothes, and it is refused at the runtime rather than at the tool.
+
+### `set_question` — write-if-absent, and the menu may not bound the human
+
+`question` was settable only at creation. It is optional there, reasonably — whoever finds a thing is not always whoever knows what the choice is — and the whole funnel runs on it: `interview_view` selects on it, `interview.funnel` builds its entries from `question.prompt`, and both election doors refuse an outcome it does not offer. So a finding recorded without one was `detected` for ever and reached the interview on no host. `Ledger.set_question` existed for four versions with **zero callers** and no tool.
+
+It is now a door, with two refusals. It will not **replace** an existing fork: `question.options[].id` is the carrier the offered-options rule anchors on at both doors, and a general-purpose question setter is how that invariant gets dismantled from the side — the same act v0.16 removed from `cross_derive` and from `mark_correctness_unknown`. And the composed question must set **`allow_freeform`**: an agent writing the menu decides what the human may choose from, so the way out stays open and their own words remain a legal outcome. It deliberately does *not* append `provenance: agent_assumption`, which is the obvious move and is wrong — `add_pin` couples that source to the pin's `confidence`, so appending it afterwards would manufacture the exact combination that door refuses.
+
+### `add_proposals` — the brainstorm could think and could not write
+
+The only writer of the `brainstorming` state, reachable by no tool: on every host the brainstorm agent had no write path at all. Exposed as `mcp:ledger_add_proposals`, with its schema-level neutrality unchanged (a proposal carrying a `decision` or an `outcome` is refused; at most one may be `recommended`). Together with the lifecycle correction above, the arc the brainstorm doctrine describes — *"its proposals surface back as options on that pin's interview question"* — is performable for the first time: the pin stays in the funnel and its proposals ride along on the entry.
+
+### The general shape
+
+v0.16's was *"name the state transition, and say which predicate governs it."* This one is the question that comes before it, and it is cheaper to ask: **name the tool that performs it, and run it.** Five state transitions this schema describes in detail — two arcs back into the open set, one fork posed late, one brainstorm write, one funnel state — were fully implemented, individually tested, and reachable by nobody, for as long as the surface that reaches them has existed. A predicate cannot govern a transition no caller can make, and a test that calls the library directly cannot tell the difference.

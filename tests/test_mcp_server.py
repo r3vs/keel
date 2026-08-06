@@ -47,6 +47,11 @@ EXPECTED_TOOLS = {
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
+    # v0.17 — the way BACK, plus the two forks nobody could pose. None of these elects either: they
+    # record that something is owed a human's attention again. All four were fully implemented in
+    # the runtime and reachable from no host, which is how `settlement_verdict` came to refuse a
+    # close with the words "Reopen it first" about an arc nothing could run.
+    "ledger_reopen", "ledger_challenge", "ledger_set_question", "ledger_add_proposals",
     # comprehension / understand-mode (the structural-graph family)
     "build_graph", "understand_codebase", "explain_node", "graph_query", "guided_tour",
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
@@ -83,6 +88,7 @@ WRITE_TOOLS = {
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
+    "ledger_reopen", "ledger_challenge", "ledger_set_question", "ledger_add_proposals",
     "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
     "generator_observe", "interview_expand", "ledger_record_decision", "ledger_record_policy",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",

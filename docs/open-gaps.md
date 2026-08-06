@@ -11,23 +11,24 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06.** §1–§4 are **closed**. **§5–§17 are open.**
+> **STATUS 2026-08-06.** §1–§5 and §10 are **closed**, and §17b with them. **§6–§9, §11–§16 and the
+> rest of §17 are open.**
 >
 > | # | Open gap | One line |
 > |---|---|---|
-> | 5 | reopen arcs unreachable | `reopen` and `challenge` have no MCP tool, so no host can un-close a pin |
+> | ~~5~~ | ~~reopen arcs unreachable~~ | **CLOSED** — both arcs, `set_question` and `add_proposals` now have doors |
 > | 6 | map palette contrast | `--high` is 2.48:1 in light mode, on the badge that carries the warning |
 > | 7 | `resolution_mode` has no reader on the map | the field that says whether silence counts as an answer |
 > | 8 | the `verification` envelope has no reader | `blocked_by` / `attempted` are written, gated on, rendered nowhere |
 > | 9 | a policy scope on a null-valued optional field is a universal selector | v0.16 closed the typo case, not the class |
-> | 10 | no door gives an existing pin a question | a pin created without one is `detected` for ever |
+> | ~~10~~ | ~~no door gives an existing pin a question~~ | **CLOSED** — `mcp:ledger_set_question`, write-if-absent, freeform required |
 > | 11 | the `correctness_unknown` fork offers an outcome it cannot produce | offered exactly where it is refused |
 > | 12 | `resolution_mode: "asked"` is permanent | one unrelated policy puts a pin beyond every later one |
 > | 13 | `ensure_ascii=False` emits raw U+2028/U+2029 | a stated escape discipline with a hole in it |
 > | 14 | five more pin fields, and four of five log kinds, reach the map nowhere | the class §8 is one instance of |
 > | 15 | two gates check less than their names claim | an AST gate that only sees constants; a name-match gate |
 > | 16 | an unknown `settles_as` renders as a bare label | its sibling `rung` gets a warning for the same condition |
-> | 17 | seven residuals of the final review, untriaged | including a `contested` answer that reads as elected in `AGENTS.md` |
+> | 17 | six residuals of the final review, untriaged | **17b closed**; the rest include a `contested` answer that reads as elected in `AGENTS.md` |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -41,6 +42,7 @@ wrong* is the part that stops it coming back.
 > | 2. tools named by no phase | `eb9c24c` | both `phase-2-interview.md`, both `modules.json`, gate `scripts/check_tool_carriers.py` |
 > | 3. elicitation had never met a real host | `3a0be05` | `docs/packaging.md` → *Elicitation — does the host ask the human, or does the agent relay?* |
 > | 4. 21 tree-sitter skips | `92d2e17` | `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter` |
+> | 5. + 10. + 17b. five transitions no host could make | ledger v0.17 | `mcp:ledger_reopen` · `ledger_challenge` · `ledger_set_question` · `ledger_add_proposals`; `Ledger.reopen_verdict` + `_reopen_minimal`; `tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo`; `test_invariants.py::…::test_an_INTERNAL_mutator_is_actually_reached` |
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
 > a Claude Code hook can answer an elicitation *for* the human, so `elicited` means "the agent did
@@ -49,9 +51,10 @@ wrong* is the part that stops it coming back.
 > the transcribed rung. Neither is a bug in what is written down — they are the limits of what the
 > strong rung buys, which is the sort of thing this file exists to keep honest.
 >
-> **The pattern the register makes visible, stated once so each section does not have to.** Nine of
-> the twelve open gaps are one shape: *a field, a state or an arc that something WRITES and nothing
-> READS.* §5, §7, §8, §10, §14 and half of §11 are all that. It is the repo's signature class
+> **The pattern the register makes visible, stated once so each section does not have to.** Most of
+> the open gaps are one shape: *a field, a state or an arc that something WRITES and nothing
+> READS.* §5, §7, §8, §10, §14 and half of §11 were all that — §5 and §10 are now closed, and both
+> turned out to be the harsher variant of it: an arc nothing could **write** either. It is the repo's signature class
 > (`MEMORY.md` → *"the claiming-vs-doing failure"*) at the surface layer rather than the path layer,
 > and the reason it keeps recurring is structural: adding a writer is a change inside one module, and
 > giving it a reader is a change on somebody else's surface. So the question to ask of any new field
@@ -75,9 +78,8 @@ The original suggested order was **1 → 2 → 4 → 3**, and it was followed; 3
 outcomes it anticipated — two hosts yes, two no. §1–§4 below are that report, kept verbatim under
 their closing notes. §5 onwards were opened later and each says where it came from.
 
-**Suggested order for what is open.** §5 first: it is a missing door, three shipped claims rest on
-it, and two other sections (§8's "reopen it first", §12's stuck `asked`) currently point at an arc
-nobody can reach. Then §9 and §12, which are rules that mis-fire rather than surfaces that are
+**Suggested order for what is open.** §5 was done first and is closed, so §8's *"reopen it first"*
+and §12's stuck `asked` now point at an arc that exists. Then §9 and §12, which are rules that mis-fire rather than surfaces that are
 missing — they can decide a user's pins wrongly today. Then the reader cluster §7, §8, §14, which is
 one afternoon on one file and should be done as **one** change to the map rather than four, because
 four separate additions to one surface is how a page acquires four vocabularies. §15 and §16 are
@@ -476,7 +478,60 @@ different environment than the shell is consistent with everything ruled out abo
 
 ---
 
-## 5. Both reopen arcs are reachable by nobody — **OPEN, found 2026-08-06**
+## 5. Both reopen arcs are reachable by nobody — **CLOSED 2026-08-06** (ledger v0.17)
+
+**Both arcs have doors, and so do the two states that turned out to be in the same condition.**
+`mcp:ledger_reopen` and `mcp:ledger_challenge` are served, named by shipped playbooks
+(`core/feedback-loop.md` + greenfield's phase-7; both phase-2 interviews), and verified end to end
+over real `uv run --script` stdio against the **shipped plugin tree from a foreign cwd**: decide →
+resolve → `mark_correctness_unknown` refused `already_closed` → `ledger_reopen` → the same call
+succeeds. `tools/list` carries all four names, which is the carrier this section named.
+
+**The shape got a predicate, not a fourth ad-hoc rule.** `Ledger.reopen_verdict(pin, arc)` answers
+*would this arc move this pin*, `_reopen_minimal` is the single writer of the reopened state
+(`_settle`'s twin), and `REOPEN_ARCS` ↔ `_SUBSTATE_BY_ARC` are held equal —
+`TestComingBackIntoTheOpenSetIsGovernedToo` asserts the caller set from the AST, the mirror of
+`test_every_door_reaches_the_single_writer`. `nothing_settled` is deliberately **not** a refusal:
+both arcs append their event either way and report `reopened`, the shape `cross_derive` was
+corrected to in v0.16 for the identical condition — dropping the event would lose the signal
+`learning.divergences` and `premortem_required` both read.
+
+**Both package predicates were checked at this surface, and the answer is recorded rather than
+assumed.** `unasked_verdict` governs what outcome may land on an unasked pin; neither arc writes an
+outcome — no `outcome`, `settles_as`, `option_id` or `default_outcome` parameter on any of the four
+library methods or their four tools, and none of them calls `decide`/`_settle`/`accept`/`defer`,
+asserted by signature and by AST. `settlement_verdict` governs leaving the open set; these enter it.
+What each arc owes instead is stated in carriers: `reason` non-blank + `fired` ∈ `REOPEN_TRIGGERS` +
+`source` ∈ `feedback:<FLIP_SIGNAL_SOURCES>` downstream; a non-blank `argument` upstream.
+
+**Who owns `upheld` — the challenger, and the tool says so.** "Read-only" in the roster means *about
+decisions*: reopening is the challenger's mandate, electing is what it may never do. What that buys
+is checkability, so a blank `argument` is refused at the runtime, for the reason a relayed decision
+with no quote is.
+
+**The inverse gate this section asked for exists**:
+`test_invariants.py::…::test_an_INTERNAL_mutator_is_actually_reached` computes the transitive call
+graph over `src/runtime` + `src/mcp`, rooted at the `@mcp.tool` functions, and fails when an
+exemption names a mutator nothing an agent can reach. It would have caught all four at once. Its
+declared limit: names are matched by final component (the same rule `TestEveryPathToDecideIsGated`
+uses), so a mutator sharing a name with something reachable (`run`) would pass — verified by
+planting `_warm_grammars_async` and `nonconforming`, both of which it fails on.
+
+**Two residuals, recorded rather than fixed:**
+
+- `_reopen_minimal` cascades over `("decided", "resolved", "accepted")` — three states where
+  `SETTLED_STATES` has four. Whether a `deferred` dependent rested on the falsified truth is a real
+  question and nothing here settles it, so the tuple is unchanged and the divergence is named in a
+  comment at the site. Inventing a rationale for someone else's tuple is how a hardcoded list
+  acquires the authority of a decision (and it is §17e's class one file over).
+- **`add_proposals` auto-id'd every proposal identically** — `f"prop_{len(proposals)}"` is the
+  list's length, constant across the loop, so two proposals both came back `prop_2`. Fixed here
+  rather than registered, because this commit is what made the method callable at all and the id is
+  a carrier (`DecisionEvent.proposal_ref` points at it, and the funnel entry now lists it). Found by
+  running the tool over stdio, not by reading it — unreachable code cannot be wrong in a way anybody
+  notices, which is the whole subject of this section.
+
+### The original report, kept as the record
 
 Found while closing the v0.16 settlement predicate, and deliberately **not** fixed in that scope:
 it is a missing door, not a missing rule, and the round that found it was a rule round. It is the
@@ -795,7 +850,38 @@ a scope where `null` is the intended meaning, and check the message is not a wal
 
 ---
 
-## 10. Nothing can give an existing pin a question — **OPEN, found 2026-08-06**
+## 10. Nothing can give an existing pin a question — **CLOSED 2026-08-06** (ledger v0.17)
+
+**The door is `mcp:ledger_set_question`, and the section's own warning decided its shape.** It is
+write-if-absent — a pin that already poses a fork is refused, because `question.options[].id` is the
+carrier the offered-options rule anchors on at both election doors and replacing it is an agent
+deciding what the human may choose from. Verified over stdio on the shipped tree: `ledger_add_pin`
+with no question → `detected`, absent from `interview_next`; `ledger_set_question` → `needs_input`,
+present in the funnel; a second call → refused.
+
+**The trap got a carrier rather than a docstring.** "Do not solve it by having the agent compose the
+fork silently" is enforced by requiring `allow_freeform: true` on any fork composed after the fact:
+the options become a suggestion and the human's own words stay a legal outcome
+(`record_decision(option_id="freeform")`). A closed menu written by an agent is refused.
+
+**One thing deliberately not done:** it does **not** append `provenance: agent_assumption`, which
+this section suggested. `add_pin` couples that source to the pin's `confidence`
+(`inferred|ambiguous` required), so appending it afterwards would manufacture exactly the
+combination that door refuses — one rule, two doors, two answers, the shape v0.14–v0.16 were spent
+removing. `confidence` describes how the pin's `as_is` was established; composing a fork later says
+nothing about that.
+
+**The state move is scoped to where it was blocking:** `detected` → `needs_input`, and nothing else.
+The old body forced `needs_input` unconditionally, which this section flagged as wrong for a
+`correctness_unknown` pin (already in the view on its state alone, and the envelope is what says
+why). A `CLOSED_STATES` pin is refused outright and pointed at `reopen`.
+
+**The alternative was considered and rejected**, since the section asked for a decision rather than
+both options left open: making `question` *required* on the kinds that must reach the interview
+would refuse the honest case this exists for — a Phase-1 finder who knows there is a fork and not
+yet what it is. A required field there produces an invented fork, which is worse than a late one.
+
+### The original report, kept as the record
 
 ### Verified
 
@@ -1213,7 +1299,7 @@ this map cannot describe, not print it as though it were understood.
 
 ---
 
-## 17. Seven residuals of the final review — **OPEN, found 2026-08-06, not triaged**
+## 17. Seven residuals of the final review — **17b CLOSED; six OPEN, not triaged**
 
 Two adversarial reviewers closed the seventh round. Their findings are here rather than fixed,
 because the round's rule was that only defects it had *introduced* could be fixed in it — and
@@ -1229,6 +1315,18 @@ identically to the Settled section's build instruction. `grep -c substate src/ru
 → 0. The map distinguishes the two loudly (an amber CROSS-DERIVATION — DISAGREE card, confirmed in a
 browser); the one file every host loads unprompted does not. **Why it matters:** the heading forbids
 *deciding*, not *building on*, and this is the surface with no reader to ask.
+
+**17b — CLOSED 2026-08-06 (ledger v0.17), and it was worse than reported.** `interview_view` now
+selects `brainstorming` too, and each funnel entry carries the proposals, so `core/brainstorm.md`'s
+*"its proposals surface back as options on that pin's interview question"* describes the machine for
+the first time. But the exit was only half of it: **`add_proposals` is the only writer of the
+`brainstorming` state and no MCP tool reached it either**, so the brainstorm could think and could
+not write on any host — this section described the way out of a room nobody could enter. The door is
+`mcp:ledger_add_proposals`, neutrality unchanged (a proposal carrying a `decision`/`outcome` is
+refused; at most one `recommended`). The spec's lifecycle diagram drew a
+`brainstorming ──(proposals written)──▶ needs_input` return arrow that nothing implemented; it is
+corrected rather than deleted, because the arrow is *why* nobody noticed. The finding below is kept
+verbatim.
 
 **17b. A pin in `brainstorming` reaches the interview on no host.** `Ledger.interview_view` selects
 only `("needs_input", "correctness_unknown")` (`src/runtime/ledger.py:1699`), so `add_proposals` —

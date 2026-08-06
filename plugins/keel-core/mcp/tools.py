@@ -676,6 +676,116 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer", "evidence": evidence}
 
 
+# -- the two reopen arcs, and the two doors that put a pin back in front of a human ---------------
+#
+# Everything above moves a pin forward. Nothing here elects: these four record that something is
+# owed a human's attention again — a signal fired, an oracle was refuted, a finding has no fork yet,
+# the brainstorm has options. That is why they are exposed at all while `decide` is not, and the
+# distinction is enforced structurally rather than promised: no function in this block passes an
+# `outcome` anywhere, and `tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo` asserts
+# it from the AST.
+
+def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_signal",
+                  source: str = "feedback:metrics") -> dict:
+    """Record that production falsified an elected decision, and hand the pin back. Never decides.
+
+    The downstream arc of the feedback loop, and for four versions it existed in the runtime and on
+    no host: `settlement_verdict` refuses to close finished work twice with the words *"Reopen it
+    first"*, and nothing could. So the only way to correct a wrongly-closed pin was to hand-edit
+    `ledger.json`, which every playbook forbids.
+
+    It writes no outcome, which is what makes it safe to expose — there is no quote to demand and no
+    offered option to check, because nothing is being chosen. What it does demand is the observation:
+    `reason` must say what was seen, `fired` names the kind of tripwire, `source` names where the
+    reading came from. `reopened` in the return says whether the pin actually moved: an observation
+    about a pin nobody had settled is still recorded, and reporting it as a move would be a second
+    carrier for a fact the event already holds.
+    """
+    led = _open_existing(ledger)
+    event = led.reopen(pin_id, reason=reason, fired=fired, source=source)
+    led.save()
+    _refresh_live_maps(ledger)
+    pin = led.pin(pin_id)
+    return {"pin_id": pin_id, "event_id": event["id"], "reopened": event["reopened"],
+            "state": pin["state"], "substate": pin.get("substate"),
+            "also_reopened": [p["id"] for p in led.data["pins"]
+                              if p["id"] != pin_id and p.get("substate") == "reopened"
+                              and p["state"] == "needs_input"]}
+
+
+def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str, argument: str,
+                     severity: str, upheld: bool, source: str = "challenge:challenger") -> dict:
+    """Record a ChallengeEvent against an elected oracle, and — if upheld — hand the pin back.
+
+    The upstream arc: the oracle may be wrong *from the start*, before anything is built on it. Its
+    read-only twin `challenge_oracle` proposes the deterministic classes and applies none of them;
+    this is where one lands. The judgment classes (`inconsistent`, `unsatisfiable`,
+    `unstated_assumption`, `unfounded_infeasibility`) never had a surface at all.
+
+    **Who owns `upheld`: the challenger.** "Read-only" in the roster means *about decisions* —
+    reopening is the challenger's whole mandate and electing is what it may never do, so upholding
+    belongs to it and the re-answer belongs to the human. What the arc owes in exchange is the
+    `argument`: an upheld challenge with nothing stated reopens a human's election on an assertion,
+    which is the unquoted relay one arc over, and the runtime refuses it.
+
+    `upheld` and `reopened` are different facts and both come back: a refutation of a pin nobody
+    settled is true and moves nothing.
+    """
+    led = _open_existing(ledger)
+    event = led.challenge(pin_id, target=target, challenge_class=challenge_class,
+                          argument=argument, severity=severity, upheld=bool(upheld), source=source)
+    led.save()
+    _refresh_live_maps(ledger)
+    pin = led.pin(pin_id)
+    return {"pin_id": pin_id, "event_id": event["id"], "upheld": event["upheld"],
+            "reopened": event["reopened"], "state": pin["state"],
+            "substate": pin.get("substate")}
+
+
+def ledger_set_question(ledger: str, pin_id: str, question: dict) -> dict:
+    """Give a pin that poses NO fork the fork it needs to reach the interview. Never decides.
+
+    `ledger_add_pin`'s `question` is optional — a finder is not always the one who knows what the
+    choice is — and nothing could supply it afterwards, so such a pin stayed `detected` for ever and
+    appeared in `interview_next` on no host.
+
+    Write-if-absent, and refused on a pin that already poses one: `question.options[].id` is the
+    carrier the offered-options rule anchors on at both election doors, so replacing a fork is an
+    agent deciding what the human may choose from. `allow_freeform` is required, because a menu an
+    agent composed must leave the human a way to answer outside it.
+    """
+    led = _open_existing(ledger)
+    pin = led.set_question(pin_id, question)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin["id"], "state": pin["state"],
+            "options": [o["id"] for o in (pin["question"].get("options") or [])],
+            "allow_freeform": bool(pin["question"].get("allow_freeform"))}
+
+
+def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str = "") -> dict:
+    """Write the brainstorm's options onto ONE pin. Proposes; never decides, by schema.
+
+    The brainstorm agent's own write path, and it had none: `Ledger.add_proposals` is the only
+    writer of the `brainstorming` state and no tool reached it, so on every host the brainstorm
+    could think and could not record. A proposal carrying a `decision` or an `outcome` is refused —
+    neutrality is enforced by the schema, not by good intentions — and at most one may be
+    `recommended`, because the gap between what was recommended and what the human elected is the
+    single best learning signal in the ledger and two marks make it uncomputable.
+
+    The pin stays in the interview funnel while it is in `brainstorming` (v0.17); its proposals ride
+    along on the funnel entry, so the exploration flows into the answer instead of replacing it.
+    """
+    led = _open_existing(ledger)
+    pin = led.add_proposals(pin_id, list(proposals or []), notes=notes)
+    led.save()
+    _refresh_live_maps(ledger)
+    return {"pin_id": pin["id"], "state": pin["state"],
+            "proposals": [p["id"] for p in pin["brainstorm"]["proposals"]],
+            "recommended": next((p["id"] for p in pin["brainstorm"]["proposals"]
+                                 if p.get("recommended")), "")}
+
+
 # -- coverage manifest -------------------------------------------------------------------------
 
 def coverage_gaps(langs: list, reports: list | None = None) -> dict:

@@ -68,6 +68,15 @@ Summary of what matters here:
   resolve; a CLOSED pin is not settled again by any door, it is reopened; and
   `resolution_mode: "asked"` **binds** — the pin's own standing demand to be asked is read by the
   unasked predicate rather than merely written by six sites.
+- v0.17 gives the way BACK the same treatment, having found it reachable by nobody: both reopen arcs
+  and the two forks-in-waiting had no tool on any host, so `settlement_verdict`'s own refusal
+  (*"Reopen it first"*) named an arc nothing could run. `reopen_verdict(pin, arc)` answers *would
+  this arc move this pin*, `_reopen_minimal` is its single writer (the twin of `_settle`), and each
+  event now records `reopened` beside `upheld` rather than leaving a reader to infer it from a
+  `substate` nothing clears. `set_question` becomes **write-if-absent** with `allow_freeform`
+  required — a fork composed after the fact may not bound what the human may answer — and a pin in
+  `brainstorming` stays in the interview view, because asking the brainstorm for options used to be
+  what took the fork off the agenda.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.

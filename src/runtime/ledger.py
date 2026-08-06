@@ -45,6 +45,15 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   so *"how did this pin stop being open, and on whose authority"* is answerable from the log for
   every door and not only for `decided`. `resolution_mode: "asked"` is honoured by `unasked_verdict`
   too: six sites write it to assert "this one must be asked" and, until now, nothing read it.
+- v0.17 the way BACK. v0.16 gave the five doors that settle a pin one predicate, one writer and one
+  event, and left the two arcs that un-settle one with no predicate, no shared writer and no MCP
+  tool — so `settlement_verdict`'s own refusal text (*"Reopen it first"*) named an arc no host could
+  reach, and the whole settlement table was a one-way door. `reopen_verdict(pin, arc)` answers
+  *"would this arc actually move this pin"* for both, `_reopen_minimal` is the only writer of the
+  reopened state, and each arc's event records `reopened` rather than leaving a reader to infer it
+  from a substate that is never cleared. `set_question` becomes write-if-absent (a pin recorded with
+  no fork could not reach the interview at all), and `interview_view` selects `brainstorming` too:
+  asking the brainstorm for options used to be what took a fork off the agenda.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -57,7 +66,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.16"
+SCHEMA_VERSION = "0.17"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -70,7 +79,7 @@ SCHEMA_VERSION = "0.16"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16")
+                     "0.14", "0.15", "0.16", "0.17")
 
 KINDS = {
     "contract_mismatch",
@@ -186,6 +195,41 @@ SETTLEMENT_BUCKETS = (
     "remediation_open",  # no remediation recorded, or an item still open
     "unverified",        # correctness was NOT established — `resolved` means observed
 )
+
+# -- the two arcs that put a pin BACK into the open set (v0.17) --------------------------------
+#
+# The mirror of `SETTLEMENT_DOORS`, and it arrives one version later for a reason worth keeping in
+# the file rather than in a commit message: v0.16 gave the five doors that settle a pin one
+# predicate, one writer and one event, and left the two arcs that un-settle one with none of the
+# three — no predicate, no shared writer, and (the part nobody could see from inside this module) no
+# MCP tool on any host. So `_SETTLEMENT_REASONS` shipped a refusal reading *"Reopen it first"* about
+# an arc nothing could reach, and the settlement table was a one-way door.
+REOPEN_ARCS = ("reopen", "challenge")
+
+# The substate each arc leaves behind. A table rather than a string every caller passes, for the
+# same reason `_STATE_BY_DOOR` is one: the substate IS which arc ran, so a second carrier for that
+# fact is a divergence waiting to happen.
+_SUBSTATE_BY_ARC = {"reopen": "reopened", "challenge": "challenged"}
+
+# What put a settled pin back in front of the human, on the DOWNSTREAM arc. `flip_signal` is the
+# decision's own declared tripwire; `manual_checkpoint` is what a `flip_signal` with no telemetry
+# degrades to (`core/feedback-loop.md`); `incident` is production saying it the loudest way it can.
+# Closed, because "what fired" is the whole of what a reopen rests on — the arc writes no outcome
+# and needs no quote precisely because it is reporting an observation, and a free-text field there
+# would let an agent write its own justification where production's belongs.
+REOPEN_TRIGGERS = ("flip_signal", "manual_checkpoint", "incident")
+
+# Where the reading came from, composed from the same closed vocabulary a `flip_signal` declares its
+# own source with. One list, so "watched by metrics" and "reopened by metrics" cannot drift into
+# meaning two different things.
+_FEEDBACK_SOURCES = tuple(f"feedback:{src}" for src in FLIP_SIGNAL_SOURCES)
+
+# What `Ledger.reopen_verdict` can answer. `nothing_settled` is NOT a refusal: both arcs append
+# their event either way and report whether anything moved, which is the shape `cross_derive` was
+# corrected to in v0.16 for the identical condition — an observation about a pin that cannot be
+# un-settled is still an observation, and dropping it would lose the one signal the learning layer
+# and the premortem gate both read (`has been reopened before`).
+REOPEN_BUCKETS = ("would_reopen", "nothing_settled")
 
 # What `Ledger.unasked_verdict` can answer, and therefore the buckets every radius over it reports
 # (v0.14). Ordered so a caller can present them the way a human reads them: what it decides first,
@@ -580,11 +624,58 @@ class Ledger:
         return pin
 
     def set_question(self, pin_id: str, question: dict) -> dict:
+        """Give a pin that poses NO fork the fork it needs to reach the interview (v0.17).
+
+        `ledger_add_pin`'s `question` is optional, reasonably: whoever finds a thing is not always
+        whoever knows what the fork is. But `question` is what the whole funnel runs on —
+        `interview_view` selects on it, `interview.funnel` builds its entries from `question.prompt`,
+        and both election doors refuse an outcome it does not offer — so a finding recorded without
+        one was `detected` for ever and reached the interview on no host. This method existed for
+        four versions with zero callers and no tool, which is why nobody could tell.
+
+        **Write-if-absent, and that is the rule, not a courtesy.** It used to assign over whatever
+        was there. `question.options[].id` is the carrier the offered-options rule anchors on at
+        both doors, so a general-purpose question setter is how that invariant gets dismantled from
+        the side — the same act v0.16 removed from `cross_derive` and from
+        `mark_correctness_unknown`, each of which had been silently replacing a human's own fork.
+
+        **The composed menu may not bound the human.** An agent composing a fork decides what the
+        human is allowed to choose from, so the fork it composes has to leave the way out open:
+        `allow_freeform` is required here and nowhere else. With it, the options are a suggestion
+        and the human's own words are still a legal outcome (`record_decision(option_id=
+        "freeform")`); without it, an agent would be handing over a closed menu it wrote itself.
+
+        **What it deliberately does NOT do is append `provenance: agent_assumption`**, which is the
+        obvious move and is wrong here. `add_pin` couples that source to the pin's `confidence`
+        (`inferred|ambiguous` required), so appending it afterwards would manufacture exactly the
+        combination that door refuses — one rule, two doors, two answers, which is the shape v0.14
+        through v0.16 were spent removing. `confidence` describes how the pin's `as_is` was
+        established, and composing a fork later says nothing about that.
+
+        The state moves only where it was blocking: `detected` -> `needs_input`. A
+        `correctness_unknown` pin is already in the interview view on its state alone and forcing
+        `needs_input` would erase what the verification envelope is there to say; a `decided` pin is
+        not un-decided by acquiring a question, because un-deciding is the reopen arc and has its
+        own door.
+        """
         pin = self.pin(pin_id)
+        _require(bool(question), "a question is required — this door exists to add one")
         _validate_question(question)
-        _require(pin["state"] not in ("resolved",), "cannot re-question a resolved pin")
+        _require(bool(question.get("allow_freeform")),
+                 "a fork composed after the fact must set allow_freeform: the menu is what the "
+                 "human is allowed to choose from, and an agent that writes a closed one has "
+                 "decided the shape of their answer")
+        _require(not pin.get("question"),
+                 f"{pin_id} already poses a fork. `question.options[].id` is the carrier the "
+                 f"offered-options rule anchors on at both election doors, so replacing it decides "
+                 f"what the human may choose next — write-if-absent is the whole rule here.")
+        _require(pin["state"] not in CLOSED_STATES,
+                 f"the work on {pin_id} is finished ({pin['state']}); posing it a new question is "
+                 f"un-finishing it, which is the reopen arc and has its own door (`reopen`, which "
+                 f"records why).")
         pin["question"] = question
-        pin["state"] = "needs_input"
+        if pin["state"] == "detected":
+            pin["state"] = "needs_input"
         return pin
 
     # -- brainstorm (neutral by schema) --------------------------------------
@@ -602,14 +693,25 @@ class Ledger:
         _require(sum(1 for p in proposals if p.get("recommended")) <= 1,
                  "at most one proposal may be `recommended` — two make the recommendation "
                  "uncomparable to what the human elects, which is the point of marking it")
-        for prop in proposals:
+        for index, prop in enumerate(proposals, 1):
             _require(bool(prop.get("summary")), "a proposal needs a summary")
             _require(prop.get("effort") in EFFORTS if "effort" in prop else True,
                      f"proposal effort must be one of {EFFORTS}")
             _require("decision" not in prop and "outcome" not in prop,
                      "neutrality: a proposal must not carry a decision/outcome")
-            prop.setdefault("id", f"prop_{len(proposals)}")
+            # `f"prop_{len(proposals)}"` — the LIST's length, constant across the loop, so every
+            # auto-id'd proposal on a pin got the same id: two proposals, both `prop_2`. Invisible
+            # for as long as no host could call this at all, and reproduced on the first real
+            # `mcp:ledger_add_proposals` call. The id is a carrier — `DecisionEvent.proposal_ref`
+            # points at it and the funnel entry lists it — so duplicates make "which option did the
+            # human take" unanswerable, which is the one question the mark exists to answer.
+            prop.setdefault("id", f"prop_{index}")
             prop.setdefault("tradeoffs", {"pros": [], "cons": []})
+        ids = [p["id"] for p in proposals]
+        _require(len(set(ids)) == len(ids),
+                 f"two proposals share an id ({sorted(ids)}) — `proposal_ref` on the DecisionEvent "
+                 f"points at it, so a repeated id makes 'which option did the human take' "
+                 f"unanswerable from the ledger")
         pin["brainstorm"] = {"proposals": proposals, "notes": notes}
         if pin["state"] == "needs_input":
             pin["state"] = "brainstorming"
@@ -1216,6 +1318,33 @@ class Ledger:
 
     # -- the two reopen arcs (both reopen, neither decides) -------------------
 
+    def reopen_verdict(self, pin: dict, arc: str) -> str:
+        """Would this arc actually move this pin? One of `REOPEN_BUCKETS` (v0.17).
+
+        **Not a gate, and the difference is the point.** The five settlement doors ask permission
+        because settling is irreversible-ish and unasked; these two arcs report something that
+        happened — a signal fired, an oracle was refuted — and an observation about a pin that was
+        never settled is still a true observation. So the event is appended either way and this
+        predicate decides only whether anything *moves*. `cross_derive` was corrected to exactly this
+        shape in v0.16, for the identical condition, and reusing it is deliberate: two answers to
+        "the state will not take this write" on one file would be the divergence, not the fix.
+
+        **Neither package predicate governs these arcs, and saying so is part of the design rather
+        than an omission.** `unasked_verdict` governs *what outcome may land on a pin nobody was
+        asked about*: these arcs write no outcome at all — no `DecisionEvent`, no `settles_as`, no
+        `outcome` parameter anywhere on either signature — which is precisely why they are safe to
+        expose to an agent when `decide` is not, and it is asserted from the AST rather than claimed
+        here (`tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo`).
+        `settlement_verdict` governs *a pin leaving the open set*: these move it the other way, and
+        the only state either can produce is `needs_input`.
+
+        What is left to check is therefore small and honest: a pin in `SETTLED_STATES` has something
+        to bring back; a pin already open has not, and re-stamping `resolution_mode: "asked"` on it
+        would be the only lasting effect — a mark nothing clears.
+        """
+        _require(arc in REOPEN_ARCS, f"arc must be one of {REOPEN_ARCS}; got {arc!r}")
+        return "would_reopen" if pin["state"] in SETTLED_STATES else "nothing_settled"
+
     def challenge(
         self,
         pin_id: str,
@@ -1230,12 +1359,31 @@ class Ledger:
 
         Appends an immutable ChallengeEvent; if upheld, moves the pin (and only its
         decided dependents) back to needs_input/challenged. Never writes a DecisionEvent.
+
+        **`upheld` is a judgment, and v0.17 says whose.** It is the challenger's — the read-only
+        role whose entire mandate is to doubt an elected oracle and hand the pin back. "Read-only"
+        in the roster means *about decisions*: the challenger may reopen, and only the human's
+        re-answer commits, so upholding is inside its mandate and electing is not. What the arc owes
+        in exchange is the thing that makes the judgment checkable, and it is the same thing a
+        `transcribed` decision owes: the `argument`. An upheld challenge with nothing stated reopens
+        a human's election on an assertion, which is the unquoted relay one arc over — so a blank
+        argument is refused here rather than being a matter of taste at the tool.
+
+        **`upheld` and `reopened` are two facts, and the event records both.** A challenge upheld
+        against a pin nobody ever settled is a true refutation that moves nothing; reading the move
+        back off the pin's `substate` — which the reopen writes and nothing clears — is the exact
+        two-carriers-for-one-fact bug v0.16 found in `cross_derive`'s return shape.
         """
         _require(target in CHALLENGE_TARGETS, f"target must be one of {CHALLENGE_TARGETS}")
         _require(challenge_class in CHALLENGE_CLASSES,
                  f"class must be one of {CHALLENGE_CLASSES}")
         _require(severity in SEVERITIES, f"severity must be one of {SEVERITIES}")
+        _require(bool(str(argument).strip()),
+                 "a challenge IS its argument — state what refutes the oracle. An upheld challenge "
+                 "with nothing stated reopens a human's election on an agent's say-so, which is the "
+                 "unquoted relay wearing the neutral arc's clothes")
         pin = self.pin(pin_id)
+        reopened = bool(upheld) and self.reopen_verdict(pin, "challenge") == "would_reopen"
         event = {
             "id": self._next_id("chl_", self.data["decision_log"]),
             "pin_id": pin_id,
@@ -1245,12 +1393,13 @@ class Ledger:
             "argument": argument,
             "severity": severity,
             "upheld": upheld,
+            "reopened": reopened,
             "source": source,
             "policy_hash": self._policy_hash(),
         }
         self.data["decision_log"].append(event)
-        if upheld:
-            self._reopen_minimal(pin, substate="challenged")
+        if reopened:
+            self._reopen_minimal(pin, "challenge")
         return event
 
     def premortem(
@@ -1484,26 +1633,63 @@ class Ledger:
 
     def reopen(self, pin_id: str, reason: str, fired: str = "flip_signal",
                source: str = "feedback:metrics") -> dict:
-        """v0.5 downstream arc: production falsified the decision — reopen, don't decide."""
+        """v0.5 downstream arc: production falsified the decision — reopen, don't decide.
+
+        This is the arc `settlement_verdict` points at when it refuses to close finished work twice
+        (*"Reopen it first"*), and for four versions that sentence named something no host could
+        run. What makes it safe to hand an agent — where `decide` is not — is that it writes no
+        outcome: there is no `outcome`, no `settles_as` and no way to add one without failing
+        `TestComingBackIntoTheOpenSetIsGovernedToo`. So it needs no quote and no offered option.
+
+        What it needs instead is the observation it rests on, stated in carriers rather than in
+        prose: `fired` names which kind of tripwire tripped (`REOPEN_TRIGGERS`), `source` names
+        where the reading came from (`_FEEDBACK_SOURCES`, composed from the same vocabulary a
+        `flip_signal` declares its own source with), and `reason` is required to say what was
+        actually seen. The last of those can only be checked for presence — whether a reason names
+        *which class of assumption production falsified* is judgment, and `core/feedback-loop.md` is
+        where that standard is set, not here.
+        """
         pin = self.pin(pin_id)
+        _require(bool(str(reason).strip()),
+                 "a reopen must say what production showed. It un-settles work a human elected, and "
+                 "'signal fired' with no reading is a state change nobody downstream can weigh")
+        _require(fired in REOPEN_TRIGGERS,
+                 f"fired must be one of {REOPEN_TRIGGERS}; got {fired!r}. A flip_signal with no "
+                 f"telemetry degrades to manual_checkpoint — it does not become a new word")
+        _require(source in _FEEDBACK_SOURCES,
+                 f"source must be one of {_FEEDBACK_SOURCES}; got {source!r}. The downstream arc "
+                 f"originates in production, and its origins are the ones a flip_signal can name")
         event = {
             "id": self._next_id("rev_", self.data["decision_log"]),
             "pin_id": pin_id,
             "timestamp": _now(),
-            "reason": reason,
+            "reason": str(reason).strip(),
             "fired": fired,
+            # Recorded, never inferred later from `substate`: the substate is written by whichever
+            # arc moved the pin and is never cleared, so a second falsification of an already-open
+            # pin would read as having moved it. Same fact, same fix, as `cross_derive`'s `reopened`.
+            "reopened": self.reopen_verdict(pin, "reopen") == "would_reopen",
             "source": source,
             "policy_hash": self._policy_hash(),
         }
         self.data["decision_log"].append(event)
-        self._reopen_minimal(pin, substate="reopened")
+        self._reopen_minimal(pin, "reopen")
         return event
 
-    def _reopen_minimal(self, pin: dict, substate: str) -> None:
-        """Reopen the minimum: the pin plus its decided depends_on dependents, transitively.
+    def _reopen_minimal(self, pin: dict, arc: str) -> bool:
+        """THE only writer of the reopened state, and the only place either arc moves anything.
 
-        A challenger that reopens everything regenerates the very churn the skills cure.
+        `_settle`'s twin, and it is one function for the same reason: a rule that lives in an arc has
+        to be remembered by the next arc, and there are exactly two of them precisely because nobody
+        was counting. Returns whether the pin moved, so a caller never has to re-derive it from a
+        state it just wrote.
+
+        Reopen the minimum: the pin plus its settled `depends_on` dependents, transitively. An arc
+        that reopens everything regenerates the very churn the skills cure.
         """
+        if self.reopen_verdict(pin, arc) != "would_reopen":
+            return False
+        substate = _SUBSTATE_BY_ARC[arc]
         to_reopen = {pin["id"]}
         changed = True
         while changed:
@@ -1511,6 +1697,12 @@ class Ledger:
             for p in self.data["pins"]:
                 if p["id"] in to_reopen:
                     continue
+                # NOTE: three states, where `SETTLED_STATES` has four — `deferred` is not cascaded
+                # over. Kept exactly as it was rather than "corrected", because whether a pin elected
+                # OUT of scope rested on the falsified truth is a real question and no evidence here
+                # settles it. Recorded in `docs/open-gaps.md` under §5 rather than resolved by
+                # guessing: inventing a rationale for someone else's tuple is how a hardcoded list
+                # acquires the authority of a decision.
                 if any(dep in to_reopen for dep in p.get("depends_on", [])) \
                         and p["state"] in ("decided", "resolved", "accepted"):
                     to_reopen.add(p["id"])
@@ -1520,6 +1712,7 @@ class Ledger:
                 p["state"] = "needs_input"
                 p["substate"] = substate
                 p["resolution_mode"] = "asked"   # a reopened truth is never re-defaulted silently
+        return True
 
     # -- remediation / build (the bridge to Phase 4) ---------------------------
 
@@ -1678,11 +1871,18 @@ class Ledger:
         """The interview IS the filtered view of pins awaiting a human answer, ordered by
         information gain: the ones that collapse the most downstream pins come first.
 
-        Two states await an answer, for different reasons. `needs_input` means the decision has not
+        Three states await an answer, for different reasons. `needs_input` means the decision has not
         been made. `correctness_unknown` (v0.7) means the decision was made and *verification*
-        failed — the pin needs a next-move answer, not a re-election. Both belong here: a state that
-        blocks closure and appears on no surface is a black hole, and the pin most likely to be
-        forgotten is exactly the one nobody could verify.
+        failed — the pin needs a next-move answer, not a re-election. `brainstorming` (v0.17) means
+        somebody asked the brainstorm for options on this fork, which is what a hard fork is supposed
+        to do when it gets stuck — and until v0.17 doing it took the fork **off** the agenda:
+        `add_proposals` moves the pin out of `needs_input`, this view selected two states, and
+        nothing moved it back. The pin stayed in `summary()`'s `open_questions` count the whole time,
+        so the ledger reported a question the funnel could not produce.
+
+        All three belong here for one reason: a state that awaits a human and appears on no surface
+        is a black hole, and the pins most likely to be forgotten are exactly the one nobody could
+        verify and the one that was hard enough to need help.
         """
         dependents: dict[str, int] = {}
         for p in self.data["pins"]:
@@ -1697,7 +1897,7 @@ class Ledger:
             return total
 
         pending = [p for p in self.data["pins"]
-                   if p["state"] in ("needs_input", "correctness_unknown")]
+                   if p["state"] in ("needs_input", "brainstorming", "correctness_unknown")]
         sev_rank = {s: i for i, s in enumerate(SEVERITIES)}
         # An unverifiable blocker outranks information gain. Fan-out orders questions that are still
         # open; a `blocker|high` whose correctness could not be established is not a question to

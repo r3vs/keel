@@ -208,7 +208,16 @@ def funnel(ledger) -> dict:
 
     200 pins → clusters → policies → the few real questions (asked), the rest skimmable as
     proposed_default. Order the asked questions by information gain (the ledger's interview_view
-    already sorts by transitive downstream fan-out). Returns a structured, renderable view."""
+    already sorts by transitive downstream fan-out). Returns a structured, renderable view.
+
+    An entry carries `proposals` when the brainstorm has written any (v0.17). `core/brainstorm.md`
+    states the arc — *"its proposals surface back as options on that pin's interview question, so
+    the user's exploration flows straight into their answer"* — and this is the surface where that
+    sentence is either true or decoration: the pin only just became reachable here at all, and
+    arriving at the top of the funnel with the options it was opened for invisible would waste the
+    fix. Neutrality is unchanged: a proposal is not an option id, `record_decision` still admits
+    only what `question.options[].id` offers or a freeform answer the question permits, and
+    `recommended` is carried as the brainstorm's own mark rather than as a default."""
     ledger.assign_resolution_modes()
     view = ledger.interview_view()
 
@@ -224,6 +233,12 @@ def funnel(ledger) -> dict:
         entry = {"pin_id": pin["id"], "title": pin["title"], "severity": pin["severity"],
                  "prompt": (pin.get("question") or {}).get("prompt", ""),
                  "downstream": transitive_downstream(pin["id"])}
+        proposals = (pin.get("brainstorm") or {}).get("proposals") or []
+        if proposals:
+            entry["proposals"] = [{"id": p.get("id"), "summary": p.get("summary"),
+                                   "effort": p.get("effort"),
+                                   "recommended": bool(p.get("recommended"))}
+                                  for p in proposals]
         if pin.get("resolution_mode") == "proposed_default":
             tail.append(entry)
         else:
