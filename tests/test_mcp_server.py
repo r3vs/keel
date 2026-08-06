@@ -341,6 +341,36 @@ class TestRecordingAnElectionByRelay(_Session):
             event = json.load(fh)["decision_log"][-1]
         self.assertEqual(event["human_answer"], "yes, pull the helper out")
 
+    def test_the_defer_door_offers_the_caller_no_way_to_state_its_own_rung(self):
+        """v0.16 made deferring an election and then let the caller declare how the answer had
+        reached it: `ledger_defer(..., evidence="elicited")` settled a `blocker` fork on the rung
+        whose entire claim is that the agent never carried the value — reproduced here, against a
+        client that declares no elicitation capability, so the harness would have failed loudly had
+        anybody actually been asked. `ledger_record_decision` has never had this parameter: the rung
+        is decided by WHICH PATH RAN. Asserted on the advertised schema and on the call, because the
+        schema is what the agent composes against and the call is what lands on disk."""
+        schema = self.tools["ledger_defer"]["inputSchema"]
+        self.assertNotIn("evidence", schema["properties"],
+                         "provenance the caller states is provenance the caller invents")
+        self.assertIn("human_answer", schema.get("required", []),
+                      "the one relayed rung there is rests on the quote, so the quote is required")
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_defer", "arguments": {
+            "ledger": path, "pin_id": pin_id, "rationale": "not now",
+            "flip_criteria": "a fourth copy appears", "evidence": "elicited",
+            "human_answer": "leave it for now"}})
+        self.assertTrue(res["result"].get("isError"),
+                        "an argument the tool does not take must be refused, not ignored")
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["decision_log"], [])
+        res = self._request("tools/call", {"name": "ledger_defer", "arguments": {
+            "ledger": path, "pin_id": pin_id, "rationale": "not now",
+            "flip_criteria": "a fourth copy appears", "human_answer": "leave it for now"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        self.assertEqual(res["result"]["structuredContent"]["evidence"], "transcribed")
+        self.assertEqual(self.elicited, [], "nobody was asked, so nothing may say they were")
+
 
 @NEEDS_UV
 class TestTheBriefIsAWriteAndSaysWhatItRefused(_Session):
@@ -417,6 +447,26 @@ class TestReadingALedgerWrittenBeforeTheRuleExisted(_Session):
         out = res["result"]["structuredContent"]
         self.assertEqual(out["decisions_by_evidence"], {})
         self.assertEqual(out["policies_by_evidence"], {"elicited": 1, "unrecorded": 1})
+
+    def test_reading_a_ledger_is_never_the_operation_that_fails_on_it(self):
+        """v0.16 taught the summary to count settlements by door and reached `_door_for`, which
+        REFUSES a `settles_as` naming a state no election produces — correct on the write path, a
+        crash on the read path. One such event made `ledger_summary` come back `isError` over this
+        wire, on exactly the file class `nonconforming()` exists to describe. The summary is what an
+        agent calls BEFORE acting, so a file it cannot read is a file it acts on blind."""
+        path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"version": "0.16", "pins": [], "policies": [], "decision_log": [
+                {"id": "ev_0001", "pin_id": "pin_0001", "outcome": "x", "rationale": "r",
+                 "flip_criteria": "f", "source": "interview", "evidence": "transcribed",
+                 "settles_as": "archived"}]}, fh)
+        res = self._request("tools/call", {"name": "ledger_summary", "arguments": {"ledger": path}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["settlements_by_door"], {})
+        self.assertEqual(out["pre_rule_events"], {"settled_state": 1},
+                         "not counted under a door this runtime cannot name, and not silent "
+                         "either — reported by the surface that reports every other broken rule")
 
 
 CLUSTERED = {

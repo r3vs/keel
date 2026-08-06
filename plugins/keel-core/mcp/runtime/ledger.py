@@ -993,26 +993,42 @@ class Ledger:
         correction, and the append-only log keeps both events — while a CLOSED one may not be
         settled again by anybody, because the work is over. The way back from closed is `reopen`,
         which records why.
+
+        **The closed check runs before the per-door branches, for all five doors.** It did not, and
+        one door read it after answering — which is how the rule this predicate introduced was
+        falsified by an ordering inside the predicate itself. A rule that every door must obey is
+        asked before any door speaks; that is the only arrangement in which "every door" is a claim
+        about the code rather than about five branches remembering the same thing.
         """
         _require(door in SETTLEMENT_DOORS, f"door must be one of {SETTLEMENT_DOORS}; got {door!r}")
         state = pin["state"]
-        if door == "correctness_unknown":
-            # The mirror door: it takes a pin OUT of a settled state, so "already closed" is not the
-            # question — "was there work to be unable to verify" is.
-            if state in ("decided", "resolved") or pin["kind"] == "defect":
-                return "would_settle"
-            return "not_decided"
+        # Asked of EVERY door, and asked first. It used to be asked after the `correctness_unknown`
+        # branch had already answered, which made `resolved` an *accepting* condition for the one
+        # door that un-settles a pin: four agent-only calls (add_pin -> add_remediation ->
+        # set_remediation_status -> resolve -> mark_correctness_unknown) took a pin out of the closed
+        # set and back into it, with no `reopen` and nothing recording why finished work had been
+        # un-finished. A rule this table introduced, falsified by the same table's own ordering.
         if state in CLOSED_STATES:
             return "already_closed"
+        if door == "correctness_unknown":
+            # The mirror door: it takes a pin out of `decided` — settled, but not finished — so
+            # "was there work to be unable to verify" is its question. `resolved` is no longer one of
+            # its inputs: that pin's work is over, and the way back is `reopen`, which records why.
+            if state == "decided" or pin["kind"] == "defect":
+                return "would_settle"
+            return "not_decided"
         if door == "accept" and pin["kind"] != "design_concern":
             return "wrong_kind"
         if door == "resolve":
-            # v0.7: the state exists precisely to block closure, so it blocks closure. Checked
-            # before the kind escape below, because `defect` was the hole: `resolve` admitted any
-            # defect regardless of state, and `correctness_unknown` is a state a defect can be in.
-            if state == "correctness_unknown":
-                return "unverified"
-            if state != "decided" and pin["kind"] != "defect":
+            # `correctness_unknown` is a state a DECIDED pin passes through (for a non-defect it is
+            # reachable from nowhere else), so the election is not in doubt here and the question is
+            # only whether a later observation reached the rung. The state used to be refused as
+            # `unverified` on this line, before anything read the pin's own `verification` — which
+            # made `rung` a gate-opening move that could not open its gate: `resolve` writes the rung
+            # and calls `_settle`, `_settle` re-asks this predicate, and the state has not moved. So
+            # the envelope below is the single carrier of "how hard was this checked", and the state
+            # is not a second one that outranks it.
+            if state not in ("decided", "correctness_unknown") and pin["kind"] != "defect":
                 return "not_decided"
             if not pin.get("remediation") or any(i["status"] != "done" for i in pin["remediation"]):
                 return "remediation_open"
@@ -1035,8 +1051,8 @@ class Ledger:
             "leaving-as-is is the legitimate resolution of a design_concern and of nothing else; "
             "this pin is a {kind}, which has nothing to keep.",
         "not_decided":
-            "nothing has been elected on this pin yet (state {state}), and this door closes elected "
-            "work. Record the decision first.",
+            "this door acts on work that was elected, and this pin is in {state}, which is not a "
+            "state an election produced. Record the decision first.",
         "remediation_open":
             "resolve requires recorded remediation with every item done — a close with nothing to "
             "point at is a silent close.",
@@ -1597,23 +1613,30 @@ class Ledger:
             "attempted": attempted,
             "blocked_by": str(blocked_by).strip(),
         }
-        # The state forces an explicit next move, so it carries the fork that asks for one. Without
-        # this the pin would block closure while asking nobody anything — the original question is
-        # already answered (its DecisionEvent is in the immutable log); this is the live one.
-        pin["question"] = {
-            "prompt": (f"Correctness could not be established: {pin['verification']['blocked_by']}. "
-                       "What now?"),
-            "options": [
-                {"id": "retry", "label": "Retry with more context"},
-                {"id": "add_check", "label": "Add the missing check first",
-                 "implication": "a new acceptance_criterion — the zone earns verifiability"},
-                {"id": "takeover", "label": "Manual takeover"},
-                {"id": "narrow", "label": "Narrow the scope to what IS verifiable"},
-                {"id": "accept", "label": "Accept the risk, unknown named",
-                 "implication": "state becomes accepted, with the unverified remainder recorded"},
-            ],
-            "allow_freeform": True,
-        }
+        # The state forces an explicit next move, so it carries a fork that asks for one — written
+        # ONLY where the pin has none. It used to be written unconditionally, which is the same act
+        # v0.16 removed from `cross_derive` one file over and named as dismantling the offered-options
+        # rule from the side: `question.options[].id` is the carrier that rule anchors on at both
+        # doors, so an agent-authored menu replacing the human's own fork decides what they are
+        # allowed to choose next. Reproduced on a pin the human had DECIDED — their `s3|gcs` fork was
+        # simply gone. The pin is in the interview view on its state alone (`interview_view` selects
+        # `correctness_unknown`), and `blocked_by` is on the pin either way, so nothing is lost by
+        # leaving an existing fork exactly where its author left it.
+        if not pin.get("question"):
+            pin["question"] = {
+                "prompt": (f"Correctness could not be established: "
+                           f"{pin['verification']['blocked_by']}. What now?"),
+                "options": [
+                    {"id": "retry", "label": "Retry with more context"},
+                    {"id": "add_check", "label": "Add the missing check first",
+                     "implication": "a new acceptance_criterion — the zone earns verifiability"},
+                    {"id": "takeover", "label": "Manual takeover"},
+                    {"id": "narrow", "label": "Narrow the scope to what IS verifiable"},
+                    {"id": "accept", "label": "Accept the risk, unknown named",
+                     "implication": "state becomes accepted, with the unverified remainder recorded"},
+                ],
+                "allow_freeform": True,
+            }
         pin["resolution_mode"] = "asked" if pin["severity"] in _NEVER_SILENT \
             else pin.get("resolution_mode", "asked")
         self._settle(pin, "correctness_unknown",
@@ -1694,8 +1717,19 @@ class Ledger:
             elif e["id"].startswith("ev_"):
                 rung = decision_rung(e) or "unrecorded"
                 by_evidence[rung] = by_evidence.get(rung, 0) + 1
-                door = _door_for(e.get("settles_as") or "decided")
-                by_door[door] = by_door.get(door, 0) + 1
+                # Counted only where this runtime can name the door. `_door_for` REFUSES a
+                # `settles_as` naming a state no election produces — the right answer on the write
+                # path, and a crash on the read path: one such event made `ledger_summary` return
+                # `isError` over the wire, on exactly the file class `nonconforming()` exists to
+                # describe. Reading a ledger must never be the operation that fails on it; the
+                # summary is what an agent calls BEFORE acting, so a file it cannot read is a file
+                # it acts on blind. Nothing is hidden by skipping: the same event is already
+                # reported by `pre_rule_events["settled_state"]`, from the same rule table, which is
+                # the surface that says "this file predates or breaks a rule" for every other rule.
+                settles_as = e.get("settles_as") or "decided"
+                if settles_as in _ELECTION_STATES:
+                    door = _door_for(settles_as)
+                    by_door[door] = by_door.get(door, 0) + 1
         # v0.15: the same count for the POLICIES, because a policy IS a decision — one the human
         # made over a whole cluster — and the count above says nothing about the election every
         # `cascaded` entry in it rests on. A policy elected with no rung recorded, or relayed with

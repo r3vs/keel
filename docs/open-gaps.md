@@ -1,9 +1,11 @@
 # Open gaps — a plan any session can pick up
 
-> **STATUS 2026-08-06: the original four are closed; three are OPEN** — §5 (both reopen arcs are
+> **STATUS 2026-08-06: the original four are closed; four are OPEN** — §5 (both reopen arcs are
 > reachable by no host), §6 (the map's amber fails contrast in light mode, which is where the weak
-> rung is made visible) and §7 (`resolution_mode` reaches no reader). §6 and §7 were found by
-> opening the page in a browser, which is the only way either could have been. The file stays
+> rung is made visible), §7 (`resolution_mode` reaches no reader) and §8 (the `verification`
+> envelope reaches no reader either — its `blocked_by` had been borrowing the surface of the
+> question it overwrote). §6 and §7 were found by opening the page in a browser, which is the only
+> way either could have been. The file stays
 > because its value is the record — what was wrong, where the answer now lives, and which sub-claims
 > were deliberately left `UNVERIFIED` rather than rounded up. Each section keeps its original text
 > and carries a closing note at the top.
@@ -462,6 +464,12 @@ Three shipped claims rest on it, and v0.16 added a fourth:
   a finished pin that turns out to be wrong is, today, to hand-edit `ledger.json`, which every
   playbook forbids. The tightening is right; it made an existing hole load-bearing, and saying so is
   the point of this file.
+- **2026-08-06 makes it load-bearing twice.** The `CLOSED_STATES` check now runs before every door,
+  the mirror door included, so `mark_correctness_unknown` on a finished pin refuses with *"Reopen it
+  first"* — a refusal that names, verbatim, the one arc no host can reach. Every refusal in this
+  package is written to be actionable; this one is actionable only from a Python shell. That does
+  not argue for loosening the door, it raises this gap's priority: a wall is what a gate becomes
+  when its opening move does not exist, which is the same sentence the `rung` fix was written under.
 
 ### Done looks like
 
@@ -594,6 +602,62 @@ read the row without opening the JSON: it must say whether an unanswered questio
 
 - Do not badge all three. Only `proposed_default` changes what a reader must do *now*; badging
   `policy_default` duplicates the decision card, and badging `asked` decorates the common case.
+
+---
+
+## 8. The `verification` envelope reaches no surface — **OPEN, found 2026-08-06**
+
+Found while removing `mark_correctness_unknown`'s question overwrite, and deliberately not fixed in
+that scope: the fix was a deletion, and this is a missing reader. Recorded rather than bundled,
+because bundling a reader into a deletion round is how the last six rounds each ended with one more
+surface than they started with.
+
+### Verified
+
+`verification` — `determinism`, `rung`, `attempted`, `blocked_by` — is written by `resolve`,
+`mark_correctness_unknown` and `cross_derive`, read by `settlement_verdict` (it is what decides
+whether a pin may close), and rendered by nothing. `grep -rn "blocked_by" src/` outside
+`ledger.py` and the spec returns only the two MCP signatures that *accept* it;
+`src/runtime/map.py` does not contain the string `verification` at all, and `interview.funnel`
+builds each entry from `title` / `severity` / `question.prompt` / `downstream`.
+
+Until this commit `blocked_by` did reach two surfaces — the funnel's `prompt` and the map's
+*Interview question* card — but only by being pasted into `pin["question"]`, i.e. **by deleting the
+human's own fork**, which is the defect that was just removed. So the reach was never the envelope's;
+it was borrowed from the field it was overwriting.
+
+### Why it matters
+
+`correctness_unknown` exists to say *the work was done and nobody could establish it was right*, and
+the one sentence that makes such a pin actionable is **what blocked verification**. A reader of the
+map sees the state and the original question; the reason sits in the JSON. `attempted` is the same
+shape one field over: it is the evidence that the state was earned rather than shrugged, and it is
+the exact thing a reviewer would check.
+
+### Done looks like
+
+- The map's pin body renders the envelope where it exists: the rung (it already has a rung
+  vocabulary and colour for decisions — reuse it, do not invent a second), what was attempted, and
+  `blocked_by` in full.
+- `interview.funnel` carries `blocked_by` on the entry for a `correctness_unknown` pin, so the
+  question an agent is told to ask arrives with the reason attached. The pin is already sorted to
+  the top when it is a `blocker`/`high`; arriving at the top with no reason is what wastes that.
+
+### Prove it
+
+Render `scripts/preview_map.py` and read the `correctness_unknown` pin without opening the JSON: the
+page must say what blocked verification. Then do the same for a pin that carried its own fork — the
+one this commit stopped overwriting — and check that both the human's question and the reason are
+there.
+
+### Traps
+
+- Do not restore the overwrite in a softer form (appending options, editing the prompt).
+  `question.options[].id` is the carrier the offered-options rule anchors on at both doors; a
+  surface problem is fixed in the surface.
+- Do not add a field. `blocked_by` is already stored, already required, and already refused when
+  blank — what is missing is a reader, and the last six rounds are a record of what happens when a
+  missing reader is answered with a new writer.
 
 ---
 

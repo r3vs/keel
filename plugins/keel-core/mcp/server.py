@@ -813,23 +813,26 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
 
 @mcp.tool(annotations={"title": "Ledger — Record a Deferral the Human Elected", **_RW})
 def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
-                 human_answer: str = "", evidence: str = "transcribed") -> dict:
+                 human_answer: str) -> dict:
     """Record the human's answer of "not now" — the pin leaves v1 scope and stays as backlog.
 
     Deferring SETTLES the pin: the question stops being asked and `open_questions` goes down. So it
-    is an election, held to what `ledger_record_decision` is held to — a `transcribed` deferral must
-    quote the user, `flip_criteria` says what brings the pin back, and a pin already resolved or
-    accepted is refused. You may record a deferral; you may not decide one.
+    is an election, held to what `ledger_record_decision` is held to — you quote the user verbatim,
+    `flip_criteria` says what brings the pin back, and a pin already resolved or accepted is refused.
+    You may record a deferral; you may not decide one.
+
+    How the answer reached the ledger is NOT yours to state. This tool records the relayed rung
+    (`transcribed`) because relaying is the only path it has — exactly as `ledger_record_decision`
+    decides the rung by which path ran, and never from a parameter.
 
     Args:
         ledger: Path to ledger.json.
         pin_id: The pin the user is putting out of scope.
         rationale: Why it is out of scope now.
         flip_criteria: What brings it back — a defer with no return condition is a deletion.
-        human_answer: The user's words, verbatim. Required unless the server elicited the answer.
-        evidence: transcribed (default) | elicited | brief — how the answer reached you.
+        human_answer: The user's words, verbatim. Required: an unquoted deferral is you deciding.
     """
-    return tools.ledger_defer(ledger, pin_id, rationale, flip_criteria, human_answer, evidence)
+    return tools.ledger_defer(ledger, pin_id, rationale, flip_criteria, human_answer)
 
 
 @mcp.tool(annotations={"title": "Contract Diff (cross-layer drift)", **_RO})

@@ -585,12 +585,19 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     led.save()
     _refresh_live_maps(ledger)
     pin = led.pin(pin_id)
+    # v0.16: what the disagreement DID, said rather than inferred from the state. A closed pin is
+    # recorded and not reopened — un-closing finished work has its own arc — and a caller that
+    # cannot tell the two apart would read "recorded" as "handled".
+    #
+    # Read off the event THIS call appended, not re-derived from the pin. Re-derived it was
+    # `substate == "contested"`, which is a different fact wearing the same name: `substate` is set
+    # by the reopen and never cleared, so a second, AGREEING derivation over the same pin reported
+    # `reopened: true` while its own event recorded `false`. Two carriers for one fact, disagreeing —
+    # in the return shape of the tool whose whole subject is two derivations disagreeing.
+    event = next(e for e in led.data["decision_log"] if e["id"] == record["event_id"])
     return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
-            # v0.16: what the disagreement DID, said rather than inferred from the state. A closed
-            # pin is recorded and not reopened — un-closing finished work has its own arc — and a
-            # caller that cannot tell the two apart would read "recorded" as "handled".
-            "event_id": record["event_id"],
-            "reopened": pin.get("substate") == "contested",
+            "event_id": event["id"],
+            "reopened": event["reopened"],
             "verification": pin.get("verification")}
 
 
@@ -626,7 +633,7 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
 
 
 def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
-                 human_answer: str = "", evidence: str = "transcribed") -> dict:
+                 human_answer: str = "") -> dict:
     """Record the human's election to put this pin out of scope for now. It does not elect.
 
     Deferring is an answer — the spec's own `incompleteness` fork offers it as an option — and it
@@ -644,11 +651,21 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     It is NOT held to the offered-options rule: `defer` is a meta-answer about scope, not a branch of
     the pin's fork, and requiring every question to list a defer option would make punting depend on
     whoever authored the pin. What holds it instead is that the human was shown THIS pin.
+
+    **The rung is not a parameter, because the caller cannot know it.** v0.16 made deferring an
+    election and then let the agent state its own provenance: one keyword, `evidence="elicited"`,
+    settled a `blocker` fork on the rung whose entire claim is that the agent never carried the
+    value — reproduced against a client declaring no elicitation capability, so nobody was asked by
+    anybody. `record_decision` has never allowed this and the shape it uses is the fix: the rung is
+    decided by WHICH PATH RAN. There is one path here — the agent relays — so the rung is
+    `transcribed` and the human's words are always required. If deferral ever gains an elicitation
+    path, that path sets the rung, exactly as `mcp/server.py::ledger_record_decision` does.
     """
     led = _open_existing(ledger)
-    if evidence == "transcribed" and not human_answer:
+    evidence = "transcribed"
+    if not human_answer:
         raise ValueError(
-            "a transcribed defer must carry the human's answer verbatim in human_answer — deferring "
+            "a defer must carry the human's answer verbatim in human_answer — deferring "
             "settles the pin and stops the question being asked, so an unquoted one is an agent "
             "deciding not to decide, which is the one thing no tool here may do"
         )

@@ -526,6 +526,44 @@ class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
                          "the menu the human answers from belongs to the ledger, not the caller")
         self.assertEqual(tools.decision_prompt(self.ledger, pid)["options"][0]["id"], "session")
 
+    def test_the_returned_reopened_is_the_events_own_answer(self):
+        """Two carriers for one fact, disagreeing — in the return shape of the tool whose subject is
+        two derivations disagreeing. `reopened` was re-derived as `substate == "contested"`, and
+        `substate` is written by the reopen and never cleared, so a SECOND, AGREEING derivation came
+        back `reopened: true` while the `xdr_` event it had just written said false."""
+        pid = self._fork(severity="medium")
+        tools.record_decision(self.ledger, pid, "jwt", rationale="r", flip_criteria="f",
+                              human_answer="JWT, we have three clients")
+        disagreeing = [{"provider": "anthropic", "model": "m", "result": "yes"},
+                       {"provider": "openai", "model": "n", "result": "no"}]
+        agreeing = [{"provider": "anthropic", "model": "m", "result": "yes"},
+                    {"provider": "openai", "model": "n", "result": "yes"}]
+        first = tools.ledger_cross_derive(self.ledger, pid, claim="revocation is solvable",
+                                          agreement="disagree", derivations=disagreeing)
+        self.assertTrue(first["reopened"])
+        second = tools.ledger_cross_derive(self.ledger, pid, claim="revocation is solvable",
+                                           agreement="agree", derivations=agreeing)
+        events = [e for e in Ledger(self.ledger).data["decision_log"]
+                  if e["id"].startswith("xdr_")]
+        self.assertEqual(second["event_id"], events[-1]["id"])
+        self.assertEqual(second["reopened"], events[-1]["reopened"])
+        self.assertFalse(second["reopened"], "an agreement reopens nothing")
+
+    def test_the_defer_door_does_not_let_its_caller_state_its_own_rung(self):
+        """`ledger_defer(..., evidence="elicited")` settled a `blocker` fork on the rung whose whole
+        claim is that the agent never carried the value — reproduced against a client declaring no
+        elicitation capability, so nobody was asked by anybody. `record_decision` has never allowed
+        it: the rung is decided by WHICH PATH RAN, never by a parameter."""
+        import inspect
+        self.assertNotIn("evidence", inspect.signature(tools.ledger_defer).parameters,
+                         "provenance the caller states is provenance the caller invents")
+        pid = self._fork()
+        out = tools.ledger_defer(self.ledger, pid, rationale="not now",
+                                 flip_criteria="when a second client appears",
+                                 human_answer="not now — v1 is one web client")
+        self.assertEqual(out["evidence"], "transcribed")
+        self.assertEqual(Ledger(self.ledger).data["decision_log"][-1]["evidence"], "transcribed")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -612,13 +612,30 @@ class TestHonestVerification(unittest.TestCase):
             led.mark_correctness_unknown(pin["id"], blocked_by="  ", attempted=["tests"])
 
     def test_unknown_is_not_a_black_hole(self):
-        """It blocks closure, so it must ask someone something. A state on no surface is lost work."""
+        """It blocks closure, so it must reach someone. A state on no surface is lost work — and
+        what puts the pin on the surface is its STATE (`interview_view` selects
+        `correctness_unknown`), not a question written over whatever was there."""
         led = make_ledger()
         pin = self._done(led)
         led.mark_correctness_unknown(pin["id"], blocked_by="no env", attempted=["tests"])
         view = [p["id"] for p in led.interview_view()]
         self.assertIn(pin["id"], view)
-        self.assertIn("What now?", led.pin(pin["id"])["question"]["prompt"])
+
+    def test_the_unknown_fork_never_replaces_a_fork_that_exists(self):
+        """The overwrite v0.16 removed from `cross_derive`, still in place on the door beside it.
+        Reproduced on a pin the human had DECIDED: their own `s3|gcs` fork was simply gone, replaced
+        by an agent-authored `retry|add_check|takeover|narrow|accept`. `question.options[].id` is
+        the carrier the offered-options rule anchors on at both doors, so rewriting it is deciding
+        what the human is allowed to choose next."""
+        led = make_ledger()
+        pin = self._done(led)
+        theirs = json.loads(json.dumps(pin["question"]))
+        led.mark_correctness_unknown(pin["id"], blocked_by="no env", attempted=["tests"])
+        self.assertEqual(pin["question"], theirs)
+        # and a pin with no fork still gains one — the state has to ask somebody something
+        bare = add_simple_pin(led, kind="defect", question=None)
+        led.mark_correctness_unknown(bare["id"], blocked_by="no env", attempted=["tests"])
+        self.assertIn("What now?", bare["question"]["prompt"])
 
     def test_unverifiable_blocker_outranks_information_gain(self):
         led = make_ledger()
@@ -967,6 +984,73 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         with self.assertRaises(LedgerError):
             led.resolve(pin["id"], evidence="e", rung="re_read")  # not a closing rung
 
+    def test_the_rung_opens_the_gate_it_is_the_key_to(self):
+        """`rung` was added as the way out of `correctness_unknown` and could not open it. The
+        refusal was returned on the STATE, before anything read `verification.rung`: `resolve`
+        writes the rung and calls `_settle`, `_settle` re-asks the predicate, and the state has not
+        moved — so the door raised the very refusal whose text (and whose shipped playbook) told the
+        caller to pass `rung`. A gate with no gate-opening move is a wall."""
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="blocker")
+        led.mark_correctness_unknown(pin["id"], blocked_by="no runnable payments environment",
+                                     attempted=["tests", "typecheck", "smoke_probe"])
+        with self.assertRaises(LedgerError):                 # still no observation: still refused
+            led.resolve(pin["id"], evidence="the retry path looks right now")
+        out = led.resolve(pin["id"], evidence="replayed the retry against staging; one charge",
+                          rung="observed")
+        self.assertEqual(out["state"], "resolved")
+        self.assertEqual(pin["verification"]["blocked_by"], "no runnable payments environment",
+                         "what blocked verification is history, not something the close erases")
+
+    def test_the_closed_check_runs_before_every_door_including_the_mirror_one(self):
+        """The mirror door was evaluated BEFORE the `CLOSED_STATES` check, so `resolved` was an
+        ACCEPTING condition for it: resolve -> mark_correctness_unknown took a pin out of the closed
+        set and back into it with four agent-only calls, no `reopen`, and nothing recording why
+        finished work had been un-finished. The rule this table introduced, falsified by the
+        table's own ordering."""
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="blocker")
+        led.resolve(pin["id"], evidence="observed: no longer reproduces", rung="observed")
+        self.assertEqual(led.settlement_verdict(pin, "correctness_unknown"), "already_closed")
+        with self.assertRaises(LedgerError) as ctx:
+            led.mark_correctness_unknown(pin["id"], blocked_by="no oracle after all",
+                                         attempted=["tests"])
+        self.assertIn("Reopen it first", str(ctx.exception))
+        self.assertEqual(pin["state"], "resolved")
+        # and the way back is the arc that records why — after which the door is open again
+        led.reopen(pin["id"], reason="the double charge came back in production")
+        self.assertEqual(led.mark_correctness_unknown(
+            pin["id"], blocked_by="no oracle after all", attempted=["tests"])["state"],
+            "correctness_unknown")
+
+    def test_a_refusal_does_not_call_an_election_the_absence_of_one(self):
+        """`not_decided` read 'nothing has been elected on this pin yet (state accepted)'. It is a
+        refusal a caller is meant to act on, and it described an elected pin as an unelected one."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="low")
+        self.assertEqual(led.settlement_verdict(pin, "correctness_unknown"), "not_decided")
+        with self.assertRaises(LedgerError) as ctx:
+            led.mark_correctness_unknown(pin["id"], blocked_by="b", attempted=["tests"])
+        self.assertNotIn("nothing has been elected", str(ctx.exception))
+        self.assertIn("needs_input", str(ctx.exception))
+
+    def test_reading_a_ledger_is_never_the_operation_that_fails_on_it(self):
+        """One event whose `settles_as` names a state this runtime does not know made `summary()`
+        raise — over the wire, `ledger_summary` came back `isError` — on exactly the file class
+        `nonconforming()` exists to describe. The summary is what an agent reads BEFORE acting, so
+        a file it cannot read is a file it acts on blind. The event is not lost: the same rule table
+        reports it under `pre_rule_events`."""
+        led = make_ledger()
+        add_simple_pin(led, severity="low")
+        led.decide("pin_0001", "opt_a", "r", "f")
+        led.data["decision_log"][-1]["settles_as"] = "archived"    # a state no door produces
+        led.save()
+        reread = Ledger(led.path)
+        summary = reread.summary()
+        self.assertEqual(summary["settlements_by_door"], {})
+        self.assertEqual(summary["pre_rule_events"], {"settled_state": 1},
+                         "skipped in the count, named in the surface that exists to name it")
+
     # -- 2. deferring is an election ------------------------------------------------------------
 
     def test_deferring_is_recorded_as_the_election_it_is(self):
@@ -1117,8 +1201,14 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         listed here that nobody writes would be a scope key that selects nothing."""
         import ledger as ledger_mod
         led = make_ledger()
-        pin = add_simple_pin(led, severity="medium", cluster_id="cl_x", depends_on=[],
-                             anchors=[{"node_id": "n_1", "loc": "a.py:1"}])
+        # A defect, so the walk below can end at `resolved`: the door's kind escape is what admits a
+        # pin that is no longer in `decided`, and the order here is the settlement rules' rather
+        # than a convenience. `correctness_unknown` takes a pin out of `decided` and NOT out of
+        # `resolved` (the way back from finished work is `reopen`), and the disagreement that writes
+        # `substate` may only touch a pin that is not closed — so: decided -> unknown -> contested
+        # -> resolved on a later observation.
+        pin = add_simple_pin(led, kind="defect", severity="medium", cluster_id="cl_x",
+                             depends_on=[], anchors=[{"node_id": "n_1", "loc": "a.py:1"}])
         led.add_proposals(pin["id"], [{"summary": "s"}])
         led.set_readiness(pin["id"], "ready", zone={"files": ["a.py"]}, evidence={})
         led.premortem(pin["id"], [{"class": "environment", "description": "d"}], guardrails=["g"])
@@ -1128,11 +1218,11 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         led.decide(pin["id"], "opt_a", "r", "f")
         item = led.add_remediation(pin["id"], action="align", ladder_rung=1)
         led.set_remediation_status(pin["id"], item["id"], "done")
-        led.resolve(pin["id"], evidence="observed")
         led.mark_correctness_unknown(pin["id"], blocked_by="b", attempted=["tests"])
         led.cross_derive(pin["id"], claim="c2", agreement="disagree", derivations=[
             {"provider": "anthropic", "model": "m", "result": "a"},
             {"provider": "openai", "model": "n", "result": "b"}])       # writes `substate`
+        led.resolve(pin["id"], evidence="observed it on staging", rung="observed")
         led.data["pins"][0]["kind_detail"] = "x"      # only `other` writes it, and it is scopeable
         self.assertEqual(sorted(set(pin) - set(ledger_mod.PIN_FIELDS)), [],
                          "a Pin field no policy scope can name")
