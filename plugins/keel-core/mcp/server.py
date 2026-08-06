@@ -122,7 +122,9 @@ def ledger_summary(ledger: str) -> dict:
 
     The ledger is the single source of truth all three surfaces project. Read it before acting on
     any pin. `decisions_by_evidence` counts the rung each decision reached: `transcribed` ones rest
-    on an agent's relay of what the human said — weigh those before building on one.
+    on an agent's relay of what the human said — weigh those before building on one. A non-empty
+    `pre_rule_events` means this file predates a rule now in force, so `version` stays where its own
+    content puts it.
 
     Args:
         ledger: Path to ledger.json.

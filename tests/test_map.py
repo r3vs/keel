@@ -70,6 +70,18 @@ class TestSelfContained(unittest.TestCase):
         data_line = script_body.split("\n", 1)[0]
         self.assertNotIn("</script", data_line.lower())
 
+    def test_the_derived_payload_is_script_safe_too(self):
+        """A second inlined payload is a second way out of the inline script, and it carries values
+        taken from the same agent-written file — a `source` is as attacker-reachable as a title. The
+        rule that governs `const LEDGER` governs this one; asserted at it, not assumed from it."""
+        hostile = {"version": "0.9", "pins": [],
+                   "decision_log": [{"id": "ev_0001", "evidence": "transcribed",
+                                     "source": "policy:</script><img src=x onerror=alert(1)>"}],
+                   "policies": []}
+        line = mapmod.render(hostile).split("const DERIVED = ", 1)[1].split("\n", 1)[0]
+        self.assertIn("policy_id", line)          # the value did reach the page...
+        self.assertNotIn("</script", line.lower())  # ...and cannot close the script it rides in
+
     def test_empty_ledger_renders(self):
         empty = Ledger(os.path.join(tempfile.mkdtemp(), "l.json"))
         out = mapmod.render(empty.data)
@@ -153,6 +165,70 @@ class TestDecisionEvidenceIsInlined(unittest.TestCase):
                                      "to say a policy decided this and be unable to say which")
         self.assertEqual((policy["rule"], policy["evidence"], policy["human_answer"]),
                          ("the DB is truth", "transcribed", "db wins unless I flag one"))
+
+
+class TestARungTheTableDoesNotKnow(unittest.TestCase):
+    """The spec says it outright — *"a rung one of the three surfaces does not know is the same bug
+    wearing a new name, so adding one means teaching all three"* — and nothing held the map to it.
+    `cascaded` was added to `DECISION_EVIDENCE` and to this table by hand, in the same commit, by
+    someone who remembered; the next one would be added by someone who did not, and the card would
+    fall through to the `weak` default and call it unrecorded.
+
+    The carrier is the object literal, read as keys, not a search for the word in the file."""
+
+    def test_the_cards_rung_table_covers_every_rung_the_schema_names(self):
+        from ledger import DECISION_EVIDENCE
+        block = re.search(r"const RUNG=\{(.*?)\}\};", mapmod._TEMPLATE, re.S)
+        self.assertIsNotNone(block, "the RUNG table's shape changed — this guard just went vacuous")
+        keys = set(re.findall(r"^\s+(\w+):\{", block.group(1), re.M))
+        self.assertEqual(keys, set(DECISION_EVIDENCE))
+
+
+class TestALedgerWrittenBeforeTheRungExisted(unittest.TestCase):
+    """v0.13. `cascaded` binds the write, so a pre-v0.11 ledger carries `transcribed` on its
+    cascades and this surface printed *"an agent relayed what the user said"* + *"⚠ relayed with no
+    quote — nothing here separates it from an invention"* over the user's own elected policy.
+
+    The rule is applied in Python (`map.derived_rungs` → `ledger.decision_rung`) and its RESULT
+    crosses into the page, which is what makes it assertable here at all: a second implementation in
+    the page's JavaScript would be reachable by no test without a browser, and would drift."""
+
+    @staticmethod
+    def _legacy() -> dict:
+        return {"version": "0.9",
+                "pins": [{"id": "pin_0001", "state": "decided",
+                          "decision": {"event_id": "ev_0001", "outcome": "db"}}],
+                "decision_log": [{"id": "ev_0001", "pin_id": "pin_0001", "outcome": "db",
+                                  "source": "policy:pol_0001", "evidence": "transcribed"}],
+                "policies": [{"id": "pol_0001", "rule": "the DB is truth", "default_outcome": "db"}]}
+
+    def test_the_page_is_told_to_read_the_rung_it_cannot_take_off_the_field(self):
+        derived = mapmod.derived_rungs(self._legacy())
+        self.assertEqual(derived, {"ev_0001": {"rung": "cascaded", "policy_id": "pol_0001",
+                                               "as_recorded": "transcribed"}})
+
+    def test_the_derivation_reaches_the_rendered_page(self):
+        html = mapmod.render(self._legacy(), title="legacy")
+        inlined = json.loads(html.split("const DERIVED = ", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        self.assertEqual(inlined["ev_0001"]["rung"], "cascaded")
+        # the policy the card must join to is named, though the event carries no `policy_id`
+        self.assertEqual(inlined["ev_0001"]["policy_id"], "pol_0001")
+        # and what the file actually records travels with it, so the card states the disagreement
+        # instead of quietly winning it
+        self.assertEqual(inlined["ev_0001"]["as_recorded"], "transcribed")
+
+    def test_a_ledger_this_runtime_wrote_derives_nothing(self):
+        """Empty is the normal case, and it has to be: the branch it feeds is the exception, and an
+        index that grew entries for ordinary events would be a second copy of the rung."""
+        led = demo_ledger()
+        pin = led.data["pins"][0]
+        pin["severity"] = "low"
+        led.apply_policy(led.add_policy(applies_to={"kind": "contract_mismatch"},
+                                        rule="the DB is truth", default_outcome="a",
+                                        human_answer="db wins"))
+        led.decide(pin["id"], "a", "r", "flip", evidence="elicited")
+        self.assertEqual(mapmod.derived_rungs(led.data), {})
 
 
 class TestLiveMode(unittest.TestCase):

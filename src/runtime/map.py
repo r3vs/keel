@@ -16,7 +16,10 @@ shows the quote when an agent relayed it — the spec allows the weak rung only 
 visible, and this is the surface people actually read. A pin decided by a policy cascade
 (`cascaded`, v0.11) shows the `Policy` it derives from and how *that* was elected, joined on the
 event's `policy_id`: the human answered once, for a whole cluster, and the card says so instead of
-reporting a relay that never happened.
+reporting a relay that never happened. That rung binds writes, so for a ledger written before v0.11
+the card reads it off the carrier the writer did leave (`derived_rungs` → `ledger.decision_rung`)
+and states what the file records — the alternative was to keep printing *"relayed with no quote"*
+over a policy the user elected, on every ledger that already exists.
 
 Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
 Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
@@ -171,7 +174,9 @@ function sideCard(side,label){
 // HERE, on the surface people actually read, and it has to read as weaker rather than merely be
 // present. `pin.decision` carries only {event_id, outcome}; the rung lives on the DecisionEvent, and
 // the whole ledger is inlined, so this is a lookup in `decision_log` and never a fetch.
-// Not a confidence score: three rungs with different failure modes, named and kept apart.
+// Not a confidence score: every rung `DECISION_EVIDENCE` names has its own failure mode, and they
+// are kept apart rather than blended (`test_map.py` holds this table against that tuple, so a rung
+// added there cannot go missing here — which is the only kind of count worth writing down).
 const RUNG={
   elicited:{label:'elicited', cls:'strong',
     why:'the server asked the user through the host and wrote the reply itself — the agent never held the value, so it could not have invented it'},
@@ -196,14 +201,26 @@ function decisionEvent(id){
 // hasOwnProperty, not `RUNG[r]`: the rung comes from a file agents write, and `constructor` would
 // otherwise resolve to a function and render as a rung nobody defined.
 function rungMeta(r){return Object.prototype.hasOwnProperty.call(RUNG,r)?RUNG[r]:null;}
+// Events whose rung this page must READ rather than take off the field, computed by `map.render`
+// from `ledger.decision_rung` — the one implementation of that rule, in the module that owns the
+// schema. A pre-v0.11 cascade records `transcribed`, and rendering that literally is how this
+// surface called the user's own elected policy an agent's unquoted relay. Empty for every ledger
+// this runtime wrote, so the branch below is visibly the exception it is.
+const DERIVED = __DERIVED__;
+function derived(ev){
+  return (ev&&ev.id&&Object.prototype.hasOwnProperty.call(DERIVED,ev.id))?DERIVED[ev.id]:{};
+}
 function rungOf(p){
   if(!p||!p.decision)return null;
   const ev=decisionEvent(p.decision.event_id);
-  return ev&&ev.evidence?String(ev.evidence):'';
+  if(!ev)return null;
+  const d=derived(ev);
+  return d.rung?String(d.rung):(ev.evidence?String(ev.evidence):'');
 }
 function decisionCard(p){
   const ev=decisionEvent(p.decision.event_id)||{};
-  const r=ev.evidence?String(ev.evidence):'';
+  const d=derived(ev);
+  const r=d.rung?String(d.rung):(ev.evidence?String(ev.evidence):'');
   const meta=rungMeta(r), cls=meta?meta.cls:'weak';
   const quote=ev.human_answer?`<div class="quote">“${esc(ev.human_answer)}”</div>`:'';
   let note=meta?`<div class="why">${meta.why}</div>`
@@ -216,14 +233,24 @@ function decisionCard(p){
   // have to take a string apart to find the record it needs.
   let pol='';
   if(r==='cascaded'){
-    const P=policyById(ev.policy_id);
-    if(!P) note+=`<div class="warn">⚠ cascaded from policy ${esc(ev.policy_id||'(unnamed)')}, which this ledger does not contain</div>`;
+    // `policy_id` when the writer left one; for a pre-v0.11 event the id is in `source` and
+    // `map.render` has already taken it apart — once, in Python, not here.
+    const pid=ev.policy_id||d.policy_id||'';
+    const P=policyById(pid);
+    if(d.as_recorded)
+      note+=`<div class="warn">⚠ written before the <code>cascaded</code> rung existed (this ledger is v${esc(String(LEDGER.version||'?'))}); the event records <code>${esc(d.as_recorded)}</code>, which was the default of the call it was written by — nobody relayed this, and nothing has been rewritten to say otherwise</div>`;
+    if(!P) note+=`<div class="warn">⚠ cascaded from policy ${esc(pid||'(unnamed)')}, which this ledger does not contain</div>`;
     else{
       const pm=rungMeta(P.evidence?String(P.evidence):'');
       pol=`<div class="kv"><b>policy</b><span>${esc(P.id)} · ${esc(P.rule)}</span></div>`
         +`<div class="kv"><b>elected</b><span class="rung ${pm?pm.cls:'weak'}">${esc(pm?pm.label:'no rung recorded')}</span></div>`
         +(P.human_answer?`<div class="quote">“${esc(P.human_answer)}”</div>`:'');
-      if(!P.human_answer&&(!P.evidence||String(P.evidence)==='transcribed'))
+      // Two different states, and merging them was the same false sentence one level up: a policy
+      // written before v0.11 carries NO rung (they moved onto the Policy there), so calling it a
+      // relay asserts something its file never said. Unrecorded is unknown, not weak.
+      if(!P.evidence)
+        note+=`<div class="warn">⚠ the policy itself records no rung — how the user elected it is unknown, and this pin and every other one in its cluster rest on it</div>`;
+      else if(!P.human_answer&&String(P.evidence)==='transcribed')
         note+=`<div class="warn">⚠ the policy itself was relayed with no quote — this pin and every other one in its cluster rest on that</div>`;
     }
   }
@@ -340,10 +367,42 @@ _LIVE_SCRIPT = """
 """
 
 
+def derived_rungs(ledger_data: dict) -> dict:
+    """`event_id -> {rung, policy_id, as_recorded}` for every DecisionEvent whose rung this page must
+    read instead of taking off the field. `{}` for anything this runtime wrote.
+
+    The rule lives in `ledger.decision_rung` and is applied here, in Python, rather than mirrored in
+    the page's JavaScript: a rule with two implementations in two languages has already begun to
+    drift, and only one of them is reachable by a test without a browser. What crosses into the page
+    is the *result* — which is also what makes the fix assertable: `test_map.py` reads this out of
+    the rendered document.
+
+    `as_recorded` carries the value the file actually holds, so the card can state the disagreement
+    instead of quietly winning it. Nothing is rewritten; the ledger inlined beside this is untouched.
+    """
+    from ledger import cascaded_from, decision_rung
+    out: dict = {}
+    for event in ledger_data.get("decision_log") or []:
+        if not str(event.get("id") or "").startswith("ev_"):
+            continue
+        rung = decision_rung(event)
+        if rung == str(event.get("evidence") or ""):
+            continue
+        entry = {"rung": rung}
+        if not event.get("policy_id") and cascaded_from(event):
+            entry["policy_id"] = cascaded_from(event)
+        if event.get("evidence"):
+            entry["as_recorded"] = str(event["evidence"])
+        out[str(event["id"])] = entry
+    return out
+
+
 def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
     data = json.dumps(ledger_data, ensure_ascii=False).replace("</", "<\\/")  # script-safe
+    derived = json.dumps(derived_rungs(ledger_data), ensure_ascii=False).replace("</", "<\\/")
     return (_TEMPLATE
             .replace("__DATA__", data)
+            .replace("__DERIVED__", derived)
             .replace("__TITLE__", html.escape(title or "ledger"))
             .replace("__LIVE_STYLE__", _LIVE_STYLE if live else "")
             .replace("__LIVE_BADGE__", _LIVE_BADGE if live else "")

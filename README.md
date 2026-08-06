@@ -195,7 +195,7 @@ Your agent **discovers** these. It is never told a file path. Full signatures an
 <details>
 <summary><b>All 54 tools</b></summary>
 
-**Ledger (17)** — the append-only source of truth. None of these elect anything; the two `record_`
+**Ledger (17)** — the append-only source of truth. None of these elect anything; the two recording
 tools write down an election the **human** made and refuse a relay with no quote.
 `ledger_summary` · `interview_next` · `policy_preview` (what a policy would decide, before setting
 it) · `ledger_add_pin` · `ledger_record_decision` · `ledger_record_policy` (one election, cascaded
@@ -218,7 +218,7 @@ by name — proposed only, a human elects)
 **Instruction carrier (2)** — the ledger projected into the file every host actually loads, because
 none of them loads `ledger.json`.
 `generate_instructions` (→ a managed region of `AGENTS.md` + the `CLAUDE.md` bridge) ·
-`instructions_diff` (`in_sync` / `stale` / `hand_edited` / `absent`)
+`instructions_diff` (in_sync / stale / hand_edited / absent)
 
 **Comprehension graph (9)** — tree-sitter native, real grammars, not regex.
 `build_graph` · `understand_codebase` · `explain_node` · `graph_query` · `guided_tour` ·
@@ -232,7 +232,7 @@ dangling ones, and the same check on drafts we are about to write) · `doc_regis
 (a rule that keeps being wrong gets muted — loudly)
 
 **Workflow, learning & interview (11)**
-`interview_expand` (the catalog → `open_decision` / `acceptance_criterion` pins) ·
+`interview_expand` (the catalog → open_decision / acceptance_criterion pins) ·
 `interview_seed_policies` (the opening offers, each with the blast radius it would decide) ·
 `challenge_oracle` · `build_waves` (DAG → parallel waves) · `render_map` (live
 HTML) · `fingerprint_scan` (the resume baseline) · `spend_report` (token/cost telemetry) ·

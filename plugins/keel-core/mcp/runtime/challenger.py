@@ -23,7 +23,9 @@ deterministic class and is not one. `mcp/tools.py::record_decision` already *ref
 no shipped path can produce it. What remained were the library's own callers, and the only one that
 produced unquoted `transcribed` events was the policy cascade — running with the default rung for
 something nobody transcribed. Since v0.11 it writes `cascaded` and points at the `Policy`, so that
-population is empty by construction and the class would fire on nothing at all. (The policy's own
+population is empty by construction in anything this runtime wrote — and in a ledger written before
+it, `ledger.decision_rung` reads those events as the cascades they are, so the class would not fire
+there either, on a population that only ever existed as a recording defect. (The policy's own
 election is quoted where it belongs, on the policy, and `record_policy` refuses a relayed one with no
 quote — the same rule, one level up, where the claim is actually made.) The rung is
 surfaced instead where a human weighs it (the map's decision card, `ledger_summary`), and an agent

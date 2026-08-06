@@ -43,6 +43,10 @@ Summary of what matters here:
 - v0.12 holds the cascade to the rule a single decision was already held to: an outcome lands on a
   pin only if that pin's own `question` offers it (so `default_outcome` is an option id), and a
   policy cascades once, over the radius its elector was shown.
+- v0.13 makes those rules bind the READER too, since a rule enforced at the write governs no file
+  that already exists: the rung of a pre-v0.11 cascade is read from the carrier its writer left
+  (never rewritten — the log is immutable), and `version` is a floor that rises only when the file's
+  own content conforms to the newer rules.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen.
 

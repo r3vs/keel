@@ -82,6 +82,11 @@ Each decision records the rung its answer travelled on — `elicited` / `transcr
   would have been wrong in a second way, since a policy cascade is the one case where a missing rung
   is most likely. Unrecorded is now its own clause, which is what the map and `ledger_summary`
   already do.
+
+  And the rung is READ, not copied (`ledger.decision_rung`, v0.13). A cascade written before v0.11
+  records `transcribed`, so this line told the user that N of their decisions had been relayed by an
+  agent when a policy they elected themselves had decided them. The clauses are only worth their
+  bytes if each one is true of the ledger it is generated from.
 """
 from __future__ import annotations
 
@@ -162,7 +167,11 @@ def _evidence_note(data: dict) -> list:
     events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
     if not events:
         return []
-    rungs = [str(e.get("evidence") or "") for e in events]
+    # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`, and
+    # reading it literally put "N relayed by an agent" into the user's own AGENTS.md about decisions
+    # their elected policy made. One reader for that, in the module that owns the schema.
+    from ledger import decision_rung
+    rungs = [decision_rung(e) for e in events]
     clauses = []
     relayed = rungs.count("transcribed")
     cascaded = rungs.count("cascaded")

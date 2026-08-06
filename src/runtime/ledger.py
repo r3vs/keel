@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.12). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.13). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -23,7 +23,11 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   produced it, instead of taking the `transcribed` default and claiming a relay nobody made;
 - v0.12 the cascade is held to the offered-options rule the single-pin door already held: a pin
   whose own `question` does not offer the policy's `default_outcome` is held back, not decided on
-  a value nobody offered it — and a policy cascades ONCE, over the radius its elector was shown.
+  a value nobody offered it — and a policy cascades ONCE, over the radius its elector was shown;
+- v0.13 those rules bind at the WRITE, so a file written earlier does not satisfy them. Two
+  consequences, both handled here rather than at each surface: the rung of a pre-v0.11 cascade is
+  READ from the carrier its writer left (`decision_rung`), and the `version` stamp does not rise
+  above what the file's own content conforms to (`nonconforming`). Nothing in the log is rewritten.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -36,18 +40,19 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.12"
+SCHEMA_VERSION = "0.13"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
 # would strand the one artifact the whole package treats as durable truth. Reading an older file
-# upgrades its `version` in memory; the upgrade lands on disk at the next `save()`.
+# raises its `version` in memory ONLY when its content conforms to the newer rules (`nonconforming`);
+# the raise lands on disk at the next `save()`.
 #
 # "0.10" is absent because no runtime ever wrote it: the spec bumped to v0.10 and this constant did
 # not follow, so every ledger on disk from that period says "0.9". That drift was not cosmetic —
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
-READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12")
+READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13")
 
 KINDS = {
     "contract_mismatch",
@@ -124,6 +129,77 @@ def _require(cond: bool, msg: str) -> None:
         raise LedgerError(msg)
 
 
+# -- reading events an older runtime wrote (v0.13) --------------------------------------------
+#
+# `decide()` has required `source` to be `"interview"` or `"policy:<id>"` at every version of this
+# schema, and `apply_policy` is the only writer of the second form. So a `policy:` source IS a
+# cascade, in any file this runtime can open — which makes it the carrier to read when the newer,
+# explicit fields are absent. `policy_id` (v0.11) is what a surface should JOIN on; this is what
+# says whether there is anything to join.
+_POLICY_SOURCE = "policy:"
+
+
+def cascaded_from(event: dict) -> Optional[str]:
+    """The `Policy` id this DecisionEvent was cascaded from, or None."""
+    explicit = event.get("policy_id")
+    if explicit:
+        return str(explicit)
+    source = str(event.get("source") or "")
+    if not source.startswith(_POLICY_SOURCE):
+        return None
+    return source[len(_POLICY_SOURCE):] or None
+
+
+def decision_rung(event: dict) -> str:
+    """How this decision's answer reached the log — read, not taken on the event's word. `""` if
+    the file records none.
+
+    The two disagree for exactly one population, and it is not hypothetical. Before v0.11 the
+    cascade called `decide()` with no `evidence`, so the parameter default `transcribed` landed on
+    disk for an answer nobody relayed. v0.11 fixed the WRITE; every ledger written before it still
+    says `transcribed`, and every surface faithfully repeated *"an agent relayed what the user
+    said — ⚠ relayed with no quote"* over the user's own elected policy. A rule enforced only at
+    the write governs no file that already exists.
+
+    So the rung is read from the strongest carrier the event actually has. Nothing is rewritten:
+    the log is immutable, the event keeps the bytes its writer wrote, and the three surfaces stop
+    describing a cascade as a relay. Where the read differs from the record, the surface that
+    weighs it says so (the map's card names the recorded value); a count does not, because
+    "cascaded" is what happened.
+    """
+    if cascaded_from(event):
+        return "cascaded"
+    return str(event.get("evidence") or "")
+
+
+def nonconforming(data: dict) -> dict:
+    """`rule -> [event ids]` for events a rule added AFTER they were written would refuse. `{}` for
+    a file this runtime could have produced.
+
+    This is what decides whether `version` may be raised. A stamp is a claim of conformance, and
+    the load path used to raise it on any readable file with no backfill of any kind: a bare
+    load+save turned a v0.9 ledger holding unrunged cascades into one *claiming* v0.12, whose
+    invariants it did not satisfy and could not be made to satisfy without editing an append-only
+    log. So the stamp is a floor — the newest rule set the file's own content conforms to — and it
+    rises only when nothing is left behind.
+
+    Deliberately narrow: only rules whose violation is decidable **from the event alone**. The
+    v0.12 offered-options rule is not (it needs the pin's `question`, which is mutable and may have
+    been edited long after the decision — an option missing today does not prove it was missing
+    then), so a file is not held below the floor on evidence that weak. Naming the limit rather
+    than guessing is the point; a wrong floor would be the same false claim pointing the other way.
+    """
+    out: dict = {}
+    for event in data.get("decision_log") or []:
+        if not str(event.get("id") or "").startswith("ev_"):
+            continue
+        # v0.11: a cascade carries the `cascaded` rung and names its policy. Both halves fail
+        # together on a pre-v0.11 event, so one rule covers them.
+        if cascaded_from(event) and event.get("evidence") != "cascaded":
+            out.setdefault("cascade_rung", []).append(str(event.get("id")))
+    return out
+
+
 def _validate_question(question: Optional[dict]) -> None:
     if question is None:
         return
@@ -148,9 +224,17 @@ class Ledger:
             _require(found in READABLE_VERSIONS,
                      f"ledger schema {found!r} is not readable by this runtime "
                      f"(known: {', '.join(READABLE_VERSIONS)})")
-            self.data["version"] = SCHEMA_VERSION
+            # The stamp is a claim, so it is earned rather than applied. A file holding an event a
+            # later rule would refuse keeps the version it was written under; raising it would make
+            # this file assert invariants its own content does not satisfy, which is the failure
+            # this package exists to find. Reported by `summary()`, so the refusal is visible and
+            # not merely correct.
+            self.pre_rule = nonconforming(self.data)
+            if not self.pre_rule:
+                self.data["version"] = SCHEMA_VERSION
         else:
             self.data = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [], "policies": []}
+            self.pre_rule = {}
 
     # -- persistence -------------------------------------------------------
 
@@ -370,6 +454,11 @@ class Ledger:
         said" onto a decision nobody relayed, and every surface repeated it. The alternative — each
         surface sniffing `source` for a `policy:` prefix — is string-parsing where an explicit field
         is available, which this package forbids elsewhere and would not survive here either.
+
+        That check binds this write and no file that already exists, which is why the read side has
+        `decision_rung` (v0.13): for a ledger written before v0.11 the `policy:` source is the only
+        carrier there is, so it is read there — once, here in the library, not sniffed by each
+        surface.
         """
         _require(source == "interview" or source.startswith("policy:"),
                  f"only the interview (or a user-set policy cascade) commits; got {source!r}")
@@ -1113,15 +1202,22 @@ class Ledger:
         # the four rungs fail differently and averaging them would hide the weak one. `cascaded`
         # (v0.11) is counted like the rest: "9 of 12 cascaded" says one policy election is carrying
         # most of this ledger, which is a different thing to weigh than nine answered questions.
+        # v0.13: the rung is READ (`decision_rung`), not copied off the field. A pre-v0.11 cascade
+        # records `transcribed` — a parameter default, not a relay anybody made — and counting it
+        # there told an agent that N decisions rest on an agent's say-so when they rest on the
+        # user's own elected policy.
         by_evidence: dict[str, int] = {}
         for e in self.data["decision_log"]:
             if e["id"].startswith("fal_"):
                 by_failure[e["class"]] = by_failure.get(e["class"], 0) + 1
             elif e["id"].startswith("ev_"):
-                rung = e.get("evidence") or "unrecorded"
+                rung = decision_rung(e) or "unrecorded"
                 by_evidence[rung] = by_evidence.get(rung, 0) + 1
         return {
+            # The floor, not this runtime's version: it stays where the file's own content puts it
+            # while `pre_rule_events` is non-empty, so the two are read together.
             "version": self.data["version"],
+            "pre_rule_events": {rule: len(ids) for rule, ids in self.pre_rule.items()},
             "pins": len(self.data["pins"]),
             "by_state": by_state,
             "events": len(self.data["decision_log"]),

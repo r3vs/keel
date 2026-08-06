@@ -13,15 +13,24 @@ What is checked, and on what carrier — never a semantic read of the prose:
   * **served** — the `@mcp.tool` decorations in `src/mcp/server.py`, by AST. The same authority
     `scripts/check_tool_carriers.py` uses, for the same reason: a hand-kept second list drifts the
     first time somebody adds a tool.
-  * **documented** — a served tool NAME appearing in a roster section. In `keel-core.md` the carrier
-    is a table row (`| `tool` | … |`); in `README.md` it is a backticked name inside the `<details>`
-    block. Exact name matching against the served set, so this cannot "find" a tool nobody exposes.
+  * **documented** — an entry in a roster section. In `keel-core.md` the carrier is a table row
+    (`| `tool` | … |`); in `README.md` it is a backticked name inside the `<details>` block.
   * **claimed** — the integer in a section marker (`### … (N)` / `**… (N)**`), in the roster's own
     heading, and in every `<int> MCP tools` phrase in either file.
 
 Both scans are bounded by structure, not by looking for prose that seems roster-ish: `keel-core.md`
 from its `## The N MCP tools` heading to the next `##`, `README.md` between `<summary>` and
 `</details>`.
+
+**An entry is compared as it is written, never filtered through the served set.** It used to be
+`[n for n in names if n in known]`, in both assertions — which dropped an undocumented name *before*
+comparing, so the set matched and the count still balanced. A planted `| `ledger_delete_everything` |
+wipes the ledger |` row passed green: a test named for "and nothing else is" that checked only the
+first half, which is worse than not having it, because it is read as coverage. Removing the filter is
+the whole fix, and it makes both rosters assert the same rule — *inside the roster block, a name in
+entry position is a claim that the server serves it*. That rule is why `README.md` writes the ledger
+states it glosses (`in_sync`, `stale`, …) without backticks inside that block and with them
+everywhere else: the block is a tool list, so the carrier has to mean one thing there.
 
 The honest limit: a count written in some other phrasing — "roughly fifty tools", "48 of them" — is
 not covered, because catching that would mean reading prose for meaning. The fix for that is to
@@ -104,17 +113,20 @@ class TestTheDocumentedRosterIsTheServedRoster(unittest.TestCase):
         for spec in ROSTERS:
             with self.subTest(spec["path"]):
                 _, body = roster_body(spec)
-                listed = [n for _, names in sections(spec, body) for n in names if n in known]
+                listed = [n for _, names in sections(spec, body) for n in names]
                 self.assertEqual(sorted(set(listed)), sorted(known),
-                                 f"{spec['path']} documents a different set than the server serves")
+                                 f"{spec['path']} documents a different set than the server serves. "
+                                 f"Documented and not served: {sorted(set(listed) - known)} — inside "
+                                 f"the roster block an entry is a claim that the server serves it, "
+                                 f"so a name that is not a tool does not belong in entry position. "
+                                 f"Served and not documented: {sorted(known - set(listed))}.")
                 self.assertEqual(len(listed), len(set(listed)),
                                  f"{spec['path']} lists a tool in two sections")
 
     def test_every_section_count_equals_what_the_section_holds(self):
-        known = served()
         for spec in ROSTERS:
             for claimed, names in sections(spec, roster_body(spec)[1]):
-                found = {n for n in names if n in known}
+                found = set(names)
                 with self.subTest(path=spec["path"], claimed=claimed):
                     self.assertEqual(claimed, len(found),
                                      f"{spec['path']}: a section claims {claimed} tools and holds "

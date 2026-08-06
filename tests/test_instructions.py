@@ -125,6 +125,18 @@ class TestEvidenceNote(unittest.TestCase):
         self.assertIn("1 cascaded from a policy the user elected once", body)
         self.assertNotIn("relayed by an agent", body)
 
+    def test_a_cascade_written_before_the_rung_existed_is_still_not_a_relay(self):
+        """v0.13, and the reason the clause above was not enough: the rung binds the WRITE, so every
+        ledger written before v0.11 carries `transcribed` on its cascades — `decide()`'s old
+        parameter default — and this line, reading the field literally, told the user in their own
+        `AGENTS.md` that an agent had relayed a decision their elected policy made."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "source": "policy:pol_0001",
+             "evidence": "transcribed"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("1 cascaded from a policy the user elected once", body)
+        self.assertNotIn("relayed by an agent", body)
+
     def test_an_unrecorded_rung_is_not_reported_as_a_relay(self):
         body = ins.render(self._with([{"id": "ev_0001", "pin_id": "p_0002"}]))
         self.assertIn("1 with no rung recorded at all", body)

@@ -157,9 +157,16 @@ def prose_carriers() -> dict:
 
 
 def engine_carriers() -> dict:
-    """tool -> [modules.json entries declaring `engine: mcp:<tool>`], read as JSON."""
+    """tool -> [modules.json entries declaring `engine: mcp:<tool>`], read as JSON.
+
+    Same authority as `shipped_md` above, for the same reason: this half kept its own
+    `src/skills/*/modules.json` glob after the prose half was narrowed, so a module catalog in a
+    dev-only skill would have counted as a carrier for a tool no user can reach. Nothing exploits
+    that today — `writing-skills` ships no `modules.json` — which is exactly how the prose half got
+    to be wrong for months before anyone read its output. One question ("what ships?"), one answer.
+    """
     out: dict = {}
-    for path in sorted(ROOT.glob("src/skills/*/modules.json")):
+    for path in sorted(f for f in build.shipped_skill_files() if f.name == "modules.json"):
         rel = path.relative_to(ROOT).as_posix()
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

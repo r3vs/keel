@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.12). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.13). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -627,6 +627,121 @@ class TestHonestVerification(unittest.TestCase):
             json.dump(data, fh)
             fh.truncate()
         self.assertEqual(Ledger(led.path).data["version"], SCHEMA_VERSION)  # upgraded on read
+
+
+def legacy_cascade_ledger(version: str = "0.9") -> str:
+    """A ledger exactly as the pre-v0.11 cascade wrote one, written as BYTES rather than through
+    this runtime — which now refuses that shape, so nothing else could produce it.
+
+    `source` names the policy, `evidence` is `decide()`'s old parameter default, and neither
+    `policy_id` nor a quote exists. Every ledger written before v0.11 holds this.
+    """
+    path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump({
+            "version": version,
+            "pins": [{"id": "pin_0001", "kind": "contract_mismatch", "title": "role enum drift",
+                      "severity": "medium", "confidence": "extracted",
+                      "provenance": [{"source": "contract_recon", "detail": "d"}],
+                      "state": "decided", "resolution_mode": "policy_default", "anchors": [],
+                      "as_is": {}, "to_be": None, "question": None, "brainstorm": None,
+                      "decision": {"event_id": "ev_0001", "outcome": "db"},
+                      "depends_on": [], "remediation": []}],
+            "decision_log": [{"id": "ev_0001", "pin_id": "pin_0001", "timestamp": "2026-01-01T00:00:00+00:00",
+                              "outcome": "db", "rationale": "keep the DB as the source of truth",
+                              "flip_criteria": "an exception to policy pol_0001 surfaces",
+                              "source": "policy:pol_0001", "evidence": "transcribed"}],
+            "policies": [{"id": "pol_0001", "applies_to": {"kind": "contract_mismatch"},
+                          "rule": "keep the DB as the source of truth", "default_outcome": "db",
+                          "exceptions": []}],
+        }, fh)
+    return path
+
+
+class TestARuleEnforcedAtTheWriteGovernsNoExistingFile(unittest.TestCase):
+    """v0.13. `cascaded` (v0.11) was checked in `decide()` and nowhere else, so every ledger already
+    on disk still said `transcribed` — the parameter default the old cascade fell through to — and
+    all three surfaces read it literally: `{"transcribed": 1}`, *"1 relayed by an agent"*, and a map
+    card warning that nothing separated it from an invention. Three faithful readings of a field,
+    all three false about the user's own elected policy."""
+
+    def test_a_pre_v0_11_cascade_is_not_read_as_a_relay(self):
+        led = Ledger(legacy_cascade_ledger())
+        self.assertEqual(led.summary()["decisions_by_evidence"], {"cascaded": 1})
+
+    def test_the_version_stamp_is_not_raised_over_content_that_does_not_satisfy_it(self):
+        """A bare load+save used to restamp that file to the runtime's own version, so it CLAIMED
+        invariants it does not satisfy. The stamp is a floor now, and the refusal is reported."""
+        path = legacy_cascade_ledger()
+        led = Ledger(path)
+        self.assertEqual(led.data["version"], "0.9")
+        self.assertEqual(led.summary()["pre_rule_events"], {"cascade_rung": 1})
+        led.save()
+        with open(path, encoding="utf-8") as fh:
+            on_disk = json.load(fh)
+        self.assertEqual(on_disk["version"], "0.9")
+
+    def test_nothing_in_the_append_only_log_is_rewritten(self):
+        """The alternative shape — migrate the events — is refused on the entity's own terms. The
+        reading is corrected where reading happens; the bytes stay the writer's."""
+        path = legacy_cascade_ledger()
+        led = Ledger(path)
+        led.save()
+        with open(path, encoding="utf-8") as fh:
+            event = json.load(fh)["decision_log"][0]
+        self.assertEqual(event["evidence"], "transcribed")
+        self.assertNotIn("policy_id", event)
+
+    def test_a_conforming_older_ledger_still_gets_the_stamp(self):
+        """The floor is about content, not about age: an old file this runtime could have written
+        is raised exactly as before, or the rule would strand every ledger that is merely old."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.decide(pin["id"], "opt_a", "r", "flip")
+        led.save()
+        with open(led.path, "r+", encoding="utf-8") as fh:
+            data = json.load(fh)
+            data["version"] = "0.9"
+            fh.seek(0)
+            json.dump(data, fh)
+            fh.truncate()
+        reloaded = Ledger(led.path)
+        self.assertEqual(reloaded.data["version"], SCHEMA_VERSION)
+        self.assertEqual(reloaded.summary()["pre_rule_events"], {})
+
+    def test_the_rung_is_read_off_the_carrier_the_writer_left(self):
+        """`policy:` in `source` is what says "this is a cascade" at every version of the schema —
+        `decide()` has never accepted any other source for one — so it is what the read uses when
+        the explicit v0.11 field is absent."""
+        import ledger as ledger_mod
+        old = {"id": "ev_0001", "source": "policy:pol_0001", "evidence": "transcribed"}
+        self.assertEqual(ledger_mod.decision_rung(old), "cascaded")
+        self.assertEqual(ledger_mod.cascaded_from(old), "pol_0001")
+        relay = {"id": "ev_0002", "source": "interview", "evidence": "transcribed"}
+        self.assertEqual(ledger_mod.decision_rung(relay), "transcribed")
+        self.assertIsNone(ledger_mod.cascaded_from(relay))
+        self.assertEqual(ledger_mod.decision_rung({"id": "ev_0003", "source": "interview"}), "")
+
+    def test_the_floor_only_holds_what_one_event_alone_decides(self):
+        """The v0.12 offered-options rule needs the pin's `question`, which is mutable — an option
+        absent today does not prove it was absent then. A file is not held below its floor on
+        evidence that weak, and the narrowness is asserted rather than left to be assumed."""
+        import ledger as ledger_mod
+        path = legacy_cascade_ledger()
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        data["decision_log"][0].update(evidence="cascaded", policy_id="pol_0001")
+        data["pins"][0]["question"] = {"prompt": "?", "options": [{"id": "api", "label": "api"}]}
+        self.assertEqual(ledger_mod.nonconforming(data), {})   # outcome "db" is not offered
+
+    def test_the_spec_version_and_the_runtime_agree(self):
+        """`SCHEMA_VERSION` is stamped into `policy_hash` as `spec_version`, so a spec that has moved
+        past it makes the trail cite a rule set by the wrong name. Two carriers, one fact."""
+        spec = os.path.join(os.path.dirname(__file__), "..", "src", "core",
+                            "decisions-ledger-spec.md")
+        with open(spec, encoding="utf-8") as fh:
+            heading = fh.readline().strip()
+        self.assertEqual(heading, f"# Decisions Ledger — Spec v{SCHEMA_VERSION}")
 
 
 class TestViewsAndPersistence(unittest.TestCase):

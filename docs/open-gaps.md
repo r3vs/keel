@@ -148,6 +148,28 @@ whether a human can see it.
 > names the outcome, and the cascade runs once over the radius its elector saw. The question to ask
 > of any new write door is not "is it guarded" but "name every invariant the OLD door enforced, and
 > check each at this one".
+>
+> **And THAT left one, closed 2026-08-06 (spec v0.13) — the same lineage, one step sideways.** Both
+> v0.11 and v0.12 were enforced *at the write*, so neither governed a single ledger that already
+> existed. A reviewer built the file the pre-v0.11 cascade wrote (`source: "policy:pol_0001"`,
+> `evidence: "transcribed"`, no `policy_id`) and ran all three of gap 1's surfaces: `{"transcribed":
+> 1}`, *"1 relayed by an agent"*, and the map's unquoted-relay warning — the exact sentence v0.11 was
+> written to delete, still shipping. Worse, a bare load+save restamped that file with the runtime's
+> own version, so it then *claimed* invariants it does not satisfy. Both are refused now: the rung is
+> **read** from the carrier its writer left (`ledger.decision_rung` — the log is immutable, so
+> nothing is rewritten and the map states what the file records), and `version` is a **floor** that
+> rises only when `ledger.nonconforming` is empty, reported as `pre_rule_events`. Restated for the
+> next time, since this is the fourth turn of it: **a new rule arrives with a writer and no reader.**
+> The question is not "is the rule enforced" but *"name every artifact this rule is now false of,
+> and say what reads them."*
+>
+> One more from the same round, worth its own line because it is the failure mode of a *gate*:
+> `tests/test_tool_roster.py::test_every_served_tool_is_documented_and_nothing_else_is` filtered its
+> entries through the served set before comparing (`if n in known`), so the "nothing else is" half
+> could not fire — a planted `ledger_delete_everything` row passed green, twice over, because the
+> count balanced too. Both filters are gone and the plant was re-run to confirm it fails. A test
+> named for an invariant it does not check is worse than no test: the absence would at least be
+> visible.
 
 The class was closed, not just the instance. Rescue's phase-2 names `mcp:ledger_record_decision` as
 the commit step with the four things it enforces; greenfield's phase-2 says what actually happens as

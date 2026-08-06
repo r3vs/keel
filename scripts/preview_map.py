@@ -30,6 +30,11 @@ What to check, in both light and dark:
   8. the cascaded pin (the validation one) names the policy, its rule, how the POLICY was elected,
      and quotes that answer — and says nothing about a relay, because nobody relayed anything about
      this pin. That sentence is what the rung was added to stop.
+  9. the retries pin — the same cascade as a runtime PREDATING the rung wrote it — reads as a
+     cascade too, not as a relay, and says in amber that the file records `transcribed` and why.
+     Its policy carries no rung at all, so the card says that is unknown rather than calling it a
+     relay. A rule enforced at the write governs no file that already exists, and this is the pin
+     that shows it: if these two cascades read differently in kind, the fix did not land.
 """
 from __future__ import annotations
 
@@ -193,6 +198,33 @@ def build() -> Ledger:
                             human_answer="yes — take the boundary rule for all of these, I'll flag "
                                          "the ones I want to argue about")
     led.apply_policy(policy)
+
+    # The same cascade as written by a runtime that PREDATES the rung (v0.13). Composed by hand
+    # because `decide()` refuses this shape now: `source` names the policy, `evidence` is the old
+    # parameter default, and there is no `policy_id` and no quote. Read literally — which is what
+    # every surface did — the card said "an agent relayed what the user said" and warned that
+    # nothing separated it from an invention, about a policy the user elected. The `version` below
+    # is the file's floor, and it is the reason the two cascades can sit in one fixture: this is
+    # what the runtime leaves alone rather than restamping.
+    led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
+                title="Retries are configured per call site (decided by a pre-v0.11 cascade)",
+                as_is={"current_design": "each caller sets its own retry policy"},
+                question={"prompt": "Where does the retry policy live?",
+                          "options": [{"id": "central", "label": "one shared client"},
+                                      {"id": "call_site", "label": "per call site"}]})
+    old_pin = led.data["pins"][-1]
+    led.data["policies"].append({"id": "pol_0002", "applies_to": {"kind": "design_concern"},
+                                 "rule": "one shared client owns retries", "default_outcome":
+                                 "central", "exceptions": []})
+    led.data["decision_log"].append({
+        "id": "ev_legacy", "pin_id": old_pin["id"], "timestamp": "2026-01-01T00:00:00+00:00",
+        "outcome": "central", "rationale": "one shared client owns retries",
+        "flip_criteria": "a call site needs its own backoff",
+        "source": "policy:pol_0002", "evidence": "transcribed"})
+    old_pin["state"] = "decided"
+    old_pin["resolution_mode"] = "policy_default"
+    old_pin["decision"] = {"event_id": "ev_legacy", "outcome": "central"}
+    led.data["version"] = "0.9"
     return led
 
 

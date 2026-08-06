@@ -32,9 +32,12 @@ SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py"
 # guard at all, because nothing forced the list to grow. Equality makes adding a tool here part of
 # adding a tool — the small friction is the mechanism, not a side effect of it.
 #
-# Safe to assert because registration is unconditional: all 34 `@mcp.tool` decorations sit at module
+# Safe to assert because registration is unconditional: every `@mcp.tool` decoration sits at module
 # level in server.py, so `tools/list` is deterministic. A tool registered behind an `if` would have to
-# be handled explicitly rather than by loosening this back to a subset.
+# be handled explicitly rather than by loosening this back to a subset. (This line used to state the
+# count — "all 34" against a server that then served 54. A number written beside a list that already
+# states it is a second carrier for one fact, and it drifted the first time the list grew, silently,
+# because nothing reads a comment. `len(EXPECTED_TOOLS)` is the count, and it cannot be wrong.)
 EXPECTED_TOOLS = {
     "ledger_summary", "interview_next", "contract_diff", "reconcile_layers", "blast_radius",
     "propose_correspondence",
@@ -337,6 +340,31 @@ class TestRecordingAnElectionByRelay(_Session):
         with open(path, encoding="utf-8") as fh:
             event = json.load(fh)["decision_log"][-1]
         self.assertEqual(event["human_answer"], "yes, pull the helper out")
+
+
+@NEEDS_UV
+class TestReadingALedgerWrittenBeforeTheRuleExisted(_Session):
+    """v0.13, over the wire because that is where the agent reads it.
+
+    The rung was enforced in `decide()` and nowhere else, so every ledger written before v0.11
+    still carries `transcribed` on its cascades — `decide()`'s old parameter default — and this
+    tool answered `{"transcribed": 1}` about decisions the user's own elected policy made. Asserted
+    on `structuredContent`, not on the in-process return: the summary grew a key, and a key that
+    does not survive the declared output schema reaches no agent at all.
+    """
+
+    def test_a_pre_v0_11_cascade_is_not_reported_as_a_relay(self):
+        path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"version": "0.9", "pins": [], "policies": [],
+                       "decision_log": [{"id": "ev_0001", "pin_id": "pin_0001", "outcome": "db",
+                                         "source": "policy:pol_0001", "evidence": "transcribed"}]}, fh)
+        res = self._request("tools/call", {"name": "ledger_summary", "arguments": {"ledger": path}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["decisions_by_evidence"], {"cascaded": 1})
+        # and the file is not restamped into claiming a version its content does not satisfy
+        self.assertEqual((out["version"], out["pre_rule_events"]), ("0.9", {"cascade_rung": 1}))
 
 
 CLUSTERED = {
