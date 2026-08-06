@@ -1,5 +1,24 @@
 # Open gaps — a plan any session can pick up
 
+> **STATUS 2026-08-06: all four are closed.** Nothing here is waiting on a session. The file stays
+> because its value is the record — what was wrong, where the answer now lives, and which sub-claims
+> were deliberately left `UNVERIFIED` rather than rounded up. Each section keeps its original text
+> and carries a closing note at the top.
+>
+> | Gap | Closed by | The answer now lives in |
+> |---|---|---|
+> | 1. `evidence` stored and shown nowhere | `294535a` | `src/runtime/map.py`, `ledger.summary()`, `instructions.py::_evidence_note` |
+> | 2. tools named by no phase | `eb9c24c` | both `phase-2-interview.md`, both `modules.json`, gate `scripts/check_tool_carriers.py` |
+> | 3. elicitation had never met a real host | this commit | `docs/packaging.md` → *Elicitation — does the host ask the human, or does the agent relay?* |
+> | 4. 21 tree-sitter skips | `92d2e17` | `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter` |
+>
+> Two residuals are recorded rather than fixed, and both are named in `docs/packaging.md`: a Claude
+> Code hook can answer an elicitation *for* the human, so `elicited` means "the agent did not hold
+> the value", not "a human was looked in the eye"; and headless `codex exec` declares the capability
+> then auto-cancels, so `ledger_record_decision` errors there instead of falling back to the
+> transcribed rung. Neither is a bug in what is written down — they are the limits of what the strong
+> rung buys, which is the sort of thing this file exists to keep honest.
+
 Four things left open after v0.5.0 (`22809f0`). Each is stated as: **what was verified**, **why it
 matters**, **what done looks like**, and **how to prove it** — because in this repo a change is not
 finished when the tests pass, it is finished when the behaviour was observed.
@@ -19,9 +38,21 @@ Suggested order: **1 → 2 → 4 → 3**. 1 and 2 are small and self-contained. 
 local suite while doing 3. 3 is research-shaped and may end in "no host supports it", which is a
 finding, not a failure.
 
+> That order was followed, and 3 landed in between the two outcomes it anticipated — two hosts yes,
+> two no. Everything from here down is the original report, kept verbatim under its closing note.
+
 ---
 
-## 1. `evidence` is stored and shown nowhere
+## 1. `evidence` is stored and shown nowhere — **CLOSED 2026-08-05** (`294535a`)
+
+Three surfaces now carry the rung, chosen by what each is for. The **map**'s decision card states it
+and shows the quote, looked up in `decision_log` by `event_id` (the ledger is inlined whole, so it is
+a join, not a fetch, and the page stays one offline file); weak reads as weaker — amber on a tinted
+card against green for elicited. **`Ledger.summary()`** returns `decisions_by_evidence`, so the count
+an agent reads before acting says "17 decided, 15 on an agent's say-so". **`instructions.py`** made
+the budgeted call deliberately and recorded it: no per-decision rung in the projection, one
+`_evidence_note` line when a weak rung is present, with the reasoning in the module docstring —
+an omission with a reason, which is the standard this section set.
 
 ### Verified
 
@@ -88,7 +119,18 @@ whether a human can see it.
 
 ---
 
-## 2. The tools the phases need are named by no phase
+## 2. The tools the phases need are named by no phase — **CLOSED 2026-08-05** (`eb9c24c`)
+
+The class was closed, not just the instance. Rescue's phase-2 names `mcp:ledger_record_decision` as
+the commit step with the four things it enforces; greenfield's phase-2 says what actually happens as
+three tools, and `phase-1-frame.md` / `decision-catalog.md` name `interview_expand` where the
+expansion is described. Both interview modules declare their engine and stay `type: judgment` — the
+outcome is the human's, the write has exactly one carrier. **The decision the section demanded was
+made:** `interview_seed_policies` is its own tool rather than a step inside `interview_expand`,
+because a silent write behind a tool named "expand" is the thing this package refuses. And
+`scripts/check_tool_carriers.py` (in CI) fails the build when a **write** tool — derived from each
+`@mcp.tool` annotation's own `readOnlyHint`, by AST, not by grep — is named by no shipped playbook.
+It found two instances beyond the three reported here.
 
 ### Verified
 
@@ -156,7 +198,33 @@ original. Scope it to write tools — a read tool that only `using-the-ledger` n
 
 ---
 
-## 3. Elicitation has never met a real host
+## 3. Elicitation has never met a real host — **CLOSED 2026-08-06**
+
+**It has now met all four, and the answer is split 2–2.** The per-host record lives in
+`docs/packaging.md` → *"Elicitation — does the host ask the human, or does the agent relay?"*, with
+every claim cited at the function that consumes the value. In short: **Claude Code** (2.1.221, read
+out of the binary that actually spawned our server) and **Codex** (`openai/codex`) both declare
+`elicitation: {}` unconditionally and both render our enum as a **picker**, so the free-text worry
+below does not arise on either. **opencode** does not — the line is commented out, `elicitation`
+support landed in PR #35064 and was reverted 67 minutes later by #35080 — and registers no handler.
+**Pi** does not, and that negative is **ours**: Pi has no MCP client at all, our own
+`mcp-bridge.ts::McpStdioClient.connect()` hardcodes `capabilities: {}`, and the file names the work
+that would close it (`ctx.ui.select`, declared only when `ctx.hasUI`).
+
+The keel-side link both positive rows depend on — what `ctx.elicit(message, choices)` actually puts
+on the wire — was the one thing no audit had, so it was **executed** under the pinned
+`fastmcp==3.4.4`: one flat string property carrying an `enum`, passed verbatim as `requestedSchema`.
+That is recorded too, since both rendering claims rest on it.
+
+**What was deliberately not upgraded to fact.** All four rows are `read_source`; **no handshake was
+captured on the wire**, so option 1 of "Prove it" below stays unexecuted and the honest verb is
+"read", not "observed". Codex was read at `main` with no tag pinned. Two Claude Code sub-claims are
+marked `UNVERIFIED` in `packaging.md` rather than resolved: whether the interactive handler is
+registered in non-interactive/`stream-json` runs, and whether an elicitation from a subagent reaches
+the REPL queue. The trap the section warns about is the one that would swallow these.
+
+**The rung stays on the two hosts that cannot use it**, exactly as this section instructed — it costs
+one session lookup and arms itself the day support lands.
 
 ### Verified
 
