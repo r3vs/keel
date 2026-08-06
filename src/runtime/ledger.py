@@ -36,7 +36,15 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   ONE table (`EVENT_RULES`), which `decide()` validates a new event against and `nonconforming`
   replays over an old one — so a rule added later gains its reader by construction instead of
   being false of every existing file until somebody remembers. And an elected `Policy` is visible
-  as a decision on all three surfaces even when it cascaded over no pin at all.
+  as a decision on all three surfaces even when it cascaded over no pin at all;
+- v0.16 the SECOND predicate. v0.14 gave *"may this outcome land on this pin without asking"* one
+  home; nothing governed *"may this pin leave the open set at all"*, so four doors reached a settled
+  pin past every rule the first predicate holds. `Ledger.settlement_verdict(pin, door)` answers the
+  second question for all five doors that move a pin in or out of `SETTLED_STATES`, `_settle` is the
+  only writer of a settled state, and every one of those transitions appends a `SettlementEvent` —
+  so *"how did this pin stop being open, and on whose authority"* is answerable from the log for
+  every door and not only for `decided`. `resolution_mode: "asked"` is honoured by `unasked_verdict`
+  too: six sites write it to assert "this one must be asked" and, until now, nothing read it.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -49,7 +57,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.15"
+SCHEMA_VERSION = "0.16"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -62,7 +70,7 @@ SCHEMA_VERSION = "0.15"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15")
+                     "0.14", "0.15", "0.16")
 
 KINDS = {
     "contract_mismatch",
@@ -128,11 +136,71 @@ _NEVER_SILENT = ("blocker", "high")
 # A pin these states describe is not open to being settled again by anyone.
 SETTLED_STATES = ("decided", "resolved", "accepted", "deferred")
 
+# The states in which the work on a pin is FINISHED. `decided` is settled but not finished: the
+# human may re-elect it (last committed wins, and the log keeps both events), which is a correction
+# and not a second close. Reaching a state below again is a second close, and the way back is
+# `reopen` — which records why. Kept apart from `SETTLED_STATES` because the two answer different
+# questions: `SETTLED_STATES` is "may an UNASKED write touch this" (no, for all four),
+# `CLOSED_STATES` is "may any door settle this again" (no, and ask `reopen` instead).
+CLOSED_STATES = ("resolved", "accepted", "deferred")
+
+# Pins awaiting something. The complement of `SETTLED_STATES`, named rather than derived because
+# `correctness_unknown` belongs here on purpose: it blocks closure and joins the interview view.
+OPEN_STATES = ("detected", "needs_input", "brainstorming", "correctness_unknown")
+
+# The rungs at which a claim may CLOSE. `resolved` means observed — the verification skill's rule
+# restated as data (v0.7) — and this is the tuple that says so, read by `settlement_verdict`.
+_CLOSING_RUNGS = ("observed", "cross_derived")
+
+# -- the doors that move a pin in or out of `SETTLED_STATES` (v0.16) ---------------------------
+#
+# Four settle; the fifth un-settles. They are ONE table because the question a reader has to be able
+# to ask of the trail is not "was this decided" but *"how did this pin stop being open, and on whose
+# authority"* — and a trail that answers it for one door out of five answers it wrongly.
+SETTLEMENT_DOORS = ("decide", "accept", "defer", "resolve", "correctness_unknown")
+# The three whose authority is an election (a DecisionEvent). `resolve`'s authority is an
+# observation; `correctness_unknown`'s is the absence of one.
+_ELECTION_DOORS = ("decide", "accept", "defer")
+_ELECTION_STATES = ("decided", "accepted", "deferred")
+_STATE_BY_DOOR = {
+    "decide": "decided",
+    "accept": "accepted",
+    "defer": "deferred",
+    "resolve": "resolved",
+    "correctness_unknown": "correctness_unknown",
+}
+
+# What `Ledger.settlement_verdict` can answer. Each refusal names ONE reason, and the strongest one,
+# for the same reason `UNASKED_BUCKETS` does: "why is this pin still open" is a question a reader
+# has to be able to act on.
+SETTLEMENT_BUCKETS = (
+    "would_settle",      # this door may run on this pin
+    "already_closed",    # the work is finished — reopen it rather than close it twice
+    "wrong_kind",        # leaving-as-is is the resolution of a design_concern and of nothing else
+    "not_decided",       # nothing was elected yet, and this door closes elected work
+    "remediation_open",  # no remediation recorded, or an item still open
+    "unverified",        # correctness was NOT established — `resolved` means observed
+)
+
 # What `Ledger.unasked_verdict` can answer, and therefore the buckets every radius over it reports
 # (v0.14). Ordered so a caller can present them the way a human reads them: what it decides first,
-# then the two refusals, then the pins that were never in scope. `policy_preview` builds its return
-# shape from this tuple, so adding a bucket cannot leave one surface reporting four and another five.
-UNASKED_BUCKETS = ("would_decide", "held_back", "not_offered", "excepted", "already_settled")
+# then the refusals, then the pins that were never in scope. `policy_preview` builds its return
+# shape from this tuple, so adding a bucket cannot leave one surface reporting four and another six.
+UNASKED_BUCKETS = ("would_decide", "held_back", "must_be_asked", "not_offered", "excepted",
+                   "already_settled")
+
+# The `Pin` fields a `Policy` scope may match on (v0.16). A scope key naming no field of a pin
+# matched EVERY pin — `pin.get("nope") == None` is true of all of them — so `applies_to={"nope":
+# null}` was a universal selector wearing a filter's clothes, and the preview a human elects a
+# policy from showed the whole ledger as its radius. Declared here and held to what the writers
+# actually write by `tests/test_ledger.py::TestAPolicyScopeNamesRealFields`, so a field added to the
+# envelope without being scopeable fails rather than silently becoming unmatchable.
+PIN_FIELDS = (
+    "id", "kind", "kind_detail", "title", "severity", "confidence", "provenance", "anchors",
+    "state", "substate", "as_is", "to_be", "question", "brainstorm", "decision", "depends_on",
+    "remediation", "cluster_id", "resolution_mode", "verification", "readiness", "premortem",
+    "cross_derivations", "evidence",
+)
 
 
 class LedgerError(ValueError):
@@ -237,6 +305,15 @@ EVENT_RULES = (
      lambda e: "flip_signal" not in e
      or (e.get("flip_signal") or {}).get("source") in FLIP_SIGNAL_SOURCES,
      lambda e: f"flip_signal.source must be one of {FLIP_SIGNAL_SOURCES}"),
+    # v0.16. Absence is NOT a violation and that is the table's own membership rule at work: every
+    # event written before this field existed produced `decided`, which is what its absence means,
+    # so a file that predates it conforms and keeps its floor. What is decidable from the event
+    # alone — and therefore checkable — is a value that names a state no election can produce.
+    ("settled_state",
+     lambda e: "settles_as" not in e or e.get("settles_as") in _ELECTION_STATES,
+     lambda e: f"settles_as names the state an ELECTION produces, one of {_ELECTION_STATES}; got "
+               f"{e.get('settles_as')!r} — `resolved` is a verification outcome and "
+               "`correctness_unknown` the refusal to reach one, and neither is elected"),
 )
 
 
@@ -278,6 +355,18 @@ def nonconforming(data: dict) -> dict:
         for rule in event_violations(event):
             out.setdefault(rule, []).append(str(event.get("id")))
     return out
+
+
+def _door_for(settles_as: str) -> str:
+    """The ELECTION door that produces this state. Refuses anything else, so `settles_as` cannot
+    become a way to write an arbitrary state onto a pin through the decision path — `resolved` is a
+    verification outcome and `correctness_unknown` is the refusal to reach one; neither is elected,
+    so neither is reachable from `decide`."""
+    door = next((d for d in _ELECTION_DOORS if _STATE_BY_DOOR[d] == settles_as), "")
+    _require(bool(door),
+             f"settles_as must be one of {sorted(_STATE_BY_DOOR[d] for d in _ELECTION_DOORS)} — "
+             f"the states an ELECTION produces; got {settles_as!r}")
+    return door
 
 
 def _validate_question(question: Optional[dict]) -> None:
@@ -503,6 +592,7 @@ class Ledger:
         evidence: str = "transcribed",
         human_answer: str = "",
         policy_id: Optional[str] = None,
+        settles_as: str = "decided",
     ) -> dict:
         """Append ONE DecisionEvent for ONE pin and materialize its state (last committed wins).
 
@@ -557,6 +647,13 @@ class Ledger:
         And every rule named above lives in `EVENT_RULES` rather than in this function (v0.15), so
         the reader that decides whether an OLDER file satisfies them (`nonconforming`) replays the
         same table instead of knowing one of them by hand.
+
+        `settles_as` names which settled state this election produces — `decided`, or the two
+        outcomes that are elections about scope rather than about the fork: `accepted` (leave it as
+        it is) and `deferred` (not now). It is not a fan-out flag and cannot become one: it selects
+        the DOOR, one pin, one event, and the door is what `settlement_verdict` judges. Both used to
+        write `pin["state"]` themselves after calling this, which is how `deferred` became a settled
+        state reachable with no election, no threshold, no quote and nothing in the log (v0.16).
         """
         # The "a transcribed decision must quote the human" rule is enforced one layer out, in
         # `mcp/tools.py::record_decision`, because that is the only boundary an AGENT can reach and
@@ -565,6 +662,11 @@ class Ledger:
         # carry. It is also, for the same reason, not an `EVENT_RULES` entry: the event records the
         # quote, never whether one was owed.
         pin = self.pin(pin_id)
+        door = _door_for(settles_as)
+        # Gated BEFORE the event is built: a refusal must not leave an orphan DecisionEvent in an
+        # append-only log. `_settle` asks the same predicate again, because it is the single writer
+        # of a settled state and a writer that trusts its callers is a writer with five contracts.
+        self._gate_settlement(pin, door)
         event = {
             "id": self._next_id("ev_", self.data["decision_log"]),
             "pin_id": pin["id"],
@@ -574,6 +676,11 @@ class Ledger:
             "flip_criteria": flip_criteria,
             "source": source,
             "evidence": evidence,
+            # Which settled state this election produced (v0.16). On the event because the event is
+            # what the log keeps: `accept` and `defer` used to write the state themselves after this
+            # returned, so the log recorded an outcome of `keep` or `defer` and left a reader to
+            # guess whether the pin had ended up `accepted`, `deferred` or merely `decided`.
+            "settles_as": _STATE_BY_DOOR[door],
             "policy_hash": self._policy_hash(),
         }
         if policy_id:
@@ -587,9 +694,9 @@ class Ledger:
         # the reader cannot replay. Nothing is appended if this raises.
         _check_event(event)
         self.data["decision_log"].append(event)
-        pin["state"] = "decided"
         pin.pop("substate", None)
         pin["decision"] = {"event_id": event["id"], "outcome": outcome}
+        self._settle(pin, door, decision_event=event["id"])
         return event
 
     def set_readiness(
@@ -664,23 +771,43 @@ class Ledger:
             stack.extend(by_id[cur].get("depends_on", []))
         return False
 
-    def defer(self, pin_id: str) -> dict:
-        """Out of scope now (YAGNI at spec level) — stays as future backlog."""
-        pin = self.pin(pin_id)
-        _require(pin["state"] != "resolved", "cannot defer a resolved pin")
-        pin["state"] = "deferred"
-        return pin
+    def defer(self, pin_id: str, rationale: str, flip_criteria: str,
+              evidence: str = "transcribed", human_answer: str = "") -> dict:
+        """Out of scope now (YAGNI at spec level) — stays as future backlog. **An election.**
+
+        It used to be a bare `pin["state"] = "deferred"` behind ONE check (`state != "resolved"`):
+        no severity threshold, no election, no quote, nothing appended to the log. Reachable by the
+        agent alone as `mcp:ledger_defer`, it moved a `blocker` fork out of `SETTLED_STATES`' open
+        complement in one call — `interview_next` dropped it, `ledger_summary.open_questions` went
+        down by one, `decision_log` stayed empty, and nothing recorded that a choice had been
+        avoided. That is the same hole `ledger_decide` never existed in order to avoid, on the state
+        next to it.
+
+        So deferring is what it always was in the spec's own question shape — an **answer**
+        (`{"id": "defer", "label": "Defer (deferred)"}`) — and it is recorded as one: a
+        DecisionEvent with outcome `defer`, a `flip_criteria` saying what brings it back, and the
+        rung the answer travelled on. `mcp:ledger_defer` demands the human's words for a
+        `transcribed` one, exactly as `record_decision` does, and the elicitation path is the same.
+
+        Deliberately NOT held to the offered-options rule: `defer` is a meta-answer about scope, not
+        a choice among the fork's branches, and demanding that every question list a `defer` option
+        would make punting depend on whoever authored the pin. What holds it instead is the same
+        thing that holds `accept`: the human was shown THIS pin, and said not now, in their words.
+        """
+        self.decide(pin_id, outcome="defer", rationale=rationale, flip_criteria=flip_criteria,
+                    evidence=evidence, human_answer=human_answer, settles_as="deferred")
+        return self.pin(pin_id)
 
     def accept(self, pin_id: str, rationale: str, flip_criteria: str,
                evidence: str = "transcribed", human_answer: str = "") -> dict:
-        """Leave-as-is: the legitimate default resolution of a design_concern only."""
-        pin = self.pin(pin_id)
-        _require(pin["kind"] == "design_concern",
-                 "accepted applies to design_concern only (open_decision has nothing to keep)")
+        """Leave-as-is: the legitimate default resolution of a design_concern only.
+
+        The kind check moved into `settlement_verdict` (`wrong_kind`) rather than living here: it is
+        a rule about which door may settle which pin, and every such rule now has one home.
+        """
         self.decide(pin_id, outcome="keep", rationale=rationale, flip_criteria=flip_criteria,
-                    evidence=evidence, human_answer=human_answer)
-        pin["state"] = "accepted"
-        return pin
+                    evidence=evidence, human_answer=human_answer, settles_as="accepted")
+        return self.pin(pin_id)
 
     # -- policies (v0.3: user decisions, amplified) ---------------------------
 
@@ -768,9 +895,21 @@ class Ledger:
             here: freeform is legitimate where the human's own words ARE that pin's outcome, and by
             construction they are not, on a pin nobody put to them.
 
+          * **`resolution_mode: "asked"`** (v0.16) — the pin says of itself that it must be asked.
+            Six sites write it and, until now, exactly two read it, both comparing against
+            `"proposed_default"` only: so the field asserted an invariant nothing enforced. Two of
+            the six write it carrying the assertion as a comment — *"a reopened truth is never
+            re-defaulted silently"*, *"a contested claim is never re-defaulted silently"* — and a
+            policy cascade re-defaulted both, silently. The others are the same statement in other
+            words: a surfaced `agent_assumption` is vetoable *by a human*, a pin whose correctness
+            could not be established carries the fork that asks what to do about it, and a pin a
+            previous cascade already held back is not one a later cascade may take. Reading the
+            field is the whole fix; nothing new is written.
+
         Order matters and is asserted rather than assumed: settled and excepted first (those are not
-        refusals, they are pins outside the radius), then the threshold, then the options. A reader
-        asking "why is this pin still open" gets one reason, and the strongest one.
+        refusals, they are pins outside the radius), then the threshold, then the pin's own demand to
+        be asked, then the options. A reader asking "why is this pin still open" gets one reason, and
+        the strongest one.
         """
         if pin["state"] in SETTLED_STATES:
             return "already_settled"
@@ -778,9 +917,138 @@ class Ledger:
             return "excepted"
         if pin["severity"] in _NEVER_SILENT:
             return "held_back"          # threshold rule — never silent
+        if pin.get("resolution_mode") == "asked":
+            return "must_be_asked"      # the pin's own standing demand — v0.16
         if not self.question_offers(pin, outcome):
             return "not_offered"        # offered-options rule — never invented
         return "would_decide"
+
+    # -- THE SECOND PREDICATE: may this pin leave the open set at all? (v0.16) -----------------
+
+    def settlement_verdict(self, pin: dict, door: str) -> str:
+        """May this pin change its settlement through this door? Returns one of
+        `SETTLEMENT_BUCKETS`.
+
+        `unasked_verdict` governs *what may be written onto a pin nobody was asked about*. It says
+        nothing about the other axis, and for four versions nothing did — so a pin could leave the
+        open set through doors that checked one thing each, or nothing at all. All four were
+        reproduced over real stdio by an agent with no human in the loop:
+
+          * `defer` moved a `blocker` fork into `SETTLED_STATES` on a single `state != "resolved"`
+            check: no threshold, no election, no quote, nothing appended. The question stopped being
+            asked and the log did not record that a choice had been avoided.
+          * `resolve` enforced the v0.7 observation rung only `if rung is not None`, and
+            `mark_correctness_unknown` writes `rung: None` when the caller does not supply one — so
+            a pin that had *just declared its own correctness unestablishable* then closed green.
+          * `record_decision` had no settled check at all, so it re-decided a `resolved` or
+            `accepted` pin back to `decided` while `unasked_verdict` refused the same pin as
+            `already_settled`: two doors, two answers, one question.
+          * `accept`'s kind rule lived in `accept`, which is where every rule this repo has had to
+            fix twice started out.
+
+        So the second question gets the treatment the first one got in v0.14: ONE predicate, every
+        door, the reason named rather than merged. What it deliberately does NOT decide is *who was
+        asked* — that is the first predicate's job, and the two are composed, never blended: an
+        election door passes both (`unasked_verdict` when nobody was asked, `question_offers` at the
+        single-pin door), a verification door passes only this one.
+
+        The asymmetry between `SETTLED_STATES` and `CLOSED_STATES` is deliberate and is the whole of
+        the "two doors, two answers" fix: a `decided` pin may be re-elected by the human — that is a
+        correction, and the append-only log keeps both events — while a CLOSED one may not be
+        settled again by anybody, because the work is over. The way back from closed is `reopen`,
+        which records why.
+        """
+        _require(door in SETTLEMENT_DOORS, f"door must be one of {SETTLEMENT_DOORS}; got {door!r}")
+        state = pin["state"]
+        if door == "correctness_unknown":
+            # The mirror door: it takes a pin OUT of a settled state, so "already closed" is not the
+            # question — "was there work to be unable to verify" is.
+            if state in ("decided", "resolved") or pin["kind"] == "defect":
+                return "would_settle"
+            return "not_decided"
+        if state in CLOSED_STATES:
+            return "already_closed"
+        if door == "accept" and pin["kind"] != "design_concern":
+            return "wrong_kind"
+        if door == "resolve":
+            # v0.7: the state exists precisely to block closure, so it blocks closure. Checked
+            # before the kind escape below, because `defect` was the hole: `resolve` admitted any
+            # defect regardless of state, and `correctness_unknown` is a state a defect can be in.
+            if state == "correctness_unknown":
+                return "unverified"
+            if state != "decided" and pin["kind"] != "defect":
+                return "not_decided"
+            if not pin.get("remediation") or any(i["status"] != "done" for i in pin["remediation"]):
+                return "remediation_open"
+            # When the pin states how hard its claim was checked, that statement binds — including
+            # when it states that it could not be checked at all. `rung: None` inside a
+            # `verification` envelope is not "no claim made", it is the strongest possible claim
+            # that this must not close, and reading it as absence is how the chain above closed.
+            verification = pin.get("verification")
+            if verification is not None and verification.get("rung") not in _CLOSING_RUNGS:
+                return "unverified"
+        return "would_settle"
+
+    #: Why each refusal is a refusal, in the words a caller can act on. A bucket with no sentence
+    #: here would surface as a bare token, which is how a gate becomes something people route around.
+    _SETTLEMENT_REASONS = {
+        "already_closed":
+            "the work on this pin is finished ({state}) — closing it again records a second ending "
+            "for one piece of work. Reopen it first (the reopen arc records why), then decide.",
+        "wrong_kind":
+            "leaving-as-is is the legitimate resolution of a design_concern and of nothing else; "
+            "this pin is a {kind}, which has nothing to keep.",
+        "not_decided":
+            "nothing has been elected on this pin yet (state {state}), and this door closes elected "
+            "work. Record the decision first.",
+        "remediation_open":
+            "resolve requires recorded remediation with every item done — a close with nothing to "
+            "point at is a silent close.",
+        "unverified":
+            "`resolved` means OBSERVED (v0.7). This pin's own verification does not reach the "
+            "`observed` or `cross_derived` rung (state {state}), so the honest destination is "
+            "correctness_unknown, not a green close. Pass `rung` to resolve once you have observed "
+            "the behaviour.",
+    }
+
+    def _gate_settlement(self, pin: dict, door: str) -> None:
+        verdict = self.settlement_verdict(pin, door)
+        _require(verdict == "would_settle",
+                 f"{door} refused on {pin['id']} ({verdict}): "
+                 + self._SETTLEMENT_REASONS.get(verdict, "").format(state=pin["state"],
+                                                                    kind=pin["kind"]))
+
+    def _settle(self, pin: dict, door: str, decision_event: Optional[str] = None,
+                verification_rung: Optional[str] = None) -> Optional[dict]:
+        """THE only writer of a settled state, and the only appender of a `SettlementEvent`.
+
+        Every one of the five doors passes through here, so the gate cannot be a rule each door
+        remembers — that is v0.14's lesson applied to the second predicate.
+
+        **The event is appended only where an election is not already carrying it.** An election has
+        a `DecisionEvent`, and that event now states which settled state it produced (`settles_as`),
+        so appending a second record beside it would be two carriers for one fact — the divergence
+        this package exists to find. `resolve` and `correctness_unknown` have no election behind
+        them: their authority is an observation, or the recorded absence of one, and until v0.16
+        neither left anything in the log at all. So the log answers *"how did this pin stop being
+        open, and on whose authority"* for all five doors, with exactly one entry each.
+        """
+        self._gate_settlement(pin, door)
+        event = None
+        if decision_event is None:
+            event = {
+                "id": self._next_id("stl_", self.data["decision_log"]),
+                "pin_id": pin["id"],
+                "timestamp": _now(),
+                "door": door,
+                "from_state": pin["state"],
+                "to_state": _STATE_BY_DOOR[door],
+                "verification_rung": verification_rung,
+                "policy_hash": self._policy_hash(),
+            }
+            self.data["decision_log"].append(event)
+        pin["state"] = _STATE_BY_DOOR[door]
+        return event
 
     def policy_preview(self, applies_to: dict, default_outcome: str,
                        exceptions: Optional[list[str]] = None) -> dict:
@@ -803,7 +1071,18 @@ class Ledger:
 
         v0.14: this is now only the SCOPE — which pins the policy matches. The per-pin judgment is
         `unasked_verdict`, shared with the brief, so the two cannot answer differently.
+
+        v0.16: and the scope names real fields. `pin.get(k) == v` is True for **every** pin when `k`
+        is not a pin field and `v` is null, so `applies_to={"nope": null}` was a universal selector
+        that read as a filter — reproduced end to end through `mcp:ledger_record_policy`. The radius
+        is the thing a human elects a policy from, so a scope key that matches by not existing is
+        not a narrow bug, it is the preview describing a different policy than the one being set.
         """
+        for key in applies_to or {}:
+            _require(key in PIN_FIELDS,
+                     f"applies_to key {key!r} is not a Pin field ({', '.join(PIN_FIELDS)}). A key "
+                     "no pin carries matches EVERY pin when its value is null, so this scope would "
+                     "be the whole ledger wearing a filter's clothes.")
         excepted = frozenset(exceptions or [])
         out: dict = {bucket: [] for bucket in UNASKED_BUCKETS}
         for pin in self.data["pins"]:
@@ -840,8 +1119,10 @@ class Ledger:
         """
         radius = self.policy_preview(policy["applies_to"], policy["default_outcome"],
                                      policy["exceptions"])
-        # never silent, for either reason: both stay open and go to the top of the review batch
-        for pin_id in radius["held_back"] + radius["not_offered"]:
+        # never silent, for any of the three reasons: all stay open and go to the top of the review
+        # batch. `must_be_asked` (v0.16) is the pin that already said so, and re-stamping it is a
+        # no-op by construction — which is the point: the mark persists across cascades.
+        for pin_id in radius["held_back"] + radius["must_be_asked"] + radius["not_offered"]:
             self.pin(pin_id)["resolution_mode"] = "asked"
         for pin_id in radius["would_decide"]:
             pin = self.pin(pin_id)
@@ -987,6 +1268,23 @@ class Ledger:
         Deliberately not mandatory at any severity: making it obligatory above a threshold doubles
         the cost of the most expensive pins, and that trade should be elected with a measured number
         in hand rather than assumed here.
+
+        **v0.16 — three things this used to do that a read-only arc may not.** It reopened a pin the
+        human had elected while appending nothing to the append-only log, so a decision could be
+        un-made with no record that anything had happened; it did the same to a `resolved` or
+        `deferred` pin, un-closing finished work on an agent's say-so; and it **overwrote
+        `pin["question"]`** with options composed from the caller's own derivations. That third one
+        is the worst and is why it is stated separately: `question.options[].id` is the carrier the
+        entire offered-options rule anchors on, at both doors, so an agent that rewrites it decides
+        what the human is allowed to choose next — the invariant v0.12–v0.14 built, dismantled from
+        the side.
+
+        So: the disagreement is appended as an immutable `xdr_` event; the pin's own question is
+        left exactly as it was, and one is written only where none exists (creating a fork is what
+        `surface_assumption` legitimately does; replacing one is not); and a **closed** pin is not
+        reopened here at all — the event is recorded and `reopened` comes back false, because
+        un-closing finished work needs its own justification and has its own arc. The other two arcs
+        already worked this way: `challenge` and `reopen` each append before they move anything.
         """
         pin = self.pin(pin_id)
         _require(agreement in ("agree", "disagree", "partial"),
@@ -1016,20 +1314,40 @@ class Ledger:
             "timestamp": _now(),
         }
         pin.setdefault("cross_derivations", []).append(record)
+        # Recorded BEFORE anything moves, and recorded whatever happens next: an arc that reopens
+        # without appending is a state change nobody can audit, which is exactly what this was.
+        event = {
+            "id": self._next_id("xdr_", self.data["decision_log"]),
+            "pin_id": pin_id,
+            "timestamp": _now(),
+            "claim": record["claim"],
+            "providers": record["providers"],
+            "agreement": agreement,
+            "reopened": agreement != "agree" and pin["state"] not in CLOSED_STATES,
+            "source": "challenge:cross_derivation",
+            "policy_hash": self._policy_hash(),
+        }
+        self.data["decision_log"].append(event)
+        record["event_id"] = event["id"]
         if agreement == "agree":
             verification = pin.get("verification") or {}
             verification["rung"] = "cross_derived"
             verification["cross_derived_by"] = sorted(providers)
             pin["verification"] = verification
-        elif pin["state"] != "accepted":
-            pin["question"] = {
-                "prompt": (f"Two independent providers disagree on: {record['claim']}. "
-                           "Which derivation holds?"),
-                "options": [{"id": f"d{i}", "label": f"{d['provider']}/{d['model']}: {d['result']}"}
-                            for i, d in enumerate(derivations)]
-                           + [{"id": "neither", "label": "Neither — the claim itself is wrong"}],
-                "allow_freeform": True,
-            }
+        elif event["reopened"]:
+            if not pin.get("question"):
+                # Only where there is no fork to destroy. The derivations are on the pin either way
+                # (`cross_derivations`), so the human sees what disagreed without an agent editing
+                # the menu they are allowed to answer from.
+                pin["question"] = {
+                    "prompt": (f"Two independent providers disagree on: {record['claim']}. "
+                               "Which derivation holds?"),
+                    "options": [{"id": f"d{i}",
+                                 "label": f"{d['provider']}/{d['model']}: {d['result']}"}
+                                for i, d in enumerate(derivations)]
+                               + [{"id": "neither", "label": "Neither — the claim itself is wrong"}],
+                    "allow_freeform": True,
+                }
             pin["state"] = "needs_input"
             pin["substate"] = "contested"
             pin["resolution_mode"] = "asked"   # a contested claim is never re-defaulted silently
@@ -1180,28 +1498,30 @@ class Ledger:
                 return item
         raise LedgerError(f"no remediation item {item_id} on {pin_id}")
 
-    def resolve(self, pin_id: str, evidence: Optional[str] = None) -> dict:
+    def resolve(self, pin_id: str, evidence: Optional[str] = None,
+                rung: Optional[str] = None) -> dict:
+        """Close a pin against what was OBSERVED. Every rule is `settlement_verdict`'s (v0.16).
+
+        `rung` is the door out of `correctness_unknown` and out of a stale weak envelope, and it has
+        to exist: once `mark_correctness_unknown` has written `verification`, the rung check binds
+        forever, and without a way to state a *later* observation the pin could never close by any
+        route — a gate with no gate-opening move is a wall, and people route around walls. What it
+        cannot do is launder: it records a rung the caller claims to have reached, on a pin whose
+        `blocked_by` stays exactly where its writer left it, so "it was blocked, then it was
+        observed" reads as the history it is rather than as a clean slate.
+        """
         pin = self.pin(pin_id)
-        _require(pin["state"] == "decided" or pin["kind"] == "defect",
-                 "only a decided pin (or a defect) can resolve")
-        _require(all(i["status"] == "done" for i in pin["remediation"]),
-                 "resolve requires every remediation item done")
-        _require(len(pin["remediation"]) > 0,
-                 "resolve without remediation is a silent close — record what closed the gap")
-        # v0.6 'resolved = observed': the evidence is what was OBSERVED to close the gap,
-        # not merely that the code was written.
         if evidence is not None:
             _require(bool(str(evidence).strip()), "evidence, when given, must not be blank")
             pin["evidence"] = evidence
-        # v0.7: when the pin states how hard its claim was checked, that statement binds. A pin
-        # verified only by the agent re-reading its own output has not been observed, and `resolved`
-        # means observed — so the honest destination is `correctness_unknown`, not a green close.
-        rung = (pin.get("verification") or {}).get("rung")
         if rung is not None:
-            _require(rung in ("observed", "cross_derived"),
-                     f"resolve needs rung 'observed' or 'cross_derived', not {rung!r} — a claim "
-                     "checked only by self-check or re-read belongs in correctness_unknown")
-        pin["state"] = "resolved"
+            _require(rung in _CLOSING_RUNGS,
+                     f"a resolving rung is one of {_CLOSING_RUNGS}, not {rung!r} — the other two "
+                     "rungs are what `correctness_unknown` exists to record")
+            _require(pin.get("evidence") or evidence,
+                     "a claimed rung needs the observation it rests on — pass `evidence`")
+            pin["verification"] = {**(pin.get("verification") or {}), "rung": rung}
+        self._settle(pin, "resolve", verification_rung=(pin.get("verification") or {}).get("rung"))
         return pin
 
     def mark_correctness_unknown(
@@ -1220,8 +1540,10 @@ class Ledger:
         optional decoration. The state blocks closure; the next move is an explicit decision.
         """
         pin = self.pin(pin_id)
-        _require(pin["state"] in ("decided", "resolved") or pin["kind"] == "defect",
-                 "correctness_unknown applies to work that was actually done")
+        # The one door that moves a pin OUT of a settled state, and it is on the same table as the
+        # four that move it in (v0.16) — `not_decided` is what "applies to work that was actually
+        # done" now says, in the words every other door answers in.
+        self._gate_settlement(pin, "correctness_unknown")
         _require(bool(str(blocked_by).strip()),
                  "correctness_unknown must say what blocked verification — an unexplained unknown "
                  "is the confident report wearing a humble label")
@@ -1258,7 +1580,8 @@ class Ledger:
         }
         pin["resolution_mode"] = "asked" if pin["severity"] in _NEVER_SILENT \
             else pin.get("resolution_mode", "asked")
-        pin["state"] = "correctness_unknown"
+        self._settle(pin, "correctness_unknown",
+                     verification_rung=pin["verification"]["rung"])
         return pin
 
     # -- views (the surfaces hold no state of their own) ------------------------
@@ -1319,12 +1642,24 @@ class Ledger:
         # there told an agent that N decisions rest on an agent's say-so when they rest on the
         # user's own elected policy.
         by_evidence: dict[str, int] = {}
+        # v0.16: how pins stopped being open, by door. Same reasoning as `decisions_by_evidence` one
+        # axis over — a settlement read by nobody is the black hole this schema keeps finding, and
+        # "4 resolved, 9 deferred" is a different ledger to walk into than "13 closed". The doors
+        # fail differently (a defer avoids a question; a resolve answers one), so they are counted
+        # apart and never summed. Both carriers are read, because a settlement is recorded by the
+        # election that produced it where there is one and by its own event where there is not; a
+        # count over one of the two would be exactly the half-blind reading v0.13 was about.
+        by_door: dict[str, int] = {}
         for e in self.data["decision_log"]:
             if e["id"].startswith("fal_"):
                 by_failure[e["class"]] = by_failure.get(e["class"], 0) + 1
+            elif e["id"].startswith("stl_"):
+                by_door[e["door"]] = by_door.get(e["door"], 0) + 1
             elif e["id"].startswith("ev_"):
                 rung = decision_rung(e) or "unrecorded"
                 by_evidence[rung] = by_evidence.get(rung, 0) + 1
+                door = _door_for(e.get("settles_as") or "decided")
+                by_door[door] = by_door.get(door, 0) + 1
         # v0.15: the same count for the POLICIES, because a policy IS a decision — one the human
         # made over a whole cluster — and the count above says nothing about the election every
         # `cascaded` entry in it rests on. A policy elected with no rung recorded, or relayed with
@@ -1349,6 +1684,7 @@ class Ledger:
             "open_questions": len(self.interview_view()),
             "failures_by_class": by_failure,
             "decisions_by_evidence": by_evidence,
+            "settlements_by_door": by_door,
             "premortems": sum(1 for p in self.data["pins"] if p.get("premortem")),
         }
 

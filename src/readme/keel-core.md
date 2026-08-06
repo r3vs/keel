@@ -52,13 +52,13 @@ holds no state of its own; it projects this file.
 | `ledger_surface_assumption` | turn a *forced agent assumption* into a vetoable pin | ✎ |
 | `ledger_add_remediation` | attach a `RemediationItem` (rescue) or `BuildItem` (forge) to a decided pin | ✎ |
 | `ledger_set_remediation_status` | `todo → in_progress → done` | ✎ |
-| `ledger_resolve` | close a pin **with the observed evidence** — refuses while any item is open | ✎ |
+| `ledger_resolve` | close a pin **with the observed evidence** — refuses while any item is open, and refuses a pin whose correctness was never established | ✎ |
 | `ledger_mark_correctness_unknown` | the work was done and correctness could **not** be established — blocks closure, forces a next move | ✎ |
 | `ledger_set_readiness` | the landing-zone verdict (D2) + wires `harden_first` prerequisites into `depends_on` | ✎ |
-| `ledger_defer` | out of scope for now; stays as backlog, never silently dropped | ✎ |
+| `ledger_defer` | record the human's *not now* — it settles the pin, so it is quoted and reversible like any other election | ✎ |
 | `ledger_premortem` | the challenger's second mode — assume the plan already failed; guardrails and abort criteria required, and a dismissed risk must carry its evidence | ✎ |
 | `ledger_label_failure` | what actually went wrong, in the **same closed vocabulary** the premortem used, so the two can be joined | ✎ |
-| `ledger_cross_derive` | the `cross_derived` rung: two derivations, two **distinct** providers. Agreement lifts the rung; disagreement contests the pin | ✎ |
+| `ledger_cross_derive` | the `cross_derived` rung: two derivations, two **distinct** providers. Agreement lifts the rung; disagreement appends the event and contests the pin — never rewriting its question, never un-closing finished work | ✎ |
 | `agent_ready` | is this item *handable*, or merely unblocked? Preconditions (D0) and quality (D2), reported apart, routed to a named owner | — |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview

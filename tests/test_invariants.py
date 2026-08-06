@@ -129,7 +129,7 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
         readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview",
-                    "question_offers", "unasked_verdict"}
+                    "question_offers", "unasked_verdict", "settlement_verdict"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -294,17 +294,27 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
     #: that resolved to the wrong one would pass while proving nothing.
     DECIDE_CALLERS = {
         ("ledger.py", "accept"): [],
+        ("ledger.py", "defer"): [],
         ("ledger.py", "apply_policy"): [("ledger.py", "policy_preview"),
                                         ("ledger.py", "unasked_verdict")],
         ("interview.py", "expand_catalog"): [("ledger.py", "unasked_verdict")],
         ("tools.py", "record_decision"): [("ledger.py", "question_offers")],
     }
-    #: The one caller with an empty chain needs its reason here, or "no gate" reads as an oversight.
+    #: The callers with an empty chain need their reason here, or "no gate" reads as an oversight.
+    #: Both are meta-answers about scope rather than branches of the pin's own fork, so the
+    #: offered-options half of the predicate has nothing to check — and neither is unasked, which is
+    #: what the other half is for. What holds them is `settlement_verdict` plus the quote their MCP
+    #: door demands, and `TestLeavingTheOpenSetIsGovernedToo` is where that is asserted.
     UNGATED = {
         ("ledger.py", "accept"): "not a door: `accept` is reached only from record_decision's "
                                  "accept_as_is branch, which gates it on kind == design_concern and "
                                  "on the human having been shown this pin. Its outcome is `keep`, "
                                  "which is the leave-as-is answer rather than an elected option.",
+        ("ledger.py", "defer"): "not a door: `defer` is reached only from ledger_defer, which "
+                                "demands the human's verbatim answer exactly as record_decision "
+                                "does. Its outcome is `defer` — the not-now answer, which the "
+                                "spec's own question shape offers as an option — rather than an "
+                                "elected branch of this pin's fork.",
     }
 
     @classmethod

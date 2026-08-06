@@ -506,18 +506,24 @@ def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status
 
 
 @mcp.tool(annotations={"title": "Ledger — Resolve a Pin (resolved = observed)", **_RW})
-def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
+def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> dict:
     """Resolve a pin — records the OBSERVED evidence that closed the gap. Requires every remediation done.
 
     Evidence is what you OBSERVED (the endpoint returned, the reproduction no longer reproduces) —
     not "the code is written". The tool enforces 'resolved = observed' by requiring it.
 
+    Refuses a pin in `correctness_unknown`, and refuses one whose `verification` does not reach the
+    `observed` / `cross_derived` rung — including an envelope that records no rung at all, which is
+    what marking correctness unknown leaves behind. Pass `rung` once you have actually observed it.
+
     Args:
         ledger: Path to ledger.json.
         pin_id: The pin to resolve.
         evidence: What you observed that closed the gap (required, non-empty).
+        rung: observed | cross_derived — state it when a prior verification envelope is weaker or
+            absent. Needs `evidence`: a rung with nothing behind it is the claim this refuses.
     """
-    return tools.ledger_resolve(ledger, pin_id, evidence)
+    return tools.ledger_resolve(ledger, pin_id, evidence, rung)
 
 
 @mcp.tool(annotations={"title": "Landing-Zone Readiness — Evidence (D0, states no verdict)", **_RO})
@@ -801,15 +807,25 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return tools.agent_ready(ledger, pin_id)
 
 
-@mcp.tool(annotations={"title": "Ledger — Defer a Pin", **_RW})
-def ledger_defer(ledger: str, pin_id: str) -> dict:
-    """Mark a pin out of scope now (YAGNI at spec level) — it stays as future backlog.
+@mcp.tool(annotations={"title": "Ledger — Record a Deferral the Human Elected", **_RW})
+def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
+                 human_answer: str = "", evidence: str = "transcribed") -> dict:
+    """Record the human's answer of "not now" — the pin leaves v1 scope and stays as backlog.
+
+    Deferring SETTLES the pin: the question stops being asked and `open_questions` goes down. So it
+    is an election, held to what `ledger_record_decision` is held to — a `transcribed` deferral must
+    quote the user, `flip_criteria` says what brings the pin back, and a pin already resolved or
+    accepted is refused. You may record a deferral; you may not decide one.
 
     Args:
         ledger: Path to ledger.json.
-        pin_id: The pin to defer.
+        pin_id: The pin the user is putting out of scope.
+        rationale: Why it is out of scope now.
+        flip_criteria: What brings it back — a defer with no return condition is a deletion.
+        human_answer: The user's words, verbatim. Required unless the server elicited the answer.
+        evidence: transcribed (default) | elicited | brief — how the answer reached you.
     """
-    return tools.ledger_defer(ledger, pin_id)
+    return tools.ledger_defer(ledger, pin_id, rationale, flip_criteria, human_answer, evidence)
 
 
 @mcp.tool(annotations={"title": "Contract Diff (cross-layer drift)", **_RO})

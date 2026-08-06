@@ -55,8 +55,20 @@ Summary of what matters here:
   reader by construction instead of being false of every file already on disk. And an elected
   `Policy` is a decision on **all three** surfaces — its own card on the map, `policies_by_evidence`
   in the summary, one line in the projected `AGENTS.md` — whether or not it cascaded over any pin.
+- v0.16 adds the SECOND predicate, for the question next to v0.14's: `unasked_verdict` governs what
+  may be *written* onto a pin nobody was asked about, and nothing governed whether a pin may **leave
+  the open set** at all. So `settlement_verdict(pin, door)` answers that for all five doors that
+  move a pin in or out of a settled state (`decide` · `accept` · `defer` · `resolve` ·
+  `correctness_unknown`), and each one is recorded: the three elected doors by the `DecisionEvent`
+  they already write (now stating `settles_as`), the two unelected ones by a `SettlementEvent`.
+  Concretely — **deferring is an election**, quoted and reversible like any other; a pin in
+  `correctness_unknown` (or carrying a `verification` that reaches no closing rung) does **not**
+  resolve; a CLOSED pin is not settled again by any door, it is reopened; and
+  `resolution_mode: "asked"` **binds** — the pin's own standing demand to be asked is read by the
+  unasked predicate rather than merely written by six sites.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
-  and the feedback loop only reopen.
+  and the feedback loop only reopen — and *reopening is appended before anything moves*, including
+  the cross-derivation arc, which may never rewrite the pin's `question`.
 
 **Runtime:** the spec's load-bearing rules are not left to care — they are implemented once, for
 every skill, in the ledger runtime (stdlib-only, tested in CI): pin CRUD with kind validation,

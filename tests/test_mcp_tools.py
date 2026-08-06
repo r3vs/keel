@@ -413,5 +413,119 @@ class TestInstructionCarrierRoundTrip(unittest.TestCase):
         self.assertTrue(out["in_sync"], "opting out of the bridge says nothing about the region")
 
 
+class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
+    """v0.16, at the boundary an AGENT reaches — which is the boundary the reproductions used.
+
+    Each of these was run over real `uv run --script` stdio with no human in the loop before it was
+    a test. The pure-layer versions live in `test_ledger.py`; these assert that the tool an agent
+    actually calls refuses the same thing, because the last four rounds all ended with a rule that
+    held in the library and not at the door (or the reverse).
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ledger = os.path.join(self.tmp, "ledger.json")
+
+    def _fork(self, severity="blocker"):
+        out = tools.ledger_add_pin(
+            self.ledger, kind="open_decision", title="session or JWT", severity=severity,
+            confidence="inferred", provenance=[{"source": "catalog", "detail": "identity"}],
+            question={"prompt": "Session or JWT?",
+                      "options": [{"id": "session", "label": "server sessions"},
+                                  {"id": "jwt", "label": "stateless JWT"}]})
+        return out["pin_id"]
+
+    def test_the_four_call_chain_that_closed_an_unverifiable_blocker(self):
+        """Reproduced verbatim: add_pin(defect, blocker) -> add_remediation ->
+        set_remediation_status(done) -> mark_correctness_unknown -> resolve. The fifth call
+        returned `resolved`; a pin that had just declared its own correctness unestablishable
+        closed green, with no human anywhere in the chain."""
+        pid = tools.ledger_add_pin(
+            self.ledger, kind="defect", title="double charge under retry", severity="blocker",
+            confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+            as_is={"description": "double charge"})["pin_id"]
+        item = tools.ledger_add_remediation(self.ledger, pid, action="align", ladder_rung=2)
+        tools.ledger_set_remediation_status(self.ledger, pid, item["item_id"], "done")
+        out = tools.ledger_mark_correctness_unknown(
+            self.ledger, pid, blocked_by="no runnable payments environment",
+            attempted=["tests", "typecheck", "smoke_probe"])
+        self.assertEqual(out["state"], "correctness_unknown")
+        with self.assertRaises(ValueError):
+            tools.ledger_resolve(self.ledger, pid, evidence="looks right now")
+        self.assertEqual(tools.ledger_summary(self.ledger)["by_state"],
+                         {"correctness_unknown": 1})
+
+    def test_an_agent_alone_cannot_defer_a_blocker(self):
+        """`ledger_defer` took (ledger, pin_id) and settled the pin. `interview_next` went from
+        asked_count 1 to 0, `open_questions` from 1 to 0, and `decision_log` stayed empty."""
+        pid = self._fork()
+        with self.assertRaises(ValueError) as ctx:
+            tools.ledger_defer(self.ledger, pid, rationale="out of the v1 slice",
+                               flip_criteria="a non-cookie client appears")
+        self.assertIn("human_answer", str(ctx.exception))
+        self.assertEqual(tools.interview_next(self.ledger)["asked_count"], 1,
+                         "the question must still be asked")
+        self.assertEqual(tools.ledger_summary(self.ledger)["events"], 0)
+
+    def test_a_quoted_deferral_settles_the_pin_and_says_so_in_the_log(self):
+        pid = self._fork()
+        out = tools.ledger_defer(self.ledger, pid, rationale="auth is out of the v1 slice",
+                                 flip_criteria="a second client appears that cannot hold a cookie",
+                                 human_answer="not now — v1 is one web client")
+        self.assertEqual((out["state"], out["outcome"]), ("deferred", "defer"))
+        summary = tools.ledger_summary(self.ledger)
+        self.assertEqual(summary["open_questions"], 0)
+        self.assertEqual(summary["settlements_by_door"], {"defer": 1},
+                         "a settlement no surface counts is the black hole this schema keeps "
+                         "rediscovering")
+        led = Ledger(self.ledger)
+        self.assertEqual(led.data["decision_log"][-1]["human_answer"],
+                         "not now — v1 is one web client")
+
+    def test_record_decision_and_the_unasked_predicate_answer_the_same_way(self):
+        """Two doors, two answers, one question — the LOW finding. `record_decision` re-decided a
+        resolved pin back to `decided` while `unasked_verdict` called the same pin
+        `already_settled`."""
+        pid = tools.ledger_add_pin(
+            self.ledger, kind="defect", title="d", severity="medium", confidence="extracted",
+            provenance=[{"source": "recon", "detail": "x"}], as_is={"description": "d"},
+            question={"prompt": "?", "options": [{"id": "fix", "label": "fix it"}]})["pin_id"]
+        item = tools.ledger_add_remediation(self.ledger, pid, action="align", ladder_rung=1)
+        tools.ledger_set_remediation_status(self.ledger, pid, item["item_id"], "done")
+        tools.ledger_resolve(self.ledger, pid, evidence="observed: no longer reproduces")
+        led = Ledger(self.ledger)
+        self.assertEqual(led.unasked_verdict(led.pin(pid), "fix"), "already_settled")
+        with self.assertRaises(Exception):
+            tools.record_decision(self.ledger, pid, "fix", rationale="r", flip_criteria="f",
+                                  human_answer="fix it")
+        self.assertEqual(Ledger(self.ledger).pin(pid)["state"], "resolved")
+
+    def test_a_policy_scope_naming_no_pin_field_is_refused_at_the_door(self):
+        """`applies_to={"nope": null}` matched EVERY pin in the ledger — reproduced end to end
+        through `ledger_record_policy`, whose radius is what a human elects the policy from."""
+        self._fork(severity="medium")
+        with self.assertRaises(Exception) as ctx:
+            tools.record_policy(self.ledger, rule="everything is a session",
+                                default_outcome="session", applies_to={"nope": None},
+                                human_answer="sessions everywhere")
+        self.assertIn("not a Pin field", str(ctx.exception))
+        self.assertEqual(Ledger(self.ledger).data["policies"], [])
+
+    def test_a_cross_derivation_disagreement_leaves_the_offered_options_alone(self):
+        pid = self._fork(severity="medium")
+        tools.record_decision(self.ledger, pid, "jwt", rationale="r", flip_criteria="f",
+                              human_answer="JWT, we have three clients")
+        out = tools.ledger_cross_derive(
+            self.ledger, pid, claim="JWT revocation is solvable here", agreement="disagree",
+            derivations=[{"provider": "anthropic", "model": "m", "result": "yes"},
+                         {"provider": "openai", "model": "n", "result": "no"}])
+        self.assertTrue(out["reopened"])
+        self.assertTrue(out["event_id"].startswith("xdr_"))
+        pin = Ledger(self.ledger).pin(pid)
+        self.assertEqual([o["id"] for o in pin["question"]["options"]], ["session", "jwt"],
+                         "the menu the human answers from belongs to the ledger, not the caller")
+        self.assertEqual(tools.decision_prompt(self.ledger, pid)["options"][0]["id"], "session")
+
+
 if __name__ == "__main__":
     unittest.main()

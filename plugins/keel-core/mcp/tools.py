@@ -171,6 +171,12 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
       * a `transcribed` decision must quote the human. An agent asserting "the user chose B" with
         nothing quoted is exactly the claim `evidence` exists to make checkable — and this is the
         boundary where that claim gets made, which is why the rule lives here and not in `ledger.py`.
+      * a pin whose work is FINISHED (`resolved` / `accepted` / `deferred`) is refused, by
+        `Ledger.settlement_verdict` inside `decide` (v0.16). This door had no settled check of any
+        kind, so it re-decided a resolved pin back to `decided` while `unasked_verdict` refused the
+        same pin as `already_settled` — two doors, two answers, one question. A `decided` pin is
+        still re-electable here and only here: that is the human correcting themselves, the log
+        keeps both events, and no unasked write can do it.
 
     **One pin.** This door took `apply_to_cluster`, which fanned the same outcome — and the same
     quote — across every pin sharing the `cluster_id`, past all three rules above: a pin offering a
@@ -410,14 +416,17 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     radius = led.apply_policy(policy)
     led.save()
     _refresh_live_maps(ledger)
-    return {"policy_id": policy["id"], "rule": policy["rule"],
-            "default_outcome": policy["default_outcome"], "evidence": evidence,
-            # what THIS policy decided on THIS call. Every event it wrote carries evidence
-            # `cascaded` and points back at this policy by `policy_id` — none of them claims a relay
-            # nobody made, and none of them is another policy's work reported as this one's.
-            "cascaded": radius["would_decide"],
-            "held_back": radius["held_back"], "not_offered": radius["not_offered"],
-            "excepted": radius["excepted"], "already_settled": radius["already_settled"]}
+    # What THIS policy decided on THIS call. Every event it wrote carries evidence `cascaded` and
+    # points back at this policy by `policy_id` — none of them claims a relay nobody made, and none
+    # of them is another policy's work reported as this one's. The refusal buckets are spread from
+    # the radius rather than named one by one: they used to be hardcoded here while `policy_preview`
+    # built its shape from `UNASKED_BUCKETS`, so the constant's own comment ("adding a bucket cannot
+    # leave one surface reporting four and another five") was false of this surface.
+    out = {"policy_id": policy["id"], "rule": policy["rule"],
+           "default_outcome": policy["default_outcome"], "evidence": evidence,
+           "cascaded": radius["would_decide"]}
+    out.update({bucket: radius[bucket] for bucket in radius if bucket != "would_decide"})
+    return out
 
 
 def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,
@@ -440,12 +449,13 @@ def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status
     return {"item_id": item["id"], "status": item["status"]}
 
 
-def ledger_resolve(ledger: str, pin_id: str, evidence: str) -> dict:
+def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> dict:
     led = _open_existing(ledger)
-    pin = led.resolve(pin_id, evidence=evidence)
+    pin = led.resolve(pin_id, evidence=evidence, rung=rung or None)
     led.save()
     _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"]}
+    return {"pin_id": pin["id"], "state": pin["state"],
+            "verification": pin.get("verification")}
 
 
 def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
@@ -571,6 +581,11 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     _refresh_live_maps(ledger)
     pin = led.pin(pin_id)
     return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
+            # v0.16: what the disagreement DID, said rather than inferred from the state. A closed
+            # pin is recorded and not reopened — un-closing finished work has its own arc — and a
+            # caller that cannot tell the two apart would read "recorded" as "handled".
+            "event_id": record["event_id"],
+            "reopened": pin.get("substate") == "contested",
             "verification": pin.get("verification")}
 
 
@@ -605,12 +620,38 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return agentready.card(led, pin_id) if pin_id else agentready.gate(led)
 
 
-def ledger_defer(ledger: str, pin_id: str) -> dict:
+def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
+                 human_answer: str = "", evidence: str = "transcribed") -> dict:
+    """Record the human's election to put this pin out of scope for now. It does not elect.
+
+    Deferring is an answer — the spec's own `incompleteness` fork offers it as an option — and it
+    settles the pin exactly as `decided` does: the question stops being asked, `interview_next` loses
+    it, `open_questions` goes down. Until v0.16 it was the one settlement with no election behind it:
+    one state check, no severity threshold, no quote, nothing in the append-only log. An agent alone
+    deferred a `blocker` `open_decision` posing a session|jwt fork, and the only trace was a question
+    that had stopped being asked.
+
+    So it is held to `record_decision`'s discipline, for the same reason and in the same words: a
+    `transcribed` defer must carry the human's answer verbatim, `flip_criteria` says what brings the
+    pin back (a defer with no return condition is a deletion with better manners), and a pin whose
+    work is already finished is refused rather than closed twice.
+
+    It is NOT held to the offered-options rule: `defer` is a meta-answer about scope, not a branch of
+    the pin's fork, and requiring every question to list a defer option would make punting depend on
+    whoever authored the pin. What holds it instead is that the human was shown THIS pin.
+    """
     led = _open_existing(ledger)
-    pin = led.defer(pin_id)
+    if evidence == "transcribed" and not human_answer:
+        raise ValueError(
+            "a transcribed defer must carry the human's answer verbatim in human_answer — deferring "
+            "settles the pin and stops the question being asked, so an unquoted one is an agent "
+            "deciding not to decide, which is the one thing no tool here may do"
+        )
+    pin = led.defer(pin_id, rationale=rationale, flip_criteria=flip_criteria,
+                    evidence=evidence, human_answer=human_answer)
     led.save()
     _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"]}
+    return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer", "evidence": evidence}
 
 
 # -- coverage manifest -------------------------------------------------------------------------

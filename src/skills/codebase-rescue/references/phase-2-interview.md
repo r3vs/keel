@@ -82,8 +82,11 @@ Options: `{admin,user} — DB is truth` · `add superadmin to schema` · (freefo
   when there's a genuine scope question (e.g. "is this dead code residue, or a half-built
   feature you want completed?").
 - `incompleteness` → question is typically scope: implement now / defer / drop (YAGNI). "Defer" is
-  `ledger_defer`, not silence: the pin stays on the ledger as backlog, which is the whole difference
-  between scoping something out and forgetting it.
+  `mcp:ledger_defer`, not silence: the pin stays on the ledger as backlog, which is the whole
+  difference between scoping something out and forgetting it. **It is an election, so it is recorded
+  like one** — deferring settles the pin and takes the question off the interview, so the tool wants
+  the user's words verbatim and a `flip_criteria` saying what brings it back. Never defer on your own
+  judgement: a deferral nobody elected is the question quietly disappearing.
 
 ## Parallelism with the map and brainstorm
 

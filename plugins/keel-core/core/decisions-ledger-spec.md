@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.15
+# Decisions Ledger — Spec v0.16
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -16,6 +16,7 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
 - **`Question`** — lives ON the pin. The interview is not a separate list: it is the filtered view of pins in state `needs_input`.
 - **`Proposal`** — output of the brainstorm; it writes proposals with tradeoffs, never decides.
 - **`DecisionEvent`** — append-only, immutable log of the *why*; now with `flip_criteria`.
+- **`SettlementEvent`** (v0.16) — append-only record of a pin leaving the open set through a door that carries **no election**: `resolve` (its authority is an observation) and `correctness_unknown` (its authority is the recorded absence of one). The three elected doors — `decide` · `accept` · `defer` — are recorded by the `DecisionEvent` they already write, which now states which state it produced (`settles_as`). One entry per settlement, never two.
 - **`RemediationItem`** — the bridge to Phase 4; records the ponytail ladder rung.
 
 ---
@@ -54,6 +55,8 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "question": null,              // Question | null — option shape discriminated by kind
   "brainstorm": null,            // { proposals: [...], notes } | null
   "decision": null,              // { event_id, outcome } | null — only from interview
+  "resolution_mode": "asked",    // v0.3 asked | policy_default | proposed_default — and `asked`
+                                 // BINDS: no unasked write may settle this pin (v0.16)
   "premortem": null,             // v0.9 — { failure_modes[], guardrails[], abort_criteria[], paper_tigers[] } | null
   "depends_on": [],              // DECISION 6
   "remediation": []              // [ RemediationItem ]
@@ -180,7 +183,17 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "source": "interview",         // only "interview" commits — WHO was entitled to
   "evidence": "elicited",        // elicited | transcribed | brief | cascaded — HOW the answer got here
   "policy_id": null,             // set iff evidence is "cascaded": WHICH policy produced this
+  "settles_as": "decided",       // v0.16 — decided | accepted | deferred: WHICH settled state this
+                                 // election produced. Absent on pre-v0.16 events and means "decided"
   "human_answer": "yes, pull the helper out" }   // required when transcribed: the words, verbatim
+
+// SettlementEvent (inside decision_log[]) — v0.16, immutable. ONLY for the doors with no election
+{ "id": "stl_0001", "pin_id": "pin_0001", "timestamp": "ISO-8601",
+  "door": "resolve",             // resolve | correctness_unknown
+  "from_state": "decided",
+  "to_state": "resolved",
+  "verification_rung": "observed",   // the rung the close rests on; null where there was none
+  "policy_hash": null }
 
 // RemediationItem (inside pin.remediation[]) — DECISION 8
 { "id": "rem_0001",
@@ -743,3 +756,46 @@ Membership is decided by one question, unchanged from v0.13 and now written wher
 The spec's rule was already written, one section up: *"a rung one of the three does not know is the same bug wearing a new name, so adding one means teaching all three."* It said *rung*, and the thing that went missing was the *election*. So it is restated in the general form: **whatever the human elects is a decision, and a decision is visible on all three surfaces or on none.** Concretely — the map leads its list with the standing rules and gives each its own card (rule, scope, the `default_outcome` the user accepted, the rung, the quote, and the decisions that name it, or a plain statement that none do); `ledger_summary` returns `policies_by_evidence` beside `decisions_by_evidence`, because the fit of every `cascaded` decision rests on how *that* election was made; and the `AGENTS.md` region's evidence line gains one sentence when a rule was elected with no rung or relayed with no quote — the only clause there that can fire on an empty `decision_log`, which is precisely the state that was invisible.
 
 The map card also renders `default_outcome` at last: a reader could see **which** rule decided a pin and not **what** that rule writes. Where the two disagree — only reachable by a file written outside the cascade — the card says so rather than showing both values and leaving it to be noticed.
+
+---
+
+## v0.16 — The second predicate: leaving the open set was governed by nobody
+
+v0.14 gave *"may this outcome land on this pin, given that this pin's own question was never put to the human?"* a single home, and the attacks on it failed. What had no counterpart was the question one layer out: **may this pin leave the open set at all, and what does the trail say about it?** Four doors reached a settled pin past every rule the first predicate holds, all four reproduced over real `uv run --script` stdio by an agent with **no human in the loop**:
+
+- **`defer` settled a pin on one check.** `state != "resolved"`, and that was the whole of it: no severity threshold, no election, no quote, nothing appended to the append-only log — and it was agent-reachable as `mcp:ledger_defer` with **zero test coverage anywhere**. A `blocker` `open_decision` posing a session|jwt fork was deferred by the agent alone; `interview_next` went from `asked_count 1` to `0`, `ledger_summary.open_questions` from 1 to 0, and `decision_log` stayed empty. The question stopped being asked and nothing recorded that a choice had been avoided. That is the hole `ledger_decide` has never existed in order to avoid, sitting on the state next to it.
+- **`correctness_unknown` did not block closure.** `resolve` enforced the v0.7 observation rung only `if rung is not None`, and `mark_correctness_unknown` writes `rung: None` whenever the caller does not supply one — which the tool's own optional parameter invites. Four agent-only calls (`ledger_add_pin(kind=defect, severity=blocker)` → `ledger_add_remediation` → `ledger_set_remediation_status(done)` → `ledger_mark_correctness_unknown`) left a pin that had just declared its own correctness unestablishable, and `ledger_resolve` then closed it green. `rung: None` inside a `verification` envelope is not "no claim was made"; it is the strongest possible claim that this must not close, and reading it as absence is what let the state this section of the spec exists for be walked straight past.
+- **`record_decision` had no settled check at all**, so it re-decided a `resolved` or `accepted` pin back to `decided` while `unasked_verdict` refused the same pin as `already_settled`. Two doors, two answers, one question.
+- **`resolution_mode: "asked"` asserted an invariant nothing enforced.** Six sites write it and two read it, both comparing against `"proposed_default"` only. Two of the six carry the assertion as a comment — *"a reopened truth is never re-defaulted silently"*, *"a contested claim is never re-defaulted silently"* — and a policy cascade re-defaulted both, silently. The field whose entire purpose is to record *this pin must be asked* was invisible to the predicate whose entire purpose is to decide whether asking may be skipped.
+
+### `Ledger.settlement_verdict(pin, door)`
+
+One predicate, five doors, one bucket each: `would_settle` · `already_closed` · `wrong_kind` · `not_decided` · `remediation_open` · `unverified`. Every rule that used to live in an individual door lives here — `accept`'s kind check included, because a rule left in its door is a rule the next door has to remember, and the previous four versions of this document are what that costs. `_settle` is the only writer of a settled state and the only place the gate is asked, so passing it is structural rather than remembered.
+
+The two predicates **compose and are never blended**. `unasked_verdict` answers *who was asked*; `settlement_verdict` answers *may this pin's settlement change*. An election door passes both — the first through `question_offers` at the single-pin door or through `unasked_verdict` where nobody was asked, the second through the door table. A verification door passes only the second, because there is no outcome being elected.
+
+**`SETTLED_STATES` and `CLOSED_STATES` are different sets on purpose**, and that difference *is* the two-doors-two-answers fix. A `decided` pin may be re-elected by the human — that is a correction, the log keeps both events, and only the asked door can do it. A **closed** pin (`resolved` · `accepted` · `deferred`) may not be settled again by anybody: the work is over, and the way back is `reopen`, which records why. So the asked door and the unasked door now answer the same question about a finished pin, and differ only where they should.
+
+### Deferring is an election, because it settles
+
+The spec's own `incompleteness` fork has always offered `{ "id": "defer", "label": "Defer (deferred)" }` as an **option**. Deferring stops the question being asked and takes the pin off `open_questions`; that is a settlement, so it is recorded as one — a `DecisionEvent` with outcome `defer`, a `flip_criteria` saying what brings it back (a deferral with no return condition is a deletion with better manners), and the rung the answer travelled on. `mcp:ledger_defer` demands the human's verbatim words for a `transcribed` deferral, exactly as `mcp:ledger_record_decision` does.
+
+It is deliberately **not** held to the offered-options rule. `defer` is a meta-answer about scope, not a branch of the pin's own fork, and requiring every question to list a defer option would make punting depend on whoever authored the pin. What holds it instead is what holds `accept`: the human was shown **this** pin, and said not now, in their own words.
+
+### The trail answers the same question at every door
+
+Entering `decided` was always recorded — that is what a `DecisionEvent` is — and the other four transitions were recorded nowhere. Now the `DecisionEvent` states which state the election produced (`settles_as`, an `EVENT_RULES` entry, so the floor replays it and its **absence conforms**: every event written before the field existed produced `decided`, which is what its absence means), and the two doors with no election behind them append a `SettlementEvent`. One entry per settlement and never two: a second record beside the DecisionEvent would be two carriers for one fact, which is the divergence this schema exists to refuse. `ledger_summary` returns `settlements_by_door`, reading **both** carriers — because "4 resolved, 9 deferred" is a different ledger to walk into than "13 closed", and the doors are never summed.
+
+### `cross_derive` was reopening from the side
+
+Disagreement between two providers is supposed to reopen a pin — *divergence forces human review rather than a tie-break* — and the arc is read-only, like the challenger and the feedback loop. Both of those **append before they move anything**. This one appended nothing, un-decided a human-elected pin, un-closed a `resolved` one, and — the part that matters most — **overwrote `pin["question"]` with options composed from the caller's own derivations**. `question.options[].id` is the carrier the entire offered-options rule anchors on at both doors, so an agent that rewrites it decides what the human is allowed to choose next: the invariant v0.12 through v0.14 built, dismantled from the side.
+
+So: the disagreement is appended as an immutable `xdr_` event before anything moves; the pin's own question is left exactly as it was, and one is written only where none exists (creating a fork is what `surface_assumption` legitimately does — replacing one is not); and a **closed** pin is recorded and not reopened, because un-closing finished work needs its own justification and has its own arc.
+
+### A policy scope must name real fields
+
+`applies_to` was matched with `pin.get(k) == v`, which is `True` for **every** pin when `k` is not a pin field and `v` is null. `applies_to={"nope": null}` was therefore a universal selector wearing a filter's clothes, reproduced end to end through `mcp:ledger_record_policy`. The radius is the thing a human elects a policy *from*, so a scope key that matches by not existing is not a narrow bug — it is the preview describing a different policy than the one being set. Scope keys are now checked against `PIN_FIELDS`, and a test holds that constant to what the writers actually write, so a field added to the envelope without becoming scopeable fails rather than silently becoming unmatchable.
+
+### The general shape
+
+v0.14's was *"a rule enforced at a door is a rule every future door must remember."* This one is one layer out and is not the same: **a predicate answers the question it was written for, and says nothing about the question next to it.** `unasked_verdict` was correct, complete and well-tested — for *what may be written*. Nothing asked *whether this pin may stop being open at all*, so four doors answered it independently and one of them answered it with nothing. The question that catches it is not "is the predicate sound" but *"name the state transition, and say which predicate governs it"* — asked of every transition, not only of the one that was just fixed.

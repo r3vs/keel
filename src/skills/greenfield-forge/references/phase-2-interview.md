@@ -89,9 +89,12 @@ cannot elicit, you are relaying and must quote the user verbatim in `human_answe
   subtree of dependent forks.
 - `open_decision` (leaf / stylistic) → may be `proposed_default` (the architectural policies
   usually cover it); the user skims and overrides by exception.
-- A fork the user wants to punt → `deferred` via `ledger_defer`: it leaves v1 scope as a future
+- A fork the user wants to punt → `deferred` via `mcp:ledger_defer`: it leaves v1 scope as a future
   backlog item (the natural handoff to `slice` mode later), not silent scaffolding. Recorded, so
-  the fork is still findable; unrecorded, it is just forgotten.
+  the fork is still findable; unrecorded, it is just forgotten. **Punting is an answer**, so the tool
+  records it as one: the user's verbatim words and a `flip_criteria` naming what brings the fork back.
+  You may record a deferral; you may never decide one — a `blocker` fork that stops being asked
+  because an agent deferred it is the failure this whole phase exists to prevent.
 
 > **Composability (optional):** the `learning-layer` skill can wrap this surface non-invasively —
 > capture the user's own decision attempt *before* the derived `to_be` is revealed, then teach the

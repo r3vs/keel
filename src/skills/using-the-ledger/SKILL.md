@@ -47,15 +47,21 @@ what the spec says it means.
 | plan & close the gap | `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` |
 | surface a forced assumption | `ledger_surface_assumption` |
 | the work was done but correctness is not establishable | `ledger_mark_correctness_unknown` |
-| out of scope for now, without dropping it | `ledger_defer` |
+| the human said not now | `ledger_defer` (an election: it settles the pin, so it is quoted like any other) |
 
 The reads are automatable **and so is every non-electing write** — add a finding, plan its
 remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidence` (what you
 *observed* closed the gap, not that code was written): the tool itself enforces `resolved =
-observed`. Its two honest exits matter as much: `ledger_mark_correctness_unknown` when the evidence
-stack was walked and nothing could speak, and `ledger_defer` when the work is out of scope — a pin
-that leaves the loop by either door is still on the ledger, which is the difference between scoping
-and forgetting.
+observed`, and it refuses a pin sitting in `correctness_unknown` or carrying a verification that
+never reached the `observed` rung — pass `rung` once you have actually observed it. Its two honest
+exits matter as much: `ledger_mark_correctness_unknown` when the evidence stack was walked and
+nothing could speak, and `ledger_defer` when the work is out of scope — a pin that leaves the loop by
+either door is still on the ledger, which is the difference between scoping and forgetting.
+
+**Deferring is the exception to "every non-electing write is automatable", because it is not one.**
+It settles the pin: the question stops being asked and `open_questions` drops. So `ledger_defer` is
+the third electing door and wants what the other two want — the user's verbatim answer, and a
+`flip_criteria` saying what brings the fork back.
 
 **Electing stays the human's; recording it is yours.** `ledger_record_decision` writes the
 `DecisionEvent` and moves the pin to `decided`, and it cannot be used to choose: the outcome must be

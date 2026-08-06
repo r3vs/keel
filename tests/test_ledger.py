@@ -778,6 +778,9 @@ class TestARuleEnforcedAtTheWriteGovernsNoExistingFile(unittest.TestCase):
                                   "policy_id": ""},
             "flip_criteria": {"flip_criteria": ""},
             "flip_signal_source": {"flip_signal": {"source": "vibes"}},
+            # v0.16. Absence conforms (every pre-v0.16 event produced `decided`, which is what the
+            # absence means); a value naming a state no election can produce does not.
+            "settled_state": {"settles_as": "resolved"},
         }
         self.assertEqual(set(breaks), {name for name, _, _ in ledger_mod.EVENT_RULES},
                          "a rule in the writer's table with no sample here is a rule nobody proved "
@@ -796,6 +799,8 @@ class TestARuleEnforcedAtTheWriteGovernsNoExistingFile(unittest.TestCase):
                           "policy_id": event.get("policy_id") or None}
                 if "flip_signal" in event:
                     kwargs["flip_signal"] = event["flip_signal"]
+                if "settles_as" in event:
+                    kwargs["settles_as"] = event["settles_as"]
                 with self.assertRaises(LedgerError):
                     led.decide(pin["id"], "opt_a", "r", **kwargs)
 
@@ -861,6 +866,292 @@ class TestViewsAndPersistence(unittest.TestCase):
         with self.assertRaises(LedgerError):
             Ledger(led.path)
 
+
+class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
+    """v0.16 — the SECOND predicate.
+
+    `unasked_verdict` governs what may be written onto a pin nobody was asked about. Nothing
+    governed whether a pin may leave the open set **at all**, so four doors answered that question
+    independently and one of them answered it with nothing. Each test below is one of the four,
+    written from the reproduction that found it rather than from the fix.
+    """
+
+    def _decided_defect(self, led, severity="blocker"):
+        pin = led.add_pin(kind="defect", title="race in the payment retry", severity=severity,
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "double charge under retry"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        return pin
+
+    # -- 1. correctness_unknown blocks closure, and `rung: None` is a claim ---------------------
+
+    def test_a_pin_that_cannot_establish_its_correctness_does_not_resolve(self):
+        """The reported chain: add_pin(defect, blocker) -> add_remediation -> status done ->
+        mark_correctness_unknown(no rung) -> resolve. The last call used to succeed, because the
+        v0.7 rung check ran only `if rung is not None` and this door writes None by default."""
+        led = make_ledger()
+        pin = self._decided_defect(led)
+        led.mark_correctness_unknown(pin["id"], blocked_by="no runnable payments environment",
+                                     attempted=["tests", "typecheck", "smoke_probe"])
+        self.assertIsNone(pin["verification"]["rung"])
+        with self.assertRaises(LedgerError) as ctx:
+            led.resolve(pin["id"], evidence="the retry path looks right now")
+        self.assertIn("unverified", str(ctx.exception))
+        self.assertEqual(pin["state"], "correctness_unknown")
+
+    def test_a_weak_envelope_keeps_blocking_after_the_state_is_answered(self):
+        """The same hole one step later: answering the correctness fork returns the pin to
+        `decided`, and the verification envelope it left behind still says nothing was observed."""
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="medium")
+        led.mark_correctness_unknown(pin["id"], blocked_by="no env", attempted=["tests"])
+        led.decide(pin["id"], "retry", "r", "if the env appears")
+        self.assertEqual(pin["state"], "decided")
+        with self.assertRaises(LedgerError):
+            led.resolve(pin["id"], evidence="looks fine")
+        pin_state = led.resolve(pin["id"], evidence="ran it against staging; no double charge",
+                                rung="observed")
+        self.assertEqual(pin_state["state"], "resolved")
+        self.assertEqual(pin["verification"]["blocked_by"], "no env",
+                         "what blocked verification is history, not something a close erases")
+
+    def test_a_claimed_rung_needs_the_observation_it_rests_on(self):
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="medium")
+        led.mark_correctness_unknown(pin["id"], blocked_by="no env", attempted=["tests"])
+        led.decide(pin["id"], "retry", "r", "f")
+        with self.assertRaises(LedgerError):
+            led.resolve(pin["id"], rung="observed")               # no evidence
+        with self.assertRaises(LedgerError):
+            led.resolve(pin["id"], evidence="e", rung="re_read")  # not a closing rung
+
+    # -- 2. deferring is an election ------------------------------------------------------------
+
+    def test_deferring_is_recorded_as_the_election_it_is(self):
+        """`defer` moved a pin into SETTLED_STATES on ONE check — no threshold, no election, no
+        quote, nothing appended. It had zero test coverage anywhere, which is why it survived."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="blocker", kind="open_decision",
+                             as_is=None, to_be=None,
+                             question={"prompt": "Session or JWT?",
+                                       "options": [{"id": "session", "label": "server sessions"},
+                                                   {"id": "jwt", "label": "stateless JWT"}]})
+        before = len(led.data["decision_log"])
+        led.defer(pin["id"], rationale="auth is out of the v1 slice",
+                  flip_criteria="a second client appears that cannot hold a cookie",
+                  human_answer="not now — v1 is one web client")
+        self.assertEqual(pin["state"], "deferred")
+        events = led.data["decision_log"][before:]
+        self.assertEqual(len(events), 1, "one settlement, one entry — never two carriers")
+        self.assertEqual((events[0]["outcome"], events[0]["settles_as"]), ("defer", "deferred"))
+        self.assertEqual(events[0]["human_answer"], "not now — v1 is one web client",
+                         "a deferral is an answer, and an answer nobody can read is a claim")
+        self.assertTrue(events[0]["flip_criteria"],
+                        "a deferral with no return condition is a deletion with better manners")
+
+    def test_a_deferral_needs_a_return_condition(self):
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        with self.assertRaises(LedgerError):
+            led.defer(pin["id"], rationale="later", flip_criteria="", human_answer="not now")
+
+    def test_no_door_settles_a_pin_whose_work_is_finished(self):
+        """The LOW finding, generalized: `record_decision` had no settled check while
+        `unasked_verdict` refused the same pin as `already_settled`. One question, one answer."""
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="medium")
+        led.resolve(pin["id"], evidence="observed: the double charge no longer reproduces")
+        for door in ("decide", "accept", "defer", "resolve"):
+            with self.subTest(door=door):
+                self.assertEqual(led.settlement_verdict(pin, door), "already_closed")
+        with self.assertRaises(LedgerError):
+            led.decide(pin["id"], "opt_a", "r", "f")
+        with self.assertRaises(LedgerError):
+            led.defer(pin["id"], rationale="r", flip_criteria="f", human_answer="not now")
+
+    def test_a_decided_pin_is_still_re_electable_and_a_closed_one_is_not(self):
+        """The asymmetry is the fix, not an exception to it: correcting yourself is not a second
+        close, and the append-only log keeps both events."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.decide(pin["id"], "opt_a", "r", "f")
+        self.assertEqual(led.settlement_verdict(pin, "decide"), "would_settle")
+        self.assertEqual(led.unasked_verdict(pin, "opt_a"), "already_settled",
+                         "an UNASKED write may not touch it either way")
+        led.decide(pin["id"], "opt_b", "r", "f")
+        self.assertEqual(pin["decision"]["outcome"], "opt_b")
+        self.assertEqual(len([e for e in led.data["decision_log"]
+                              if e["id"].startswith("ev_")]), 2)
+
+    def test_accept_applies_to_a_design_concern_and_the_rule_lives_in_the_predicate(self):
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")            # a contract_mismatch
+        self.assertEqual(led.settlement_verdict(pin, "accept"), "wrong_kind")
+        with self.assertRaises(LedgerError):
+            led.accept(pin["id"], rationale="r", flip_criteria="f", human_answer="leave it")
+
+    # -- 3. `resolution_mode: "asked"` binds ----------------------------------------------------
+
+    def test_a_reopened_pin_is_never_re_defaulted_silently(self):
+        """The comment at the reopen site asserted this for four versions. Nothing read the field:
+        both readers compared against `proposed_default` only, so a policy cascade re-decided a
+        truth an upheld challenge had just reopened."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.decide(pin["id"], "opt_a", "r", "f")
+        led.challenge(pin["id"], target="decision", challenge_class="unstated_assumption",
+                      argument="the enum widened upstream", severity="medium", upheld=True)
+        self.assertEqual(pin["resolution_mode"], "asked")
+        self.assertEqual(led.unasked_verdict(pin, "opt_a"), "must_be_asked")
+        radius = led.policy_preview({"severity": "medium"}, "opt_a")
+        self.assertEqual(radius["must_be_asked"], [pin["id"]])
+        self.assertEqual(radius["would_decide"], [])
+
+    def test_a_contested_claim_is_never_re_defaulted_silently(self):
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.cross_derive(pin["id"], claim="the enum is closed", agreement="disagree", derivations=[
+            {"provider": "anthropic", "model": "m", "result": "closed"},
+            {"provider": "openai", "model": "n", "result": "open"}])
+        self.assertEqual(led.unasked_verdict(pin, "opt_a"), "must_be_asked")
+
+    # -- 4. the cross-derivation arc reopens the way the other two arcs do -----------------------
+
+    def test_a_disagreement_is_appended_before_anything_moves(self):
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.decide(pin["id"], "opt_a", "r", "f")
+        offered = [o["id"] for o in pin["question"]["options"]]
+        record = led.cross_derive(pin["id"], claim="the enum is closed", agreement="disagree",
+                                  derivations=[
+                                      {"provider": "anthropic", "model": "m", "result": "closed"},
+                                      {"provider": "openai", "model": "n", "result": "open"}])
+        event = led.data["decision_log"][-1]
+        self.assertTrue(event["id"].startswith("xdr_"))
+        self.assertEqual((event["pin_id"], event["agreement"], event["reopened"]),
+                         (pin["id"], "disagree", True))
+        self.assertEqual(record["event_id"], event["id"])
+        self.assertEqual([o["id"] for o in pin["question"]["options"]], offered,
+                         "question.options[].id is the carrier the offered-options rule anchors "
+                         "on — an agent that rewrites it decides what the human may choose next")
+        self.assertEqual(pin["state"], "needs_input")
+
+    def test_a_disagreement_does_not_un_close_finished_work(self):
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="medium")
+        led.resolve(pin["id"], evidence="observed: no longer reproduces")
+        led.cross_derive(pin["id"], claim="the retry is idempotent", agreement="disagree",
+                         derivations=[{"provider": "anthropic", "model": "m", "result": "yes"},
+                                      {"provider": "openai", "model": "n", "result": "no"}])
+        event = led.data["decision_log"][-1]
+        self.assertEqual((event["id"][:4], event["reopened"]), ("xdr_", False))
+        self.assertEqual(pin["state"], "resolved", "un-closing finished work has its own arc")
+
+    def test_a_pin_with_no_fork_gains_one_rather_than_having_one_replaced(self):
+        led = make_ledger()
+        pin = led.add_pin(kind="defect", title="d", severity="medium", confidence="extracted",
+                          provenance=[{"source": "x", "detail": "y"}], as_is={"description": "d"})
+        led.cross_derive(pin["id"], claim="c", agreement="disagree", derivations=[
+            {"provider": "anthropic", "model": "m", "result": "a"},
+            {"provider": "openai", "model": "n", "result": "b"}])
+        self.assertEqual([o["id"] for o in pin["question"]["options"]], ["d0", "d1", "neither"])
+
+    # -- 5. a policy scope names real fields -----------------------------------------------------
+
+    def test_a_scope_key_that_is_not_a_pin_field_is_refused(self):
+        """`pin.get("nope") == None` is True of every pin, so this matched the whole ledger — and
+        the radius is exactly what a human elects a policy from."""
+        led = make_ledger()
+        add_simple_pin(led, severity="medium")
+        with self.assertRaises(LedgerError) as ctx:
+            led.policy_preview({"nope": None}, "opt_a")
+        self.assertIn("not a Pin field", str(ctx.exception))
+        self.assertEqual(led.policy_preview({"severity": "medium"}, "opt_a")["would_decide"],
+                         ["pin_0001"], "a real key still selects")
+
+    def test_the_scopeable_fields_are_the_fields_the_writers_write(self):
+        """`PIN_FIELDS` is a declaration, so it is held to the envelope rather than trusted: a
+        field a writer adds without becoming scopeable would silently be unmatchable, and a field
+        listed here that nobody writes would be a scope key that selects nothing."""
+        import ledger as ledger_mod
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium", cluster_id="cl_x", depends_on=[],
+                             anchors=[{"node_id": "n_1", "loc": "a.py:1"}])
+        led.add_proposals(pin["id"], [{"summary": "s"}])
+        led.set_readiness(pin["id"], "ready", zone={"files": ["a.py"]}, evidence={})
+        led.premortem(pin["id"], [{"class": "environment", "description": "d"}], guardrails=["g"])
+        led.cross_derive(pin["id"], claim="c", agreement="agree", derivations=[
+            {"provider": "anthropic", "model": "m", "result": "a"},
+            {"provider": "openai", "model": "n", "result": "a"}])
+        led.decide(pin["id"], "opt_a", "r", "f")
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=1)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="observed")
+        led.mark_correctness_unknown(pin["id"], blocked_by="b", attempted=["tests"])
+        led.cross_derive(pin["id"], claim="c2", agreement="disagree", derivations=[
+            {"provider": "anthropic", "model": "m", "result": "a"},
+            {"provider": "openai", "model": "n", "result": "b"}])       # writes `substate`
+        led.data["pins"][0]["kind_detail"] = "x"      # only `other` writes it, and it is scopeable
+        self.assertEqual(sorted(set(pin) - set(ledger_mod.PIN_FIELDS)), [],
+                         "a Pin field no policy scope can name")
+        self.assertEqual(sorted(set(ledger_mod.PIN_FIELDS) - set(pin)), [],
+                         "a scopeable field no writer writes")
+
+
+class TestOneWriterForTheSettledStates(unittest.TestCase):
+    """The structural half, and the reason this round is not a fifth one: the rule cannot live in
+    the doors, because a door added later will not know it.
+
+    Asserted over the AST of `ledger.py`: no function may assign a settled state to a pin except
+    `_settle`, which is where the gate and the record are. `TestEveryPathToDecideIsGated` does the
+    same for the first predicate; this is the same move for the second.
+    """
+
+    @staticmethod
+    def _tree():
+        import ast
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            return ast.parse(fh.read(), filename=path), ast
+
+    def test_only_settle_writes_a_settled_state(self):
+        import ledger as ledger_mod
+        tree, ast = self._tree()
+        governed = set(ledger_mod.SETTLED_STATES) | {"correctness_unknown"}
+        offenders = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for node in ast.walk(fn):
+                if not isinstance(node, ast.Assign):
+                    continue
+                for target in node.targets:
+                    if not (isinstance(target, ast.Subscript)
+                            and isinstance(target.slice, ast.Constant)
+                            and target.slice.value == "state"):
+                        continue
+                    if (isinstance(node.value, ast.Constant)
+                            and node.value.value in governed):
+                        offenders.append((fn.name, node.value.value))
+        self.assertEqual(offenders, [],
+                         "a settled state written outside `_settle` is a settlement with no gate "
+                         "and no record — which is exactly how `defer` shipped")
+
+    def test_every_door_reaches_the_single_writer(self):
+        import ledger as ledger_mod
+        tree, ast = self._tree()
+        fns = {n.name: n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        callers = {name for name, fn in fns.items()
+                   if any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                          and c.func.attr == "_settle" for c in ast.walk(fn))}
+        self.assertEqual(callers, {"decide", "resolve", "mark_correctness_unknown"},
+                         "these are all the ways a pin becomes settled: `accept` and `defer` reach "
+                         "it through `decide`, which is what makes them elections")
+        self.assertEqual(sorted(ledger_mod.SETTLEMENT_DOORS),
+                         sorted(ledger_mod._STATE_BY_DOOR),
+                         "a door with no target state, or a state no door produces")
 
 
 if __name__ == "__main__":

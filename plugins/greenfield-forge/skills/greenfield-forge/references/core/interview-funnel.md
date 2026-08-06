@@ -108,6 +108,24 @@ the callers are enumerated from the source itself, so a new one that skips it fa
 The single-pin door does not ask it, for the one reason that holds: there the human WAS shown this
 pin, so the threshold does not apply — and the offered-options half is literally the same function.
 
+**And there is a second predicate, for the question next to it.** The one above governs *what may be
+written onto a pin nobody was asked about*. It says nothing about whether a pin may **leave the open
+set at all** — and for four versions nothing did, so `mcp:ledger_defer` settled a `blocker` fork on a
+single state check with no election, no quote and nothing in the log, and a pin that had just
+recorded that its correctness could not be established closed green. `Ledger.settlement_verdict(pin,
+door)` is that second question, asked at all five doors. Two consequences for the funnel:
+
+- **Deferring is an answer, so it is recorded as one.** `mcp:ledger_defer` is the third electing
+  door and is held to the first one's discipline — the user's verbatim words for a relay, and
+  `flip_criteria` saying what brings the pin back. A deferral with no return condition is a deletion
+  with better manners. It is *not* held to the offered-options rule: `defer` is a meta-answer about
+  scope, not a branch of this pin's fork.
+- **`resolution_mode: "asked"` binds.** A pin that was reopened, contested, surfaced as an
+  assumption, left unverifiable, or already held back by an earlier policy carries that mark, and no
+  unasked write may settle it — it comes back as `must_be_asked`, beside `held_back` and
+  `not_offered`. The mark was written by six places and read by none, which made "never re-defaulted
+  silently" a comment rather than a rule.
+
 Which is why there is no third door and no fan-out flag. A fan-out **is** a policy: one answer
 covering pins nobody was shown individually is exactly what a `Policy` records — the rule, the
 quote, and the radius — and `cascaded` is the only rung that describes it honestly. "200 findings →

@@ -1,6 +1,7 @@
 # Open gaps — a plan any session can pick up
 
-> **STATUS 2026-08-06: all four are closed.** Nothing here is waiting on a session. The file stays
+> **STATUS 2026-08-06: the original four are closed; a fifth is OPEN** (§5, below — both reopen arcs
+> are reachable by no host). The file stays
 > because its value is the record — what was wrong, where the answer now lives, and which sub-claims
 > were deliberately left `UNVERIFIED` rather than rounded up. Each section keeps its original text
 > and carries a closing note at the top.
@@ -416,6 +417,80 @@ different environment than the shell is consistent with everything ruled out abo
 > instruction "start from the divergence" was right; the divergence was just one level further out
 > than "the env" — it was **which binary the word `python` names**, which every command in this file
 > spells the same way and no gate had ever pinned down.
+
+---
+
+## 5. Both reopen arcs are reachable by nobody — **OPEN, found 2026-08-06**
+
+Found while closing the v0.16 settlement predicate, and deliberately **not** fixed in that scope:
+it is a missing door, not a missing rule, and the round that found it was a rule round. It is the
+repo's signature class (`MEMORY.md` → *"the claiming-vs-doing failure"*), instance N.
+
+### Verified
+
+`Ledger.challenge()` and `Ledger.reopen()` are the two arcs the doctrine calls load-bearing — the
+upstream refutation and the downstream production signal — and **neither has an MCP tool**. MCP is
+the only runtime channel on all four hosts, so neither can be written by anybody, on any host:
+
+```
+grep -n "def .*reopen\|\.reopen(\|\.challenge(" src/mcp/tools.py src/mcp/server.py  -> 0 call sites
+tools.challenge_oracle -> {"proposed": challenger.scan(_open_existing(ledger))}      -> READ-ONLY
+```
+
+`challenger.scan` proposes; it applies nothing. So an upheld `ChallengeEvent` and a fired
+`flip_signal` `ReopenEvent` are states the runtime can produce and the product cannot.
+
+Worse, the gate that exists to catch exactly this **asserts the opposite**.
+`tests/test_invariants.py::TestEveryWritePassesAGovernedChannel.INTERNAL` exempts `challenge` with
+the reason *"exposed as challenge_oracle, which applies upheld ChallengeEvents"* — which is false of
+that function — and exempts `reopen` as *"the feedback loop's downstream arc, driven by a fired
+flip_signal"*, which describes when it should run and never says what runs it. An exemption whose
+stated reason is wrong is worse than no exemption: it is the check having been asked and answered.
+
+### Why it matters
+
+Three shipped claims rest on it, and v0.16 added a fourth:
+
+- `core/feedback-loop.md` and the spec's v0.5/v0.6 sections both say the loop closes by reopening.
+- `agentready.py` and `challenger.py` both read `chl_` events, so their inputs can only ever be
+  empty.
+- **v0.16 made it load-bearing.** A CLOSED pin (`resolved` · `accepted` · `deferred`) may no longer
+  be settled again by any door, and the spec now says *"the way back is `reopen`, which records
+  why."* That sentence is true of the runtime and reachable by no agent — so the correct handling of
+  a finished pin that turns out to be wrong is, today, to hand-edit `ledger.json`, which every
+  playbook forbids. The tightening is right; it made an existing hole load-bearing, and saying so is
+  the point of this file.
+
+### Done looks like
+
+- A door for the downstream arc: `mcp:ledger_reopen(ledger, pin_id, reason, fired, source)`. It is
+  **not** an election — reopening never decides — so it needs no quote and no offered option, which
+  is exactly why it is safe to expose and why its absence is hard to justify.
+- A door for the upstream arc: either `mcp:ledger_challenge(...)` writing one `ChallengeEvent`, or
+  an `apply` mode on `challenge_oracle` — but read the neutrality rule first: the challenger is
+  read-only *about decisions*, and `upheld` is a judgment somebody must own. Decide whose, and say
+  so at the tool, not in prose.
+- The two `INTERNAL` exemptions corrected to name what actually reaches the method, or moved out of
+  `INTERNAL` entirely once a tool exists.
+- `check_tool_carriers.py` covers write tools that exist and are named by no playbook; it cannot see
+  a tool that was never written. Consider the inverse gate — a `Ledger` mutator classified
+  `INTERNAL` whose stated entry point does not call it, asserted over the AST the way
+  `TestEveryPathToDecideIsGated` already does for `decide`. That is the check that would have caught
+  this one, and it is the same shape as the two gates that closed rounds 4 and 5.
+
+### Prove it
+
+Over real `uv run --script` stdio, with no human: decide a pin, resolve it, then try to reopen it.
+There must be a tool call that does it. `tools/list` is the carrier — if the name is not in that
+listing, the capability does not exist on any host, whatever the runtime can do.
+
+### Traps
+
+- Do not close it by making `cross_derive` the general-purpose reopener. It already reopens on
+  provider disagreement and v0.16 deliberately narrowed it (it may not un-close finished work, and
+  may not rewrite `question.options`). Widening it back would undo that in a different shape.
+- Do not let `reopen` grow an outcome parameter. Both arcs **reopen and never decide**; a reopen
+  that can also set a state is the fan-out flag returning under a new name.
 
 ---
 
