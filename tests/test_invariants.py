@@ -115,7 +115,13 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     }
     #: Mutators reached through another governed entry point rather than a tool of their own.
     INTERNAL = {
-        "set_question": "the interview funnel writes it (interview_next drives the surface)",
+        "set_question": "NOTHING calls it — verified, zero call sites in src/ and plugins/. The "
+                        "reason here used to read 'the interview funnel writes it (interview_next "
+                        "drives the surface)', which is false: `interview.funnel` reads. It is the "
+                        "runtime half of the door docs/open-gaps.md §10 records as missing, kept "
+                        "rather than deleted because that is what §10 would expose — and an "
+                        "exemption whose stated reason is wrong is worse than none, because the "
+                        "check has then been asked and answered",
         "add_proposals": "the brainstorm agent's own write path; neutral by schema",
         "assign_resolution_modes": "runs inside the interview funnel",
         "reopen": "the feedback loop's downstream arc, driven by a fired flip_signal",

@@ -113,14 +113,24 @@ one surface over: **a set the schema owns cannot be kept here, because a state a
 come here.** The two ledger tuples are complements over `ledger.STATES`, so every state now has
 exactly one home, and `tests/test_instructions.py` holds that rather than trusting it.
 
-What the budget refused, deliberately: **no per-pin state token.** The bucket already carries the
-only instruction that differs between these pins — *build on this* versus *do not answer this
-yourself* — and that instruction is identical for all four states inside each bucket. A ` (deferred)`
-suffix would cost bytes on every line of the section most likely to be clipped, to restate what its
-heading says. The headings are worded to be true of every member instead: `resolved` and `deferred`
-are settled without being "elected" in the narrow sense, and `correctness_unknown` is open without
-anyone having failed to decide it — which is why neither heading says "decided" any more. The exact
-state of any pin is one `ledger_summary` call away and is in the map's sub-line, where a human looks.
+What the budget refused, deliberately: **no per-pin state token.** A ` (deferred)` suffix would cost
+bytes on every line of the section most likely to be clipped. The exact state of any pin is one
+`ledger_summary` call away and is in the map's sub-line, where a human looks.
+
+That refusal used to rest on a claim that was false of two states, and the claim is what was wrong,
+not the refusal. It read: *the bucket already carries the only instruction that differs between
+these pins, and that instruction is identical for all four states inside each bucket.* It is not.
+`deferred` is the one settled state whose instruction is **do not build this**, and it was landing
+first inside *"build on these"* — severity-ordered, so six deferred blockers clipped two elected
+decisions off the end of the section. And a `correctness_unknown` pin — *elected, and we could not
+establish that it worked* — reached the region as an unanswered question, because the open section
+suppressed the outcome. Both are fixed where they broke, at zero bytes per line: the settled section
+sorts `deferred` last and its heading says what a `defer` outcome means, the elected outcome is
+printed in **either** section wherever a pin has one, and the open heading says *not settled; do not
+decide one yourself*, which is true of a pin carrying an answer and of one carrying none. The
+headings are what must be true of every member — `resolved` and `deferred` are settled without being
+"elected" in the narrow sense, and `correctness_unknown` is open without anyone having failed to
+decide it, which is why neither says "decided".
 """
 from __future__ import annotations
 
@@ -172,12 +182,39 @@ def _order(pin: dict) -> tuple:
     return (_SEVERITY_RANK.get(pin.get("severity", "low"), 9), str(pin.get("id", "")))
 
 
-def _pin_line(pin: dict, with_outcome: bool) -> str:
+def _settled_order(pin: dict) -> tuple:
+    """Severity, but a `deferred` pin sorts after every other settled one.
+
+    The section is filled top-down against a hard line budget, so its order decides what survives a
+    clip — and `deferred` is the one settled state whose instruction is *do not build this*. Six
+    deferred blockers were emitted first and clipped two elected decisions to `(+2 more)`: the
+    pins that say what to build, dropped for the pins that say what not to, in the file an agent
+    reads before writing anything.
+
+    The two SETS still come from the ledger and are not re-listed here (the module docstring says
+    why). This names one state, to answer a question the schema does not: which settled pins are
+    settled by *not being done*. A state added to the schema later keeps today's placement rather
+    than disappearing, which is the safe direction for a default.
+    """
+    return (pin.get("state") == "deferred",) + _order(pin)
+
+
+def _pin_line(pin: dict) -> str:
+    """One pin, with its elected outcome wherever it has one — in EITHER section.
+
+    The outcome used to be suppressed for open pins, which was right for the three open states that
+    have none and wrong for the fourth: `correctness_unknown` means *elected, and we could not
+    establish that it worked*. A pin decided `request_id` and then marked unverifiable reached a
+    fresh agent's always-on context as an unanswered question, so the agent could answer again what
+    the human had already answered. A pin with no decision prints no outcome, so the honest line
+    costs nothing where there is nothing to say — which is why this is one rule, not a per-section
+    flag.
+    """
     kind = pin.get("kind", "other")
     if kind == "other" and pin.get("kind_detail"):
         kind = f"other:{pin['kind_detail']}"
     line = f"- `{pin.get('id', '?')}` [{kind}] {pin.get('title', '').strip()}"
-    outcome = (pin.get("decision") or {}).get("outcome") if with_outcome else None
+    outcome = (pin.get("decision") or {}).get("outcome")
     if outcome:
         line += f" — **{outcome}**"
     return line
@@ -325,7 +362,7 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     # rather than at module scope for the same reason `_evidence_note` imports what it needs: the
     # rule has one implementation, in the module that owns the schema.
     from ledger import OPEN_STATES, SETTLED_STATES
-    settled = sorted((p for p in pins if p.get("state") in SETTLED_STATES), key=_order)
+    settled = sorted((p for p in pins if p.get("state") in SETTLED_STATES), key=_settled_order)
     openp = sorted((p for p in pins if p.get("state") in OPEN_STATES), key=_order)
     sections = [
         ("Standing rules",
@@ -333,8 +370,9 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
           f"{', '.join(f'{k}={v}' for k, v in (p.get('applies_to') or {}).items()) or 'all pins'}; "
           f"default: {p.get('default_outcome')})*" for p in policies],
          "see `policies` in the ledger"),
-        ("Settled — build on these", [_pin_line(p, True) for p in settled], "run `ledger_summary`"),
-        ("Open — do not encode an answer", [_pin_line(p, False) for p in openp],
+        ("Settled — build on these (`defer` = elected NOT to build, not now)",
+         [_pin_line(p) for p in settled], "run `ledger_summary`"),
+        ("Open — not settled; do not decide one yourself", [_pin_line(p) for p in openp],
          "run `interview_next`"),
         ("Generated — never hand-edit", [f"- `{g}`" for g in sorted(str(x) for x in (generated or []))],
          "see the contract"),

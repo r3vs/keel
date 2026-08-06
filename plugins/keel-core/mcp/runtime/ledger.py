@@ -822,8 +822,12 @@ class Ledger:
         So deferring is what it always was in the spec's own question shape — an **answer**
         (`{"id": "defer", "label": "Defer (deferred)"}`) — and it is recorded as one: a
         DecisionEvent with outcome `defer`, a `flip_criteria` saying what brings it back, and the
-        rung the answer travelled on. `mcp:ledger_defer` demands the human's words for a
-        `transcribed` one, exactly as `record_decision` does, and the elicitation path is the same.
+        rung the answer travelled on. `mcp:ledger_defer` always demands the human's words, because
+        there is exactly ONE path there and it is the relay: the tool takes no `evidence` parameter
+        and writes `transcribed`. It briefly took one, and a single keyword settled a `blocker` fork
+        on the `elicited` rung with nobody asked — the rung is a fact about WHICH PATH RAN, so only
+        the code that ran it may state it. There is no elicitation path here; if one is ever added,
+        that path sets the rung, exactly as `mcp/server.py::ledger_record_decision` does.
 
         Deliberately NOT held to the offered-options rule: `defer` is a meta-answer about scope, not
         a choice among the fork's branches, and demanding that every question list a `defer` option
@@ -999,6 +1003,14 @@ class Ledger:
         falsified by an ordering inside the predicate itself. A rule that every door must obey is
         asked before any door speaks; that is the only arrangement in which "every door" is a claim
         about the code rather than about five branches remembering the same thing.
+
+        **One carrier, read on both sides.** Deleting the `state == "correctness_unknown"` refusal
+        was right — it made `rung` a gate-opening move that could not open its gate — but it was
+        only half the change, and the other half was the half that mattered: the envelope was then
+        read as `is not None`, so a pin whose state declared its own correctness unestablishable and
+        whose envelope was simply absent came back `would_settle` and closed green. Absence is read
+        as the weaker rung everywhere else here (`_client_can_elicit` is False on any exception; a
+        missing `evidence` is unrecorded, not transcribed), and it is read that way now.
         """
         _require(door in SETTLEMENT_DOORS, f"door must be one of {SETTLEMENT_DOORS}; got {door!r}")
         state = pin["state"]
@@ -1032,12 +1044,15 @@ class Ledger:
                 return "not_decided"
             if not pin.get("remediation") or any(i["status"] != "done" for i in pin["remediation"]):
                 return "remediation_open"
-            # When the pin states how hard its claim was checked, that statement binds — including
-            # when it states that it could not be checked at all. `rung: None` inside a
+            # The envelope is the single carrier, so it is read the way absence is read everywhere
+            # else in this package: as the WEAKER rung, never as permission. `rung: None` inside a
             # `verification` envelope is not "no claim made", it is the strongest possible claim
-            # that this must not close, and reading it as absence is how the chain above closed.
-            verification = pin.get("verification")
-            if verification is not None and verification.get("rung") not in _CLOSING_RUNGS:
+            # that this must not close — and an envelope that is not there at all says even less
+            # than that. Reading `is not None` as "no statement, so no objection" left the gate with
+            # no carrier in the one case it was written for: a pin whose state declared its own
+            # correctness unestablishable, carrying no envelope, closed green on `evidence="I
+            # looked"`. `resolved` means OBSERVED, and nothing observed is recorded here.
+            if (pin.get("verification") or {}).get("rung") not in _CLOSING_RUNGS:
                 return "unverified"
         return "would_settle"
 
@@ -1057,10 +1072,11 @@ class Ledger:
             "resolve requires recorded remediation with every item done — a close with nothing to "
             "point at is a silent close.",
         "unverified":
-            "`resolved` means OBSERVED (v0.7). This pin's own verification does not reach the "
-            "`observed` or `cross_derived` rung (state {state}), so the honest destination is "
-            "correctness_unknown, not a green close. Pass `rung` to resolve once you have observed "
-            "the behaviour.",
+            "`resolved` means OBSERVED (v0.7). This pin records no verification reaching the "
+            "`observed` or `cross_derived` rung (state {state}) — and a pin carrying no "
+            "`verification` at all records less than one that reached a weak rung, not more, so "
+            "the honest destination is correctness_unknown, not a green close. Pass `rung` to "
+            "resolve once you have observed the behaviour.",
     }
 
     def _gate_settlement(self, pin: dict, door: str) -> None:
@@ -1562,13 +1578,18 @@ class Ledger:
                 rung: Optional[str] = None) -> dict:
         """Close a pin against what was OBSERVED. Every rule is `settlement_verdict`'s (v0.16).
 
-        `rung` is the door out of `correctness_unknown` and out of a stale weak envelope, and it has
-        to exist: once `mark_correctness_unknown` has written `verification`, the rung check binds
-        forever, and without a way to state a *later* observation the pin could never close by any
-        route — a gate with no gate-opening move is a wall, and people route around walls. What it
-        cannot do is launder: it records a rung the caller claims to have reached, on a pin whose
-        `blocked_by` stays exactly where its writer left it, so "it was blocked, then it was
-        observed" reads as the history it is rather than as a clean slate.
+        `rung` is the door out of `correctness_unknown`, out of a stale weak envelope, and out of no
+        envelope at all, and it has to exist: the rung check binds on every resolve, so without a
+        way to state a *later* observation a pin could never close by any route — a gate with no
+        gate-opening move is a wall, and people route around walls. What it cannot do is launder: it
+        records a rung the caller claims to have reached, on a pin whose `blocked_by` stays exactly
+        where its writer left it, so "it was blocked, then it was observed" reads as the history it
+        is rather than as a clean slate.
+
+        It is optional rather than required for one honest reason: `cross_derive` writes the
+        `cross_derived` rung onto the pin when two providers agree, and that pin is already at a
+        closing rung when it gets here. A pin carrying no such rung needs one passed, which is what
+        `resolved` meaning OBSERVED costs.
         """
         pin = self.pin(pin_id)
         if evidence is not None:

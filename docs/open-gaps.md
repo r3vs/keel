@@ -660,6 +660,14 @@ surface than they started with.
 >
 > One thing that fix deliberately did **not** do, and this one should not either: it added no gate.
 > `scripts/check_schema_fields.py` passed both fields the whole time — see §15.
+>
+> **2026-08-06 raises its priority: the envelope is now read on every resolve, not only a weak one.**
+> `settlement_verdict` used to consult it `if verification is not None`, so a pin with no envelope
+> closed green — including one whose state declared its own correctness unestablishable. Absence now
+> reads as the weakest rung, which means `verification` is the field that decides whether ANY pin may
+> close. A field with that much authority, written by three doors, gated on by the predicate, and
+> rendered on no surface, is this section's claim with a bigger number attached: the reader who has to
+> ask *why will this pin not close* has nowhere to look but the JSON.
 
 ### Verified
 
@@ -775,10 +783,7 @@ a scope where `null` is the intended meaning, and check the message is not a wal
 ### Verified
 
 `question` is settable only at creation (`ledger_add_pin(question=…)`). No MCP tool assigns
-`pin["question"]` afterwards — `grep 'pin\["question"\]' src/mcp/tools.py` is empty — and inside the
-runtime there are exactly three writers, all of them side effects of something else
-(`surface_assumption` creating a pin, `mark_correctness_unknown` and `cross_derive`, both of which
-now write only where the pin has none). Reproduced:
+`pin["question"]` afterwards — `grep 'pin\["question"\]' src/mcp/tools.py` is empty. Reproduced:
 
 ```
 add_pin(kind="ambiguity", severity="high", …)   with no question
@@ -789,6 +794,27 @@ add_pin(kind="ambiguity", severity="high", …)   with no question
 So a finding recorded without a fork is `detected` for ever and reaches the interview on no host.
 The only way out is to hand-edit `ledger.json`, which every playbook forbids, or to add a second pin
 and abandon the first.
+
+**Inside the runtime there are four writers, not three, and the fourth is the interesting one.**
+This section said "exactly three writers, all of them side effects of something else" and named
+`surface_assumption` (creating a pin), `mark_correctness_unknown` and `cross_derive` (both now
+write-if-absent). The fourth is **`Ledger.set_question`** (`src/runtime/ledger.py:582`) — not a side
+effect of anything: it takes a pin id and a question, validates it, assigns it and moves the pin to
+`needs_input`. It has **zero callers** in shipped code (`grep -rn set_question src/ plugins/` returns
+its own definition and the vendored copy), and it was exempted in `tests/test_invariants.py` as
+*"the interview funnel writes it (interview_next drives the surface)"* — false; `interview.funnel`
+reads. The exemption is corrected to say what is true, in the same commit as this line: a gate that
+has been asked and answered wrongly is §15's class, and a register carrying a miscount is that class
+applied to the register.
+
+**The conclusion survives, and gets cheaper.** The section's claim is about the *product*, not the
+runtime: MCP is the only runtime channel on all four hosts, no tool reaches this method, so no
+agent on any host can give an existing pin a question. That is unchanged. What changes is the size
+of the fix — the runtime half already exists and is written the way this section asks (it refuses a
+`resolved` pin, and `_validate_question` already guards the shape), so closing §10 is exposing a
+method rather than writing one. Two things about it still have to be decided rather than inherited:
+it **replaces** an existing question, which "Done looks like" below forbids, and the state it forces
+(`needs_input`) is wrong for a `correctness_unknown` pin. Both are one-line answers at the door.
 
 ### Why it matters
 

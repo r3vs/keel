@@ -516,16 +516,18 @@ def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> d
     Evidence is what you OBSERVED (the endpoint returned, the reproduction no longer reproduces) —
     not "the code is written". The tool enforces 'resolved = observed' by requiring it.
 
-    Refuses a pin in `correctness_unknown`, and refuses one whose `verification` does not reach the
-    `observed` / `cross_derived` rung — including an envelope that records no rung at all, which is
-    what marking correctness unknown leaves behind. Pass `rung` once you have actually observed it.
+    Refuses any pin whose `verification` does not reach the `observed` / `cross_derived` rung —
+    an envelope recording no rung (what marking correctness unknown leaves behind) and NO envelope
+    at all are both refused, because neither records an observation. Pass `rung` once you have
+    actually observed it; a pin `ledger_cross_derive` already agreed on carries its rung already.
 
     Args:
         ledger: Path to ledger.json.
         pin_id: The pin to resolve.
         evidence: What you observed that closed the gap (required, non-empty).
-        rung: observed | cross_derived — state it when a prior verification envelope is weaker or
-            absent. Needs `evidence`: a rung with nothing behind it is the claim this refuses.
+        rung: observed | cross_derived — state it unless the pin already carries a closing rung
+            (cross_derive writes one on agreement). Needs `evidence`: a rung with nothing behind it
+            is the claim this refuses.
     """
     return tools.ledger_resolve(ledger, pin_id, evidence, rung)
 

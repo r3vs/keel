@@ -123,7 +123,8 @@ class TestLedgerWrites(unittest.TestCase):
         tools.ledger_add_remediation(self.ledger, pid, action="implement", ladder_rung=1)
         item_id = Ledger(self.ledger).pin(pid)["remediation"][0]["id"]
         tools.ledger_set_remediation_status(self.ledger, pid, item_id, "done")
-        out = tools.ledger_resolve(self.ledger, pid, evidence="observed: repro no longer reproduces")
+        out = tools.ledger_resolve(self.ledger, pid, evidence="observed: repro no longer reproduces",
+                                   rung="observed")
         self.assertEqual(out["state"], "resolved")
         self.assertEqual(Ledger(self.ledger).pin(pid)["evidence"], "observed: repro no longer reproduces")
 
@@ -492,7 +493,8 @@ class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
             question={"prompt": "?", "options": [{"id": "fix", "label": "fix it"}]})["pin_id"]
         item = tools.ledger_add_remediation(self.ledger, pid, action="align", ladder_rung=1)
         tools.ledger_set_remediation_status(self.ledger, pid, item["item_id"], "done")
-        tools.ledger_resolve(self.ledger, pid, evidence="observed: no longer reproduces")
+        tools.ledger_resolve(self.ledger, pid, evidence="observed: no longer reproduces",
+                            rung="observed")
         led = Ledger(self.ledger)
         self.assertEqual(led.unasked_verdict(led.pin(pid), "fix"), "already_settled")
         with self.assertRaises(Exception):

@@ -53,8 +53,8 @@ class TestRender(unittest.TestCase):
         self.assertIn("`p_0002`", body)
         self.assertIn("**canonicalize on the DB enum**", body)
         self.assertIn("`p_0003`", body)
-        # open pins are listed as open, and carry no outcome
-        self.assertIn("### Open — do not encode an answer", body)
+        # open pins are listed as open
+        self.assertIn("### Open — not settled; do not decide one yourself", body)
         self.assertIn("`p_0001`", body)
         # blocker sorts above medium within its section
         self.assertLess(body.index("`p_0001`"), body.index("`p_0004`"))
@@ -136,6 +136,67 @@ class TestEveryStateReachesTheRegion(unittest.TestCase):
         settled, openp = body.split("### Open —")
         self.assertIn("`p_0001`", settled)
         self.assertIn("`p_0002`", openp)
+
+
+class TestArrivingInASectionThatInvertsTheMeaning(unittest.TestCase):
+    """Landing the two rescued states somewhere was not the fix finished — the section a pin lands
+    in is an instruction, and for these two it was the wrong one.
+
+    Both reproduced against the shipped renderer before the fix, and both are about the ONE thing
+    this file is: bytes an agent reads before it writes anything.
+    """
+
+    def test_a_deferred_pin_does_not_clip_the_decisions_that_say_what_to_build(self):
+        """Six deferred blockers + six decided mediums at `max_lines=22`: severity-then-id put all
+        six `— **defer**` lines FIRST and clipped two elected decisions to `(+2 more)`. `deferred`
+        is the one settled state whose instruction is *do not build this*, so in a byte-budgeted
+        always-on context it was outranking the pins that say what to build."""
+        pins = [_pin(f"p_{i:04d}", "incompleteness", f"deferred blocker {i}", "deferred",
+                     "blocker", outcome="defer") for i in range(6)]
+        pins += [_pin(f"p_{i:04d}", "open_decision", f"elected medium {i}", "decided",
+                      "medium", outcome=f"choice_{i}") for i in range(6, 12)]
+        log = [{"id": f"ev_{i:04d}", "pin_id": p["id"], "evidence": "transcribed",
+                "human_answer": "yes"} for i, p in enumerate(pins)]
+        body = ins.render({"pins": pins, "decision_log": log, "policies": []}, max_lines=22)
+        self.assertRegex(body, r"\(\+2 more")               # the budget still clips two
+        clipped = [p["id"] for p in pins if f"`{p['id']}`" not in body]
+        self.assertEqual(len(clipped), 2)
+        elected = {p["id"] for p in pins if p["state"] == "decided"}
+        self.assertEqual(elected & set(clipped), set(),
+                         f"an elected decision was clipped while a deferral survived: {clipped}")
+        lines = [ln for ln in body.splitlines() if ln.startswith("- `p_")]
+        last_elected = max(i for i, ln in enumerate(lines) if "**choice_" in ln)
+        first_defer = min((i for i, ln in enumerate(lines) if "**defer**" in ln), default=len(lines))
+        self.assertLess(last_elected, first_defer,
+                        "every deferral sorts after every other settled pin, so the budget "
+                        "reaches them last")
+
+    def test_the_settled_heading_says_what_a_defer_outcome_means(self):
+        """A `deferred` pin listed under a bare *build on these* reads as the opposite of itself."""
+        body = ins.render({"pins": [_pin("p_0001", "open_decision", "multi-tenant isolation",
+                                         "deferred", "blocker", outcome="defer")],
+                           "decision_log": [], "policies": []})
+        heading = [ln for ln in body.splitlines() if ln.startswith("### Settled")][0]
+        self.assertIn("defer", heading)
+
+    def test_a_correctness_unknown_pin_does_not_reach_the_agent_as_an_unanswered_question(self):
+        """The state means *elected, and we could not establish that it worked*. Its outcome was
+        suppressed because the pin is in `OPEN_STATES`, so a decision the human made arrived as a
+        fork — and an agent may answer it again."""
+        pin = _pin("p_0001", "open_decision", "idempotency key source", "correctness_unknown",
+                   "high", outcome="request_id")
+        body = ins.render({"pins": [pin], "decision_log": [], "policies": []})
+        openp = body.split("### Open —")[1]
+        self.assertIn("**request_id**", openp,
+                      "the elected outcome must be visible where the pin is listed")
+        self.assertIn("do not decide one yourself", body.split("### Open —")[1].splitlines()[0],
+                      "and the heading must still forbid deciding it")
+
+    def test_a_pin_with_no_decision_still_prints_no_outcome(self):
+        """The rule is one rule, not a per-section flag: nothing to say costs nothing."""
+        body = ins.render({"pins": [_pin("p_0001", "ambiguity", "which cache", "needs_input")],
+                           "decision_log": [], "policies": []})
+        self.assertIn("- `p_0001` [ambiguity] which cache\n", body)
 
 
 class TestEvidenceNote(unittest.TestCase):

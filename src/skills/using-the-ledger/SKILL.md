@@ -52,8 +52,10 @@ what the spec says it means.
 The reads are automatable **and so is every non-electing write** — add a finding, plan its
 remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidence` (what you
 *observed* closed the gap, not that code was written): the tool itself enforces `resolved =
-observed`, and it refuses a pin sitting in `correctness_unknown` or carrying a verification that
-never reached the `observed` rung — pass `rung` once you have actually observed it. Its two honest
+observed`, and it refuses a pin whose verification never reached the `observed` / `cross_derived`
+rung — a weak envelope, an envelope with no rung, and **no envelope at all** alike, because none of
+them records an observation. So pass `rung` once you have actually observed it, unless
+`ledger_cross_derive` already agreed the claim onto the pin. Its two honest
 exits matter as much: `ledger_mark_correctness_unknown` when the evidence stack was walked and
 nothing could speak, and `ledger_defer` when the work is out of scope — a pin that leaves the loop by
 either door is still on the ledger, which is the difference between scoping and forgetting.

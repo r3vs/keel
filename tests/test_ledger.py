@@ -555,17 +555,22 @@ class TestRemediation(unittest.TestCase):
                         next(i for i, w in enumerate(waves) if later["id"] in w))
 
     def test_resolve_gated_on_done_items(self):
+        """Every call here states the observation, so the only thing under test is the remediation
+        gate — a refusal that could be either rule proves neither."""
         led = make_ledger()
         pin = add_simple_pin(led)
         led.decide(pin["id"], "opt_a", "r", "flip")
-        with self.assertRaises(LedgerError):                       # no silent close
-            led.resolve(pin["id"])
+        obs = dict(evidence="ran it; the drift is gone", rung="observed")
+        with self.assertRaises(LedgerError) as ctx:                # no silent close
+            led.resolve(pin["id"], **obs)
+        self.assertIn("remediation", str(ctx.exception))
         item = led.add_remediation(pin["id"], action="align", ladder_rung=2,
                                    canonical_target="db")
-        with self.assertRaises(LedgerError):
-            led.resolve(pin["id"])
+        with self.assertRaises(LedgerError) as ctx:
+            led.resolve(pin["id"], **obs)
+        self.assertIn("remediation", str(ctx.exception))
         led.set_remediation_status(pin["id"], item["id"], "done")
-        self.assertEqual(led.resolve(pin["id"])["state"], "resolved")
+        self.assertEqual(led.resolve(pin["id"], **obs)["state"], "resolved")
 
 
 class TestHonestVerification(unittest.TestCase):
@@ -1002,6 +1007,42 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         self.assertEqual(pin["verification"]["blocked_by"], "no runnable payments environment",
                          "what blocked verification is history, not something the close erases")
 
+    def test_a_missing_envelope_is_the_weakest_reading_not_permission(self):
+        """The other half of the same carrier, and the half 691 tests missed.
+
+        Deleting the `state == "correctness_unknown"` refusal was right; reading the envelope as
+        `if verification is not None` was the hole it left. A `ledger.json` whose pin is
+        `state: "correctness_unknown"` with its remediation done and NO `verification` key returned
+        `would_settle`, and `resolve(evidence="I looked")` closed it green — the exact defect the
+        state exists to prevent, entered from the other side. Written as the file it was reproduced
+        on, because that file class is the one thing a rule enforced at the write never governs.
+        """
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="blocker")
+        pin["state"] = "correctness_unknown"                 # a file that already exists
+        pin.pop("verification", None)
+        self.assertEqual(led.settlement_verdict(pin, "resolve"), "unverified")
+        with self.assertRaises(LedgerError) as ctx:
+            led.resolve(pin["id"], evidence="I looked")
+        self.assertIn("unverified", str(ctx.exception))
+        self.assertEqual(pin["state"], "correctness_unknown")
+        # and the gate still has its opening move
+        self.assertEqual(led.resolve(pin["id"], evidence="replayed it on staging; one charge",
+                                     rung="observed")["state"], "resolved")
+
+    def test_no_envelope_at_all_is_not_weaker_only_where_the_state_says_so(self):
+        """Absence is read the same way on every pin, not only on the one whose state confesses.
+        A `decided` pin with its remediation done and nothing recorded about verification has
+        observed nothing either, and `resolved` means observed."""
+        led = make_ledger()
+        pin = self._decided_defect(led, severity="medium")
+        self.assertIsNone(pin.get("verification"))
+        self.assertEqual(led.settlement_verdict(pin, "resolve"), "unverified")
+        with self.assertRaises(LedgerError):
+            led.resolve(pin["id"], evidence="the code is written")
+        self.assertEqual(led.resolve(pin["id"], evidence="ran it; no double charge",
+                                     rung="observed")["state"], "resolved")
+
     def test_the_closed_check_runs_before_every_door_including_the_mirror_one(self):
         """The mirror door was evaluated BEFORE the `CLOSED_STATES` check, so `resolved` was an
         ACCEPTING condition for it: resolve -> mark_correctness_unknown took a pin out of the closed
@@ -1086,7 +1127,8 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         `unasked_verdict` refused the same pin as `already_settled`. One question, one answer."""
         led = make_ledger()
         pin = self._decided_defect(led, severity="medium")
-        led.resolve(pin["id"], evidence="observed: the double charge no longer reproduces")
+        led.resolve(pin["id"], evidence="observed: the double charge no longer reproduces",
+                    rung="observed")
         for door in ("decide", "accept", "defer", "resolve"):
             with self.subTest(door=door):
                 self.assertEqual(led.settlement_verdict(pin, door), "already_closed")
@@ -1165,13 +1207,30 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
     def test_a_disagreement_does_not_un_close_finished_work(self):
         led = make_ledger()
         pin = self._decided_defect(led, severity="medium")
-        led.resolve(pin["id"], evidence="observed: no longer reproduces")
+        led.resolve(pin["id"], evidence="observed: no longer reproduces", rung="observed")
         led.cross_derive(pin["id"], claim="the retry is idempotent", agreement="disagree",
                          derivations=[{"provider": "anthropic", "model": "m", "result": "yes"},
                                       {"provider": "openai", "model": "n", "result": "no"}])
         event = led.data["decision_log"][-1]
         self.assertEqual((event["id"][:4], event["reopened"]), ("xdr_", False))
         self.assertEqual(pin["state"], "resolved", "un-closing finished work has its own arc")
+
+    def test_a_decided_pin_is_on_the_reopened_side_of_the_closed_line(self):
+        """The spec said "an **open** pin moves to needs_input", as though open and closed
+        exhausted the states. The predicate is `state not in CLOSED_STATES`, and `decided` is in
+        `SETTLED_STATES` but not in `CLOSED_STATES` — which is the whole reason the two sets were
+        split: a human election is correctable, finished work is not un-finished from the side."""
+        from ledger import CLOSED_STATES, SETTLED_STATES
+        self.assertIn("decided", SETTLED_STATES)
+        self.assertNotIn("decided", CLOSED_STATES)
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.decide(pin["id"], "opt_a", "r", "f")
+        led.cross_derive(pin["id"], claim="c", agreement="disagree", derivations=[
+            {"provider": "anthropic", "model": "m", "result": "a"},
+            {"provider": "openai", "model": "n", "result": "b"}])
+        self.assertTrue(led.data["decision_log"][-1]["reopened"])
+        self.assertEqual((pin["state"], pin["substate"]), ("needs_input", "contested"))
 
     def test_a_pin_with_no_fork_gains_one_rather_than_having_one_replaced(self):
         led = make_ledger()
