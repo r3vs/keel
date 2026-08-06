@@ -97,6 +97,30 @@ Each decision records the rung its answer travelled on — `elicited` / `transcr
   cascade while saying nothing about the election behind it weighs the wrong end. It is also the one
   clause that can fire with an empty `decision_log`: a rule that cascaded over no pin still governs
   what gets written next, and that state was visible on no surface at all.
+
+Which pins reach the region, and what the budget refused there too
+------------------------------------------------------------------
+The two lists are `ledger.SETTLED_STATES` and `ledger.OPEN_STATES` — read, never re-listed. This
+module used to keep its own pair (`("decided","accepted","resolved")` and
+`("detected","needs_input","brainstorming")`), which covered six of the schema's eight states, so a
+`deferred` pin and a `correctness_unknown` pin reached a fresh agent's always-on context **in no
+section at all**. Reproduced on a two-pin ledger — one deferred `blocker` ("Multi-tenant isolation
+is unimplemented"), one `correctness_unknown` `blocker` ("Webhook replay") — where the region
+rendered the header, the evidence note, and then *"No decisions elected yet — run the skill's
+interview before writing code."* Two blockers, and the sentence said none existed. That is the same
+bug `map.py` carried until its `SETTLED` set was sourced from `ledger.SETTLED_STATES`, in this file,
+one surface over: **a set the schema owns cannot be kept here, because a state added there will not
+come here.** The two ledger tuples are complements over `ledger.STATES`, so every state now has
+exactly one home, and `tests/test_instructions.py` holds that rather than trusting it.
+
+What the budget refused, deliberately: **no per-pin state token.** The bucket already carries the
+only instruction that differs between these pins — *build on this* versus *do not answer this
+yourself* — and that instruction is identical for all four states inside each bucket. A ` (deferred)`
+suffix would cost bytes on every line of the section most likely to be clipped, to restate what its
+heading says. The headings are worded to be true of every member instead: `resolved` and `deferred`
+are settled without being "elected" in the narrow sense, and `correctness_unknown` is open without
+anyone having failed to decide it — which is why neither heading says "decided" any more. The exact
+state of any pin is one `ledger_summary` call away and is in the map's sub-line, where a human looks.
 """
 from __future__ import annotations
 
@@ -138,10 +162,6 @@ _NOTE_LINES = 2
 _MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + 4
 
 _SEVERITY_RANK = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
-#: states in which the human has committed something — these are the elected truth
-_ELECTED = ("decided", "accepted", "resolved")
-#: states in which nothing is elected yet — an agent must NOT answer these on its own
-_OPEN = ("detected", "needs_input", "brainstorming")
 
 
 def _fingerprint(body: str) -> str:
@@ -263,10 +283,15 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
            generated: Optional[list] = None) -> str:
     """The managed region's body: the ledger's elected state as instructions, markers excluded.
 
-    Four sections, in the order an agent needs them: the standing rules it must obey, the decisions
-    already elected, the forks NOT yet elected (so it surfaces an assumption instead of inventing an
-    answer), and the generated files it must never hand-edit. Ordering is severity then id — stable,
-    so an unchanged ledger re-renders byte-identically and the drift-check has no false positives.
+    Four sections, in the order an agent needs them: the standing rules it must obey, the pins that
+    have stopped being open (`ledger.SETTLED_STATES` — build on these), the pins still awaiting
+    something (`ledger.OPEN_STATES` — surface an assumption instead of inventing an answer), and the
+    generated files it must never hand-edit. Ordering is severity then id — stable, so an unchanged
+    ledger re-renders byte-identically and the drift-check has no false positives.
+
+    The two state sets come from the ledger and are complements over `ledger.STATES`, so no pin can
+    fall between them; the module docstring records why they are not listed here and why no per-pin
+    state token is projected.
 
     Above them, the header carries one conditional line when some decision rests on an agent's relay
     (`_evidence_note`) — see the module docstring for why that is the only shape of `evidence` this
@@ -296,16 +321,20 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     head = ([line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
             + _evidence_note(data))
 
-    elected = sorted((p for p in pins if p.get("state") in _ELECTED), key=_order)
-    openp = sorted((p for p in pins if p.get("state") in _OPEN), key=_order)
+    # The two sets are the ledger's, not this module's (see the module docstring). Imported here
+    # rather than at module scope for the same reason `_evidence_note` imports what it needs: the
+    # rule has one implementation, in the module that owns the schema.
+    from ledger import OPEN_STATES, SETTLED_STATES
+    settled = sorted((p for p in pins if p.get("state") in SETTLED_STATES), key=_order)
+    openp = sorted((p for p in pins if p.get("state") in OPEN_STATES), key=_order)
     sections = [
         ("Standing rules",
          [f"- {p.get('rule', '').strip()} *(applies to "
           f"{', '.join(f'{k}={v}' for k, v in (p.get('applies_to') or {}).items()) or 'all pins'}; "
           f"default: {p.get('default_outcome')})*" for p in policies],
          "see `policies` in the ledger"),
-        ("Elected", [_pin_line(p, True) for p in elected], "run `ledger_summary`"),
-        ("NOT decided — do not encode an answer", [_pin_line(p, False) for p in openp],
+        ("Settled — build on these", [_pin_line(p, True) for p in settled], "run `ledger_summary`"),
+        ("Open — do not encode an answer", [_pin_line(p, False) for p in openp],
          "run `interview_next`"),
         ("Generated — never hand-edit", [f"- `{g}`" for g in sorted(str(x) for x in (generated or []))],
          "see the contract"),

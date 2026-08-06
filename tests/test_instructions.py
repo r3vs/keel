@@ -53,8 +53,8 @@ class TestRender(unittest.TestCase):
         self.assertIn("`p_0002`", body)
         self.assertIn("**canonicalize on the DB enum**", body)
         self.assertIn("`p_0003`", body)
-        # open pins are listed as NOT decided, and carry no outcome
-        self.assertIn("### NOT decided — do not encode an answer", body)
+        # open pins are listed as open, and carry no outcome
+        self.assertIn("### Open — do not encode an answer", body)
         self.assertIn("`p_0001`", body)
         # blocker sorts above medium within its section
         self.assertLess(body.index("`p_0001`"), body.index("`p_0004`"))
@@ -62,7 +62,7 @@ class TestRender(unittest.TestCase):
     def test_open_pin_never_shown_as_elected(self):
         """The anti-slop property: an undecided fork must not read as settled."""
         body = ins.render(LEDGER)
-        elected = body.split("### NOT decided")[0]
+        elected = body.split("### Open —")[0]
         self.assertNotIn("`p_0001`", elected)
 
     def test_empty_ledger_says_so(self):
@@ -93,6 +93,49 @@ class TestRender(unittest.TestCase):
 
     def test_render_is_stable(self):
         self.assertEqual(ins.render(LEDGER), ins.render(LEDGER))
+
+
+class TestEveryStateReachesTheRegion(unittest.TestCase):
+    """The projection kept its OWN pair of state lists — six of the schema's eight — so a `deferred`
+    pin and a `correctness_unknown` pin reached a fresh agent's always-on context in NO section.
+
+    Same bug `map.py` carried until its `SETTLED` set was sourced from `ledger.SETTLED_STATES`, one
+    surface over, and the same fix: a set the schema owns cannot be kept here, because a state added
+    there does not come here. So these assert the partition at the schema, and the behaviour at the
+    projection — a private list re-added later fails the second even if it satisfies the first.
+    """
+
+    def test_the_two_sets_partition_the_schema(self):
+        from ledger import OPEN_STATES, SETTLED_STATES, STATES
+        self.assertEqual(set(SETTLED_STATES) & set(OPEN_STATES), set(),
+                         "a state in both buckets would be listed twice, saying two things")
+        self.assertEqual(sorted(set(SETTLED_STATES) | set(OPEN_STATES)), sorted(STATES),
+                         "a state in neither bucket reaches the agent in no section at all — "
+                         "which is exactly how `deferred` and `correctness_unknown` went missing")
+
+    def test_a_pin_in_every_state_is_listed(self):
+        from ledger import STATES
+        data = {"pins": [_pin(f"p_{i:04d}", "defect", f"pin in {s}", s) for i, s in
+                         enumerate(STATES)], "policies": [], "decision_log": []}
+        body = ins.render(data, max_lines=200)
+        missing = [p["id"] for p in data["pins"] if p["id"] not in body]
+        self.assertEqual(missing, [], f"listed in no section: {missing}")
+
+    def test_the_two_states_that_went_missing(self):
+        """The reproduction, verbatim: two blockers, and the region said no decisions existed."""
+        data = {"pins": [
+            _pin("p_0001", "open_decision", "Multi-tenant isolation is unimplemented", "deferred",
+                 "blocker", outcome="defer"),
+            _pin("p_0002", "defect", "Webhook replay", "correctness_unknown", "blocker"),
+        ], "policies": [], "decision_log": []}
+        body = ins.render(data)
+        self.assertNotIn("No decisions elected yet", body)
+        self.assertIn("Multi-tenant isolation is unimplemented", body)
+        self.assertIn("Webhook replay", body)
+        # and on the right side of the divide: deferring is an election, correctness_unknown is not
+        settled, openp = body.split("### Open —")
+        self.assertIn("`p_0001`", settled)
+        self.assertIn("`p_0002`", openp)
 
 
 class TestEvidenceNote(unittest.TestCase):

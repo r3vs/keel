@@ -1388,9 +1388,17 @@ class Ledger:
             pin["verification"] = verification
         elif event["reopened"]:
             if not pin.get("question"):
-                # Only where there is no fork to destroy. The derivations are on the pin either way
-                # (`cross_derivations`), so the human sees what disagreed without an agent editing
-                # the menu they are allowed to answer from.
+                # Only where there is no fork to destroy. The derivations stay on the pin either
+                # way (`cross_derivations`) and `map.py` renders them immediately above the
+                # question, so the human sees WHAT disagreed without an agent editing the menu they
+                # are allowed to answer from.
+                #
+                # That second clause was a claim with no carrier when it was written: the field had
+                # one writer — this line — and zero readers, so a disagreement that reopened a pin
+                # reached the map, the summary and the projected AGENTS.md in no form at all. It was
+                # written in the commit that closed a claim with no carrier. The reader came first
+                # this time; do not weaken it back to "it is on the pin", which is true of every
+                # field nobody reads.
                 pin["question"] = {
                     "prompt": (f"Two independent providers disagree on: {record['claim']}. "
                                "Which derivation holds?"),

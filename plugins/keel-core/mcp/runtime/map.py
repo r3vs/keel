@@ -478,6 +478,32 @@ function renderList(){
     <span>${p.kind}</span><span>· ${p.state}</span>
     ${weak?h`<span class="rung weak">${m.label}</span>`:''}</div></div>`;})]);
 }
+// -- the same claim, re-derived by a DIFFERENT provider (`cross_derivations`, spec v0.9) ------
+// Written by `Ledger.cross_derive` and, until this reader existed, read by NOTHING: not this page,
+// not `ledger_summary`, not the projected AGENTS.md. One writer, zero readers — while the writer's
+// own comment said "the derivations are on the pin either way, so the human sees what disagreed".
+// A disagreement is also the one branch that REOPENS the pin (state `needs_input`, substate
+// `contested`), so the reason a settled question was back in the interview was on no surface a
+// human reads, and the fork they were asked to answer said nothing about it.
+//
+// The colour vocabulary is the one this page already has for how hard a claim was checked, not a
+// second one: agreement earns the `cross_derived` rung and reads green like an elicited decision;
+// a disagreement reads amber on a tinted card, like a relay with no quote.
+const AGREE={agree:{label:'agree', cls:''},
+             partial:{label:'partially agree', cls:'weak'},
+             disagree:{label:'disagree', cls:'weak'}};
+function crossCard(x){
+  const k=String(x.agreement);
+  const a=has(AGREE,k)?AGREE[k]:{label:k||'agreement not recorded', cls:'weak'};
+  return h`<div class="card dec ${a.cls}">
+    <div class="ch">cross-derivation — ${a.label}</div>
+    <div class="kv"><b>claim</b><span>${x.claim}</span></div>
+    ${(x.derivations||[]).map(d=>h`<div class="opt"><b>${d.provider}/${d.model}</b>
+      <div class="imp">${d.result}</div></div>`)}
+    ${x.notes?h`<div class="why">${x.notes}</div>`:''}
+    ${a.cls?h`<div class="warn">⚠ two independent providers were asked and did not answer the same
+      thing — what you weigh is WHICH derivation holds, not that a check was run</div>`:''}</div>`;
+}
 function contractCols(p){
   const a=p.as_is||{}; const dis=new Set(a.disagreeing_layers||[]);
   const layers=Object.keys(a).filter(k=>k!=='disagreeing_layers');
@@ -496,6 +522,10 @@ function detail(p){
   if(cols) body.push(cols);
   else if(!isBlank(side)) body.push(sideCard(side,label));
   else body.push(h`<div class="card nul">no ${label} yet</div>`);
+  // Before the question, because it is the evidence the question rests on: `cross_derive` leaves
+  // the human's own fork untouched, so without this card the menu arrives with no account of why
+  // the pin was reopened.
+  if((p.cross_derivations||[]).length) body.push(p.cross_derivations.map(crossCard));
   if(p.question) body.push(h`<div class="card q"><b>Interview question</b><p>${p.question.prompt}</p>
     ${(p.question.options||[]).map(o=>h`<div class="opt"><b>${o.label}</b>${o.implication?h`<div class="imp">→ ${o.implication}</div>`:''}</div>`)}</div>`);
   if((p.anchors||[]).length) body.push(h`<div class="card anchors"><b>Anchors</b>

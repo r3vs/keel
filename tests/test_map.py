@@ -376,6 +376,71 @@ class TestTheSurfacesAgreeAboutOneLedger(unittest.TestCase):
         self.assertEqual(inlined, list(SETTLED_STATES))
 
 
+class TestACrossDerivationHasAReader(unittest.TestCase):
+    """`cross_derivations` had ONE writer — `Ledger.cross_derive` — and zero readers: not this page,
+    not `ledger_summary`, not the projected `AGENTS.md`. The writer's own comment asserted the
+    opposite (*"the derivations are on the pin either way, so the human sees what disagreed"*),
+    which made it a claim with no carrier written in the commit that closed a claim with no carrier.
+
+    It matters most in the branch that comment defends: `cross_derive` stopped rewriting an existing
+    question, rightly, so a disagreement reopened the pin to `needs_input (contested)` with the
+    human's original menu and no account anywhere of why it was back.
+
+    Verified rendered, in a browser, on `.preview/map.html`: the contested pin's card sits above the
+    question, names both providers and both results, and reads amber on `--warnbg` with the ⚠ line,
+    while the agreeing pin's card is green-bordered on the plain card background with no warning at
+    all (`border-left-color` `rgb(240,140,0)` vs `rgb(47,158,68)` — measured off the elements, in
+    light mode). What is asserted below is what CI can hold without a browser."""
+
+    @staticmethod
+    def _fixture() -> dict:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import preview_map
+        return preview_map.build().data
+
+    def test_the_preview_fixture_carries_a_disagreement_and_an_agreement(self):
+        """Without both, the manual pass has nothing to look at and item 18 goes vacuous — the same
+        guard `test_the_map_and_the_projection_weigh_the_same_rules` puts on its fixture."""
+        found = {x["agreement"] for p in self._fixture()["pins"]
+                 for x in (p.get("cross_derivations") or [])}
+        self.assertLessEqual({"agree", "disagree"}, found)
+
+    def test_the_page_knows_no_agreement_the_ledger_refuses(self):
+        """The table is read as keys, like `RUNG`, and each key is EXECUTED against the writer
+        rather than compared to a second copy of its vocabulary kept here — a hand-kept list beside
+        the schema's is the bug one surface over. The reverse direction is not asserted because it
+        does not have to be: an agreement this table does not carry falls through to a DEFINED
+        `weak` case that shows the value and the ⚠, so an unknown value degrades to "weigh this",
+        never to a card that says nothing."""
+        block = re.search(r"const AGREE=\{(.*?)\}\};", mapmod._TEMPLATE, re.S)
+        self.assertIsNotNone(block, "the AGREE table's shape changed — this guard just went vacuous")
+        keys = set(re.findall(r"^\s*(\w+):\{", block.group(1), re.M))
+        self.assertTrue(keys, "no agreement values at all — the reader is gone")
+        derivations = [{"provider": "anthropic", "model": "m", "result": "yes"},
+                       {"provider": "openai", "model": "n", "result": "no"}]
+        for key in sorted(keys):
+            with self.subTest(agreement=key):
+                led = demo_ledger()
+                led.cross_derive(led.data["pins"][0]["id"], claim="c",
+                                 derivations=derivations, agreement=key)
+
+    def test_the_derivations_reach_the_rendered_page(self):
+        led = demo_ledger()
+        led.cross_derive(led.data["pins"][0]["id"],
+                         claim="the scheduler re-delivers on consumer timeout",
+                         derivations=[{"provider": "anthropic", "model": "opus",
+                                       "result": "yes — the ack deadline expires"},
+                                      {"provider": "openai", "model": "gpt-5",
+                                       "result": "no — the row is marked taken first"}],
+                         agreement="disagree")
+        inlined = json.loads(mapmod.render(led.data).split("const LEDGER = ", 1)[1]
+                             .split(";\n", 1)[0].replace("\\u003c", "<"))
+        record = inlined["pins"][0]["cross_derivations"][0]
+        self.assertEqual(record["agreement"], "disagree")
+        self.assertEqual([d["result"] for d in record["derivations"]],
+                         ["yes — the ack deadline expires", "no — the row is marked taken first"])
+
+
 class TestLiveMode(unittest.TestCase):
     """live=True turns the map into a self-reloading dev monitor; live=False (the default) stays the
     frozen single-file artifact. The self-contained invariant must survive live mode."""

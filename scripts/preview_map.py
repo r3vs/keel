@@ -60,6 +60,12 @@ What to check, in both light and dark:
      question `mark_correctness_unknown` wrote, naming what blocked verification.
  17. `pol_0001` (transcribed WITH the quote) carries no weak badge in the list, and `pol_0002` (no
      rung) does — the same two the projected `AGENTS.md` counts. Two surfaces, one number.
+ 18. the CONTESTED pin (`at-least-once`) says, ABOVE its question, that two providers were asked and
+     answered differently, and shows both answers. Its own fork is untouched — `cross_derive` no
+     longer rewrites the menu, and the field it writes instead had one writer and no reader, so a
+     pin that came back to the interview said nowhere why. The `export endpoint` pin, where the two
+     providers agreed, must read as agreement and NOT as a warning: if they look alike, the reader
+     is decoration.
 """
 from __future__ import annotations
 
@@ -369,6 +375,45 @@ def build() -> Ledger:
         unknown["id"],
         attempted=["tests", "smoke_probe"],
         blocked_by="no fixture reproduces the provider's signing key")
+
+    # -- the same claim re-derived by a second provider (`cross_derivations`, spec v0.9) --------
+    # The DISAGREEMENT case, on a pin that already carries the human's own fork — which is exactly
+    # the case v0.16 created and nothing rendered: `cross_derive` stopped overwriting the question
+    # (rightly: the menu is the human's), and the field it writes instead had one writer and zero
+    # readers. So the pin came back to the interview as `needs_input (contested)` with its original
+    # menu and no account anywhere of what disagreed or why it was reopened.
+    led.add_pin(kind="ambiguity", severity="high", confidence="ambiguous", provenance=P,
+                title="Does the scheduler guarantee at-least-once delivery?",
+                as_is={"claim": "the README says exactly-once", "code": "no dedup table exists"},
+                question={"prompt": "Which delivery guarantee does v1 promise?",
+                          "options": [{"id": "at_least_once", "label": "at-least-once + idempotent "
+                                       "consumers"},
+                                      {"id": "exactly_once", "label": "exactly-once, with a dedup "
+                                       "table"}],
+                          "allow_freeform": True})
+    led.cross_derive(
+        led.data["pins"][-1]["id"],
+        claim="the scheduler re-delivers on consumer timeout",
+        derivations=[{"provider": "anthropic", "model": "opus", "result": "yes — the ack deadline "
+                      "expires and the row is re-queued, so duplicates are possible"},
+                     {"provider": "openai", "model": "gpt-5", "result": "no — the row is marked "
+                      "taken before the handler runs, so a timeout loses the message"}],
+        agreement="disagree",
+        notes="the two readings differ on WHEN the row is marked, which is the whole question")
+
+    # ...and the AGREEMENT case, so the two must read differently at a glance: agreement is what
+    # earns the `cross_derived` rung, and it is not a warning.
+    led.add_pin(kind="ambiguity", severity="low", confidence="ambiguous", provenance=P,
+                title="Is the export endpoint paginated?",
+                as_is={"claim": "the docs show a cursor", "code": "the handler returns all rows"})
+    led.cross_derive(
+        led.data["pins"][-1]["id"],
+        claim="the export endpoint returns every row in one response",
+        derivations=[{"provider": "anthropic", "model": "opus", "result": "yes — no LIMIT is "
+                      "applied anywhere on that path"},
+                     {"provider": "openai", "model": "gpt-5", "result": "yes — the cursor "
+                      "parameter is parsed and then never used"}],
+        agreement="agree")
 
     led.data["version"] = "0.9"
     return led

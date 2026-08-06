@@ -1,37 +1,66 @@
-# Open gaps — a plan any session can pick up
+# Open gaps — the standing record of what this package knows is wrong with itself
 
-> **STATUS 2026-08-06: the original four are closed; four are OPEN** — §5 (both reopen arcs are
-> reachable by no host), §6 (the map's amber fails contrast in light mode, which is where the weak
-> rung is made visible), §7 (`resolution_mode` reaches no reader) and §8 (the `verification`
-> envelope reaches no reader either — its `blocked_by` had been borrowing the surface of the
-> question it overwrote). §6 and §7 were found by opening the page in a browser, which is the only
-> way either could have been. The file stays
-> because its value is the record — what was wrong, where the answer now lives, and which sub-claims
-> were deliberately left `UNVERIFIED` rather than rounded up. Each section keeps its original text
-> and carries a closing note at the top.
+This file started as four things left open after v0.5.0 (`22809f0`). It is no longer that. It is the
+**standing register**: every defect this repo has found in itself and has not closed, kept in one
+place, in one shape, so that a cold session can pick any of them up without re-deriving the evidence
+— and so that nothing gets closed twice or forgotten once.
+
+Every section, open or closed, is stated the same way: **what was verified**, **why it matters**,
+**what done looks like**, **how to prove it**, and the **traps** — because in this repo a change is
+not finished when the tests pass, it is finished when the behaviour was observed. Closed sections
+keep their original text under a closing note; they are kept, not deleted, because *why it was
+wrong* is the part that stops it coming back.
+
+> **STATUS 2026-08-06.** §1–§4 are **closed**. **§5–§16 are open.**
+>
+> | # | Open gap | One line |
+> |---|---|---|
+> | 5 | reopen arcs unreachable | `reopen` and `challenge` have no MCP tool, so no host can un-close a pin |
+> | 6 | map palette contrast | `--high` is 2.48:1 in light mode, on the badge that carries the warning |
+> | 7 | `resolution_mode` has no reader on the map | the field that says whether silence counts as an answer |
+> | 8 | the `verification` envelope has no reader | `blocked_by` / `attempted` are written, gated on, rendered nowhere |
+> | 9 | a policy scope on a null-valued optional field is a universal selector | v0.16 closed the typo case, not the class |
+> | 10 | no door gives an existing pin a question | a pin created without one is `detected` for ever |
+> | 11 | the `correctness_unknown` fork offers an outcome it cannot produce | offered exactly where it is refused |
+> | 12 | `resolution_mode: "asked"` is permanent | one unrelated policy puts a pin beyond every later one |
+> | 13 | `ensure_ascii=False` emits raw U+2028/U+2029 | a stated escape discipline with a hole in it |
+> | 14 | five more pin fields, and four of five log kinds, reach the map nowhere | the class §8 is one instance of |
+> | 15 | two gates check less than their names claim | an AST gate that only sees constants; a name-match gate |
+> | 16 | an unknown `settles_as` renders as a bare label | its sibling `rung` gets a warning for the same condition |
+>
+> §6 and §7 were found by opening the page in a browser, which is the only way either could have
+> been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
+> rather than fixed, under the rule that governed that round: **a round that only removes defects
+> cannot introduce a new surface's holes**, and most of these need a new door, a new reader or a
+> widened gate.
 >
 > | Gap | Closed by | The answer now lives in |
 > |---|---|---|
 > | 1. `evidence` stored and shown nowhere | `294535a` | `src/runtime/map.py`, `ledger.summary()`, `instructions.py::_evidence_note` |
 > | 2. tools named by no phase | `eb9c24c` | both `phase-2-interview.md`, both `modules.json`, gate `scripts/check_tool_carriers.py` |
-> | 3. elicitation had never met a real host | this commit | `docs/packaging.md` → *Elicitation — does the host ask the human, or does the agent relay?* |
+> | 3. elicitation had never met a real host | `3a0be05` | `docs/packaging.md` → *Elicitation — does the host ask the human, or does the agent relay?* |
 > | 4. 21 tree-sitter skips | `92d2e17` | `tests/test_treesitter.py::TestASkipIsAClaimAboutOneInterpreter` |
 >
-> Two residuals are recorded rather than fixed, and both are named in `docs/packaging.md`: a Claude
-> Code hook can answer an elicitation *for* the human, so `elicited` means "the agent did not hold
-> the value", not "a human was looked in the eye"; and headless `codex exec` declares the capability
-> then auto-cancels, so `ledger_record_decision` errors there instead of falling back to the
-> transcribed rung. Neither is a bug in what is written down — they are the limits of what the strong
-> rung buys, which is the sort of thing this file exists to keep honest.
+> Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
+> a Claude Code hook can answer an elicitation *for* the human, so `elicited` means "the agent did
+> not hold the value", not "a human was looked in the eye"; and headless `codex exec` declares the
+> capability then auto-cancels, so `ledger_record_decision` errors there instead of falling back to
+> the transcribed rung. Neither is a bug in what is written down — they are the limits of what the
+> strong rung buys, which is the sort of thing this file exists to keep honest.
+>
+> **The pattern the register makes visible, stated once so each section does not have to.** Nine of
+> the twelve open gaps are one shape: *a field, a state or an arc that something WRITES and nothing
+> READS.* §5, §7, §8, §10, §14 and half of §11 are all that. It is the repo's signature class
+> (`MEMORY.md` → *"the claiming-vs-doing failure"*) at the surface layer rather than the path layer,
+> and the reason it keeps recurring is structural: adding a writer is a change inside one module, and
+> giving it a reader is a change on somebody else's surface. So the question to ask of any new field
+> is not "is it stored" but **"name the surface a human reads it on, and open that surface."**
 
-Four things left open after v0.5.0 (`22809f0`). Each is stated as: **what was verified**, **why it
-matters**, **what done looks like**, and **how to prove it** — because in this repo a change is not
-finished when the tests pass, it is finished when the behaviour was observed.
-
-Two of these (1 and 2) were introduced *by the same session that closed four older bugs of the
-identical class*. That is the point of writing them down rather than remembering them: this failure
-mode is not rare here and it is not careless — it is what happens when you add state and stop at
-the layer that stores it.
+Two of the original four (§1 and §2) were introduced *by the same session that closed four older bugs
+of the identical class*, and the same thing has happened in every round since — §5 and §8 were opened
+by the round that closed §1–§4's successors, §9–§16 by the round after that. That is the point of
+writing them down rather than remembering them: this failure mode is not rare here and it is not
+careless — it is what happens when you add state and stop at the layer that stores it.
 
 **Before starting anything below:** read `CLAUDE.md`, then the playbook for whatever you touch.
 Work on a branch, one scope per commit, and **run every gate — the list is the Commands block in
@@ -41,12 +70,18 @@ gates itself, and the copy was already short by two — `check_tool_carriers.py`
 session what "every gate" means. `src/` is authored, `plugins/` is generated — never edit under
 `plugins/`, run `python scripts/build.py`.
 
-Suggested order: **1 → 2 → 4 → 3**. 1 and 2 are small and self-contained. 4 unblocks trusting the
-local suite while doing 3. 3 is research-shaped and may end in "no host supports it", which is a
-finding, not a failure.
+The original suggested order was **1 → 2 → 4 → 3**, and it was followed; 3 landed in between the two
+outcomes it anticipated — two hosts yes, two no. §1–§4 below are that report, kept verbatim under
+their closing notes. §5 onwards were opened later and each says where it came from.
 
-> That order was followed, and 3 landed in between the two outcomes it anticipated — two hosts yes,
-> two no. Everything from here down is the original report, kept verbatim under its closing note.
+**Suggested order for what is open.** §5 first: it is a missing door, three shipped claims rest on
+it, and two other sections (§8's "reopen it first", §12's stuck `asked`) currently point at an arc
+nobody can reach. Then §9 and §12, which are rules that mis-fire rather than surfaces that are
+missing — they can decide a user's pins wrongly today. Then the reader cluster §7, §8, §14, which is
+one afternoon on one file and should be done as **one** change to the map rather than four, because
+four separate additions to one surface is how a page acquires four vocabularies. §15 and §16 are
+small. §6 is one palette decision that has to be looked at in both themes on purpose. §10, §11 and
+§13 are the least urgent and say so in their own sections.
 
 ---
 
@@ -612,6 +647,20 @@ that scope: the fix was a deletion, and this is a missing reader. Recorded rathe
 because bundling a reader into a deletion round is how the last six rounds each ended with one more
 surface than they started with.
 
+> **Its twin was closed 2026-08-06, and the shape of that fix is the template for this one.**
+> `cross_derivations` — written by the same round, by the door one method over, and argued for in a
+> comment that said *"the human sees what disagreed"* — had one writer and zero readers in exactly
+> the same way. `src/runtime/map.py` now renders it as a card immediately above the pin's question,
+> in the colour vocabulary the page already has for how hard a claim was checked (agreement green
+> like an elicited decision, disagreement amber on `--warnbg` like an unquoted relay), and the spec
+> section was corrected where it still claimed both derivations become the pin's options. Verified in
+> a browser on `.preview/map.html`, fixture item 18. **When this gap is closed, reuse that card's
+> vocabulary rather than inventing a second one** — that is the trap this section already names, and
+> the twin is now the worked example of obeying it.
+>
+> One thing that fix deliberately did **not** do, and this one should not either: it added no gate.
+> `scripts/check_schema_fields.py` passed both fields the whole time — see §15.
+
 ### Verified
 
 `verification` — `determinism`, `rung`, `attempted`, `blocked_by` — is written by `resolve`,
@@ -658,6 +707,466 @@ there.
 - Do not add a field. `blocked_by` is already stored, already required, and already refused when
   blank — what is missing is a reader, and the last six rounds are a record of what happens when a
   missing reader is answered with a new writer.
+
+---
+
+## 9. A policy scope naming a null-valued optional field is still a universal selector — **OPEN, found 2026-08-06**
+
+v0.16 closed the **typo** case (`applies_to={"nope": null}` matched every pin, because
+`pin.get("nope") == None` is true of all of them) by requiring every scope key to be a member of
+`ledger.PIN_FIELDS`. That closed one instance. The class is wider: most `Pin` fields are **optional**,
+so a scope naming a real one with a `null` value still selects every pin that does not carry it.
+
+### Verified
+
+Three `design_concern` pins, one of them given a `cluster_id`, and one preview:
+
+```
+policy_preview(applies_to={"cluster_id": None}, default_outcome="keep")
+  -> would_decide: ["pin_0002", "pin_0003"]        # every pin WITHOUT a cluster_id
+```
+
+`cluster_id` is in `PIN_FIELDS`, so the v0.16 check passes it. The matcher is
+`all(pin.get(k) == v for k, v in applies_to.items())` (`ledger.py`, `policy_preview`), and `None` is
+what `.get` returns for an absent key — so "scope this rule to the pins in no cluster" and "scope
+this rule to everything" are the same expression.
+
+### Why it matters
+
+The radius is what a human is shown before electing a standing rule, and a policy cascades an
+outcome onto every pin in it. The v0.16 note in `ledger.py` states the danger in its own words —
+*"a universal selector wearing a filter's clothes, and the preview a human elects a policy from
+showed the whole ledger as its radius"*. That sentence is still true of this case; only the spelling
+of the key changed.
+
+Not urgent in the way §12 is: the human sees the radius in `policy_preview` before electing, so this
+is a foot-gun rather than a silent write. It matters because the preview is exactly what makes the
+election legitimate, and a scope that reads as narrow while selecting broadly is the one input to
+that preview a reader cannot check by looking at it.
+
+### Done looks like
+
+- A scope key with a `null` value is either **refused** at `add_policy`/`policy_preview` — with a
+  message that says how to express "the pins with no cluster" if that is genuinely wanted — or it is
+  accepted and the preview **says so in words**: *"this scope matches every pin that does not carry
+  `cluster_id` — N of M."*
+- Whichever is chosen, one implementation, in the module that owns the matcher. Both surfaces that
+  show a radius (`policy_preview` and `apply_policy`, which returns the same shape by construction)
+  must agree, and by construction they will if the rule lives in the matcher.
+
+### Prove it
+
+Build a ledger where most pins lack the field, elect a policy scoped to it with `null`, and read the
+radius as a human would: it must not be possible to believe the rule is narrow. Then do the same for
+a scope where `null` is the intended meaning, and check the message is not a wall.
+
+### Traps
+
+- Do not "fix" it by adding a sentinel for "absent" (`"__missing__"`, `{"$exists": false}`). That is
+  a query language arriving one operator at a time, and the scope is deliberately a flat equality
+  match so that a human can read it.
+- Do not widen `PIN_FIELDS` into an allowlist of *required* fields. Optionality is correct; the
+  problem is that equality against `None` conflates two questions.
+
+---
+
+## 10. Nothing can give an existing pin a question — **OPEN, found 2026-08-06**
+
+### Verified
+
+`question` is settable only at creation (`ledger_add_pin(question=…)`). No MCP tool assigns
+`pin["question"]` afterwards — `grep 'pin\["question"\]' src/mcp/tools.py` is empty — and inside the
+runtime there are exactly three writers, all of them side effects of something else
+(`surface_assumption` creating a pin, `mark_correctness_unknown` and `cross_derive`, both of which
+now write only where the pin has none). Reproduced:
+
+```
+add_pin(kind="ambiguity", severity="high", …)   with no question
+  -> state "detected", question None
+  -> interview_view(): []
+```
+
+So a finding recorded without a fork is `detected` for ever and reaches the interview on no host.
+The only way out is to hand-edit `ledger.json`, which every playbook forbids, or to add a second pin
+and abandon the first.
+
+### Why it matters
+
+`ledger_add_pin` is the tool every Phase-1 finding goes through, and its `question` argument is
+optional — reasonably, since a finder is not always the person who knows what the fork is. The whole
+funnel then runs on `question`: `interview_view` selects on it, `interview.funnel` builds its entries
+from `question.prompt`, and `record_decision` refuses an outcome the question does not offer. A pin
+with no question is therefore invisible to the machinery whose entire job is to put it to a human.
+
+It is the same shape as §5 one level down: a state the runtime can produce and the product cannot
+leave.
+
+### Done looks like
+
+- A door that gives an existing pin its fork. It is **not** an election — posing a question decides
+  nothing — so it needs no quote and no offered option, which is what makes it safe to expose.
+- It must refuse to **replace** an existing question. That is the invariant v0.16 spent two fixes
+  building (`question.options[].id` is what the offered-options rule anchors on at both doors), and a
+  general-purpose question setter is exactly the way to dismantle it from the side. Write-if-absent,
+  the same rule `mark_correctness_unknown` and `cross_derive` were both corrected to.
+- Alternatively, and cheaper: make `question` **required** on the kinds that must reach the
+  interview. That trades a door for a stricter write, and it is a legitimate answer — but decide it,
+  do not leave both open.
+
+### Prove it
+
+Over real `uv run --script` stdio: `ledger_add_pin` with no question, then `interview_next`. The pin
+must appear. If it does not, name the tool call that makes it appear; if there is none, the
+capability does not exist on any host, whatever the runtime can do.
+
+### Traps
+
+- Do not let the new door take an `outcome`, a `default`, or anything that reads as an answer.
+- Do not solve it by having the agent compose the fork silently. The menu is what the human is
+  allowed to choose from; an agent authoring one without saying so is `provenance:
+  agent_assumption` territory (`src/core/assumptions.md`), and it should be recorded as such.
+
+---
+
+## 11. The `correctness_unknown` fork offers an outcome it cannot produce — **OPEN, found 2026-08-06**
+
+### Verified
+
+`mark_correctness_unknown` writes a five-option fork whose last option is
+
+```json
+{"id": "accept", "label": "Accept the risk, unknown named",
+ "implication": "state becomes accepted, with the unverified remainder recorded"}
+```
+
+The implication is false wherever the option is offered, and the two halves of that were measured
+separately:
+
+- **On a `defect`** — the kind that reaches `correctness_unknown` without a decision, and therefore
+  the kind that most often carries this generated fork — `settlement_verdict(pin, "accept")` returns
+  **`wrong_kind`**: leaving-as-is is the resolution of a `design_concern` and of nothing else.
+  Measured on a defect that had just been marked: its options are exactly
+  `['retry','add_check','takeover','narrow','accept']`, and `accept` is refused.
+- **On a `design_concern`**, `accept` *is* allowed (`would_settle`, measured). But a non-defect
+  reaches `correctness_unknown` only from `decided`, and a pin that was decided already carried the
+  human's fork — which v0.16 stopped overwriting. Measured: its options are `['keep']`. So the
+  generated menu was never written on the pin where its promise holds.
+
+Both directions verified in one run. The option is offered **exactly on the pins where its stated
+outcome is refused**, and absent from the pins where it would work.
+
+### Why it matters
+
+Low severity and easy to under-rate, which is why it is written down. The offered-options rule is the
+package's strongest single invariant: an agent may record only an outcome the pin's own question
+offered. That makes the option list a **promise about what can happen**, not a list of suggestions —
+and an option whose implication the machinery refuses turns the promise into decoration on the one
+pin kind where the reader is already told "we could not establish this is right".
+
+### Done looks like
+
+- Either the option's implication says what actually happens (choosing it records a decision; the
+  pin becomes `decided`, and `accept`'s kind rule still governs whether it can then be closed), or
+  the option is dropped from the generated fork for kinds that cannot take it.
+- Prefer correcting the wording: the option itself is a reasonable thing for a human to want.
+- Whichever, the sentence must be true of the pin it is printed on — `settlement_verdict` is the
+  authority and it is one call away.
+
+### Prove it
+
+Mark a defect `correctness_unknown` over real stdio, record the `accept` outcome, and read the pin's
+state. Then do the same on a `design_concern` that had no prior fork. The implication printed must
+match both.
+
+### Traps
+
+- Do not loosen `accept`'s kind rule to make the sentence true. That rule is load-bearing and was
+  moved into `settlement_verdict` precisely so it could stop being re-litigated at the door.
+- Do not delete the whole generated fork. It is what makes the state actionable at all, and the
+  write-if-absent guard already keeps it away from the human's own menu.
+
+---
+
+## 12. `resolution_mode: "asked"` is permanent, and any policy can set it — **OPEN, found 2026-08-06**
+
+### Verified
+
+`apply_policy` marks every pin it did **not** decide:
+
+```python
+for pin_id in radius["held_back"] + radius["must_be_asked"] + radius["not_offered"]:
+    self.pin(pin_id)["resolution_mode"] = "asked"
+```
+
+`not_offered` is in that list — i.e. a pin is marked "must be asked" because *some other rule's*
+outcome was not on its menu. Nothing clears it: seven writers of `resolution_mode` in `ledger.py`,
+six of which write `"asked"`, and `assign_resolution_modes` only fills the field where it is
+**absent**. Reproduced end to end:
+
+```
+medium open_decision, options {a, b}
+apply_policy(rule with default_outcome "zzz")   -> not_offered -> resolution_mode "asked"
+apply_policy(rule with default_outcome "a")     -> must_be_asked      # refused for ever
+```
+
+The second policy is the *correct* one for that pin, its outcome is on the menu, and the pin's
+severity (`medium`) is below the never-silent threshold. It is still refused, because an unrelated
+rule touched it once.
+
+### Why it matters
+
+`must_be_asked` is a real and good invariant — v0.16 added it because two writers of `"asked"` were
+carrying the assertion *"a reopened truth is never re-defaulted silently"* as a comment while a
+cascade re-defaulted them anyway. The problem is that the mark is now applied for a **fourth**
+reason that carries no such assertion. `not_offered` says "this rule does not fit this pin", which
+is a fact about the rule; recording it on the pin makes it a permanent property of the pin.
+
+The compounding cost is the funnel's whole reason for existing: the medium/low long tail is what
+`proposed_default` compresses. A ledger where an early, badly-scoped policy touched many pins is a
+ledger where the compression quietly stopped working, and nothing reports it — see §7, which is why
+nobody would notice.
+
+### Done looks like
+
+- Separate "this pin demands to be asked" (reopened, contested, surfaced assumption, above the
+  threshold — all standing properties) from "the last policy did not fit" (a fact about that policy).
+  The cheapest correct version is to stop writing `"asked"` on the `not_offered` branch: the pin is
+  already un-decided and already open, so the mark adds nothing except permanence.
+- If a clearing path is wanted instead, it belongs where the reason ends — but note the trap below.
+
+### Prove it
+
+The reproduction above, over real stdio: elect a policy whose outcome one pin does not offer, then
+elect the policy that fits it. The second must decide it (or must refuse it for a reason that is
+about *that* pin).
+
+### Traps
+
+- Do not add a tool that clears `resolution_mode`. A door that unsets "this must be asked" is a door
+  that can silence the threshold rule, and it would be reachable by an agent. Fix the writer.
+- Do not merge this with §7. §7 is that the field reaches no reader; this is that the field is
+  written wrongly. Fixing either alone leaves the other, and fixing §7 first would at least make
+  this one visible.
+
+---
+
+## 13. The map inlines raw U+2028 / U+2029 into its own script — **OPEN, found 2026-08-06**
+
+### Verified
+
+`map._inline` is `json.dumps(value, ensure_ascii=False).replace("<", "\\u003c")`. The `<` escape is
+deliberate and documented at length; U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) are
+not escaped, and they are **statement terminators in pre-ES2019 JavaScript** while being legal
+inside a JSON string — the classic JSON-is-not-a-JS-subset hole.
+
+Measured, both halves:
+
+- A pin titled `"line <U+2028> sep <U+2029> para"` renders with **both characters raw** in the page.
+- The resulting page was **opened in Chromium**: `LEDGER` is defined, the title round-trips
+  intact, the list renders, and the console is empty. So on a current engine — the ES2019
+  JSON-superset proposal made both characters legal in string literals — there is no failure.
+
+Recorded at that strength deliberately: this is a **stated discipline with a hole in it**, not an
+observed breakage. The file's own docstring says the escape *"is not a longer list of dangerous
+sequences — it is the character all of them need"*, and that sentence is true of `<` and not of
+these two.
+
+### Why it matters
+
+The map is handed to people and opened in whatever they have. The consequence is bounded and the
+likelihood is low, and both are stated here so nobody re-derives them at higher cost later. What
+makes it worth writing down at all is the reasoning, not the risk: the module argues that one
+character covers the class, and the class has two more members that the argument does not reach.
+
+### Done looks like
+
+- Two more `.replace()` calls, or a note in `_inline`'s docstring saying these two are knowingly left
+  raw and why. Either is fine. An unstated omission is not.
+- If they are escaped, the round-trip assertion that already exists for `<`
+  (`test_the_data_survives_the_escape_intact`) covers them for free — an escaped U+2028 in a JSON string is
+  the same character.
+
+### Prove it
+
+Render a pin whose title carries both characters and `json.loads` the inlined literal back: the
+value must be unchanged. Then open the page — that is the half that says whether it ever mattered.
+
+### Traps
+
+- Do not turn `ensure_ascii=False` on its head and escape everything. The ledger is full of
+  non-ASCII prose (the preview fixture is largely Italian) and `ensure_ascii=True` would triple the
+  page for no reader.
+
+---
+
+## 14. Five more pin fields, and four of five log kinds, reach the map nowhere — **OPEN, found 2026-08-06**
+
+§8 is one instance; this is the rest of the class, listed so a fix can be scoped once instead of
+five times.
+
+### Verified
+
+Against `map._TEMPLATE`, by reference (`p.<field>`), not by word search:
+
+```
+p.cross_derivations   True    (closed 2026-08-06 — see §8's note)
+p.verification        False   (§8)
+p.brainstorm          False
+p.remediation         False
+p.premortem           False
+p.readiness           False
+p.resolution_mode     False   (§7)
+p.evidence            False
+```
+
+And on the log: the page reads only entries whose id starts with `ev_`. The four other event kinds
+the runtime appends — `stl_` (SettlementEvent), `xdr_` (cross-derivation), `rev_` (reopen), `chl_`
+(challenge), `flr_` (failure) — appear in the template nowhere. The whole ledger is inlined, so every
+one of them is *in* the page and none of them is *on* it.
+
+### Why it matters
+
+The map is the surface this repo names whenever it asks "where does a human see this" — §1's fix,
+§8's, and the twin closed alongside it all landed there. A field the map does not render is a field
+whose only reader is `ledger.json`, and the register's opening note is that this is the shape nine of
+twelve open gaps share.
+
+Two of these are load-bearing beyond decoration. `remediation` is what `resolve` gates on — a reader
+looking at a pin cannot see why it will not close. And the missing `stl_` / `rev_` entries mean the
+page can show that a pin is settled but never **how it stopped being open, or that it was ever
+un-closed**, which is the exact question v0.16's `SETTLEMENT_DOORS` table was built to answer.
+
+### Done looks like
+
+- One change to the map, not five. Decide the page's information architecture once — the detail pane
+  is already a stack of cards and adding five more independently is how a surface acquires five
+  vocabularies.
+- A timeline for the log is the obvious shape and is worth resisting until §5 is closed: three of the
+  four event kinds cannot be produced on any host today, so a timeline built now would be verified
+  against fixtures only.
+- `premortem` and `readiness` may honestly not belong on this page. Say so in the module docstring if
+  that is the conclusion — this file's standard since §1 is that an omission with a reason is fine.
+
+### Prove it
+
+Extend `scripts/preview_map.py` with one pin carrying each, render, and read the page without opening
+the JSON. Anything you cannot answer from the page is still on this list.
+
+### Traps
+
+- Do not add a generic "raw pin" dump. `sideCard` already offers `raw` for `as_is`/`to_be`, and the
+  reason the rest is projected rather than dumped is that a projection is a claim about what matters.
+- Do not add a schema gate for this (see §15). The gate that would catch it is the one that already
+  says it cannot.
+
+---
+
+## 15. Two gates check less than their names claim — **OPEN, found 2026-08-06**
+
+The instances differ; the class is one, and it is the worst kind of finding in this repo, because a
+gate that has been asked and answered stops anyone asking again. §2's closing note records a third
+instance (`test_every_served_tool_is_documented_and_nothing_else_is` filtered its own input, so the
+"nothing else is" half could not fire, and a planted row passed green twice).
+
+### Verified
+
+**`tests/test_ledger.py::TestOneWriterForTheSettledStates::test_only_settle_writes_a_settled_state`.**
+The class docstring says *"no function may assign a settled state to a pin except `_settle`"*. The
+walk collects `ast.Assign` nodes whose target is `pin["state"]` and then requires
+
+```python
+if (isinstance(node.value, ast.Constant) and node.value.value in governed):
+```
+
+so only a **literal** counts. `pin["state"] = target_state`, `pin["state"] = _STATE_BY_DOOR[door]`,
+or any computed value assigns a settled state and is invisible to the gate. Note the same walk is
+the model `TestEveryPathToDecideIsGated` follows, so whatever is decided here should be checked
+there too.
+
+**`scripts/check_schema_fields.py`.** It concatenates every shipped file into one string and asks
+`re.search(rf"\b{name}\b", corpus)`. Its docstring already declares one limit honestly (it cannot
+tell a pin's `depends_on` from an item's). The limit it does **not** declare is the one that
+matters here: **the writer is in the corpus.** `cross_derivations` and `verification` are named in
+`ledger.py` by the methods that write them, so both passed this gate for their entire lives as
+write-only fields — the gate whose first line is *"Every field the ledger spec declares must be read
+by something that ships."*
+
+### Why it matters
+
+`check_schema_fields.py` is the gate that exists **for** the class that nine of the twelve open gaps
+belong to, and it cannot see any of them. That is worth more than the sum of the gaps: as long as it
+is green, the register above looks like bad luck rather than an unguarded class.
+
+### Done looks like
+
+- The AST gate: match on the assigned **value's reachable constants** rather than requiring the node
+  to be one, or invert it — assert the set of functions that assign `pin["state"]` at all, which is
+  small, stable and does not depend on how the value is spelled.
+- `check_schema_fields.py`: distinguish a reader from a writer. The cheapest honest version is to
+  exclude assignment sites (`pin["x"] = `, `record["x"] = `, `"x":` inside a dict literal being
+  built) from the corpus for that field, and to keep declaring whatever it still cannot do — the
+  file's existing "honest limit" paragraph is the right precedent and should grow, not shrink.
+- If neither is affordable, **weaken the docstrings to what the code checks.** A gate that overstates
+  itself is worse than no gate; this is the one change that is never wrong.
+
+### Prove it
+
+Plant the failure and watch it fail — the method that caught §2's third instance. For the AST gate,
+add `pin["state"] = _STATE_BY_DOOR[door]` to a method that is not `_settle` and run the test. For the
+schema gate, add a field to the spec whose only mention is a write in `ledger.py` and run it.
+
+### Traps
+
+- Do not delete either gate. Both catch real things; they just claim more than they catch.
+- Do not answer the schema gate by requiring every field to be named in a playbook. The two-audience
+  rule in its docstring (code **or** doctrine) is correct and was arrived at by it failing on two
+  correct fields.
+
+---
+
+## 16. An unknown `settles_as` renders as a bare label, while an unknown `rung` gets a warning — **OPEN, found 2026-08-06**
+
+### Verified
+
+The map's decision card carries two closed tables read off the same event. They disagree about what
+to do with a value they do not know:
+
+```js
+const SETTLES={decided:'decided', accepted:'accepted (left as it is)', deferred:'deferred (not now)'};
+… has(SETTLES,settles)?SETTLES[settles]:settles          // bare label, no note
+```
+
+versus `rungInfo`, which for an unrecognised rung returns `cls:'weak'` plus *"this map does not know
+the rung `x` — it was most likely added to the schema after this page was generated"*. That wording
+and that third state were added deliberately (§ the `oracle` fixture pin, preview checklist item 14),
+for a condition that is identical here: a schema that grew after the artifact was written.
+
+### Why it matters
+
+Small, and it is here because it is the *residue of a fix*. The rung case was thought through
+carefully — three states, not two, because "a rung this page does not know" and "no rung recorded"
+cannot both be true of one card. The settlement case, added in the same version, took the older
+two-state shape. One page, one condition, two behaviours, and the newer of the two is the
+under-considered one.
+
+### Done looks like
+
+- An unknown `settles_as` says it is unknown, in the vocabulary the rung case already uses. Reuse
+  `rungInfo`'s wording pattern rather than writing a second sentence for the same idea.
+- `tests/test_map.py::TestARungTheTableDoesNotKnow` reads the `RUNG` table's keys and holds them
+  against `DECISION_EVIDENCE`. There is no equivalent for `SETTLES`; `ledger._ELECTION_STATES` is the
+  tuple it should be held against, and it is the same three values.
+
+### Prove it
+
+Add a fixture pin whose `DecisionEvent` carries a `settles_as` this page does not know (the `oracle`
+pin is the worked example one field over), render, and read the card: it must say the value is one
+this map cannot describe, not print it as though it were understood.
+
+### Traps
+
+- Do not merge `SETTLES` into `RUNG`. They answer different questions off the same event; the
+  vocabulary for *not knowing* is what should be shared, not the tables.
 
 ---
 
