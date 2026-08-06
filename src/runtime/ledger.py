@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.23"
+SCHEMA_VERSION = "0.24"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -124,7 +124,7 @@ SCHEMA_VERSION = "0.23"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23", "0.24")
 
 KINDS = {
     "contract_mismatch",
@@ -184,6 +184,19 @@ DECISION_EVIDENCE = ("elicited", "transcribed", "brief", "cascaded")
 # silently tolerated.
 POLICY_EVIDENCE = ("elicited", "transcribed", "brief")
 
+# The rungs whose entire claim is that an AGENT carried a human's words, and which therefore owe the
+# words (v0.24). Named here so that "an agent-relayed election must quote the human" has one carrier
+# instead of four sites that agree today: `mcp/tools.py` spelled the rule out at `record_decision`
+# twice, at `record_policy`, and at `ledger_defer`, in four sentences nothing held together, and
+# `mcp/tools.py::_require_quote` is the one door all four now pass through.
+#
+# The rule is enforced at the MCP boundary rather than in `decide`, and that placement is
+# deliberate and unchanged (see `decide`): the boundary is the only place an AGENT makes the claim,
+# and taxing this library's own callers for a risk none of them carry would be a second contract.
+# What lives here is the membership question — WHICH rung owes a quote — because that is a fact
+# about the schema, and the tuple is what a fourth rung would have to join to acquire the rule.
+QUOTED_RUNGS = ("transcribed",)
+
 # Why a standing rule is one a reader must WEIGH before trusting what cascaded out of it. `""` when
 # it is not one of these. Three codes rather than a boolean, for the reason every count in this file
 # is kept apart: they fail differently, and "1 weak" says which sentence to write nowhere.
@@ -223,6 +236,49 @@ CLOSED_STATES = ("resolved", "accepted", "deferred")
 # a state added to the schema with "leave it alone" semantics must arrive at the surfaces that sort
 # and title by it, and a name written into one of them does not travel.
 LEAVE_AS_IS_STATES = ("accepted", "deferred")
+
+# **How the rule "finished work is refused" reaches every per-pin write door (v0.24).** One entry
+# per door, four dispositions, and the table is what a new door has to join before the suite passes
+# — `tests/test_ledger.py::TestFinishedWorkIsRefusedAtEveryDoorThatWritesToAPin` derives the roster
+# from the MCP tools that take a `pin_id` and save, so a door added after this line cannot be
+# missing from it and cannot be silent about which of the four it is.
+#
+# It exists because the rule was PROSE at the two doors this branch added it to and absent
+# everywhere else. Reproduced over stdio on one `resolved` defect: `ledger_set_question` and
+# `ledger_add_proposals` refused it in near-identical sentences, and `ledger_add_remediation`,
+# `ledger_set_remediation_status`, `ledger_premortem` and `ledger_set_readiness` all wrote to it
+# happily — a second remediation item on closed work, a premortem of a plan that already finished,
+# a landing-zone verdict that can add `depends_on` edges to a pin nobody will build.
+#
+#   * `refuse` — writing here un-finishes the work, so the door says so and names the arc that does
+#     it properly. `CLOSED_STATES` and not `SETTLED_STATES`, which is the line `set_question` drew
+#     first: a `decided` pin is re-electable by the human, and everything downstream of an election
+#     is still legitimately being planned.
+#   * `settlement` — the door already asks `settlement_verdict`, which answers `already_closed`
+#     before any branch speaks. A second refusal here would be a second contract for one rule.
+#   * `arc` — the way BACK. Refusing finished work at these would be refusing the only move that
+#     un-finishes it, which is the wall this package keeps writing gates against.
+#   * `records_only` — an observation ABOUT the pin that changes no state a builder reads.
+#     `label_failure` is the honest case and the reason this is a table rather than a blanket: a
+#     failure in production is exactly what you label on a `resolved` pin, and then you `reopen`.
+CLOSED_WORK_DISPOSITIONS = ("refuse", "settlement", "arc", "records_only")
+PIN_WRITE_DOORS = {
+    "set_question": "refuse",
+    "add_proposals": "refuse",
+    "add_remediation": "refuse",
+    "set_remediation_status": "refuse",
+    "set_readiness": "refuse",
+    "premortem": "refuse",
+    "decide": "settlement",
+    "accept": "settlement",
+    "defer": "settlement",
+    "resolve": "settlement",
+    "mark_correctness_unknown": "settlement",
+    "reopen": "arc",
+    "challenge": "arc",
+    "cross_derive": "arc",
+    "label_failure": "records_only",
+}
 
 # Pins awaiting something. The complement of `SETTLED_STATES`, named rather than derived because
 # `correctness_unknown` belongs here on purpose: it blocks closure and joins the interview view.
@@ -285,12 +341,49 @@ SETTLEMENT_BUCKETS = (
 # three — no predicate, no shared writer, and (the part nobody could see from inside this module) no
 # MCP tool on any host. So `_SETTLEMENT_REASONS` shipped a refusal reading *"Reopen it first"* about
 # an arc nothing could reach, and the settlement table was a one-way door.
-REOPEN_ARCS = ("reopen", "challenge")
+# **Three, and the third arrived by being found rather than by being counted (v0.24).**
+# `cross_derive(agreement="disagree")` writes `"reopened": true` on its own event and moved the pin
+# into the open set with its own three lines of state — so it was an arc in everything but
+# membership, and membership is what the tolls are charged on. It paid none of them: v0.22's carrier
+# invalidation, v0.20's `cas_` record, and the closed-state question all live at `_reopen_minimal`,
+# which it never called. Reproduced over real stdio: `add_pin(defect) -> add_remediation -> done ->
+# cross_derive(agree)` (the envelope reaches the `cross_derived` rung) `-> cross_derive(disagree)`
+# took the pin back into the open set still carrying that rung, and `ledger_resolve` then closed it
+# with `evidence="no new observation of any kind"`.
+#
+# The lesson is the one this branch keeps re-learning in new clothes: **a rule fixed for the members
+# of a set is unfixed for whatever satisfies the set's definition without being in it.** So the arcs
+# are what they do, and the two axes on which the three differ are declared below rather than
+# expressed as a second code path.
+REOPEN_ARCS = ("reopen", "challenge", "cross_derive")
 
 # The substate each arc leaves behind. A table rather than a string every caller passes, for the
 # same reason `_STATE_BY_DOOR` is one: the substate IS which arc ran, so a second carrier for that
 # fact is a divergence waiting to happen.
-_SUBSTATE_BY_ARC = {"reopen": "reopened", "challenge": "challenged"}
+_SUBSTATE_BY_ARC = {"reopen": "reopened", "challenge": "challenged",
+                    "cross_derive": "contested"}
+
+# Which states each arc MOVES, and whether it sweeps up the settled dependents with it. The two
+# facts that used to be the difference between "an arc" and "cross_derive", written down so that
+# being different costs a table entry instead of a separate writer.
+#
+#   * **`ARC_MOVES`** — the downstream and upstream arcs act on work that was SETTLED (an
+#     observation about a pin nobody settled is still true and moves nothing). A cross-derivation
+#     disagreement is about a CLAIM rather than about an election, so it also marks an open pin
+#     `contested` — but it may not un-close finished work, which is v0.16's narrowing of this same
+#     call and is why the complement is spelled against `CLOSED_STATES`.
+#   * **`ARC_CASCADES`** — the two settlement arcs reopen the settled `depends_on` closure, because
+#     what was falsified was the truth those dependents rest on. `cross_derive` does not, and that
+#     is `cross_derive`'s own long-standing decision kept verbatim: *nobody yet knows which side is
+#     wrong, and reopening the neighbourhood on an unresolved disagreement would be churn, not
+#     caution.* Declaring it is the change — an arc that cascades nothing now says so where a reader
+#     of the table can see it, instead of by not being an arc.
+ARC_MOVES = {
+    "reopen": SETTLED_STATES,
+    "challenge": SETTLED_STATES,
+    "cross_derive": tuple(s for s in STATES if s not in CLOSED_STATES),
+}
+ARC_CASCADES = {"reopen": True, "challenge": True, "cross_derive": False}
 
 # Every carrier a SETTLEMENT DOOR reads off a pin, and what the way BACK into the open set owes each
 # one (v0.22). The question this table exists to force, asked once here instead of per arc:
@@ -335,8 +428,10 @@ SETTLEMENT_CARRIERS = {
 }
 
 # Every substate a pin carries because something put it BACK in front of the human (v0.19), composed
-# from the arc table rather than re-listed beside it — `cross_derive` is the third writer and the
-# only one that is not an arc, so it is the only literal here.
+# from the arc table rather than re-listed beside it. It carried `"contested"` as a literal for four
+# versions, with a comment explaining that `cross_derive` *"is the third writer and the only one that
+# is not an arc"* — which is the whole of v0.24's finding, written down beside the table and read by
+# nobody as the exemption it was. There is no literal here now.
 #
 # It is named because a pin in one of these carries an **outcome that is under dispute**, and a
 # surface that prints that outcome without saying so prints a build instruction. `instructions.py`
@@ -349,7 +444,7 @@ SETTLEMENT_CARRIERS = {
 # v0.22, which held for the three election doors and left `resolve` — the door whose authority is an
 # observation, and therefore the one a downstream reopen is most often followed by — writing
 # `resolved` over a live dispute mark.
-REOPENED_SUBSTATES = ("contested",) + tuple(_SUBSTATE_BY_ARC[a] for a in REOPEN_ARCS)
+REOPENED_SUBSTATES = tuple(_SUBSTATE_BY_ARC[a] for a in REOPEN_ARCS)
 
 # What put a settled pin back in front of the human, on the DOWNSTREAM arc. `flip_signal` is the
 # decision's own declared tripwire; `manual_checkpoint` is what a `flip_signal` with no telemetry
@@ -379,12 +474,18 @@ _FEEDBACK_SOURCES = tuple(f"feedback:{src}" for src in FLIP_SIGNAL_SOURCES)
 CHALLENGE_ORIGINS = ("challenger",)
 _CHALLENGE_SOURCES = tuple(f"challenge:{origin}" for origin in CHALLENGE_ORIGINS)
 
-# What `Ledger.reopen_verdict` can answer. `nothing_settled` is NOT a refusal: both arcs append
-# their event either way and report whether anything moved, which is the shape `cross_derive` was
+# What `Ledger.reopen_verdict` can answer. Neither non-moving answer is a refusal: every arc appends
+# its event either way and reports whether anything moved, which is the shape `cross_derive` was
 # corrected to in v0.16 for the identical condition — an observation about a pin that cannot be
 # un-settled is still an observation, and dropping it would lose the one signal the learning layer
 # and the premortem gate both read (`has been reopened before`).
-REOPEN_BUCKETS = ("would_reopen", "nothing_settled")
+#
+# They are two answers and not one because they are two different facts about the pin, and a caller
+# acts differently on each: `nothing_settled` says there was nothing to bring back (reached only by
+# the two arcs that act on settled work), `already_closed` says the work is FINISHED and the way in
+# is the door that records why (reached only by `cross_derive`, whose `ARC_MOVES` stop at
+# `CLOSED_STATES`). Merging them would print "nothing was settled" over a `resolved` pin.
+REOPEN_BUCKETS = ("would_reopen", "nothing_settled", "already_closed")
 
 # What `Ledger.unasked_verdict` can answer, and therefore the buckets every radius over it reports
 # (v0.14). Ordered so a caller can present them the way a human reads them: what it decides first,
@@ -524,6 +625,58 @@ def policy_weakness(policy: dict) -> str:
     return ""
 
 
+def refuted_claim(pin: Any) -> str:
+    """The refutation standing on this pin's `verification` envelope, or `""` (v0.24).
+
+    Two carriers make one fact, and neither alone is it: `blocked_by` is HISTORY — `resolve` keeps it
+    verbatim when a later observation closes the pin, so *"it was blocked, then it was observed"*
+    reads as the sequence it is — and a rung below `_CLOSING_RUNGS` only says nothing has closed it
+    yet. Together they say the thing a writer has to ask: **something refuted this pin's claim and
+    nothing has answered it.**
+
+    It exists because a closing rung may be written by more than one door, and the doors rest on
+    different things. `resolve` rests on an observation the caller states (`evidence` is required
+    with `rung`), which is the declared way out of a refutation and must stay open — a gate with no
+    gate-opening move is a wall. `cross_derive` rests on two providers re-deriving the claim, which
+    is not an observation of anything: reproduced over real stdio four calls apart,
+    `resolve(rung="observed") -> reopen(fired="incident")` demoted the envelope and wrote
+    `blocked_by`, `ledger_resolve` correctly refused as `unverified`, and one agent-authored
+    `cross_derive(agreement="agree")` merged a closing rung back onto that same envelope and the pin
+    closed. The reopen arc's whole purpose, undone by the door beside it.
+
+    Never raises, on `pin_read`'s rule: a reader is not the operation that fails on a file.
+    """
+    envelope = pin.get("verification") if isinstance(pin, dict) else None
+    if not isinstance(envelope, dict) or envelope.get("rung") in _CLOSING_RUNGS:
+        return ""
+    return str(envelope.get("blocked_by") or "")
+
+
+# Every door that writes the `rung` of a `verification` envelope, and what it rests on (v0.24).
+# Declared for `SETTLEMENT_CARRIERS`' reason, one field further in: `_CLOSING_RUNGS` is what
+# `settlement_verdict` opens on, so *who may write one* is a question with as many answers as there
+# are writers, and there were four with nothing naming them together. Held to the AST of everything
+# that ships by `tests/test_ledger.py::TestOnlyAFreshObservationRaisesARefutedClaim`, so a fifth
+# writer has to say which of these it is before the suite passes.
+#
+#   * `fresh_observation` — the caller states what was seen, and the runtime demands it (`resolve`
+#     requires `evidence` alongside `rung`). This is the way out of a refutation, and stays open.
+#   * `re_derivation` — a different provider reached the same claim. A genuine strengthening and
+#     **not an observation**, so it may not overwrite a standing refutation: gated on
+#     `refuted_claim`.
+#   * `records_absence` — writes a rung BELOW the closing ones, or none at all. It cannot open a
+#     settlement gate by construction, so it is asked nothing.
+#   * `demotion` — the arcs' own writer, which takes a closing rung OFF. It is what creates the
+#     condition the first two are judged against.
+VERIFICATION_RUNG_WRITERS = {
+    "resolve": "fresh_observation",
+    "cross_derive": "re_derivation",
+    "mark_correctness_unknown": "records_absence",
+    "_invalidate_settlement_claims": "demotion",
+}
+RUNG_WRITER_KINDS = ("fresh_observation", "re_derivation", "records_absence", "demotion")
+
+
 # -- the rules a DecisionEvent carries on its own (v0.15) --------------------------------------
 #
 # One table, two callers, and that is the whole point. `decide()` runs it over the very dict it is
@@ -563,6 +716,27 @@ EVENT_RULES = (
      lambda e: "a cascaded decision must name the policy it derives from, and only a cascaded one "
                "may name one — otherwise the rung says a policy decided this and nothing says "
                "which, or a field points at a policy that decided nothing"),
+    # v0.24 — the rung that owed nothing. `elicited` is unreachable over MCP (the server computes it
+    # and the agent never holds the value), `transcribed` demands `human_answer` at every door,
+    # `cascaded` demands `policy_id` on both sides of the biconditional above — and `brief` demanded
+    # nothing at all, so `interview_expand(brief_decisions=…)` moved pins to `decided` on the
+    # caller's word that a project brief said so. The rung means *answered from the brief without
+    # asking*, so what it owes is the brief: the passage, verbatim, per fork. Same shape as
+    # `human_answer` and for the same sentence — without it, an honest reading of a brief and an
+    # invented one are the same line in the ledger.
+    #
+    # A biconditional, like `cascade_policy_id`: only a brief-rung event may carry the field, so it
+    # cannot become a decoration other rungs sprinkle on. It is the second rule in this table with a
+    # retroactive edge, and the edge is stated rather than discovered — a ledger whose `brief` events
+    # predate this carries no such passage and none can be reconstructed, so `nonconforming` reports
+    # them under `pre_rule_events` and the version floor does not rise. That is the honest reading of
+    # those files: they record a claim nothing backs.
+    ("brief_quote",
+     lambda e: (e.get("evidence") == "brief") == bool(str(e.get("brief_quote") or "").strip()),
+     lambda e: "the `brief` rung means the project brief settled this fork without anyone being "
+               "asked, so the brief is the evidence and `brief_quote` must carry the passage "
+               "verbatim — and only a brief-rung event may carry one, or the field claims a "
+               "document that decided nothing"),
     ("flip_criteria",
      lambda e: bool(e.get("flip_criteria")),
      lambda e: "flip_criteria is required — a decision without a reopen condition fossilizes"),
@@ -1192,16 +1366,18 @@ class Ledger:
         own door.
         """
         pin = self.pin(pin_id)
+        # Asked FIRST, on `settlement_verdict`'s own stated rule and on `add_proposals`' — *a rule
+        # that every door must obey is asked before any door speaks*. It ran last here, so a
+        # `resolved` pin that already poses a fork was told the weaker of the two true reasons
+        # (`already poses a fork`), and an agent acting on that would have gone looking for a way to
+        # replace the fork rather than for `reopen`. Found by a gate that checks WHICH refusal fires.
+        self._gate_closed(pin, "set_question")
         _require(bool(question), "a question is required — this door exists to add one")
         _validate_question(question)
         _require(not pin.get("question"),
                  f"{pin_id} already poses a fork. `question.options[].id` is the carrier the "
                  f"offered-options rule anchors on at both election doors, so replacing it decides "
                  f"what the human may choose next — write-if-absent is the whole rule here.")
-        _require(pin["state"] not in CLOSED_STATES,
-                 f"the work on {pin_id} is finished ({pin['state']}); posing it a new question is "
-                 f"un-finishing it, which is the reopen arc and has its own door (`reopen`, which "
-                 f"records why).")
         pin["question"] = question
         if pin["state"] == "detected":
             pin["state"] = "needs_input"
@@ -1254,10 +1430,7 @@ class Ledger:
         not `set_question`.
         """
         pin = self.pin(pin_id)
-        _require(pin["state"] not in CLOSED_STATES,
-                 f"the work on {pin_id} is finished ({pin['state']}); proposing options for it is "
-                 f"un-finishing it, which is the reopen arc and has its own door (`reopen`, which "
-                 f"records why).")
+        self._gate_closed(pin, "add_proposals")
         _require(bool(pin_read(pin)["question"]),
                  f"{pin_id} poses no fork, and a proposal is an option for one. This door moves a "
                  f"pin from `needs_input` to `brainstorming`, so a pin with no question keeps the "
@@ -1324,6 +1497,7 @@ class Ledger:
         human_answer: str = "",
         policy_id: Optional[str] = None,
         settles_as: str = "decided",
+        brief_quote: str = "",
     ) -> dict:
         """Append ONE DecisionEvent for ONE pin and materialize its state (last committed wins).
 
@@ -1354,7 +1528,12 @@ class Ledger:
             agent never carried the value, so it could not have invented it.
           * `transcribed` — an agent relayed what the user said, recorded verbatim in
             `human_answer`. Weaker: honest relay and confabulation look identical here.
-          * `brief` — pre-decided in the project brief at frame time; the brief is the evidence.
+          * `brief` — pre-decided in the project brief at frame time; the brief is the evidence, and
+            since v0.24 the runtime collects it: `brief_quote` carries the passage that settles this
+            fork, verbatim, and the `brief_quote` rule in `EVENT_RULES` makes it a biconditional.
+            It was the one member of `DECISION_EVIDENCE` whose claim had no carrier at all — the
+            other three are each demanded by something — so a caller's word that a document said so
+            was the whole of it.
           * `cascaded` — derived from a `Policy` the user elected (v0.11). The answer reached the
             log ONCE, at the policy election, and this event is an amplification of it; the
             `Policy` named by `policy_id` carries its own rung and quote. Its failure mode is
@@ -1418,6 +1597,8 @@ class Ledger:
             event["policy_id"] = policy_id
         if human_answer:
             event["human_answer"] = human_answer
+        if brief_quote:
+            event["brief_quote"] = str(brief_quote).strip()
         if flip_signal is not None:
             event["flip_signal"] = dict(flip_signal)
         # Validated as the dict it will be, not as the arguments it came from (v0.15): the reader
@@ -1453,6 +1634,7 @@ class Ledger:
         start until the ground is actually fixed.
         """
         pin = self.pin(pin_id)
+        self._gate_closed(pin, "set_readiness")
         _require(verdict in READINESS_VERDICTS, f"verdict must be one of {READINESS_VERDICTS}")
         zone_files = {f for f in (zone or {}).get("files", [])}
         _require(bool(zone_files), "a readiness verdict needs a zone — assess before concluding")
@@ -1804,6 +1986,24 @@ class Ledger:
             "resolve once you have observed the behaviour.",
     }
 
+    def _gate_closed(self, pin: dict, door: str) -> None:
+        """Refuse a per-pin write onto FINISHED work — the one carrier of that rule (v0.24).
+
+        `PIN_WRITE_DOORS` says which doors it binds and why the others are exempt; this is the
+        sentence all of them share. It used to be two near-identical `_require`s at `set_question`
+        and `add_proposals`, differing only in the verb, which is the shape every finding on this
+        branch started as: the third door was written without either of them, and so were the fourth,
+        fifth and sixth.
+
+        The message names the way back, because a refusal an agent cannot act on is a wall, and this
+        one has an opening move on every host (`mcp:ledger_reopen`).
+        """
+        _require(door in PIN_WRITE_DOORS, f"door must be one of {sorted(PIN_WRITE_DOORS)}; "
+                                          f"got {door!r}")
+        _require(pin["state"] not in CLOSED_STATES,
+                 f"the work on {pin['id']} is finished ({pin['state']}); {door} would un-finish it, "
+                 f"which is the reopen arc and has its own door (`reopen`, which records why).")
+
     def _gate_settlement(self, pin: dict, door: str) -> None:
         verdict = self.settlement_verdict(pin, door)
         _require(verdict == "would_settle",
@@ -2032,12 +2232,20 @@ class Ledger:
         `settlement_verdict` governs *a pin leaving the open set*: these move it the other way, and
         the only state either can produce is `needs_input`.
 
-        What is left to check is therefore small and honest: a pin in `SETTLED_STATES` has something
-        to bring back; a pin already open has not, and re-stamping `resolution_mode: "asked"` on it
-        would be the only lasting effect — a mark nothing clears.
+        What is left to check is therefore small and honest, and it is asked of `ARC_MOVES` rather
+        than of one tuple (v0.24). For the two settlement arcs the answer is unchanged: a pin in
+        `SETTLED_STATES` has something to bring back; a pin already open has not, and re-stamping
+        `resolution_mode: "asked"` on it would be the only lasting effect — a mark nothing clears.
+        `cross_derive` moves a wider set and stops at a narrower one, because a disagreement is
+        about a claim rather than about an election: it marks an OPEN pin contested, and it may not
+        un-close finished work. Both facts were true before; both lived inside `cross_derive` as a
+        state expression nothing else could ask.
         """
         _require(arc in REOPEN_ARCS, f"arc must be one of {REOPEN_ARCS}; got {arc!r}")
-        return "would_reopen" if pin["state"] in SETTLED_STATES else "nothing_settled"
+        state = pin_read(pin)["state"]
+        if state in ARC_MOVES[arc]:
+            return "would_reopen"
+        return "already_closed" if state in CLOSED_STATES else "nothing_settled"
 
     def challenge(
         self,
@@ -2134,6 +2342,7 @@ class Ledger:
         nobody.
         """
         pin = self.pin(pin_id)
+        self._gate_closed(pin, "premortem")
         _require(source in _CHALLENGE_SOURCES,
                  f"source must be one of {_CHALLENGE_SOURCES}; got {source!r} — the same vocabulary "
                  f"`challenge` checks, because this is the same role's second mode")
@@ -2192,6 +2401,26 @@ class Ledger:
         does — nobody yet knows which side is wrong, and reopening the neighbourhood on an unresolved
         disagreement would be churn, not caution.
 
+        **v0.24 — it is an arc, and the arcs' own writer moves the pin.** That last paragraph used to
+        be the reason this function wrote `state`, `substate` and `resolution_mode` itself instead of
+        calling `_reopen_minimal`, and the price was everything ELSE `_reopen_minimal` does: a
+        disagreement took a pin back into the open set still carrying the `verification` a settlement
+        door reads as permission. Reproduced over real stdio — `add_pin(defect) -> add_remediation ->
+        done -> cross_derive(agree)` (the envelope reaches `cross_derived`) `-> cross_derive
+        (disagree)`, then `ledger_resolve` with `evidence="no new observation of any kind"` closed
+        it. The no-cascade decision is unchanged and is now DECLARED, in `ARC_CASCADES`, where a
+        reader of the arc table can see it.
+
+        **And agreement may not launder a refuted claim.** `agree` merges a closing rung onto the
+        pin's envelope — which is legitimate on a pin that has not been contradicted, and was
+        legitimate on the envelope `_invalidate_settlement_claims` had just demoted: four calls
+        apart, `resolve(rung="observed") -> reopen(fired="incident") -> ledger_resolve` (correctly
+        refused as `unverified`) `-> cross_derive(agree)` restored a closing rung and the pin closed.
+        Two providers agreeing is a re-derivation, not an observation of the thing production
+        refuted, so where `refuted_claim` stands the record and the event are still written and the
+        rung is not raised — `rung_raised` on the `xdr_` event says which happened, exactly as
+        `reopened` does one field over.
+
         Deliberately not mandatory at any severity: making it obligatory above a threshold doubles
         the cost of the most expensive pins, and that trade should be elected with a measured number
         in hand rather than assumed here.
@@ -2241,6 +2470,9 @@ class Ledger:
             "timestamp": _now(),
         }
         pin.setdefault("cross_derivations", []).append(record)
+        # Asked before anything is written, so the event can state what happened rather than leave a
+        # reader to infer it from a pin that may have been moved by something else.
+        refuted = refuted_claim(pin)
         # Recorded BEFORE anything moves, and recorded whatever happens next: an arc that reopens
         # without appending is a state change nobody can audit, which is exactly what this was.
         event = {
@@ -2250,13 +2482,25 @@ class Ledger:
             "claim": record["claim"],
             "providers": record["providers"],
             "agreement": agreement,
-            "reopened": agreement != "agree" and pin["state"] not in CLOSED_STATES,
+            # The arc's own predicate, asked of the arc table rather than re-expressed here. It says
+            # exactly what `agreement != "agree" and pin["state"] not in CLOSED_STATES` said —
+            # `ARC_MOVES["cross_derive"]` IS that complement — and now one function answers
+            # "would this arc move this pin" for all three arcs.
+            "reopened": (agreement != "agree"
+                         and self.reopen_verdict(pin, "cross_derive") == "would_reopen"),
+            # Whether the agreement actually strengthened the pin, on the event, for `reopened`'s
+            # reason: an arc that changes the pin conditionally must record which way it went, or the
+            # only carrier of the fact is a field a later call can overwrite.
+            "rung_raised": agreement == "agree" and not refuted,
             "source": "challenge:cross_derivation",
             "policy_hash": self._policy_hash(),
         }
         self.data["decision_log"].append(event)
         record["event_id"] = event["id"]
-        if agreement == "agree":
+        record["rung_raised"] = event["rung_raised"]
+        if refuted:
+            record["refuted_claim"] = refuted
+        if event["rung_raised"]:
             verification = pin.get("verification") or {}
             verification["rung"] = "cross_derived"
             verification["cross_derived_by"] = sorted(providers)
@@ -2283,9 +2527,11 @@ class Ledger:
                                + [{"id": "neither", "label": "Neither — the claim itself is wrong"}],
                     "allow_freeform": True,
                 }
-            pin["state"] = "needs_input"
-            pin["substate"] = "contested"
-            pin["resolution_mode"] = "asked"   # a contested claim is never re-defaulted silently
+            # The arcs' one writer (v0.24). It writes the same three fields this used to write by
+            # hand — `needs_input`, the arc's own substate, and `resolution_mode: "asked"`, because a
+            # contested claim is never re-defaulted silently — and, being the one writer, it also
+            # takes back the `SETTLEMENT_CARRIERS` this arc had been leaving standing.
+            self._reopen_minimal(pin, "cross_derive", via=event["id"])
         return record
 
     def label_failure(self, pin_id: str, failure_class: str, detail: str,
@@ -2410,8 +2656,12 @@ class Ledger:
         was counting. Returns the ids it moved BESIDE `pin`, so a caller never has to re-derive the
         radius from a state it just wrote.
 
-        Reopen the minimum: the pin plus its settled `depends_on` dependents, transitively. An arc
-        that reopens everything regenerates the very churn the skills cure.
+        Reopen the minimum: the pin plus — where `ARC_CASCADES` says the arc sweeps them up — its
+        settled `depends_on` dependents, transitively. An arc that reopens everything regenerates the
+        very churn the skills cure, and the `cross_derive` arc sweeps up nothing at all for the reason
+        `cross_derive` has always given: nobody yet knows which side is wrong. That used to be
+        expressed by not calling this function, which is how it also came to skip everything else
+        this function does (v0.24).
 
         **Every pin it moves beside `pin` gets its own `cas_` record (v0.20), and that is the half of
         `_settle`'s twinning that was missing.** `_settle` appends one `stl_` per settlement; this
@@ -2443,7 +2693,7 @@ class Ledger:
             return []
         substate = _SUBSTATE_BY_ARC[arc]
         to_reopen = {pin["id"]}
-        changed = True
+        changed = ARC_CASCADES[arc]
         while changed:
             changed = False
             for p in self.data["pins"]:
@@ -2535,6 +2785,7 @@ class Ledger:
         reads as a capability.
         """
         pin = self.pin(pin_id)
+        self._gate_closed(pin, "add_remediation")
         is_build = build_track is not None
         allowed = BUILD_ACTIONS if is_build else REMEDIATION_ACTIONS
         _require(action in allowed,
@@ -2561,6 +2812,7 @@ class Ledger:
     def set_remediation_status(self, pin_id: str, item_id: str, status: str) -> dict:
         _require(status in ("todo", "in_progress", "done"), "bad remediation status")
         pin = self.pin(pin_id)
+        self._gate_closed(pin, "set_remediation_status")
         for item in pin["remediation"]:
             if item["id"] == item_id:
                 item["status"] = status

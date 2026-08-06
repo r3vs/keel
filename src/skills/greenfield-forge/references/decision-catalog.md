@@ -185,9 +185,12 @@ authoring source — keep them in step). **Four tools read it, and they are not 
   type, skips the forks the brief already decided (pre-committed with `evidence: "brief"`, never
   re-asked), materializes one pin per surviving fork, and wires `depends_on` to the created pin ids.
   This is the only one that **writes the forks**; without it there is nothing to funnel.
-  `brief_decisions` maps a cluster id to **one of that cluster's own option ids** and is held to the
+  `brief_decisions` maps a cluster id to `{"outcome": <one of that cluster's own option ids>,
+  "quote": <the brief's own words that settle it, verbatim>}` and is held to the
   same gate a policy cascade is — "the brief said so" means nobody was asked, so a `blocker`/`high`
-  fork is never settled that way and neither is an outcome the fork does not offer. Whatever is held
+  fork is never settled that way and neither is an outcome the fork does not offer. **The quote is
+  required** (spec v0.24): the rung's whole meaning is that the brief answered instead of a human,
+  so the brief is the evidence, and a bare outcome is refused naming the shape. Whatever is held
   back comes back in `brief_held_back` and is asked in Phase 2; a key matching no cluster of this
   catalog comes back in `brief_unmatched` rather than being dropped.
 - `interview_seed_policies(ledger, project_type)` returns the per-cluster `default_policy` entries

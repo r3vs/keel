@@ -381,7 +381,7 @@ const RUNG={
   elicited:{label:'elicited', cls:'strong',
     why:'the server asked the user through the host and wrote the reply itself — the agent never held the value, so it could not have invented it'},
   brief:{label:'from the brief', cls:'mid',
-    why:'settled in the project brief at frame time; the brief is the evidence'},
+    why:'settled in the project brief at frame time; the brief is the evidence, quoted below'},
   transcribed:{label:'transcribed', cls:'weak',
     why:'an agent relayed what the user said — an honest relay and a fabricated one are the same line here, so what you weigh is the quote'},
   cascaded:{label:'cascaded from a policy', cls:'mid',
@@ -556,7 +556,12 @@ function decisionCard(p){
   const r=d.rung?String(d.rung):(ev.evidence?String(ev.evidence):'');
   const info=rungInfo(r), cls=info.cls;
   const settles=settlesInfo(ev.settles_as);
-  const quote=ev.human_answer?h`<div class="quote">“${ev.human_answer}”</div>`:'';
+  // Two rungs quote something, and each quotes a different thing: `transcribed` quotes the human an
+  // agent relayed, `brief` (v0.24) quotes the passage of the project brief that settled the fork
+  // with nobody asked. One line, because the reader's question is the same both times — what,
+  // exactly, is this decision resting on — and the rung above already says whose words these are.
+  const said=ev.human_answer||ev.brief_quote||'';
+  const quote=said?h`<div class="quote">“${said}”</div>`:'';
   let note=info.known?h`<div class="why">${info.why}</div>`
     :h`<div class="warn">⚠ ${info.warn}</div>`;
   const notes=[note];
@@ -570,6 +575,11 @@ function decisionCard(p){
       in front of the human, and nothing should be built on it until they answer again</div>`);
   if(r==='transcribed'&&!ev.human_answer)
     notes.push(h`<div class="warn">⚠ relayed with no quote — nothing here separates it from an invention</div>`);
+  // The same sentence for the same reason, on the rung that acquired its carrier one version later
+  // (v0.24). A `brief` event written before that has no passage and none can be reconstructed, so
+  // the card says what the file records rather than going quiet — and `nonconforming` reports it.
+  if(r==='brief'&&!ev.brief_quote)
+    notes.push(h`<div class="warn">⚠ from the brief, with the brief unquoted — nothing here separates an honest reading of a document from an invented one</div>`);
   // A cascaded decision was never answered here: it points at the policy election that produced it,
   // so the card shows that policy's rule AND how the human elected it. Joined on `policy_id`, the
   // event's own field — the `policy:<id>` in `source` is not parsed, because a surface should not
@@ -641,6 +651,7 @@ const NONCONF_WHY={
   evidence_rung:'a decision on a rung the schema does not name — how the answer travelled cannot be weighed',
   cascade_rung:'a decision whose rung and whose source disagree about whether a policy decided it',
   cascade_policy_id:'a cascaded decision that names no policy, or a policy named by a decision that did not cascade',
+  brief_quote:'a decision the brief settled without quoting it, or a quote on a decision the brief did not settle — nothing separates an honest reading of a document from an invented one',
   flip_criteria:'a decision with no `flip_criteria` — nothing says when to reopen it',
   flip_signal_source:'a flip signal whose source is not one the measurer can read',
   offered_outcome:'a decision whose outcome the pin’s own question never offered',

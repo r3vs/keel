@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
-from ledger import SCHEMA_VERSION, Ledger, LedgerError  # noqa: E402
+from ledger import SCHEMA_VERSION, Ledger, LedgerError, refuted_claim  # noqa: E402
 
 
 #: The greenfield catalog, for the one test that has to reach the OTHER unasked door.
@@ -189,7 +189,8 @@ class TestEvidenceIsReachable(unittest.TestCase):
         a, b, c = add_simple_pin(led), add_simple_pin(led), add_simple_pin(led)
         led.decide(a["id"], "opt_a", "r", "flip", evidence="elicited")
         led.decide(b["id"], "opt_a", "r", "flip", evidence="transcribed", human_answer="opt A")
-        led.decide(c["id"], "opt_a", "r", "flip", evidence="brief")
+        led.decide(c["id"], "opt_a", "r", "flip", evidence="brief",
+                   brief_quote="one relational datastore until a need proves otherwise")
         # counts, never a blended score: three failure modes kept apart is the design
         self.assertEqual(led.summary()["decisions_by_evidence"],
                          {"elicited": 1, "transcribed": 1, "brief": 1})
@@ -807,6 +808,10 @@ class TestARuleEnforcedAtTheWriteGovernsNoExistingFile(unittest.TestCase):
             "cascade_rung": {"source": "policy:pol_0001"},
             "cascade_policy_id": {"evidence": "cascaded", "source": "policy:pol_0001",
                                   "policy_id": ""},
+            # v0.24. The second rule in this table with a retroactive edge, and it is deliberate:
+            # a `brief` event written before the field existed carries no passage and none can be
+            # reconstructed, so the file is held below its floor and says which rule it is held by.
+            "brief_quote": {"evidence": "brief"},
             "flip_criteria": {"flip_criteria": ""},
             "flip_signal_source": {"flip_signal": {"source": "vibes"}},
             # v0.16. Absence conforms (every pre-v0.16 event produced `decided`, which is what the
@@ -1737,15 +1742,46 @@ class TestTheWayBackOwesTheDoorsTheirCarriers(unittest.TestCase):
             sorted(checks),
             sorted(k for k, v in ledger_mod.SETTLEMENT_CARRIERS.items() if v == "invalidated"),
             "an `invalidated` carrier with no assertion here is a promise nothing keeps")
-        for arc in ledger_mod.REOPEN_ARCS:
-            led = make_ledger()
-            pin = self._closed_defect(led)
+        # One branch per arc, dispatched by name and asserted to be exhaustive. It used to be an
+        # `if reopen / else challenge`, so the third arc added in v0.24 ran the challenge branch
+        # twice and was never exercised by a loop written over the tuple it had just joined — the
+        # register's third recurring shape, inside the gate for its second.
+        def run(arc, led, pin):
             if arc == "reopen":
+                # `cross_derive` acts on a pin that is not FINISHED, so its fixture stops one call
+                # short of `resolve` — the closing rung is the one `cross_derive(agree)` wrote.
                 led.reopen(pin["id"], reason="p95 blew the threshold", fired="incident")
-            else:
+            elif arc == "challenge":
                 led.challenge(pin["id"], target="to_be", challenge_class="unfalsifiable",
                               argument="the oracle it closed on cannot fail", severity="high",
                               upheld=True)
+            elif arc == "cross_derive":
+                led.cross_derive(pin["id"], claim="the retry path is idempotent",
+                                 derivations=[{"provider": "anthropic", "model": "o",
+                                               "result": "idempotent"},
+                                              {"provider": "openai", "model": "g",
+                                               "result": "NOT idempotent"}],
+                                 agreement="disagree")
+            else:
+                self.fail(f"no branch exercises the arc {arc!r}")
+
+        for arc in ledger_mod.REOPEN_ARCS:
+            led = make_ledger()
+            if arc == "cross_derive":
+                pin = led.add_pin(kind="defect", title="double charge", severity="high",
+                                  confidence="extracted",
+                                  provenance=[{"source": "recon", "detail": "x"}],
+                                  as_is={"description": "d"})
+                led.cross_derive(pin["id"], claim="the retry path is idempotent",
+                                 derivations=[{"provider": "anthropic", "model": "o",
+                                               "result": "idempotent"},
+                                              {"provider": "openai", "model": "g",
+                                               "result": "idempotent"}],
+                                 agreement="agree")
+                self.assertEqual(pin["verification"]["rung"], "cross_derived")
+            else:
+                pin = self._closed_defect(led)
+            run(arc, led, pin)
             for carrier, holds in checks.items():
                 self.assertTrue(holds(pin), f"{arc} left `{carrier}` standing")
 
@@ -1990,9 +2026,10 @@ class TestOneWriterForTheSettledStates(unittest.TestCase):
                                         "still in "
                                         "`interview_view` since v0.17 — a pin being thought about "
                                         "has not been answered.",
-        ("ledger.py", "cross_derive"): "-> `needs_input` on provider disagreement. The upstream "
-                                       "half of the reopen pair; it may not un-close finished work "
-                                       "(v0.16) and is checked at `reopen_verdict`.",
+        # `cross_derive` was here until v0.24, writing `needs_input` itself on provider
+        # disagreement. That is what made it a third way back into the open set with none of the
+        # arcs' obligations — it is `REOPEN_ARCS`' third member now, and the writer below is the one
+        # that moves it.
         ("ledger.py", "_reopen_minimal"): "-> `needs_input` on every dependent of a falsified "
                                           "truth. The single writer of the reopened state, "
                                           "`_settle`'s twin, held by "
@@ -2118,14 +2155,17 @@ class TestTheDistinctionsASurfaceSortsAndTITLESBy(unittest.TestCase):
                          "the complement must be exactly the two doors that DO produce work")
 
     def test_every_substate_a_writer_writes_is_one_a_reader_knows(self):
-        """AST over every assignment to `pin["substate"]`, in both shapes it comes in.
+        """AST over every assignment to `pin["substate"]`, in both shapes it can come in.
 
-        Two writers, two shapes, and the test has to hold both or it holds nothing: `cross_derive`
-        assigns the literal `"contested"`, `_reopen_minimal` assigns a lookup in `_SUBSTATE_BY_ARC`.
-        So every literal must be a member of the set, every non-literal must come out of the one
-        table the set is COMPOSED from, and the literals must not be an empty set — a fourth arc
-        introducing a fourth mark, or reading a second table, fails here rather than printing a
-        disputed outcome as an elected one on a surface that never heard of it."""
+        **v0.24 removed the shape this test was written for, and that is the finding rather than a
+        regression.** It used to hold two writers: `cross_derive` assigned the literal `"contested"`,
+        `_reopen_minimal` assigned a lookup in `_SUBSTATE_BY_ARC` — and the literal was the whole of
+        why `contested` had to be spelled out beside a table it was not in. There is one writer now,
+        so `assertTrue(literals)` would fail on the fixed tree; what replaces it is the assertion
+        that made it worth having: **every mark reaches the pin through the arc table the readers'
+        set is composed from.** A literal is still allowed and still checked — a fifth arc that
+        writes its own mark by hand fails on the membership line, not on a count.
+        """
         import ledger as mod
         tree, ast = self._tree()
         literals, tables = set(), set()
@@ -2147,7 +2187,6 @@ class TestTheDistinctionsASurfaceSortsAndTITLESBy(unittest.TestCase):
                 else:
                     self.fail(f"a substate written by an expression this guard cannot follow: "
                               f"{ast.dump(node.value)[:80]}")
-        self.assertTrue(literals, "no substate literal anywhere — this guard just went vacuous")
         self.assertLessEqual(literals, set(mod.REOPENED_SUBSTATES),
                              "a mark written by a writer and known to no reader")
         self.assertEqual(tables, {"substate"},
@@ -2299,7 +2338,10 @@ class TestARuleIsTrueOfTheThingItIsPrintedOn(unittest.TestCase):
         led = make_ledger()
         out = interview.expand_catalog(
             led, interview.load_catalog(_CATALOG), project_type="web-saas",
-            brief_decisions={"client": "carrier-pigeon", "domain": "elicit_entities"})
+            brief_decisions={"client": {"outcome": "carrier-pigeon",
+                                        "quote": "the brief says carrier pigeon"},
+                             "domain": {"outcome": "elicit_entities",
+                                        "quote": "the brief lists the entities"}})
         held = {h["cluster_id"]: h for h in out["brief_held_back"]}
         self.assertEqual(held["client"]["reason"], "not_offered")
         self.assertEqual(held["domain"]["reason"], "held_back")
@@ -2835,6 +2877,415 @@ class TestEveryReaderOfACollectionGoesThroughTheCarrier(unittest.TestCase):
                          "`read_collection` / `readable_ledger` / `Ledger.readable` is the one "
                          "door, and every reader that skipped it died on a shape the same file's "
                          "`ledger_summary` reported")
+
+class TestTheThirdArcPaysWhatTheOtherTwoPay(unittest.TestCase):
+    """v0.24 — `cross_derive(agreement="disagree")` was a reopen arc with no membership.
+
+    It wrote `"reopened": true` on its own event and moved the pin with its own three lines of
+    state, so every obligation v0.20 and v0.22 attached to `REOPEN_ARCS` and to `_reopen_minimal`
+    went past it: no `cas_` record for anything it swept up, no carrier invalidation, and its
+    closed-state question spelled out inline where nothing else could ask it.
+
+    Reproduced over real `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd:
+    `add_pin(defect) -> add_remediation -> done -> cross_derive(agree)` (the envelope reaches the
+    `cross_derived` rung) `-> cross_derive(disagree)` came back `state: "needs_input"` with
+    `verification.rung` still `cross_derived`, and `ledger_resolve` with
+    `evidence="no new observation of any kind"` then answered `{"state": "resolved"}`.
+    """
+
+    def _closed_defect(self, led):
+        pin = led.add_pin(kind="defect", title="double charge on retry", severity="high",
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        return pin
+
+    AGREE = ({"provider": "anthropic", "model": "opus", "result": "the retry is idempotent"},
+             {"provider": "openai", "model": "gpt", "result": "the retry is idempotent"})
+    DIFFER = ({"provider": "anthropic", "model": "opus", "result": "idempotent"},
+              {"provider": "openai", "model": "gpt", "result": "NOT idempotent"})
+
+    # -- the structural half: the arc table IS the callers of the one writer --------------------
+
+    def test_the_arc_that_moves_a_pin_is_on_the_table_that_charges_the_tolls(self):
+        """`TestComingBackIntoTheOpenSetIsGovernedToo` already asserts callers == `REOPEN_ARCS`;
+        this states the consequence that made the third arc worth finding. Every axis on which the
+        arcs differ is a table, so being different costs an entry rather than a second writer."""
+        import ledger as mod
+        self.assertEqual(sorted(mod.REOPEN_ARCS), sorted(mod.ARC_MOVES))
+        self.assertEqual(sorted(mod.REOPEN_ARCS), sorted(mod.ARC_CASCADES))
+        self.assertEqual(sorted(mod.REOPEN_ARCS), sorted(mod._SUBSTATE_BY_ARC))
+        self.assertEqual(set(mod.REOPENED_SUBSTATES), set(mod._SUBSTATE_BY_ARC.values()),
+                         "a mark composed from anything but the arc table is a second list")
+        for arc, states in mod.ARC_MOVES.items():
+            self.assertLessEqual(set(states), set(mod.STATES), f"{arc} moves a state that is not one")
+
+    def test_the_disagreement_arc_takes_back_the_claim_a_settlement_door_reads(self):
+        """The reproduction, in the library. The pin comes back open and no longer tells the next
+        `resolve` that its behaviour was observed — which is `SETTLEMENT_CARRIERS`' `invalidated`
+        disposition, paid by the arc it was not a member of."""
+        led = make_ledger()
+        pin = self._closed_defect(led)
+        led.cross_derive(pin["id"], claim="the retry path is idempotent",
+                         derivations=list(self.AGREE), agreement="agree")
+        self.assertEqual(pin["verification"]["rung"], "cross_derived")
+        led.cross_derive(pin["id"], claim="the retry path is idempotent",
+                         derivations=list(self.DIFFER), agreement="disagree")
+        self.assertEqual((pin["state"], pin["substate"]), ("needs_input", "contested"))
+        self.assertIsNone(pin["verification"]["rung"], "the refuted claim is taken back")
+        self.assertEqual(led.settlement_verdict(pin, "resolve"), "unverified")
+        with self.assertRaises(LedgerError) as ctx:
+            led.resolve(pin["id"], evidence="no new observation of any kind")
+        self.assertIn("unverified", str(ctx.exception))
+
+    def test_it_still_cascades_nothing_and_the_table_is_where_that_is_said(self):
+        """The decision this arc has always made, kept verbatim and now declared: nobody yet knows
+        which side is wrong, so the neighbourhood is not reopened. Held against the two arcs that
+        DO cascade, on the same fixture, so the assertion is a difference rather than a zero."""
+        import ledger as mod
+        self.assertEqual(mod.ARC_CASCADES["cross_derive"], False)
+        for arc in ("cross_derive", "reopen"):
+            led = make_ledger()
+            root = self._closed_defect(led)
+            led.resolve(root["id"], evidence="observed on staging", rung="observed")
+            dep = led.add_pin(kind="defect", title="dependent", severity="medium",
+                              confidence="extracted",
+                              provenance=[{"source": "recon", "detail": "x"}],
+                              as_is={"description": "d"}, depends_on=[root["id"]])
+            item = led.add_remediation(dep["id"], action="align", ladder_rung=2)
+            led.set_remediation_status(dep["id"], item["id"], "done")
+            led.resolve(dep["id"], evidence="observed on staging", rung="observed")
+            if arc == "reopen":
+                event = led.reopen(root["id"], reason="both blew the threshold", fired="incident")
+                self.assertEqual(led.cascaded_by(event["id"]), [dep["id"]])
+                self.assertEqual(dep["state"], "needs_input")
+            else:
+                # a disagreement may not un-close finished work at all, which is `ARC_MOVES`
+                record = led.cross_derive(root["id"], claim="the retry path is idempotent",
+                                          derivations=list(self.DIFFER), agreement="disagree")
+                self.assertEqual(led.reopen_verdict(root, "cross_derive"), "already_closed")
+                self.assertEqual(led.cascaded_by(record["event_id"]), [])
+                self.assertEqual((root["state"], dep["state"]), ("resolved", "resolved"))
+
+    def test_every_bucket_the_verdict_can_answer_is_reachable(self):
+        """A bucket no arc/state pair produces is a word in a tuple. Derived over the product of
+        the two closed sets rather than asserted for the three cases somebody had in mind."""
+        import ledger as mod
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        seen = set()
+        for arc in mod.REOPEN_ARCS:
+            for state in mod.STATES:
+                pin["state"] = state
+                seen.add(led.reopen_verdict(pin, arc))
+        self.assertEqual(seen, set(mod.REOPEN_BUCKETS))
+
+    def test_an_arc_this_runtime_does_not_have_is_refused(self):
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        with self.assertRaises(LedgerError):
+            led.reopen_verdict(pin, "cross_derivation")   # the arc's old name
+
+
+class TestOnlyAFreshObservationRaisesARefutedClaim(unittest.TestCase):
+    """v0.24 — `cross_derive(agreement="agree")` laundered the demotion the reopen had just written.
+
+    Reproduced over real stdio, four calls apart: `resolve(rung="observed")` closed the pin,
+    `ledger_reopen(fired="incident")` demoted the envelope and wrote `blocked_by`, `ledger_resolve`
+    correctly refused as `unverified` — and one agent-authored `ledger_cross_derive(agreement=
+    "agree")` merged `rung: "cross_derived"` back onto that same envelope, `blocked_by` untouched,
+    after which the pin closed.
+
+    The structural half is the general form: *who may write a closing rung* had as many answers as
+    there were writers, and the writers rest on different things. So they are enumerated from the
+    AST and each one declares what fresh thing it stands on.
+    """
+
+    @staticmethod
+    def _rung_writers():
+        """Every function that writes a `rung` into a `verification` envelope, both shapes it takes:
+        `<x>["rung"] = …`, and a dict literal carrying a `"rung"` key assigned to `<x>
+        ["verification"]`. Anchored on the assignment, never on a grep for the word."""
+        import ast
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        found = set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for node in ast.walk(fn):
+                if not isinstance(node, ast.Assign):
+                    continue
+                for target in node.targets:
+                    if not (isinstance(target, ast.Subscript)
+                            and isinstance(target.slice, ast.Constant)):
+                        continue
+                    if target.slice.value == "rung":
+                        found.add(fn.name)
+                    elif (target.slice.value == "verification"
+                          and isinstance(node.value, ast.Dict)
+                          and any(isinstance(k, ast.Constant) and k.value == "rung"
+                                  for k in node.value.keys)):
+                        found.add(fn.name)
+        return found
+
+    def test_every_writer_of_a_rung_declares_what_it_rests_on(self):
+        import ledger as mod
+        self.assertEqual(self._rung_writers(), set(mod.VERIFICATION_RUNG_WRITERS),
+                         "a function that writes the rung a settlement gate opens on, with nothing "
+                         "saying what fresh thing it stands on — declare it in "
+                         "`VERIFICATION_RUNG_WRITERS`")
+        self.assertLessEqual(set(mod.VERIFICATION_RUNG_WRITERS.values()),
+                             set(mod.RUNG_WRITER_KINDS))
+        self.assertEqual({k for k, v in mod.VERIFICATION_RUNG_WRITERS.items()
+                          if v == "re_derivation"}, {"cross_derive"},
+                         "the behavioural half below covers exactly this kind; a second member "
+                         "would be uncovered")
+
+    def test_a_re_derivation_does_not_answer_a_refutation(self):
+        """The reproduction. The agreement is still recorded — an arc that drops the observation
+        because it changed nothing is the shape v0.16 removed from this very function — and
+        `rung_raised` is the carrier that says which happened."""
+        led = make_ledger()
+        pin = led.add_pin(kind="defect", title="p95 regression", severity="high",
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="p95 measured at 180ms in staging", rung="observed")
+        led.reopen(pin["id"], reason="p95 blew the threshold in prod", fired="incident",
+                   source="feedback:incident")
+        self.assertTrue(refuted_claim(pin))
+
+        record = led.cross_derive(pin["id"], claim="the hot path is O(1)",
+                                  derivations=[{"provider": "anthropic", "model": "opus",
+                                                "result": "yes"},
+                                               {"provider": "openai", "model": "gpt",
+                                                "result": "yes"}],
+                                  agreement="agree")
+        self.assertFalse(record["rung_raised"])
+        self.assertEqual(record["refuted_claim"], pin["verification"]["blocked_by"])
+        self.assertIsNone(pin["verification"]["rung"], "a re-derivation is not an observation")
+        self.assertEqual(led.settlement_verdict(pin, "resolve"), "unverified")
+        event = next(e for e in led.data["decision_log"] if e["id"] == record["event_id"])
+        self.assertEqual((event["agreement"], event["rung_raised"], event["reopened"]),
+                         ("agree", False, False))
+
+    def test_the_way_out_is_still_open_and_it_is_the_one_that_states_an_observation(self):
+        """A gate with no gate-opening move is a wall. `resolve` rests on `fresh_observation` and
+        demands the evidence, so it re-raises the rung where a re-derivation may not."""
+        led = make_ledger()
+        pin = led.add_pin(kind="defect", title="p95 regression", severity="high",
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="p95 measured at 180ms", rung="observed")
+        led.reopen(pin["id"], reason="p95 blew the threshold", fired="incident")
+        item2 = led.add_remediation(pin["id"], action="align", ladder_rung=3)
+        led.set_remediation_status(pin["id"], item2["id"], "done")
+        led.resolve(pin["id"], evidence="re-measured on prod for 24h: p95 190ms", rung="observed")
+        self.assertEqual(pin["state"], "resolved")
+        self.assertEqual(refuted_claim(pin), "", "a closing rung answers the refutation")
+
+    def test_an_unrefuted_pin_is_still_strengthened_by_agreement(self):
+        """The rung is not withdrawn from the case it exists for — that would be the wall in the
+        other direction, and `cross_derived` is a member of `_CLOSING_RUNGS` on purpose."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        record = led.cross_derive(pin["id"], claim="the export is unpaginated",
+                                  derivations=[{"provider": "anthropic", "model": "o", "result": "y"},
+                                               {"provider": "openai", "model": "g", "result": "y"}],
+                                  agreement="agree")
+        self.assertTrue(record["rung_raised"])
+        self.assertEqual(pin["verification"]["rung"], "cross_derived")
+        self.assertNotIn("refuted_claim", record)
+
+    def test_reading_a_refutation_never_fails_on_the_shape_of_the_envelope(self):
+        """`refuted_claim` is on the read path's own rule, because it is asked of a pin a file
+        supplied: absence, a non-object envelope and a non-object pin all answer rather than raise."""
+        for shape in (None, {}, {"verification": None}, {"verification": "blocked"},
+                      {"verification": {"rung": None}}, "not a pin"):
+            with self.subTest(pin=shape):
+                self.assertEqual(refuted_claim(shape), "")
+        self.assertEqual(refuted_claim({"verification": {"rung": None, "blocked_by": "why"}}),
+                         "why")
+
+
+class TestFinishedWorkIsRefusedAtEveryDoorThatWritesToAPin(unittest.TestCase):
+    """v0.24 — the rule that was PROSE at the two doors this branch added it to.
+
+    Reproduced over real stdio on one `resolved` defect: `ledger_set_question` and
+    `ledger_add_proposals` refused it in near-identical sentences, and `ledger_add_remediation`,
+    `ledger_set_remediation_status`, `ledger_premortem` and `ledger_set_readiness` all wrote to it.
+
+    The roster half is `tests/test_mcp_tools.py`, where the doors an agent can reach are derived.
+    This is the library half: the table's dispositions must each be true of the code.
+    """
+
+    def test_every_disposition_is_declared_and_none_is_invented(self):
+        import ledger as mod
+        self.assertLessEqual(set(mod.PIN_WRITE_DOORS.values()),
+                             set(mod.CLOSED_WORK_DISPOSITIONS))
+        for name in mod.PIN_WRITE_DOORS:
+            self.assertTrue(callable(getattr(mod.Ledger, name, None)),
+                            f"{name} is on the table and is not a method of this class")
+
+    def test_each_disposition_is_true_of_the_code_that_carries_it(self):
+        """AST, per disposition: `refuse` asks `_gate_closed`, `settlement` reaches
+        `_gate_settlement` (`decide` does it through `_settle`, and both are on the table),
+        `arc` reaches `_reopen_minimal`. `records_only` is asked nothing, which is what it means."""
+        import ast
+
+        import ledger as mod
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        fns = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        calls = {name: {c.func.attr for c in ast.walk(fn)
+                        if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
+                 for name, fn in fns.items()}
+
+        def reaches(name, target, seen=()):
+            if name in seen or name not in calls:
+                return False
+            if target in calls[name]:
+                return True
+            return any(reaches(c, target, seen + (name,)) for c in calls[name] if c in fns)
+
+        required = {"refuse": "_gate_closed", "settlement": "_gate_settlement",
+                    "arc": "_reopen_minimal"}
+        self.assertEqual(set(required) | {"records_only"}, set(mod.CLOSED_WORK_DISPOSITIONS),
+                         "a disposition with no assertion here is a promise nothing keeps")
+        for door, disposition in sorted(mod.PIN_WRITE_DOORS.items()):
+            if disposition == "records_only":
+                continue
+            with self.subTest(door=door, disposition=disposition):
+                self.assertTrue(reaches(door, required[disposition]),
+                                f"{door} is declared `{disposition}` and never reaches "
+                                f"{required[disposition]}")
+
+    def test_the_refusal_names_the_move_that_undoes_it(self):
+        """A refusal an agent cannot act on is a wall, and this one has an opening move on every
+        host. Asserted over every `refuse` door rather than the one that was written first."""
+        import ledger as mod
+        for door, disposition in sorted(mod.PIN_WRITE_DOORS.items()):
+            if disposition != "refuse":
+                continue
+            with self.subTest(door=door):
+                led = make_ledger()
+                pin = add_simple_pin(led, severity="medium")
+                pin["state"] = "resolved"
+                with self.assertRaises(LedgerError) as ctx:
+                    led._gate_closed(pin, door)
+                self.assertIn("reopen", str(ctx.exception))
+                self.assertIn(door, str(ctx.exception))
+
+    def test_a_door_this_runtime_does_not_have_is_refused_by_the_gate(self):
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        with self.assertRaises(LedgerError):
+            led._gate_closed(pin, "delete_everything")
+
+    def test_the_gate_says_nothing_about_a_pin_that_is_merely_decided(self):
+        """`CLOSED_STATES` and not `SETTLED_STATES`, which is the line `set_question` drew first:
+        a `decided` pin is re-electable by the human, and everything downstream of an election is
+        still legitimately being planned."""
+        import ledger as mod
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        led.decide(pin["id"], "opt_a", "r", "f")
+        for door, disposition in mod.PIN_WRITE_DOORS.items():
+            if disposition == "refuse":
+                led._gate_closed(pin, door)      # must not raise
+        led.add_remediation(pin["id"], action="align", ladder_rung=2)
+
+
+class TestTheBriefOwesTheBrief(unittest.TestCase):
+    """v0.24 — `brief` was the one member of `DECISION_EVIDENCE` whose claim had no carrier.
+
+    `elicited` is unreachable over MCP (the server computes it), `transcribed` demands
+    `human_answer` at every door, `cascaded` demands `policy_id` on both sides of a biconditional.
+    Reproduced over stdio with three clusters: one `ev_` event on disk carrying `evidence: "brief"`,
+    `rationale: "pre-decided by the brief"`, and no reference of any kind to a brief.
+    """
+
+    def test_every_rung_owes_something_and_the_test_is_derived_from_the_vocabulary(self):
+        """The finding's own shape, asserted rather than restated: for each rung, the FIELD its
+        claim rests on and the CARRIER that refuses the write without it. A rung added to
+        `DECISION_EVIDENCE` with no entry fails here — which is how this one would have been caught
+        the day it was added.
+
+        Two carriers and not one, because the two rules answer different questions and the split is
+        `decide`'s own, stated in `decide`: `EVENT_RULES` holds what is decidable from the stored
+        event alone (so `nonconforming` can replay it over a file this runtime did not write), and
+        the quote rule is about the boundary an AGENT reaches, which the event does not record.
+        """
+        import ledger as mod
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "mcp"))
+        import tools as mcp_tools
+        owed = {
+            "elicited": (None, "the adapter computes it; no agent ever holds the value"),
+            "transcribed": ("human_answer", "tools._require_quote"),
+            "brief": ("brief_quote", "ledger.EVENT_RULES"),
+            "cascaded": ("policy_id", "ledger.EVENT_RULES"),
+        }
+        self.assertEqual(set(owed), set(mod.DECISION_EVIDENCE),
+                         "a rung whose evidence nothing carries is a claim an honest agent and a "
+                         "fabricating one make identically")
+        base = {"id": "ev_0001", "pin_id": "pin_0001", "outcome": "opt_a", "rationale": "r",
+                "flip_criteria": "f", "source": "interview"}
+        for rung, (field, carrier) in sorted(owed.items()):
+            if field is None:
+                continue
+            with self.subTest(rung=rung, carrier=carrier):
+                if carrier == "ledger.EVENT_RULES":
+                    # `cascaded` also needs its `policy:` source; either rule firing is the refusal
+                    self.assertNotEqual(mod.event_violations(dict(base, evidence=rung)), [],
+                                        f"`{rung}` conforms with nothing backing it")
+                else:
+                    with self.assertRaises(ValueError):
+                        mcp_tools._require_quote("", rung)
+        self.assertEqual({r for r, (f, _) in owed.items() if f} | {"elicited"},
+                         set(mod.DECISION_EVIDENCE))
+
+    def test_only_a_brief_event_may_carry_the_passage(self):
+        import ledger as mod
+        base = {"id": "ev_0001", "pin_id": "pin_0001", "outcome": "opt_a", "rationale": "r",
+                "flip_criteria": "f", "source": "interview"}
+        self.assertEqual(mod.event_violations(dict(base, evidence="brief",
+                                                   brief_quote="one relational store")), [])
+        self.assertIn("brief_quote",
+                      mod.event_violations(dict(base, evidence="transcribed",
+                                                human_answer="q", brief_quote="a passage")))
+        self.assertIn("brief_quote",
+                      mod.event_violations(dict(base, evidence="brief", brief_quote="   ")))
+
+    def test_the_door_refuses_a_bare_outcome_and_names_the_shape(self):
+        import interview
+        led = make_ledger()
+        catalog = {"clusters": [{"id": "sync", "order": 1, "kind": "open_decision",
+                                 "severity": "medium", "title": "Sync",
+                                 "options": [{"id": "reqresp", "label": "request/response"}]}]}
+        with self.assertRaises(ValueError) as ctx:
+            interview.expand_catalog(led, catalog, brief_decisions={"sync": "reqresp"})
+        self.assertIn("quote", str(ctx.exception))
+        self.assertEqual(led.data["decision_log"], [])
+
+    def test_a_quoted_brief_settles_the_fork_and_the_passage_is_on_the_event(self):
+        import interview
+        led = make_ledger()
+        catalog = {"clusters": [{"id": "sync", "order": 1, "kind": "open_decision",
+                                 "severity": "medium", "title": "Sync",
+                                 "options": [{"id": "reqresp", "label": "request/response"}]}]}
+        out = interview.expand_catalog(led, catalog, brief_decisions={
+            "sync": {"outcome": "reqresp", "quote": "v1 is request/response; no streaming."}})
+        self.assertEqual(out["pre_decided"], ["sync"])
+        event = led.data["decision_log"][-1]
+        self.assertEqual((event["evidence"], event["brief_quote"]),
+                         ("brief", "v1 is request/response; no streaming."))
 
 
 if __name__ == "__main__":

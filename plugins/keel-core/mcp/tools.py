@@ -72,6 +72,58 @@ def _open_or_create(path: str):
     return led
 
 
+def _saved(ledger: str, led) -> None:
+    """THE write-commit of this module: persist the ledger, then re-project every live map on it.
+
+    One function because the pairing was a convention, and a convention is a thing eighteen doors
+    remember and the nineteenth does not. Measured by AST over this file: 18 functions called
+    `led.save()`, 17 of them then called `_refresh_live_maps`, and `ledger_label_failure` did not —
+    while `_livemap_marker`'s own docstring states the rule it was breaking (*"'live' is the MCP
+    layer re-projecting the file on every ledger write"*). Verified over stdio: with a live map
+    registered, `ledger_label_failure` left the page on disk byte-identical, so a `FailureEvent` the
+    measurer had just recorded was absent from the surface a human was watching, and the next
+    unrelated write made it appear — which is worse than never showing it, because the page's
+    freshness badge said live throughout.
+
+    The fix is not the eighteenth call. It is that there is now exactly one place where a ledger
+    write is finished, and `tests/test_mcp_tools.py::TestOneCommitPointForEveryLedgerWrite` fails on
+    any function in this module that reaches `save()` without coming through here — quantified over
+    the callers, so the nineteenth door inherits the rule instead of remembering it.
+    """
+    led.save()
+    _refresh_live_maps(ledger)
+
+
+def _require_quote(human_answer: str, evidence: str = "transcribed", *,
+                   freeform: bool = False, writes: str = "decision", because: str = "") -> None:
+    """Refuse an agent-relayed election that quotes nobody — the one carrier of that rule (v0.24).
+
+    It was four hand-written enforcement points that happened to agree: two in `record_decision`
+    (the `transcribed` rung, and the freeform path where the human's words ARE the outcome), one in
+    `record_policy`, one in `ledger_defer`. Four sentences, one rule, and the branch this was found
+    on has spent itself on exactly that shape — a rule spelled out at each door is a rule the next
+    door is written without.
+
+    Which rungs owe a quote is `ledger.QUOTED_RUNGS`, so the membership question lives with the
+    schema and this is only the refusal. The freeform path owes it whatever the rung says: there the
+    words are not evidence FOR the outcome, they are the outcome.
+
+    `writes` and `because` exist so the sentence can say what this particular call would have
+    written — a policy that decides forty pins and a defer that stops a question being asked are
+    different consequences of one missing quote, and a refusal an agent cannot act on is a wall.
+    """
+    from ledger import QUOTED_RUNGS
+    if not freeform and evidence not in QUOTED_RUNGS:
+        return
+    if str(human_answer or "").strip():
+        return
+    lead = ("a freeform election IS the human's words, so human_answer is required"
+            if freeform else
+            f"a {evidence} {writes} must carry the human's answer verbatim in human_answer — "
+            f"without it, an honest relay and a fabricated one are indistinguishable in the ledger")
+    raise ValueError(lead + (f"; {because}" if because else ""))
+
+
 def _governance_record() -> dict:
     """The policy fingerprint from what this process can see: the vendored roster and the spec
     version it ships with. Unresolvable inputs land in `missing` rather than being dropped."""
@@ -99,8 +151,7 @@ def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence
     pin = led.add_pin(kind=kind, title=title, severity=severity, confidence=confidence,
                       provenance=provenance, as_is=as_is, to_be=to_be, question=question,
                       depends_on=depends_on, kind_detail=kind_detail, cluster_id=cluster_id)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
 
 
@@ -108,8 +159,7 @@ def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: st
                               confidence: str = "inferred") -> dict:
     led = _open_or_create(ledger)
     pin = led.surface_assumption(title=title, detail=detail, severity=severity, confidence=confidence)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin["id"], "state": pin["state"]}
 
 
@@ -204,8 +254,8 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     elif option_id == "freeform":
         if not prompt["allow_freeform"]:
             raise ValueError(f"{pin_id} does not allow a freeform answer; choose one of {sorted(offered)}")
-        if not human_answer:
-            raise ValueError("a freeform election IS the human's words — human_answer is required")
+        _require_quote(human_answer, evidence, freeform=True,
+                       because="the words are not evidence for the outcome here, they ARE it")
     elif not Ledger.question_offers(pin, option_id):
         raise ValueError(
             f"{option_id!r} is not an option this pin offers ({sorted(offered) or 'none'}). An "
@@ -213,11 +263,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
             f"interview asked. Use option_id='freeform' if the question allows it."
         )
 
-    if evidence == "transcribed" and not human_answer:
-        raise ValueError(
-            "a transcribed decision must carry the human's answer verbatim in human_answer — "
-            "without it, an honest relay and a fabricated one are indistinguishable in the ledger"
-        )
+    _require_quote(human_answer, evidence, writes="decision")
 
     if accept_as_is:
         led.accept(pin_id, rationale=rationale, flip_criteria=flip_criteria,
@@ -228,8 +274,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
         led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
                    evidence=evidence, human_answer=human_answer)
         state = "decided"
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin_id, "state": state, "outcome": outcome, "evidence": evidence}
 
 
@@ -248,6 +293,13 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     `brief_held_back` with the reason and stays an open question. Un-gated, this door wrote any
     string onto any cluster at any severity — the third way into `decide` and the quietest.
 
+    **Each entry carries the brief (v0.24):** `{"outcome": "<option id>", "quote": "<the brief's own
+    words>"}`. The gate above governs *what may be written*; nothing governed *what the claim rested
+    on*, and `brief` was the one member of `DECISION_EVIDENCE` in that position — `transcribed`
+    demands `human_answer` at every door, `cascaded` demands a `policy_id` on both sides of a
+    biconditional, `elicited` cannot be claimed over MCP at all. So this tool moved pins to `decided`
+    on the caller's word that a document said so. A bare outcome string is refused, naming the shape.
+
     A key naming no cluster of this catalog, or one pruned for this `project_type`, comes back under
     `brief_unmatched` (v0.16). It used to come back nowhere: the docstring told the caller to check
     `brief_held_back`, and a typo'd or obsolete cluster id appeared on no list at all, so a fork the
@@ -257,8 +309,7 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     led = _open_or_create(ledger)
     result = interview.expand_catalog(led, interview.load_catalog(), project_type=project_type,
                                       brief_decisions=brief_decisions or {})
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return result
 
 
@@ -407,12 +458,9 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     prompt = policy_prompt(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
                            project_type)
 
-    if evidence == "transcribed" and not human_answer:
-        raise ValueError(
-            "a transcribed policy must carry the human's answer verbatim in human_answer — without "
-            "it, an honest relay and a fabricated one are indistinguishable, and this one decides "
-            f"{len(prompt['would_decide'])} pin(s) at once"
-        )
+    _require_quote(human_answer, evidence, writes="policy",
+                   because=f"and it bites harder here — this one decides "
+                           f"{len(prompt['would_decide'])} pin(s) at once")
 
     led = _open_existing(ledger)
     policy = led.add_policy(applies_to=prompt["applies_to"], rule=prompt["rule"],
@@ -424,8 +472,7 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     # listed pins an OLDER policy had just decided, and accepting one policy silently cascaded a
     # previous one over pins added since it was elected — pins nobody was shown when they elected it.
     radius = led.apply_policy(policy)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     # What THIS policy decided on THIS call. Every event it wrote carries evidence `cascaded` and
     # points back at this policy by `policy_id` — none of them claims a relay nobody made, and none
     # of them is another policy's work reported as this one's. The refusal buckets are spread from
@@ -449,24 +496,21 @@ def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: i
     item = led.add_remediation(pin_id, action=action, ladder_rung=ladder_rung,
                                canonical_target=canonical_target, build_track=build_track,
                                contract_carrier=contract_carrier)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
 
 
 def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status: str) -> dict:
     led = _open_existing(ledger)
     item = led.set_remediation_status(pin_id, item_id, status)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"item_id": item["id"], "status": item["status"]}
 
 
 def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> dict:
     led = _open_existing(ledger)
     pin = led.resolve(pin_id, evidence=evidence, rung=rung or None)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin["id"], "state": pin["state"],
             "verification": pin.get("verification")}
 
@@ -492,8 +536,7 @@ def ledger_set_readiness(ledger: str, pin_id: str, verdict: str, zone: dict, evi
     led = _open_existing(ledger)
     pin = led.set_readiness(pin_id, verdict, zone, evidence,
                             hardens=hardens, rationale=rationale)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin["id"], "readiness": pin["readiness"],
             "depends_on": pin["depends_on"]}
 
@@ -510,8 +553,7 @@ def ledger_mark_correctness_unknown(
     pin = led.mark_correctness_unknown(
         pin_id, blocked_by=blocked_by, attempted=attempted,
         determinism=determinism, rung=rung)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin["id"], "state": pin["state"],
             "verification": pin["verification"]}
 
@@ -522,8 +564,7 @@ def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
     led = _open_existing(ledger)
     pm = led.premortem(pin_id, failure_modes, guardrails=guardrails,
                        abort_criteria=abort_criteria, paper_tigers=paper_tigers)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin_id, "premortem": pm}
 
 
@@ -531,7 +572,7 @@ def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: s
                          phase: str, source: str = "measurer") -> dict:
     led = _open_existing(ledger)
     event = led.label_failure(pin_id, failure_class, detail, phase, source=source)
-    led.save()
+    _saved(ledger, led)
     return {"event": event, "foresight": led.foresight(pin_id)}
 
 
@@ -590,8 +631,7 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
                         agreement: str, notes: str = "") -> dict:
     led = _open_existing(ledger)
     record = led.cross_derive(pin_id, claim, derivations, agreement, notes)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     pin = led.pin(pin_id)
     # v0.16: what the disagreement DID, said rather than inferred from the state. A closed pin is
     # recorded and not reopened — un-closing finished work has its own arc — and a caller that
@@ -602,10 +642,17 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     # by the reopen and never cleared, so a second, AGREEING derivation over the same pin reported
     # `reopened: true` while its own event recorded `false`. Two carriers for one fact, disagreeing —
     # in the return shape of the tool whose whole subject is two derivations disagreeing.
+    #
+    # `rung_raised` joins it in v0.24 and is the same kind of fact: an AGREEING derivation strengthens
+    # the pin's `verification` — unless an arc has a standing refutation on that envelope, in which
+    # case the agreement is recorded and the rung is not raised. Reported rather than left to be
+    # inferred from `verification`, because "the rung was already `cross_derived`" and "this call
+    # raised it" are two different histories that leave the same field.
     event = next(e for e in led.readable("decision_log") if e.get("id") == record["event_id"])
     return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
             "event_id": event["id"],
             "reopened": event["reopened"],
+            "rung_raised": event["rung_raised"],
             "verification": pin.get("verification")}
 
 
@@ -675,16 +722,16 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     sentence above still says it cannot. A default is not a refusal.
     """
     led = _open_existing(ledger)
-    if not human_answer:
-        raise ValueError(
-            "a defer must carry the human's answer verbatim in human_answer — deferring "
-            "settles the pin and stops the question being asked, so an unquoted one is an agent "
-            "deciding not to decide, which is the one thing no tool here may do"
-        )
+    # There is exactly one path here — the agent relays — so the rung is `transcribed` and is not the
+    # caller's to state (see above); the same fact is what makes the quote unconditional, which is
+    # why this passes the rung rather than a boolean.
+    _require_quote(human_answer, "transcribed", writes="defer",
+                   because="deferring settles the pin and stops the question being asked, so an "
+                           "unquoted one is an agent deciding not to decide, which is the one "
+                           "thing no tool here may do")
     pin = led.defer(pin_id, rationale=rationale, flip_criteria=flip_criteria,
                     human_answer=human_answer)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     # Read off the event this call appended, not restated here (v0.18). It used to be a local
     # `evidence = "transcribed"` that was passed down AND reported back — one fact with two
     # carriers, and the parameter it was passed into is the one that has just been removed. The
@@ -728,8 +775,7 @@ def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_sign
     """
     led = _open_existing(ledger)
     event = led.reopen(pin_id, reason=reason, fired=fired, source=source)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     pin = led.pin(pin_id)
     return {"pin_id": pin_id, "event_id": event["id"], "reopened": event["reopened"],
             "state": pin["state"], "substate": pin.get("substate"),
@@ -767,8 +813,7 @@ def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str
     led = _open_existing(ledger)
     event = led.challenge(pin_id, target=target, challenge_class=challenge_class,
                           argument=argument, severity=severity, upheld=bool(upheld), source=source)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     pin = led.pin(pin_id)
     return {"pin_id": pin_id, "event_id": event["id"], "upheld": event["upheld"],
             "reopened": event["reopened"], "state": pin["state"],
@@ -790,8 +835,7 @@ def ledger_set_question(ledger: str, pin_id: str, question: dict) -> dict:
     """
     led = _open_existing(ledger)
     pin = led.set_question(pin_id, question)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin["id"], "state": pin["state"],
             "options": [o["id"] for o in (pin["question"].get("options") or [])],
             "allow_freeform": bool(pin["question"].get("allow_freeform"))}
@@ -812,8 +856,7 @@ def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str =
     """
     led = _open_existing(ledger)
     pin = led.add_proposals(pin_id, list(proposals or []), notes=notes)
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return {"pin_id": pin["id"], "state": pin["state"],
             "proposals": [p["id"] for p in pin["brainstorm"]["proposals"]],
             "recommended": next((p["id"] for p in pin["brainstorm"]["proposals"]

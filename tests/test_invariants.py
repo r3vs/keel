@@ -538,8 +538,10 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
             {"id": "sync", "order": 2, "kind": "open_decision", "severity": "medium",
              "title": "Sync", "options": [{"id": "reqresp", "label": "request/response"}]}]}
         result = interview.expand_catalog(led, catalog, project_type="web-saas", brief_decisions={
-            "persistence": "relational",              # offered, but `high` — the threshold holds
-            "sync": "mongodb"})                       # medium, but nothing offers it
+            # offered, but `high` — the threshold holds
+            "persistence": {"outcome": "relational", "quote": "postgres, schema-first"},
+            # medium, but nothing offers it
+            "sync": {"outcome": "mongodb", "quote": "mongo everywhere"}})
         self.assertEqual(result["pre_decided"], [])
         self.assertEqual([h["reason"] for h in result["brief_held_back"]],
                          ["held_back", "not_offered"])
@@ -595,6 +597,7 @@ class TestEveryWriteTimeRuleGainsItsReader(unittest.TestCase):
                                            "decision_log": [{"id": "ev_0001", "outcome": "planted",
                                                              "source": "interview",
                                                              "evidence": "brief",
+                                                             "brief_quote": "one relational store",
                                                              "flip_criteria": "x"}]})
             self.assertEqual(out, {"a_rule_added_later": ["ev_0001"]})
         finally:
@@ -671,12 +674,13 @@ class TestAMarkWithNoClearingDoorIsWrittenForAStandingReason(unittest.TestCase):
             "beyond every later policy for ever",
         ("ledger.py", "assign_resolution_modes"):
             "the funnel's opening split: blocker|high are asked, the medium|low tail may batch",
-        ("ledger.py", "cross_derive"):
-            "a contested claim is never re-defaulted silently — two providers disagreed, so the "
-            "tie-break belongs to a human and not to the next rule",
+        # `cross_derive` wrote this itself until v0.24, for the reason *a contested claim is never
+        # re-defaulted silently*. Same reason, same mark — through the arcs' one writer now, which
+        # is what made the rest of that writer's obligations reach it too.
         ("ledger.py", "_reopen_minimal"):
-            "a reopened truth is never re-defaulted silently — production or the challenger just "
-            "falsified the last answer, and re-defaulting it would answer it the same way again",
+            "a reopened truth is never re-defaulted silently — production, the challenger or a "
+            "provider disagreement just falsified the last answer, and re-defaulting it would "
+            "answer it the same way again",
         ("ledger.py", "mark_correctness_unknown"):
             "the pin carries the fork that asks what to do about work nobody could verify; a "
             "cascade answering it would be the silent close this state exists to prevent",

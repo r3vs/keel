@@ -818,6 +818,312 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
                     except Exception:
                         pass          # a refusal about the CALL is a legitimate answer
 
+def _ast_tools():
+    import ast
+    path = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "tools.py")
+    with open(path, encoding="utf-8") as fh:
+        return ast.parse(fh.read(), filename=path), ast
+
+
+def _ledger_bound(fn, ast):
+    """The local names a function bound a `Ledger` to — from `_open_existing` / `_open_or_create`.
+
+    Anchored on the opener rather than on the convention that it is always called `led`: a door that
+    calls its ledger something else is exactly the door a name-based check would miss.
+    """
+    names = set()
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) \
+                and isinstance(node.value.func, ast.Name) \
+                and node.value.func.id in ("_open_existing", "_open_or_create"):
+            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return names
+
+
+class TestOneCommitPointForEveryLedgerWrite(unittest.TestCase):
+    """v0.24 — 18 functions called `save()`, 17 of them then re-projected the live map.
+
+    Measured by AST over `src/mcp/tools.py`, and `ledger_label_failure` was the eighteenth — while
+    `_livemap_marker`'s own docstring states the rule it was breaking. Verified over stdio with a
+    live map registered: the page on disk stayed byte-identical, so a `FailureEvent` the measurer
+    had just written was absent from the surface a human was watching, and the next unrelated write
+    made it appear.
+
+    The fix is not the eighteenth call, so neither is the test: what is asserted is that there is
+    exactly ONE place in this module where a ledger write is finished.
+    """
+
+    def test_no_door_reaches_save_except_the_commit_point(self):
+        tree, ast = _ast_tools()
+        offenders = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name == "_saved":
+                continue
+            bound = _ledger_bound(fn, ast)
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "save" and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id in bound):
+                    offenders.append(f"{fn.name}:{node.lineno}")
+        self.assertEqual(offenders, [],
+                         f"a ledger write that finishes outside `_saved` at {offenders} — the live "
+                         "map registered for that file will not be re-projected, and the page's "
+                         "own badge will go on saying it is live")
+
+    def test_the_commit_point_does_both_halves_and_is_actually_used(self):
+        tree, ast = _ast_tools()
+        fns = {n.name: n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        inside = {c.func.attr for c in ast.walk(fns["_saved"])
+                  if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
+        inside |= {c.func.id for c in ast.walk(fns["_saved"])
+                   if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+        self.assertLessEqual({"save", "_refresh_live_maps"}, inside,
+                             "the one commit point stopped doing one of its two halves")
+        callers = {name for name, fn in fns.items()
+                   if name != "_saved" and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                                               and c.func.id == "_saved" for c in ast.walk(fn))}
+        self.assertGreaterEqual(len(callers), 18,
+                                "the roster went vacuous — 18 doors reached `save()` when this was "
+                                "written")
+
+    def test_the_door_that_was_the_eighteenth_re_projects_the_live_map(self):
+        """The reproduction, at the tool. `label_failure` changes no pin state, which is exactly why
+        it was the one nobody noticed: what it writes is an event, and the page inlines the log."""
+        tmp = tempfile.mkdtemp()
+        ledger = os.path.join(tmp, "ledger.json")
+        out = os.path.join(tmp, "map.html")
+        pin = tools.ledger_add_pin(ledger, kind="defect", title="double charge", severity="high",
+                                   confidence="extracted",
+                                   provenance=[{"source": "recon", "detail": "x"}])["pin_id"]
+        tools.render_map(ledger, out, live=True)
+        with open(out, encoding="utf-8") as fh:
+            before = fh.read()
+        tools.ledger_label_failure(ledger, pin, failure_class="untested_path",
+                                   detail="the same failure came back in production",
+                                   phase="production")
+        with open(out, encoding="utf-8") as fh:
+            after = fh.read()
+        self.assertNotEqual(before, after)
+        self.assertIn("the same failure came back in production", after,
+                      "the event reached the file and not the surface a human is watching")
+
+
+class TestOneRefusalForTheQuoteRule(unittest.TestCase):
+    """v0.24 — *an agent-relayed election must quote the human* had four enforcement points.
+
+    Two in `record_decision` (the `transcribed` rung, and the freeform path where the human's words
+    ARE the outcome), one in `record_policy`, one in `ledger_defer`. They agreed, which is the shape
+    every finding on this branch started as. Membership — WHICH rung owes a quote — is
+    `ledger.QUOTED_RUNGS`; the refusal is `_require_quote`; and the roster below is derived.
+    """
+
+    def test_every_door_that_takes_the_words_asks_the_one_refusal_for_them(self):
+        tree, ast = _ast_tools()
+        roster, asked = set(), set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if fn.name.startswith("_"):
+                continue
+            if "human_answer" not in [a.arg for a in fn.args.args]:
+                continue
+            roster.add(fn.name)
+            if any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                   and c.func.id == "_require_quote" for c in ast.walk(fn)):
+                asked.add(fn.name)
+        self.assertEqual(roster, {"record_decision", "record_policy", "ledger_defer"},
+                         "the derivation stopped finding the doors it was written for")
+        self.assertEqual(roster, asked,
+                         "a door that accepts the human's words and enforces the rule itself is "
+                         "the fifth site — put it through `_require_quote`")
+
+    def test_the_membership_question_lives_with_the_schema(self):
+        import ledger as mod
+        self.assertEqual(mod.QUOTED_RUNGS, ("transcribed",))
+        for rung in mod.DECISION_EVIDENCE:
+            with self.subTest(rung=rung):
+                if rung in mod.QUOTED_RUNGS:
+                    with self.assertRaises(ValueError):
+                        tools._require_quote("", rung)
+                else:
+                    tools._require_quote("", rung)      # must not raise
+        with self.assertRaises(ValueError):
+            tools._require_quote("   ", "transcribed")  # whitespace is not a quote
+        with self.assertRaises(ValueError):
+            tools._require_quote("", "elicited", freeform=True)   # the words ARE the outcome
+
+    def test_all_four_sites_still_refuse_over_the_tool_layer(self):
+        """The behavioural half, reproduced verbatim at each door. A carrier that no longer refuses
+        is worse than four sentences that agree."""
+        tmp = tempfile.mkdtemp()
+        ledger = os.path.join(tmp, "ledger.json")
+        pin = tools.ledger_add_pin(
+            ledger, kind="open_decision", title="session or jwt", severity="medium",
+            confidence="inferred", provenance=[{"source": "interview", "detail": "frame"}],
+            question={"prompt": "session or jwt?",
+                      "options": [{"id": "session", "label": "server sessions"},
+                                  {"id": "jwt", "label": "stateless jwt"}],
+                      "allow_freeform": True})["pin_id"]
+        calls = {
+            "record_decision (transcribed)": lambda: tools.record_decision(
+                ledger, pin, "session", rationale="simplest", flip_criteria="multi-region"),
+            "record_decision (freeform)": lambda: tools.record_decision(
+                ledger, pin, "freeform", rationale="simplest", flip_criteria="multi-region"),
+            "ledger_defer": lambda: tools.ledger_defer(
+                ledger, pin, rationale="later", flip_criteria="if a customer asks"),
+            "record_policy": lambda: tools.record_policy(
+                ledger, rule="the DB wins on nullability",
+                applies_to={"kind": "contract_mismatch"}, default_outcome="db"),
+        }
+        for label, call in calls.items():
+            with self.subTest(door=label):
+                with self.assertRaises(ValueError) as ctx:
+                    call()
+                self.assertIn("human_answer", str(ctx.exception))
+
+
+class TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach(unittest.TestCase):
+    """v0.24 — the roster half of `ledger.PIN_WRITE_DOORS`, derived from this module.
+
+    Reproduced over real stdio on one `resolved` defect: `ledger_set_question` and
+    `ledger_add_proposals` refused it in near-identical sentences, and `ledger_add_remediation`,
+    `ledger_set_remediation_status`, `ledger_premortem` and `ledger_set_readiness` accepted it.
+
+    **The roster is derived and the CALL is declared**, held together by set equality — the shape
+    `TestNoReadOnlyLedgerToolDiesOnAPinShape` was corrected to after its first draft quantified over
+    a tool it never exercised. A write door added to this module has to be given a call here, and
+    the ledger method it reaches has to be given a disposition, before the suite passes.
+    """
+
+    #: tool name -> the arguments beyond `ledger` and `pin_id`. Everything else is derived.
+    CALL = {
+        "record_decision": {"option_id": "opt_a", "rationale": "r", "flip_criteria": "f",
+                            "human_answer": "opt A"},
+        "ledger_defer": {"rationale": "r", "flip_criteria": "f", "human_answer": "not now"},
+        # `rung` is part of the minimal LEGITIMATE call here: a reopen demotes the envelope,
+        # so a resolve with no fresh rung refuses as `unverified` — a true refusal about a
+        # different rule, which would make the closed-work run below prove nothing.
+        "ledger_resolve": {"evidence": "re-observed on staging", "rung": "observed"},
+        "ledger_add_remediation": {"action": "align", "ladder_rung": 3},
+        "ledger_set_remediation_status": {"item_id": "rem_0001", "status": "todo"},
+        "ledger_set_readiness": {"verdict": "ready", "zone": {"files": ["a.py"]},
+                                 "evidence": {"graph": "n/a"}},
+        "ledger_mark_correctness_unknown": {"blocked_by": "no oracle", "attempted": ["tests"]},
+        "ledger_premortem": {"failure_modes": [{"class": "unfalsifiable",
+                                                "description": "the oracle cannot fail"}],
+                             "guardrails": ["measure p95 on prod"]},
+        "ledger_label_failure": {"failure_class": "untested_path", "detail": "it came back",
+                                 "phase": "production"},
+        "ledger_cross_derive": {"claim": "the retry is idempotent",
+                                "derivations": [{"provider": "anthropic", "model": "o",
+                                                 "result": "yes"},
+                                                {"provider": "openai", "model": "g",
+                                                 "result": "no"}],
+                                "agreement": "disagree"},
+        "ledger_reopen": {"reason": "it came back in production", "fired": "incident"},
+        "ledger_challenge": {"target": "to_be", "challenge_class": "unfalsifiable",
+                             "argument": "the oracle cannot fail", "severity": "high",
+                             "upheld": True},
+        "ledger_set_question": {"question": {"prompt": "which side wins?",
+                                             "options": [{"id": "db", "label": "db"},
+                                                         {"id": "api", "label": "api"}],
+                                             "allow_freeform": True}},
+        "ledger_add_proposals": {"proposals": [{"summary": "token bucket at the edge"}]},
+    }
+
+    @staticmethod
+    def _write_doors():
+        """(tool name, the `Ledger` methods it calls) for every function here that takes a `pin_id`
+        and finishes a write. Both halves matter: `pin_id` is what makes it a PER-PIN door, and
+        `_saved` is what makes it a write."""
+        import inspect
+
+        import ledger as mod
+        tree, ast = _ast_tools()
+        mutators = {n for n, _ in inspect.getmembers(mod.Ledger, inspect.isfunction)
+                    if n in mod.PIN_WRITE_DOORS}
+        out = {}
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if "pin_id" not in [a.arg for a in fn.args.args]:
+                continue
+            bound = _ledger_bound(fn, ast)
+            calls = {c.func.attr for c in ast.walk(fn)
+                     if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                     and isinstance(c.func.value, ast.Name) and c.func.value.id in bound}
+            if "_saved" not in {c.func.id for c in ast.walk(fn)
+                                if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}:
+                continue
+            out[fn.name] = calls & mutators
+        return out
+
+    def test_the_roster_is_derived_and_every_door_is_declared_on_both_sides(self):
+        import ledger as mod
+        doors = self._write_doors()
+        self.assertGreaterEqual(len(doors), 13, "the derivation went vacuous")
+        self.assertEqual(set(doors), set(self.CALL),
+                         "a per-pin write door with no declared call would be listed and never "
+                         "exercised — which is exactly how a gate passes a plant")
+        reached = set().union(*doors.values())
+        self.assertEqual(reached, set(mod.PIN_WRITE_DOORS),
+                         "a `Ledger` method an agent can reach with a pin_id, and nothing saying "
+                         "what it does to FINISHED work — declare it in `PIN_WRITE_DOORS`")
+
+    def _resolved(self, tmp):
+        """One `resolved` defect, carrying a fork so the election doors reach their own gate rather
+        than refusing earlier for a different reason."""
+        ledger = os.path.join(tmp, "ledger.json")
+        pin = tools.ledger_add_pin(
+            ledger, kind="defect", title="double charge on retry", severity="high",
+            confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+            as_is={"description": "d"},
+            question={"prompt": "which fix?",
+                      "options": [{"id": "opt_a", "label": "idempotency key"}],
+                      "allow_freeform": True})["pin_id"]
+        item = tools.ledger_add_remediation(ledger, pin, action="align",
+                                            ladder_rung=2)["item_id"]
+        tools.ledger_set_remediation_status(ledger, pin, item, "done")
+        tools.ledger_resolve(ledger, pin, evidence="replayed on staging; one charge",
+                             rung="observed")
+        return ledger, pin
+
+    def test_every_declared_call_runs_on_work_that_is_not_finished(self):
+        """The half that makes the other half an exercise: on an OPEN pin each declared call must
+        simply answer. A call that refuses here is refusing on its arguments, so its run against a
+        resolved pin proves nothing about the rule."""
+        for tool_name, kwargs in sorted(self.CALL.items()):
+            with self.subTest(door=tool_name):
+                tmp = tempfile.mkdtemp()
+                ledger, pin = self._resolved(tmp)
+                tools.ledger_reopen(ledger, pin, reason="it came back", fired="incident")
+                if tool_name == "ledger_set_question":
+                    continue        # write-if-absent, and this fixture poses a fork on purpose
+                getattr(tools, tool_name)(ledger, pin, **kwargs)
+
+    def test_finished_work_is_refused_or_recorded_exactly_as_the_table_says(self):
+        """The reproduction, quantified. The expectation per door is DERIVED from the table: a
+        `refuse` or `settlement` method must raise, an `arc` or `records_only` one must not."""
+        import ledger as mod
+        raises = {"refuse", "settlement"}
+        self.assertLessEqual(raises, set(mod.CLOSED_WORK_DISPOSITIONS))
+        for tool_name, methods in sorted(self._write_doors().items()):
+            dispositions = {mod.PIN_WRITE_DOORS[m] for m in methods}
+            expect_raise = bool(dispositions & raises)
+            with self.subTest(door=tool_name, dispositions=sorted(dispositions)):
+                tmp = tempfile.mkdtemp()
+                ledger, pin = self._resolved(tmp)
+                call = lambda: getattr(tools, tool_name)(ledger, pin, **self.CALL[tool_name])
+                if expect_raise:
+                    with self.assertRaises(Exception) as ctx:
+                        call()
+                    self.assertIn("finished", str(ctx.exception),
+                                  "the refusal must say the work is over, not fail for some other "
+                                  "reason — that is how a door passes this gate vacuously")
+                else:
+                    call()
+
 
 if __name__ == "__main__":
     unittest.main()

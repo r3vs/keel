@@ -11,7 +11,7 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06 (eighth pass).** **§1–§17 and §19–§22 are all closed.** Nothing on this list
+> **STATUS 2026-08-06 (ninth pass).** **§1–§17 and §19–§23 are all closed.** Nothing on this list
 > is open. **§18** is not a defect but the standing answer to the question this register exists to
 > ask: *after twelve adversarial rounds, which recurring class still has no gate?* **§19** was the
 > ninth round's answer — §5 built a new surface and left four rules its siblings enforce — and
@@ -27,8 +27,12 @@ wrong* is the part that stops it coming back.
 > class's DATA instead of the class* — both projections read a ledger as JSON and never build a
 > `Ledger`, so two rounds of hardening the read path went past them, `render_map` reported success
 > over a page that rendered nothing, and `generate_instructions` died on five ordinary
-> malformations. **A closed section is a claim about a class, and the class is where the next
-> instance lives.**
+> malformations. **§23** is the thirteenth's, and it is that same question asked of **sets** rather
+> than of classes: *a rule paid at a set's MEMBERS is unpaid for whatever satisfies the set's
+> definition without joining it.* `cross_derive` reopened pins and was not on `REOPEN_ARCS`; four
+> write doors touched pins and were on no closed-work list; `brief` was in `DECISION_EVIDENCE` and
+> was the only member nothing asked anything of. **A closed section is a claim about a class, and the
+> class is where the next instance lives.**
 >
 > | # | Gap | One line |
 > |---|---|---|
@@ -50,6 +54,7 @@ wrong* is the part that stops it coming back.
 > | ~~20~~ | ~~two closures that held for one half of what they claimed~~ | **CLOSED** — §7's guard reads the interview's own states; §17g's principle reaches the pins; the envelope gate stopped being a word search |
 > | ~~21~~ | ~~the reopen leaves the carriers the settlement doors gate on~~ | **CLOSED** — one declared table of carriers, held to the predicate's own AST; the derived read-tool gate then found three more readers |
 > | ~~22~~ | ~~the two projections read a ledger nobody had guarded~~ | **CLOSED** — `readable_ledger` is the one door for a caller holding ledger data; `nonconforming` reaches the page; `mount` is the page's one failure boundary; six new gates |
+> | ~~23~~ | ~~six rules paid at a set's members~~ | **CLOSED** — `cross_derive` is the third arc; a re-derivation may not launder a refutation; `PIN_WRITE_DOORS`; `brief_quote`; one commit point; one quote refusal |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -71,6 +76,7 @@ wrong* is the part that stops it coming back.
 > | 19. four rules true on one side of a pairing | ledger v0.20 | `ledger.LOG_ENTRY_PREFIXES`'s `cas_` + `_reopen_minimal`'s per-pin `CascadeEvent`; `Ledger.cascaded_by`, called by both arcs' tools; `ledger._CHALLENGE_SOURCES` on `challenge` **and** `premortem`; `add_proposals`'s `CLOSED_STATES` refusal; `allow_freeform` inside `_validate_question`; gates `tests/test_ledger.py::TestEveryForkThisRuntimeComposes` and the seven new cases in `TestComingBackIntoTheOpenSetIsGovernedToo` |
 > | 21. the reopen leaves the settlement doors' carriers standing | ledger v0.22 | `ledger.SETTLEMENT_CARRIERS` + `REOPEN_DISPOSITIONS`, paid by `_reopen_minimal` -> `Ledger._invalidate_settlement_claims`; the `substate` clear moved into `_settle`; `unasked_verdict` · `question_offers` · `policy_preview` through `pin_read`/`readable_pins`, and `buildloop.py` · `agentready.py` · `challenger.py` with them; `add_proposals`'s fork requirement; gates `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheirCarriers` and `tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape` (roster derived from `readOnlyHint`) |
 > | 7. + 17g. two closures that held for one half | ledger v0.21 | `ledger.INTERVIEW_STATES`, read by `interview_view` and inlined as the map's `__ASKABLE__`; `map.py`'s `outOfReach` / `forkOptions` around `modeLine`; `Ledger.readable` + `ledger.pin_read` + `severity_rank` + `ledger.PIN_RULES` (with `collection_shape` / `entry_shape` in `nonconforming`); `ledger._MAY_BE_SILENT`; gates `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails` and `tests/test_map.py::code_only` with its two plants |
+> | 23. six rules paid at a set's members, unpaid for what satisfies the set | ledger v0.24 | `ledger.REOPEN_ARCS`'s third member with `ARC_MOVES` / `ARC_CASCADES` (and `REOPENED_SUBSTATES` composed from the arc table alone); `ledger.refuted_claim` + `VERIFICATION_RUNG_WRITERS` + the `xdr_` event's `rung_raised`; `ledger.PIN_WRITE_DOORS` + `Ledger._gate_closed`; `EVENT_RULES`' `brief_quote` with `interview._brief_entry` and the map's decision card; `tools._saved`; `tools._require_quote` + `ledger.QUOTED_RUNGS`; gates `tests/test_ledger.py::TestTheThirdArcPaysWhatTheOtherTwoPay` · `TestOnlyAFreshObservationRaisesARefutedClaim` · `TestFinishedWorkIsRefusedAtEveryDoorThatWritesToAPin` · `TestTheBriefOwesTheBrief`, `tests/test_mcp_tools.py::TestOneCommitPointForEveryLedgerWrite` · `TestOneRefusalForTheQuoteRule` · `TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach` |
 > | 22. the two projections read a ledger nobody had guarded | ledger v0.23 | `ledger.read_collection` + `readable_ledger` (with `Ledger.readable` delegating to them), read by `map.render` · `instructions.render` · `graph` · `readiness` · `learning` · `agentready` · `mcp/tools`; `pin_read`'s `title`/`decision` and `ledger.POLICY_RULES` + `policy_read`; `severity_rank` as the package's ONE ordering; the map's `NONCONF_WHY` banner, its honest traffic light and `mount`'s thunk boundary; `build.py::_debris` + `shipped_files`; gates `tests/test_ledger.py::TestEveryReaderOfACollectionGoesThroughTheCarrier` · `TestOneSeverityOrderingForTheWholePackage` · `TestReadingAPolicyIsNeverTheOperationThatFails`, `tests/test_map.py::TestThePageIsRenderedFromWhatAReaderCanIndex` and the thunk row in `TestTheSafePathIsTheOnlyPath` |
 >
 > **Closed does not mean nothing remains.** Eight residuals are recorded inside closed sections
@@ -1994,6 +2000,18 @@ this section's cheapest lesson yet, and it did **not** come from a gate: the bro
 rule names on the map reading *"no sentence here describes this rule"*, because the table's first
 draft quantified over two of the schema's three rule tuples. **Look at the thing.**
 
+**§23 is the thirteenth's, and it adds seven rows — because its question is the most mechanizable
+form the sibling question has taken.** §21 asked *enumerate the carriers a predicate reads*; §22
+asked *who holds this class's data instead of the class*; this one asks **what satisfies a set's
+definition without being in the set**, which is decidable wherever the definition is behaviour a
+walk can see: a function that moves a pin back into the open set IS an arc, a tool that takes a
+`pin_id` and finishes a write IS a per-pin write door, a function that writes a closing rung IS a
+rung writer, a rung in `DECISION_EVIDENCE` IS something a caller can claim. Four of the seven rows
+below are that walk. The other three are the same move at the tool layer — one commit point, one
+refusal, one derived roster — and the round's own cheapest lesson came from the roster: **assert
+WHICH refusal fires, not that one did.** The closed-work gate caught `set_question` answering *"already
+poses a fork"* on a `resolved` pin, which is a true sentence that sends an agent to the wrong door.
+
 ### Gated
 
 **A new surface arrives without the invariant that governs the old one.** The register's most
@@ -2023,6 +2041,13 @@ added rather than on the day someone reads for it:
 | every rule `nonconforming` can report, given a sentence on the map | `tests/test_map.py::…::test_every_rule_the_report_can_name_has_a_sentence_on_the_page` — union of `PIN_RULES` + `POLICY_RULES` + `EVENT_RULES` (2026-08-06 — §22) |
 | every call to the page's one DOM sink, passing a thunk | `tests/test_map.py::TestTheSafePathIsTheOnlyPath::test_every_call_to_the_sink_hands_it_a_thunk_and_not_a_node` (2026-08-06 — §22) |
 | the file count `--check` reports, asking the sweep's own question | `tests/test_roster_generation.py::…::test_the_number_reported_as_evidence_counts_the_tree_the_sweep_keeps` (2026-08-06 — §22) |
+| every arc, with the two axes on which arcs differ | `tests/test_ledger.py::TestTheThirdArcPaysWhatTheOtherTwoPay` — `REOPEN_ARCS` ↔ `ARC_MOVES` ↔ `ARC_CASCADES` ↔ `_SUBSTATE_BY_ARC`, and every `REOPEN_BUCKETS` member reachable over the product of the two closed sets (2026-08-06 — §23) |
+| every writer of a closing `verification.rung` | `tests/test_ledger.py::TestOnlyAFreshObservationRaisesARefutedClaim::test_every_writer_of_a_rung_declares_what_it_rests_on` — AST over both assignment shapes, set equality against `VERIFICATION_RUNG_WRITERS` (2026-08-06 — §23) |
+| every per-pin write door an agent can reach, with what it does to FINISHED work | `tests/test_mcp_tools.py::TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach` — roster derived from the tools taking a `pin_id` and reaching `_saved`; expectation per door derived from `PIN_WRITE_DOORS` (2026-08-06 — §23) |
+| every disposition in `PIN_WRITE_DOORS`, true of the code that carries it | `tests/test_ledger.py::TestFinishedWorkIsRefusedAtEveryDoorThatWritesToAPin::test_each_disposition_is_true_of_the_code_that_carries_it` — transitive call graph, per disposition (2026-08-06 — §23) |
+| every rung in `DECISION_EVIDENCE`, with the field its claim rests on and the carrier that demands it | `tests/test_ledger.py::TestTheBriefOwesTheBrief::test_every_rung_owes_something_and_the_test_is_derived_from_the_vocabulary` (2026-08-06 — §23) |
+| every ledger write in `mcp/tools.py`, finishing at one commit point | `tests/test_mcp_tools.py::TestOneCommitPointForEveryLedgerWrite` — names bound from `_open_existing`/`_open_or_create`, so a door that calls its ledger something else is caught too (2026-08-06 — §23) |
+| every door that accepts the human's words, asking the one refusal for them | `tests/test_mcp_tools.py::TestOneRefusalForTheQuoteRule` — roster from the `human_answer` parameter; planted with a hand-written check that behaves identically (2026-08-06 — §23) |
 
 **The residual, and it is not closable.** Each row gates *one* invariant. The class is *"the
 invariant nobody thought to check at the new door"*, and no gate can enumerate invariants that do
@@ -2562,6 +2587,124 @@ python -m unittest tests.test_ledger tests.test_map tests.test_instructions
 - **`ledger.py` is excluded from the collection gate on purpose.** It is the carrier's home AND the
   write path, which deliberately keeps `self.data[…]`: a write onto a file this runtime cannot read
   is a different question, and the answer there is to refuse.
+
+---
+
+## 23. Six rules paid at a set's members, unpaid for what satisfies the set — **CLOSED 2026-08-06** (ledger v0.24)
+
+The thirteenth round, and the question it asked is §22's asked of **sets** instead of of classes:
+§20 gave the arcs their events, §21 gave them their carriers, §22 gave the projections the read
+path — and every one of those was paid *for the members of a table*. So the round looked for things
+that satisfy a table's definition without being in it. Each finding below was **reproduced over real
+`uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd** before it was a test,
+and every one of them passed 828 tests and eight gates.
+
+### Verified — the six, and what each returned
+
+1. **`cross_derive(agreement="disagree")` was a third way back into the open set.** Its own event
+   says `"reopened": true`, and it was on neither `REOPEN_ARCS` nor the code path
+   `SETTLEMENT_CARRIERS` is paid at, so it paid none of the tolls v0.22 had just made the other two
+   arcs pay. `add_pin(defect) → add_remediation → done → cross_derive(agree)` (the envelope reaches
+   the `cross_derived` rung) `→ cross_derive(disagree)` returned `{"state": "needs_input",
+   "verification": {"rung": "cross_derived", …}}`, and `ledger_resolve` with
+   `evidence="no new observation of any kind"` then answered `{"state": "resolved"}`.
+
+2. **`cross_derive(agreement="agree")` laundered a demoted verification.** Four calls apart:
+   `resolve(rung="observed")` → `ledger_reopen(fired="incident")` (rung demoted, `blocked_by`
+   written) → `ledger_resolve` correctly refused as `unverified` — and then one agent-authored
+   `cross_derive(agree)` merged `rung: "cross_derived"` back onto that same envelope with
+   `blocked_by` untouched, after which the pin closed. The reopen arc's whole purpose, undone by the
+   door beside it.
+
+3. **"Finished work is refused" was spelled out in prose at the two funnel doors this branch added
+   it to, and was absent everywhere else.** On one `resolved` defect: `ledger_set_question` and
+   `ledger_add_proposals` refused it in near-identical sentences; `ledger_add_remediation`,
+   `ledger_set_remediation_status`, `ledger_premortem` and `ledger_set_readiness` all wrote to it,
+   `isError: false`.
+
+4. **One write door of eighteen did not refresh the live map.** AST over `src/mcp/tools.py`: 18
+   functions called `.save()`, 17 then called `_refresh_live_maps`, `ledger_label_failure` did not —
+   while `_livemap_marker`'s own docstring states the rule. Verified with a live map registered: the
+   page on disk stayed byte-identical, so a `FailureEvent` was on no surface until the next
+   unrelated write, under a badge that said live throughout.
+
+5. **`brief` was the one member of `DECISION_EVIDENCE` whose claim had no carrier.** `elicited` is
+   unreachable over MCP, `transcribed` is refused at every door without `human_answer`, `cascaded`
+   demands `policy_id` on both sides of a biconditional. Reproduced with three clusters: one `ev_`
+   event on disk carrying `evidence: "brief"`, `rationale: "pre-decided by the brief"`, and no
+   reference of any kind to a brief.
+
+6. **"An agent-relayed election must quote the human" had four hand-written enforcement points and
+   no carrier** — two in `record_decision`, one in `record_policy`, one in `ledger_defer`. They
+   agreed, which is the shape every finding on this branch started as.
+
+### Why it matters
+
+Findings 1 and 2 are a correctness hole in the one gate the verification ladder exists for: two
+independent routes by which a pin that production had refuted closed green with nothing observed.
+Finding 3 lets an agent plan, re-open remediation on, and re-verdict work a human has finished, with
+no record that anything was un-finished. Finding 4 is the register's signature class at the surface
+layer — a write that reaches the file and not the human. Findings 5 and 6 are the same sentence in
+two places: a rung whose evidence nothing collects is a claim an honest agent and a fabricating one
+make identically.
+
+### What closed it
+
+- **`REOPEN_ARCS` has three members**, and the two axes on which they differ are tables:
+  `ARC_MOVES` (which states the arc moves — `cross_derive` marks an open pin and may not un-close
+  finished work) and `ARC_CASCADES` (whether the settled `depends_on` closure comes with it — false
+  for `cross_derive`, which is its own long-standing decision, kept verbatim and now *declared*).
+  `_reopen_minimal` is the one writer of all three; `REOPENED_SUBSTATES` carries no literal;
+  `REOPEN_BUCKETS` gains `already_closed`.
+- **`refuted_claim(pin)` + `VERIFICATION_RUNG_WRITERS`.** A re-derivation is not an observation, so
+  it may not raise a rung over a standing refutation; the agreement is still recorded and
+  `rung_raised` says which happened. Every writer of a closing rung now declares what fresh thing it
+  rests on, held to the AST.
+- **`PIN_WRITE_DOORS` + `Ledger._gate_closed`.** One entry per per-pin write door, four
+  dispositions, and `records_only` is why it is a table rather than a blanket: `label_failure` is
+  exactly what you do to a `resolved` pin before you reopen it.
+- **`brief_quote`**, as an `EVENT_RULES` biconditional, collected by `interview_expand`
+  (`brief_decisions` is now `{cluster_id: {"outcome", "quote"}}`) and read on the map's decision
+  card where `human_answer` is read.
+- **`tools._saved` and `tools._require_quote`**, with `ledger.QUOTED_RUNGS` holding the membership
+  question — one commit point, one refusal.
+
+### Prove it
+
+Every gate below was verified by **planting its own reversal and watching it go red**, then restored
+and re-run green. That is the procedure §18 says is the only thing that catches the class it cannot
+gate, and one of the plants earned its keep immediately: the closed-work gate asserts *which*
+refusal fires, and it caught `set_question` answering `already poses a fork` on a `resolved` pin —
+the weaker of two true reasons, pointing an agent at replacing the fork instead of at `reopen`. The
+check on the `_require_quote` roster was planted with a hand-written check that behaves identically,
+because a plant that breaks the syntax proves nothing.
+
+### Traps
+
+- **Do not widen `ARC_MOVES["cross_derive"]` to `SETTLED_STATES`.** v0.16 narrowed this arc away
+  from un-closing finished work on purpose; the complement against `CLOSED_STATES` is that
+  narrowing, written where the other two arcs can be compared to it.
+- **Do not make `cross_derive` cascade.** `ARC_CASCADES` is a declaration of an existing decision,
+  not an oversight to be tidied. Nobody yet knows which side is wrong.
+- **Do not let `refuted_claim` become a gate on `resolve`.** `resolve` demands the observation, and
+  it is the declared way out of a refutation — a gate with no gate-opening move is a wall.
+- **Do not add a `refuse` entry to `PIN_WRITE_DOORS` for `label_failure`.** Labelling a production
+  failure on finished work is the move that precedes a reopen; refusing it would make the honest
+  sequence impossible.
+
+### The residual, registered rather than fixed
+
+- **A ledger written before v0.24 whose `brief` decisions carry no passage is held below its floor
+  for ever, and correctly.** No quote can be reconstructed from a decision that never recorded one,
+  and inventing one would be the claim the field exists to make checkable. `nonconforming` reports
+  it under `pre_rule_events` and the map's decision card says so on the pin; the version simply does
+  not rise. This is §12's shape with the opposite verdict, and the difference is that here the
+  surfaces can *say* what is missing.
+- **`_gate_closed` binds `CLOSED_STATES`, not `SETTLED_STATES`** — so every one of the six `refuse`
+  doors still writes to a `decided` pin, which is deliberate (a human election is correctable, and
+  planning against a live election is what those doors are for) and is the same line `set_question`
+  drew first. If a future round wants `decided` covered, it is a different rule and needs its own
+  argument, not a wider tuple.
 
 ---
 

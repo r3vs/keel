@@ -318,8 +318,9 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     an unexpanded ledger makes the funnel answer "no questions" rather than "no forks".
 
     `brief_decisions` commits decisions, and "the brief said so" means nobody was asked — so each
-    one passes the same gate a policy cascade does. The outcome must be an option id that cluster's
-    own fork offers, and a `blocker`/`high` fork is never settled this way. Whatever the brief could
+    one passes the same gate a policy cascade does, AND carries the brief's own words. The outcome
+    must be an option id that cluster's fork offers, the quote must be the passage that settles it,
+    and a `blocker`/`high` fork is never settled this way. Whatever the brief could
     not carry comes back in `brief_held_back` (with the reason and the ids it did offer) and stays an
     open question for the interview. Check that list: a fork you thought was settled may not be.
 
@@ -330,8 +331,10 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     Args:
         ledger: Path to ledger.json (created if absent — this is the first write).
         project_type: Prunes clusters that do not apply (a fork absent from the type is not a question).
-        brief_decisions: cluster_id -> the OPTION ID that cluster's fork already got in the brief;
-            those pins are created and committed with evidence "brief", unless held back.
+        brief_decisions: cluster_id -> {"outcome": the OPTION ID that cluster's fork already got in
+            the brief, "quote": the brief's own words that settle it, verbatim}. Those pins are
+            created and committed with evidence "brief", unless held back. Both keys are required:
+            the rung means nobody was asked, so the brief IS the evidence and it has to be quotable.
     """
     return tools.interview_expand(ledger, project_type, brief_decisions)
 
@@ -754,10 +757,13 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
                         agreement: str, notes: str = "") -> dict:
     """Re-derive one high-stakes claim with a DIFFERENT provider; disagreement is the signal.
 
-    Agreement earns the `cross_derived` rung. Disagreement moves the pin to `needs_input`
-    (`contested`) with both derivations as options. Requires two derivations from two DISTINCT
-    providers — same-provider repetition is refused. Optional at every severity; spend it on
-    irreversible or blocker/high claims.
+    Agreement earns the `cross_derived` rung — unless a reopen or an upheld challenge has a standing
+    refutation on the pin's verification, which a re-derivation is not an answer to: the agreement is
+    recorded and `rung_raised` comes back false. Disagreement is a REOPEN ARC: it moves the pin to
+    `needs_input` (`contested`) with both derivations as options, takes back the claims a settlement
+    door reads as permission, and refuses to un-close finished work (use `ledger_reopen`, which
+    records why). Requires two derivations from two DISTINCT providers — same-provider repetition is
+    refused. Optional at every severity; spend it on irreversible or blocker/high claims.
 
     Args:
         ledger: Path to ledger.json.

@@ -1,4 +1,4 @@
-# Decisions Ledger — Spec v0.23
+# Decisions Ledger — Spec v0.24
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -184,7 +184,10 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "policy_id": null,             // set iff evidence is "cascaded": WHICH policy produced this
   "settles_as": "decided",       // v0.16 — decided | accepted | deferred: WHICH settled state this
                                  // election produced. Absent on pre-v0.16 events and means "decided"
-  "human_answer": "yes, pull the helper out" }   // required when transcribed: the words, verbatim
+  "human_answer": "yes, pull the helper out",    // required when transcribed: the words, verbatim
+  "brief_quote": null,           // v0.24 — required iff evidence is "brief", and only then: the
+                                 // passage of the project brief that settles THIS fork, verbatim
+  "rung_raised": null }          // on the xdr_ event only (v0.24) — see cross_derive
 
 // SettlementEvent (inside decision_log[]) — v0.16, immutable. ONLY for the doors with no election
 { "id": "stl_0001", "pin_id": "pin_0001", "timestamp": "ISO-8601",
@@ -273,7 +276,7 @@ When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "
 
 - **`elicited`** — the MCP server asked the user through the host and wrote the reply itself (`mcp:ledger_record_decision` on a client that declares the elicitation capability). The agent never held the value, so it could not have invented it.
 - **`transcribed`** — an agent relayed what the user said. `human_answer` carries the words verbatim, and is **required**: without a quote, an honest relay and a fabricated one are the same line in the ledger.
-- **`brief`** — settled in the project brief at frame time; the brief is the evidence. Which is exactly why it is gated like a cascade (v0.14): *nobody was asked here*, so the outcome must be one the pin's own `question` offers and a `blocker`/`high` pin is never settled this way. Written by `interview.expand_catalog` from `brief_decisions`, and what it may not carry comes back in `brief_held_back` and is asked — as does a key naming no cluster at all, in `brief_unmatched` (v0.16).
+- **`brief`** — settled in the project brief at frame time; the brief is the evidence, and since **v0.24** the runtime collects it: `brief_quote` carries the passage that settles this fork, verbatim, checked as a biconditional (only a `brief` event may carry one). It was the one member of this vocabulary whose claim had **no carrier at all** — the other three are each demanded by something — so `interview_expand(brief_decisions=…)` moved pins to `decided` on the caller's word that a document said so. `brief_decisions` is therefore `{cluster_id: {"outcome", "quote"}}`; a bare outcome is refused, naming the shape. Which is also why it is gated like a cascade (v0.14): *nobody was asked here*, so the outcome must be one the pin's own `question` offers and a `blocker`/`high` pin is never settled this way. Written by `interview.expand_catalog` from `brief_decisions`, and what it may not carry comes back in `brief_held_back` and is asked — as does a key naming no cluster at all, in `brief_unmatched` (v0.16).
 - **`cascaded`** (v0.11) — derived from a `Policy` the user elected. The answer reached the log once, at the policy election; this event amplifies it, and `policy_id` names the `Policy` that carries the rung and the quote. Its failure mode is neither invention nor mis-relay but **fit**: the rule may not suit this pin. Written by `Ledger.apply_policy` and by nothing else — `cascaded` and a `policy:` source imply each other, checked both ways.
 
 It defaults to `transcribed`, the weaker rung, on purpose: a writer that says nothing has not earned the stronger claim, and understating what is known is the safe direction to be wrong in. That default is also why `cascaded` had to become its own rung: a cascade took it, so the log said "an agent relayed what the user said" about a decision nobody relayed, and all three surfaces repeated it faithfully. The alternative — every surface testing `source` for a `policy:` prefix — is string-parsing where an explicit field is available.
@@ -657,7 +660,9 @@ The two determinism keys are the same split one object over, and are read the sa
 
 The reason this works at all is asymmetric: a single-provider hallucination is **stubborn under repetition and fragile under substitution**. Ask the same model twice and it reproduces its own error; ask a different family and it rarely invents the same wrong thing. So the schema enforces the only part that is checkable — at least two derivations from at least two *distinct* providers — and refuses same-provider repetition, which is repetition wearing an independence badge.
 
-Agreement sets `verification.rung = "cross_derived"`. **Disagreement is the signal, not a nuisance**: a pin **not in `CLOSED_STATES`** moves to `needs_input` with substate `contested`, because a claim two independent providers disagree about is exactly the one a human must look at. A pin already in `CLOSED_STATES` is not reopened here — the disagreement is still appended, `reopened` comes back false, and un-finishing settled work keeps its own arc (`reopen`, which records why).
+Agreement sets `verification.rung = "cross_derived"` — **unless an arc has a standing refutation on that envelope** (v0.24). A re-derivation is a genuine strengthening and is not an observation of the thing production refuted, so where `refuted_claim(pin)` stands the agreement is recorded and the rung is not raised; `rung_raised` on the `xdr_` event says which happened, exactly as `reopened` does one field over. The way out of a refutation is `resolve`, which demands the observation.
+
+**Disagreement is the signal, not a nuisance**, and since v0.24 it is one of the three `REOPEN_ARCS` rather than a fourth writer that behaved like one: a pin **not in `CLOSED_STATES`** moves to `needs_input` with substate `contested` — through `_reopen_minimal`, so it pays the `SETTLEMENT_CARRIERS` every arc pays — because a claim two independent providers disagree about is exactly the one a human must look at. A pin already in `CLOSED_STATES` is not reopened here (`ARC_MOVES`) — the disagreement is still appended, `reopened` comes back false, and un-finishing settled work keeps its own arc (`reopen`, which records why). It sweeps up no dependents, which is `ARC_CASCADES` saying so where a reader of the arc table can see it.
 
 `decided` is on the reopened side of that line, and deliberately: it is in `SETTLED_STATES` but **not** in `CLOSED_STATES`, and the whole reason those two sets were split is that a human election is *correctable* while finished work is not un-finished on an agent's say-so. So a decided pin whose claim two providers dispute comes back to the interview, and the human re-elects or does not. This paragraph read "an **open** pin" for one round, as though open and closed exhausted the states — the predicate is `pin["state"] not in CLOSED_STATES`, which is a third thing and is what the code has always computed.
 
@@ -1128,3 +1133,57 @@ Inside a record the payload is free-form by kind, so it cannot be enumerated wit
 ### The general shape
 
 v0.22's was *"enumerate the carriers a predicate reads."* This one is about who the enumeration is FOR: **a rule paid at a class's methods is unpaid for every caller that holds the class's data instead of the class.** Both projections read a ledger as JSON and never build a `Ledger`, which is precisely why two rounds of hardening the read path went past them. And the surface half of it is one sentence: *a surface that cannot render something says so where a human reads — never blank, never raised.*
+
+---
+
+## v0.24 — Membership is what the tolls are charged on
+
+v0.20 gave the reopen arcs the settlement half's events, v0.22 gave them its carriers, v0.23 gave the projections the read path. Every one of those fixes was paid **for the members of a set**, and this round is what that leaves: a thing that satisfies a set's definition without being in it pays none of them. Six defects, each observed over real `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd.
+
+### `cross_derive` is the third reopen arc, and now says so
+
+`cross_derive(agreement="disagree")` wrote `"reopened": true` on its own event, moved the pin to `needs_input`, stamped `substate: "contested"` and `resolution_mode: "asked"` — an arc in everything but membership. It was on neither `REOPEN_ARCS` nor the code path `SETTLEMENT_CARRIERS` is paid at, so it paid nothing v0.22 had just made the other two pay. Observed: `add_pin(defect) -> add_remediation -> done -> cross_derive(agree)` (the envelope reaches the `cross_derived` rung) `-> cross_derive(disagree)` took the pin back into the open set **still carrying that rung**, and `ledger_resolve` then closed it with `evidence="no new observation of any kind"`.
+
+```
+REOPEN_ARCS   = ("reopen", "challenge", "cross_derive")
+ARC_MOVES     = {reopen: SETTLED_STATES, challenge: SETTLED_STATES,
+                 cross_derive: STATES minus CLOSED_STATES}
+ARC_CASCADES  = {reopen: True, challenge: True, cross_derive: False}
+```
+
+The two axes on which the three arcs differ are declared rather than expressed as a second writer. `ARC_MOVES` is exactly the condition `cross_derive` used to hold inline (a disagreement is about a claim rather than an election, so it marks an OPEN pin too, and may not un-close finished work). `ARC_CASCADES` is `cross_derive`'s own long-standing decision, kept verbatim — *nobody yet knows which side is wrong, and reopening the neighbourhood on an unresolved disagreement would be churn, not caution* — and the change is that an arc which cascades nothing now says so where a reader of the arc table can see it, instead of by not being an arc. `REOPENED_SUBSTATES` carries no literal any more; `reopen_verdict` answers for all three; `_reopen_minimal` is the one writer of all three.
+
+`REOPEN_BUCKETS` gains `already_closed`, because merging it into `nothing_settled` would print *nothing was settled* over a `resolved` pin.
+
+### A re-derivation is not an observation, so it may not launder a refuted claim
+
+`cross_derive(agreement="agree")` merges a closing rung onto the pin's `verification` — including the envelope `_invalidate_settlement_claims` had just demoted. Observed four calls apart: `resolve(rung="observed") -> ledger_reopen(fired="incident")` (rung demoted, `blocked_by` written) `-> ledger_resolve` correctly refused as `unverified`, and then one agent-authored `cross_derive(agree)` restored a closing rung and the pin closed. The reopen arc's whole purpose, undone by the door beside it.
+
+```
+refuted_claim(pin) -> the standing refutation on the envelope, or ""
+VERIFICATION_RUNG_WRITERS = {resolve: fresh_observation, cross_derive: re_derivation,
+                             mark_correctness_unknown: records_absence,
+                             _invalidate_settlement_claims: demotion}
+```
+
+Two carriers make the fact and neither alone is it: `blocked_by` is history (`resolve` keeps it verbatim when a later observation closes the pin), a non-closing rung only says nothing has closed it yet. Together they say *something refuted this and nothing has answered it*. Where that stands, the agreement is still recorded — the event, the `cross_derivations` entry, and `rung_raised: false` — and the rung is not raised. `resolve` stays the way out, because it demands the observation; a gate with no gate-opening move is a wall. The writer table exists because *who may write a closing rung* had as many answers as there were writers.
+
+### `PIN_WRITE_DOORS` — finished work is refused at every door, not at the two that said so
+
+`CLOSED_STATES` means the work is over and the way back is `reopen`. Two doors spelled that out in prose; the rest were written without it. Observed on one `resolved` defect: `ledger_set_question` and `ledger_add_proposals` refused it in near-identical sentences, while `ledger_add_remediation`, `ledger_set_remediation_status`, `ledger_premortem` and `ledger_set_readiness` all wrote to it happily — a second remediation item on closed work, a premortem of a plan that already finished, a landing-zone verdict that can add `depends_on` edges to a pin nobody will build.
+
+One entry per per-pin write door, four dispositions: `refuse` (the six above, through one `_gate_closed`), `settlement` (already asks `settlement_verdict`, which answers `already_closed` before any branch speaks), `arc` (the way back — refusing finished work there would be refusing the only move that un-finishes it), and `records_only`. That last one is why this is a table and not a blanket: `label_failure` records that something failed in production, which is exactly what you do to a `resolved` pin *before* you reopen it. The roster is derived from the MCP tools that take a `pin_id` and save, so a door added later cannot be missing from the table.
+
+### `brief` was the rung that owed nothing
+
+`elicited` cannot be claimed over MCP at all (the server computes it); `transcribed` is refused at every door without `human_answer`; `cascaded` demands `policy_id` on both sides of a biconditional. `brief` demanded nothing, so `interview_expand(brief_decisions={...})` moved pins to `decided` on the caller's word that a project brief said so. Reproduced with three clusters: one `ev_` event on disk carrying `evidence: "brief"`, `rationale: "pre-decided by the brief"`, and no reference of any kind to a brief.
+
+The rung means *answered from the brief without asking*, so what it owes is the brief. `brief_quote` carries the passage, per fork, verbatim; the rule is an `EVENT_RULES` entry, so `nonconforming` replays it over files this runtime did not write and the version floor does not rise on a ledger whose brief decisions rest on nothing. The map's decision card quotes it where it quotes `human_answer`, and warns where a `brief` event carries none — the same sentence, for the same reason, on the rung that acquired its carrier one version later.
+
+### One commit point, and one refusal for the quote rule
+
+Two carrier findings at the tool layer, both the same shape. `mcp/tools.py` had **18** functions calling `save()` and **17** of them calling `_refresh_live_maps` — `ledger_label_failure` was the eighteenth, while `_livemap_marker`'s own docstring states the rule. Verified with a live map registered: the page on disk stayed byte-identical, so a `FailureEvent` was absent from the surface a human was watching and appeared at the next unrelated write, under a badge that said live throughout. And *an agent-relayed election must quote the human* had four hand-written enforcement points that happened to agree. Both now have one carrier — `_saved` and `_require_quote`, with `ledger.QUOTED_RUNGS` holding the membership question — and a structural test quantified over the callers rather than over a list.
+
+### The general shape
+
+v0.23's was *"a rule paid at a class's methods is unpaid for every caller that holds the class's data."* This one is the same sentence about sets: **a rule paid at a set's members is unpaid for whatever satisfies the set's definition without joining it.** `cross_derive` reopened pins and was not an arc; four write doors touched pins and were not on the closed-work list; `brief` was in `DECISION_EVIDENCE` and was the only member nothing asked anything of. The counter-move is the one this branch converged on: **one carrier per rule, and a structural test that quantifies over all of its callers** — and, where the corpus can be derived from the schema the rule is about, derive it, because a hand-written list of cases proves only what somebody thought to write down.

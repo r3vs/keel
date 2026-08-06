@@ -56,8 +56,10 @@ For each live, undecided fork, materialize one `open_decision` pin (schema: `ref
 It reads the machine form of the catalog, prunes by the `project_type` from Step 1, creates one pin
 per surviving fork with the catalog's options, implications, `cluster_id`, `severity` and
 `depends_on` already wired to the freshly-created pin ids, and takes the Step-2 givens as
-`brief_decisions` (cluster id → **the option id** that fork already got in the brief), which it
-commits as pre-decided with `evidence: "brief"` instead of asking again. It returns `created` /
+`brief_decisions` (cluster id → `{"outcome": **the option id** that fork already got in the brief,
+"quote": the passage of the brief that settles it, verbatim}`), which it
+commits as pre-decided with `evidence: "brief"` instead of asking again. Both keys are required:
+the rung says nobody was asked, so the brief has to be quotable (spec v0.24). It returns `created` /
 `pruned` / `pre_decided` / `brief_held_back` / `brief_unmatched`, which is the audit of what Steps
 1–2 actually did.
 

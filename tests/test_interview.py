@@ -75,7 +75,8 @@ class TestExpand(unittest.TestCase):
     def test_brief_decided_forks_are_pre_committed_not_asked(self):
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"client": "ssr"})
+                                          brief_decisions={"client": {"outcome": "ssr",
+                                           "quote": "server-rendered, SEO is the whole business"}})
         self.assertIn("client", result["pre_decided"])
         client = next(p for p in led.data["pins"] if p["title"].startswith("Client"))
         self.assertEqual(client["state"], "decided")
@@ -88,8 +89,10 @@ class TestExpand(unittest.TestCase):
         nobody quoted. Reproduced verbatim from the review."""
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas", brief_decisions={
-            "persistence": "mongodb — an outcome no option offers",
-            "identity": "roll our own crypto"})
+            "persistence": {"outcome": "mongodb — an outcome no option offers",
+                            "quote": "we will use mongo"},
+            "identity": {"outcome": "roll our own crypto",
+                         "quote": "auth is ours"}})
         self.assertEqual(result["pre_decided"], [])
         self.assertEqual(led.data["decision_log"], [],
                          "the brief is a rung, not a hole — nothing here was ever put to the user")
@@ -107,7 +110,8 @@ class TestExpand(unittest.TestCase):
         IS one of the fork's own options."""
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"persistence": "relational"})
+                                          brief_decisions={"persistence": {"outcome": "relational",
+                                                           "quote": "postgres, schema-first"}})
         self.assertEqual(result["pre_decided"], [])
         held = result["brief_held_back"][0]
         self.assertEqual((held["cluster_id"], held["reason"], held["severity"]),
@@ -120,7 +124,8 @@ class TestExpand(unittest.TestCase):
         an input consumed silently while the inputs beside it are reported on."""
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"persistance": "relational"})
+                                          brief_decisions={"persistance": {"outcome": "relational",
+                                                           "quote": "postgres, schema-first"}})
         self.assertEqual(result["brief_unmatched"],
                          [{"cluster_id": "persistance", "outcome": "relational",
                            "reason": "no_such_cluster"}])
@@ -136,7 +141,8 @@ class TestExpand(unittest.TestCase):
         self.assertTrue(pruned, "no cluster is pruned for a cli — this guard went vacuous")
         led2 = fresh_ledger()
         result = interview.expand_catalog(led2, self.cat, project_type="cli",
-                                          brief_decisions={pruned[0]: "whatever"})
+                                          brief_decisions={pruned[0]: {"outcome": "whatever",
+                                                       "quote": "the brief says so"}})
         self.assertEqual(result["brief_unmatched"],
                          [{"cluster_id": pruned[0], "outcome": "whatever",
                            "reason": "pruned_for_project_type"}])
@@ -144,7 +150,8 @@ class TestExpand(unittest.TestCase):
     def test_a_matched_key_is_never_reported_as_unmatched(self):
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"persistence": "relational"})
+                                          brief_decisions={"persistence": {"outcome": "relational",
+                                                           "quote": "postgres, schema-first"}})
         self.assertEqual(result["brief_unmatched"], [])   # held back, but matched
 
     def test_pruned_cluster_with_dependents_still_wires_surviving_deps(self):

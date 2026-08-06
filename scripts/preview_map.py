@@ -251,7 +251,10 @@ def build() -> Ledger:
                   "allow_freeform": True})
     led.decide(brief["id"], outcome="cookie", rationale="pre-decided by the brief",
                flip_criteria="a third-party client needs a bearer token",
-               evidence="brief")
+               # v0.24: the rung carries the brief, verbatim, or it carries nothing checkable. The
+               # card quotes this where it quotes a relay's `human_answer`.
+               evidence="brief",
+               brief_quote="Auth is a server session in an httpOnly cookie; no bearer tokens in v1.")
 
     # A relay that quotes nobody. `mcp:record_decision` refuses to write this, so it can only reach
     # a ledger from outside the guarded path — which is exactly when a reader needs to be told.

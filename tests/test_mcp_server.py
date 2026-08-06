@@ -394,8 +394,10 @@ class TestTheBriefIsAWriteAndSaysWhatItRefused(_Session):
         path = os.path.join(tempfile.mkdtemp(), "ledger.json")
         res = self._request("tools/call", {"name": "interview_expand", "arguments": {
             "ledger": path, "project_type": "web-saas", "brief_decisions": {
-                "persistence": "mongodb — an outcome no option offers",
-                "identity": "roll our own crypto"}}})
+                "persistence": {"outcome": "mongodb — an outcome no option offers",
+                                "quote": "we store documents in mongo"},
+                "identity": {"outcome": "roll our own crypto",
+                             "quote": "auth is ours, hand-rolled"}}}})
         self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
         out = res["result"]["structuredContent"]
         self.assertEqual(out["pre_decided"], [])

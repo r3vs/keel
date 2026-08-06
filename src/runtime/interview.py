@@ -12,7 +12,9 @@ Both disciplines from the catalog playbook are enforced here:
 2. **Skip what the brief already decided** — recorded as pre-committed `DecisionEvent`s (source
    `interview`, so neutrality holds), never re-asked. Skipping is a *write*, so it passes the one
    predicate every unasked write passes (`Ledger.unasked_verdict`): the brief settles a fork only
-   with one of that fork's own options, and never a `blocker`/`high` one. See `expand_catalog`.
+   with one of that fork's own options, and never a `blocker`/`high` one. And since v0.24 it carries
+   the brief — each entry quotes the passage that settles its fork, because *"the brief said so"* was
+   the one rung in `DECISION_EVIDENCE` that nothing made a caller back up. See `expand_catalog`.
 """
 from __future__ import annotations
 
@@ -76,13 +78,52 @@ def _fork_question(cluster: dict) -> Optional[dict]:
     }
 
 
+def _brief_entry(cluster_id: str, value) -> dict:
+    """One `brief_decisions` entry, as `{"outcome", "quote"}` — or a refusal naming the shape.
+
+    The door for the rule the `brief_quote` entry of `ledger.EVENT_RULES` carries. It is here as well
+    as there because the two answer different questions and both are worth answering at the right
+    moment: the table decides whether an EVENT is conformant (and replays over files this runtime
+    did not write), and this decides whether a CALL can proceed — a caller that passed the old bare
+    string gets told what the new shape is and why, at the argument, rather than a rule violation
+    about a dict it never saw.
+
+    A blank quote is the same as no quote, on `human_answer`'s rule: what makes the rung checkable is
+    the passage, and whitespace is not one.
+    """
+    if isinstance(value, dict):
+        outcome, quote = value.get("outcome", ""), value.get("quote", "")
+    else:
+        outcome, quote = value, ""
+    outcome, quote = str(outcome or "").strip(), str(quote or "").strip()
+    if not outcome or not quote:
+        raise ValueError(
+            f"brief_decisions[{cluster_id!r}] must be "
+            '{"outcome": "<one of that fork\'s own option ids>", "quote": "<the brief\'s own words '
+            'that settle it>"} — the `brief` rung means nobody was asked, so the brief IS the '
+            "evidence, and a rung whose evidence nothing carries is a claim an honest reading and "
+            f"an invented one make identically. Got {value!r}.")
+    return {"outcome": outcome, "quote": quote}
+
+
 def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
                    brief_decisions: Optional[dict] = None) -> dict:
     """Materialize open_decision / acceptance_criterion pins from the catalog into the ledger.
 
     - `project_type` prunes whole clusters (a fork absent from the type is not a question).
-    - `brief_decisions` maps cluster_id → an already-decided outcome; those pins are created and
-      immediately committed (pre-decided by the brief), never left as open questions.
+    - `brief_decisions` maps cluster_id → `{"outcome": <option id>, "quote": <the brief's own
+      words>}`; those pins are created and immediately committed (pre-decided by the brief), never
+      left as open questions.
+
+    **The shape is a mapping and not a bare outcome, since v0.24, and that is the whole of the rung's
+    evidence.** `elicited` is unreachable over MCP (the server asks and the agent never holds the
+    value), `transcribed` is refused at every door without `human_answer`, `cascaded` names its
+    `Policy` on both sides of a biconditional — and `brief` demanded nothing, so this door moved pins
+    to `decided` on the caller's word that a document said so. Reproduced with three clusters over
+    real stdio: one `ev_` event on disk carrying `evidence: "brief"`, `rationale: "pre-decided by the
+    brief"`, and no reference of any kind to a brief. The passage travels with the outcome rather
+    than in a parallel dict for the reason every pairing in this package is one object: two dicts
+    keyed the same way are two things that can disagree about which fork they are answering.
 
     **`brief` is a rung, not a hole (v0.14).** It means *answered from the project brief, without
     asking* — which is exactly why it is held to `Ledger.unasked_verdict`, the same predicate the
@@ -112,7 +153,8 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
     depends_on is wired from catalog cluster ids to the freshly-created pin ids. Returns
     {created, pruned, pre_decided, brief_held_back, brief_unmatched, id_map}.
     """
-    brief_decisions = brief_decisions or {}
+    brief_decisions = {cid: _brief_entry(cid, value)
+                       for cid, value in (brief_decisions or {}).items()}
     id_map: dict[str, str] = {}       # catalog cluster id -> ledger pin id
     created, pruned, pre_decided, held_back = [], [], [], []
 
@@ -140,7 +182,7 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
         if cid not in brief_decisions:
             created.append(pin["id"])
             continue
-        outcome = brief_decisions[cid]
+        outcome, quote = brief_decisions[cid]["outcome"], brief_decisions[cid]["quote"]
         verdict = ledger.unasked_verdict(pin, outcome)
         if verdict != "would_decide":
             # Held back for the reason the predicate gives, and the pin joins the questions to ask.
@@ -164,11 +206,11 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
         ledger.decide(pin["id"], outcome=outcome,
                       rationale="pre-decided by the brief",
                       flip_criteria=f"if the brief's {cid} choice is contradicted downstream",
-                      evidence="brief")
+                      evidence="brief", brief_quote=quote)
         pre_decided.append(cid)
     # Sorted, not in the caller's dict order: this is a report about a set, and a report whose order
     # depends on how the argument was typed is one two runs can disagree about.
-    unmatched = [{"cluster_id": cid, "outcome": brief_decisions[cid],
+    unmatched = [{"cluster_id": cid, "outcome": brief_decisions[cid]["outcome"],
                   "reason": "pruned_for_project_type" if cid in pruned else "no_such_cluster"}
                  for cid in sorted(brief_decisions) if cid not in id_map]
     return {"created": created, "pruned": pruned, "pre_decided": pre_decided,
