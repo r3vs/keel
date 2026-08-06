@@ -11,7 +11,7 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06.** §1–§4 are **closed**. **§5–§16 are open.**
+> **STATUS 2026-08-06.** §1–§4 are **closed**. **§5–§17 are open.**
 >
 > | # | Open gap | One line |
 > |---|---|---|
@@ -27,6 +27,7 @@ wrong* is the part that stops it coming back.
 > | 14 | five more pin fields, and four of five log kinds, reach the map nowhere | the class §8 is one instance of |
 > | 15 | two gates check less than their names claim | an AST gate that only sees constants; a name-match gate |
 > | 16 | an unknown `settles_as` renders as a bare label | its sibling `rung` gets a warning for the same condition |
+> | 17 | seven residuals of the final review, untriaged | including a `contested` answer that reads as elected in `AGENTS.md` |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -1209,6 +1210,78 @@ this map cannot describe, not print it as though it were understood.
 
 - Do not merge `SETTLES` into `RUNG`. They answer different questions off the same event; the
   vocabulary for *not knowing* is what should be shared, not the tables.
+
+---
+
+## 17. Seven residuals of the final review — **OPEN, found 2026-08-06, not triaged**
+
+Two adversarial reviewers closed the seventh round. Their findings are here rather than fixed,
+because the round's rule was that only defects it had *introduced* could be fixed in it — and
+because a report dies with its session while this file does not. None is triaged: each states what
+was verified and why it matters, and stops there.
+
+**17a. `AGENTS.md` prints a `contested` pin's disputed outcome with no marker.** Round 7 deleted
+`_pin_line`'s `with_outcome` flag so a `correctness_unknown` pin would stop reaching a fresh agent
+as an unanswered question. The same deletion applies to `contested`, where it inverts: a pin put in
+`needs_input`/`contested` by `cross_derive(agreement="disagree")` — i.e. because two providers gave
+opposite answers — now renders as ``- `pin_0010` [ambiguity] … — **at_least_once**``, formatted
+identically to the Settled section's build instruction. `grep -c substate src/runtime/instructions.py`
+→ 0. The map distinguishes the two loudly (an amber CROSS-DERIVATION — DISAGREE card, confirmed in a
+browser); the one file every host loads unprompted does not. **Why it matters:** the heading forbids
+*deciding*, not *building on*, and this is the surface with no reader to ask.
+
+**17b. A pin in `brainstorming` reaches the interview on no host.** `Ledger.interview_view` selects
+only `("needs_input", "correctness_unknown")` (`src/runtime/ledger.py:1699`), so `add_proposals` —
+which moves a pin from `needs_input` to `brainstorming` — removes it from the funnel. Verified at the
+MCP door on the all-states fixture: `interview_next` omits the brainstorming pin entirely while
+`ledger_summary` reports `by_state.brainstorming: 1` and counts it in `open_questions: 5`. Nothing
+moves it back — `decide` goes forward, only `cross_derive(disagree)` returns it, and the one method
+that would is §10's unreachable `set_question`. **Why it matters:** asking the brainstorm agent for
+options is how a hard fork gets help, and doing so is what takes the fork off the agenda.
+
+**17c. Two phase-4 playbooks and rescue's `SKILL.md` still say `resolved` needs two things.** It now
+needs three. `src/skills/codebase-rescue/references/phase-4-remediation.md:123`,
+`src/skills/greenfield-forge/references/phase-4-build.md:111` and
+`src/skills/codebase-rescue/SKILL.md:221` state *"requires BOTH the evidence and a MERGE"*; round 7
+made `rung` mandatory on every close (verified over stdio against the shipped server: the same call
+is `isError` without it and `{"state":"resolved"}` with `rung="observed"`). Round 7 updated three
+other playbooks and missed the two that specify the loop which actually closes pins. **Why it
+matters:** it is the signature class — a door tightened, the prose describing it left on the old
+rule — and it is recoverable only because the refusal text happens to name the fix. Note while
+fixing: `rung` now means two different things inside the same eight-step loop (the ladder rung at
+step 4, the verification rung at step 7).
+
+**17d. The settled heading claims `defer` is the only "do not build" state.** `### Settled — build on
+these (`defer` = elected NOT to build, not now)` is followed, in the rendered region, by
+``- `pin_0006` [design_concern] ACCEPTED: … — **keep**``. `accept` is defined in
+`settlement_verdict` as leaving the concern exactly as it is — the same instruction the parenthetical
+claims is unique to `defer` — and `_settled_order` sorts only on `state == "deferred"`, so a
+blocker-severity `accepted` pin still outranks an elected `decided` medium under the byte clip. The
+argument that moved `deferred` last was not applied one state over.
+
+**17e. `instructions.py` hardcodes the state name `deferred`.** `_settled_order` names it directly,
+against the rule the file's own test class asserts
+(`tests/test_instructions.py::TestEveryStateReachesTheRegion`: *a set the schema owns cannot be kept
+here, because a state added there does not come here*). No gate forbids it, so a fifth settled state
+with "do not build" semantics silently gets today's placement. Declared in the function's docstring;
+this is the entry that makes it survive the branch.
+
+**17f. `Ledger.defer` still takes `evidence: str = "transcribed"`.** The MCP door refuses a
+caller-stated rung (round 6 removed the parameter there, and the advertised schema proves it); the
+library layer still accepts one for a path that has no elicitation. Unreachable from any agent today
+— `tools.ledger_defer` is the only caller and hardcodes the value — so this is about the next caller,
+not this one. Compare `decide`, where the same parameter is legitimate because two paths exist.
+
+**17g. A `decision_log` entry with no `id` makes `ledger_summary` die with a bare `KeyError`.**
+`Ledger.summary` dispatches on `e["id"].startswith(...)` (`src/runtime/ledger.py`, ~:1742).
+Reproduced over stdio on both trees. No version of this package ever wrote that shape, so it is
+hand-corruption rather than a legacy file — but round 6 established the principle without that
+qualification (*reading a ledger must never be the operation that fails on it*), and `summary` is
+what an agent calls **before** acting, on a file it did not write.
+
+**One more, not a defect:** §6 (the 2.48:1 `--high` palette) was **not re-verified** in the final
+round. It is the one open gap whose evidence only a browser can produce, and no browser was opened
+for it. Treat its measurement as of the day it was filed.
 
 ---
 
