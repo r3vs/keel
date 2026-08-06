@@ -32,13 +32,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 48 MCP tools
+## The 54 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (14)
+### Ledger — the single source of truth (17)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -47,7 +47,10 @@ holds no state of its own; it projects this file.
 |---|---|---|
 | `ledger_summary` | counts of pins by state, kind and severity | — |
 | `interview_next` | the open questions, best-first by information gain | — |
+| `policy_preview` | what a policy **would** decide across its cluster, before anyone sets it | — |
 | `ledger_add_pin` | record a finding / defect / `open_decision` | ✎ |
+| `ledger_record_decision` | record the election the **human** made — refuses an outcome the pin never offered, and a relay with no quote | ✎ |
+| `ledger_record_policy` | record a **policy** the human elected for a whole cluster, then cascade it (`evidence: cascaded`) | ✎ |
 | `ledger_surface_assumption` | turn a *forced agent assumption* into a vetoable pin | ✎ |
 | `ledger_add_remediation` | attach a `RemediationItem` (rescue) or `BuildItem` (forge) to a decided pin | ✎ |
 | `ledger_set_remediation_status` | `todo → in_progress → done` | ✎ |
@@ -63,12 +66,13 @@ holds no state of its own; it projects this file.
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview
 answer. The write tools record; they do not decide.
 
-### Cross-layer contract (2)
+### Cross-layer contract (3)
 
 | Tool | Does |
 |---|---|
 | `contract_diff` | field-shape drift of every layer against the contract carrier — **the core engine** |
 | `reconcile_layers` | diff two layers directly, when there is no contract to sit between them |
+| `propose_correspondence` | candidate entity pairings ranked by **field overlap**, not by name — `status: proposed`, so a human elects before any diff runs on it |
 
 Eight stacks reduce to one field descriptor and are then diffed: **Postgres DDL · Drizzle · Prisma ·
 Django · SQLAlchemy · GraphQL · TypeScript · Pydantic**. What comes back is `nullability_mismatch`,
@@ -118,7 +122,7 @@ and tables are nodes; imports and calls are edges.
 Staleness-gated means: if the graph was built at a different commit than `HEAD`, it says so instead
 of answering confidently from a stale index.
 
-### Findings, quality & spend (8)
+### Findings, quality & spend (9)
 
 | Tool | Does |
 |---|---|
@@ -135,10 +139,12 @@ of answering confidently from a stale index.
 `coverage_gaps` is the anti-overclaim tool: a report that doesn't say what it *couldn't* check is a
 report that reads as clean.
 
-### Workflow, learning & interview (10)
+### Workflow, learning & interview (11)
 
 | Tool | Does |
 |---|---|
+| `interview_expand` | materialize the decision catalog as `open_decision` / `acceptance_criterion` pins |
+| `interview_seed_policies` | the per-cluster default policies the interview OPENS with, each carrying the blast radius it would decide |
 | `challenge_oracle` | red-team each elected `to_be` / `acceptance_criterion` / policy **before** code rests on it |
 | `build_waves` | level the roadmap's `depends_on` DAG into waves; report what's actionable now |
 | `render_map` | the ledger as a self-contained HTML map (`live: true` keeps it refreshing) |
@@ -243,7 +249,7 @@ manifest points at the same file; opencode gets the same table from a `config()`
 
 | Server | Transport | Why |
 |---|---|---|
-| `keel` | stdio (`uv run --script`) | the 48 tools above |
+| `keel` | stdio (`uv run --script`) | every tool above |
 | `context7` | http | **current** library docs — beats the model's training cutoff |
 | `deepwiki` | http | how a real repo actually solved it |
 | `playwright` | stdio (`npx`) | rendered-DOM extraction for the design/frontend layer |

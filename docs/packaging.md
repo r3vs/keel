@@ -382,10 +382,11 @@ ordinary English (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a
 word-match would "find" a server nobody declared. Correspondence comes from a declared fact or not
 at all.
 
-The gates: `scripts/build.py --check` (every generated file still equals its source),
-`scripts/check_consistency.py`, `scripts/verify_pointers.py`, `scripts/verify_commands.py` (every
-command a shipped file tells an agent to run resolves *after install*, not just here), and
-`python -m unittest discover -s tests`. All run in CI (`.github/workflows/ci.yml`).
+The gates that hold the above shut are `scripts/build.py --check` (every generated file still equals
+its source) and `scripts/verify_commands.py` (every command a shipped file tells an agent to run
+resolves *after install*, not just here). They are two of the set; **the whole list is the Commands
+block in `CLAUDE.md`**, complete against `.github/workflows/ci.yml`, and is not restated here —
+this sentence used to read "The gates: …" over a copy that was short by four.
 
 The residual none of them close: **a plugin cannot ship a selective, agent-scoped `Bash` rule.**
 Claude Code restricts `Bash` fine — `Bash(rm *)`-style matchers exist, with `deny → ask → allow`

@@ -29,10 +29,12 @@ mode is not rare here and it is not careless — it is what happens when you add
 the layer that stores it.
 
 **Before starting anything below:** read `CLAUDE.md`, then the playbook for whatever you touch.
-Work on a branch, one scope per commit, run every gate (`scripts/build.py --check`,
-`check_consistency.py`, `verify_pointers.py`, `check_hypotheses.py`, `verify_commands.py`,
-`check_schema_fields.py`, `python -m unittest discover -s tests`). `src/` is authored, `plugins/` is
-generated — never edit under `plugins/`, run `python scripts/build.py`.
+Work on a branch, one scope per commit, and **run every gate — the list is the Commands block in
+`CLAUDE.md`, and it is complete against `.github/workflows/ci.yml`.** This line used to enumerate the
+gates itself, and the copy was already short by two — `check_tool_carriers.py` and
+`run_evals.py --validate`: a second list of the same fact, drifting, in the file that tells a cold
+session what "every gate" means. `src/` is authored, `plugins/` is generated — never edit under
+`plugins/`, run `python scripts/build.py`.
 
 Suggested order: **1 → 2 → 4 → 3**. 1 and 2 are small and self-contained. 4 unblocks trusting the
 local suite while doing 3. 3 is research-shaped and may end in "no host supports it", which is a

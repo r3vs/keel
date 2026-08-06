@@ -15,15 +15,12 @@ hand-edited. If you change shared doctrine, edit `src/core/*.md` and run the bui
 
 ## The checks (must pass — they run in CI)
 
-```bash
-python scripts/build.py --check       # every generated file still equals its src/ source
-python scripts/check_consistency.py   # drift-linter: modules ↔ references ↔ SKILL, all skills + core
-python scripts/verify_pointers.py     # every intra-playbook *.md pointer resolves
-python scripts/verify_commands.py     # every COMMAND a shipped file names resolves AFTER INSTALL
-python -m unittest discover -s tests  # runtime, MCP tools + server, ledger gate, installed package
-python scripts/run_evals.py --validate # eval specs well-formed
-bash -n src/tools/bootstrap.sh        # installer shell syntax
-```
+**The list is the Commands block in `CLAUDE.md`, and only there.** This section used to hold its own
+copy of it, and the copy was short by three gates (`check_hypotheses.py`, `check_schema_fields.py`,
+`check_tool_carriers.py`) under a heading that reads as the complete set — which is the repo's own
+signature bug, sitting in the file that tells a contributor what "must pass" means. Six documents
+carried that list, each short by a different two-to-four; one carries it now, and it states that it
+was read off `.github/workflows/ci.yml`.
 
 `verify_commands.py` and `tests/test_installed_package.py` are not more of the same: every other
 gate anchors on `__file__` and so validates **the repo as a repo**, which is blind to the one path

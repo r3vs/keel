@@ -21,7 +21,8 @@ absence is invisible precisely because nothing failed.
 
 Two carrier classes count, because the skills are read by an agent in two forms:
 
-  * **prose** — `src/skills/**/*.md` and `src/core/*.md`: the playbook that tells an agent to act.
+  * **prose** — the shipped `.md` under `src/skills/` plus `src/core/*.md`: the playbook that tells
+    an agent to act. **Shipped** is asked of `build.py`, not re-decided here — see `prose_carriers`.
   * **structure** — a `modules.json` module whose `engine` is `mcp:<tool>`. Parsed as JSON, not
     grepped: an engine declaration is a stronger binding than a sentence, and `check_consistency.py`
     already validates it against the server.
@@ -45,6 +46,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SERVER = ROOT / "src" / "mcp" / "server.py"
 FUNC = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import build  # noqa: E402  — the authority on what ships; never a second copy of that fact
 
 #: Files that name tools without directing anyone to run them. Excluded from the carrier set with
 #: the reason, because "it is mentioned somewhere" is exactly the weak evidence that let
@@ -121,15 +125,34 @@ def write_tools() -> list[str]:
     return writes
 
 
+def shipped_md() -> list:
+    """Every authored `.md` the build actually emits into a plugin — asked of `build.py`.
+
+    The glob this replaced (`src/skills/**/*.md`) called its result "shipped prose files" and was
+    not: it swept up both `TODO.md` build checklists and all of `writing-skills`, which is our
+    contributor guide in a skill's clothes. So a write tool named only in a TODO satisfied a gate
+    whose own output said otherwise — this gate asserting a scope it did not have, which is the
+    class it exists to catch.
+
+    `build.shipped_skill_files()` is the authority and there is deliberately no exclusion list here:
+    a hand-kept copy of "what ships" would drift the first time a skill was renamed or a new dev-only
+    one added, which is the same second-carrier bug one level up.
+
+    `src/core/*.md` is included whole: `keel-core` declares `core_docs`, so every one of them is
+    copied to the plugin root, and the per-skill closure vendors the load-bearing ones on top.
+    """
+    return ([f for f in build.shipped_skill_files() if f.suffix == ".md"]
+            + sorted(build.CORE.glob("*.md")))
+
+
 def prose_carriers() -> dict:
     """path -> text, for every shipped .md that is allowed to count as naming a tool."""
     out = {}
-    for pattern in ("src/skills/**/*.md", "src/core/*.md"):
-        for path in sorted(ROOT.glob(pattern)):
-            rel = path.relative_to(ROOT).as_posix()
-            if rel in CATALOGS:
-                continue
-            out[rel] = path.read_text(encoding="utf-8")
+    for path in shipped_md():
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in CATALOGS:
+            continue
+        out[rel] = path.read_text(encoding="utf-8")
     return out
 
 
@@ -151,8 +174,13 @@ def engine_carriers() -> dict:
 
 def main() -> int:
     tools = write_tools()
+    shipped = {p.relative_to(ROOT).as_posix() for p in shipped_md()}
     prose = prose_carriers()
     engines = engine_carriers()
+
+    # A CATALOGS key that no longer ships excludes nothing while still reading as governance — the
+    # same stale-exemption failure the UNNAMED_OK check below reports.
+    stale_catalogs = sorted(set(CATALOGS) - shipped)
 
     unnamed, exempt_used = [], 0
     for tool in tools:
@@ -175,11 +203,16 @@ def main() -> int:
         print(f"ERROR UNNAMED_OK exempts `{tool}`, which the server no longer exposes as a write "
               f"tool. A stale exemption reads as governance while covering nothing.")
 
+    for rel in stale_catalogs:
+        print(f"ERROR CATALOGS excludes `{rel}`, which the build does not ship. A stale exclusion "
+              f"reads as governance while covering nothing.")
+
+    bad = len(unnamed) + len(stale) + len(stale_catalogs)
     print(f"\n{len(tools)} write tool(s) checked against {len(prose)} shipped prose files and "
           f"{sum(len(v) for v in engines.values())} engine declaration(s) "
           f"({len(CATALOGS)} catalog file(s) excluded, {exempt_used} exemption(s) used) — "
-          f"{len(unnamed) + len(stale)} error(s)")
-    return 1 if (unnamed or stale) else 0
+          f"{bad} error(s)")
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

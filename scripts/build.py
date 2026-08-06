@@ -241,6 +241,29 @@ def authored(skill: str) -> list[Path]:
             if p.is_file() and not any(part in SKILL_EXCLUDE for part in p.relative_to(sdir).parts)]
 
 
+def shipped_skills() -> list[str]:
+    """Skill dirs whose content this build actually emits into a plugin.
+
+    The two conditions `build()` itself applies, in the same order — dev-only skills never ship, and
+    a skill assigned to no plugin is a build PROBLEM rather than a silent omission, so this can only
+    disagree with what ships when the build is already failing.
+
+    Exposed because the gates need it: `check_tool_carriers.py` and `check_schema_fields.py` both
+    used to glob `src/skills/**` and call the result "shipped", sweeping up two `TODO.md` build
+    checklists and all of `writing-skills` (our contributor guide in a skill's clothes). Both then
+    accepted a carrier the user never receives. The fix is to ask the build rather than keep a second
+    list of exclusions here — a hand-kept copy of this fact is what drifts the day a skill is added.
+    """
+    assigned = {s for spec in PLUGINS.values() for s in spec["skills"]}
+    return sorted(d.name for d in SKILLS.iterdir()
+                  if d.is_dir() and d.name not in DEV_ONLY_SKILLS and d.name in assigned)
+
+
+def shipped_skill_files() -> list[Path]:
+    """Every authored file under `src/skills/` that reaches a user, `SKILL_EXCLUDE` applied."""
+    return [f for skill in shipped_skills() for f in authored(skill)]
+
+
 def core_closure(skill: str) -> set:
     """Core docs a skill needs, transitively: a doc may point at another doc."""
     seen, stack = set(), []

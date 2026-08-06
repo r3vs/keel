@@ -33,6 +33,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = ROOT / "src" / "core" / "decisions-ledger-spec.md"
 PAYLOAD_KEYS = ("as_is", "to_be", "question")
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import build  # noqa: E402  — the authority on what ships; never a second copy of that fact
+
 
 def declared_fields(spec_text: str) -> list[tuple[str, int]]:
     """Field names from the spec's jsonc blocks, skipping free-form payload interiors.
@@ -70,14 +73,22 @@ def declared_fields(spec_text: str) -> list[tuple[str, int]]:
 
 
 def readers() -> str:
-    """Everything that ships and could consume a field: our code, and our doctrine."""
+    """Everything that ships and could consume a field: our code, and our doctrine.
+
+    The skill half is asked of `build.shipped_skill_files()` rather than globbed. The glob it
+    replaced said "everything that ships" and included two `TODO.md` build checklists and all of
+    `writing-skills`, which never ships — so a field whose only reader was a TODO passed a gate whose
+    own docstring promised otherwise. Same bug as the one `check_tool_carriers.py` carried, and the
+    same fix: the build owns the fact, nobody keeps a second copy of it.
+    """
     text = []
-    for pattern in ("src/runtime/*.py", "src/mcp/*.py", "src/core/*.md",
-                    "src/skills/**/*.md", "src/skills/**/*.json", "src/hooks/*.py"):
-        for path in ROOT.glob(pattern):
-            if path.resolve() == SPEC.resolve():
-                continue                # the declaration is not a reading of itself
-            text.append(path.read_text(encoding="utf-8"))
+    paths = [p for p in build.shipped_skill_files() if p.suffix in (".md", ".json")]
+    for pattern in ("src/runtime/*.py", "src/mcp/*.py", "src/core/*.md", "src/hooks/*.py"):
+        paths += ROOT.glob(pattern)
+    for path in paths:
+        if path.resolve() == SPEC.resolve():
+            continue                    # the declaration is not a reading of itself
+        text.append(path.read_text(encoding="utf-8"))
     return "\n".join(text)
 
 
