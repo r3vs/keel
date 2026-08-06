@@ -115,7 +115,9 @@ proven otherwise", "no service split in v1"), then the genuine forks, ordered by
 gain**: domain model and persistence first (they fan out to everything), delivery and
 observability last. Open a brainstorm (`references/core/brainstorm.md`) on the hard forks. Every committed
 answer emits a `DecisionEvent` with `flip_criteria` — essential here, because you decide *before*
-you know the app. Then a **challenger** pass (`references/core/agents.md`) red-teams the elected
+you know the app. Two tools commit: `ledger_record_decision` for one fork,
+`ledger_record_policy` for an accepted architectural default (it writes the `Policy` and cascades
+it over the cluster's tail). Neither can elect — they record what the user chose. Then a **challenger** pass (`references/core/agents.md`) red-teams the elected
 decisions — an `acceptance_criterion` with no testable `verify`, two forks that can't both hold, a
 `to_be` unsatisfiable from the `givens`, a decision resting on an undeclared assumption — and a
 sustained `ChallengeEvent` reopens the pin *before* Phase 3 turns it into contract and backlog

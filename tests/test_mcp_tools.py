@@ -139,6 +139,47 @@ class TestLedgerWrites(unittest.TestCase):
         self.assertFalse(hasattr(tools, "ledger_decide"))
         self.assertFalse(hasattr(tools, "ledger_accept"))
 
+    def _cluster(self, n=3):
+        for i, sev in enumerate(("low", "medium", "high")[:n]):
+            tools.ledger_add_pin(self.ledger, kind="contract_mismatch", title=f"drift {i}",
+                                 severity=sev, confidence="extracted", cluster_id="cl_shape",
+                                 provenance=[{"source": "recon", "detail": "shape diff"}])
+
+    def test_a_catalog_offer_is_taken_verbatim_or_not_at_all(self):
+        """The offer is the mandate the user was shown. Restating it in the caller's own words is
+        how a recorded policy comes to differ from the one anybody agreed to."""
+        self._cluster()
+        offers = tools.interview_seed_policies(self.ledger)["offers"]
+        offer = next(o for o in offers if o["cluster_id"] == "cl_persistence")
+        self.assertIn("would_decide", offer, "an offer without its blast radius is half the question")
+        with self.assertRaises(ValueError):
+            tools.record_policy(self.ledger, offer_id=offer["cluster_id"], rule="my own words",
+                                human_answer="sure")
+        out = tools.record_policy(self.ledger, offer_id=offer["cluster_id"],
+                                  human_answer="yes, take the default")
+        policy = Ledger(self.ledger).data["policies"][-1]
+        self.assertEqual(policy["rule"], offer["rule"])
+        self.assertEqual(policy["applies_to"], offer["applies_to"])
+        self.assertEqual(out["evidence"], "transcribed")
+
+    def test_the_preview_writes_nothing_and_matches_what_the_cascade_does(self):
+        self._cluster()
+        args = dict(rule="the DB is truth", applies_to={"cluster_id": "cl_shape"},
+                    default_outcome="db")
+        preview = tools.policy_prompt(self.ledger, **args)
+        self.assertEqual(Ledger(self.ledger).data["policies"], [],
+                         "previewing a policy must not create one")
+        out = tools.record_policy(self.ledger, human_answer="the DB is truth here", **args)
+        self.assertEqual(out["cascaded"], preview["would_decide"])
+        self.assertEqual(out["held_back"], preview["held_back"])
+        led = Ledger(self.ledger)
+        for pin_id in out["cascaded"]:
+            event_id = led.pin(pin_id)["decision"]["event_id"]
+            event = next(e for e in led.data["decision_log"] if e["id"] == event_id)
+            self.assertEqual(event["evidence"], "cascaded",
+                             "a cascade must not be recorded as an agent's relay")
+            self.assertEqual(event["policy_id"], out["policy_id"])
+
 
 class TestUnderstandFamily(unittest.TestCase):
     """The understand-mode graph tools, exposed over MCP now that the CLI is being removed. The

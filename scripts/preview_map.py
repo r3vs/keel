@@ -11,9 +11,10 @@ procedure instead of a memory:
 The pins below are the spec's `as_is` variants (`core/decisions-ledger-spec.md`) plus the cases that
 actually broke: an agent-authored free-form payload of long prose under invented keys — which
 rendered as a `JSON.stringify` blob until 0.4.1 — hostile content, which went into `innerHTML`
-unescaped for just as long, and the three `evidence` rungs, which until 0.4.2 were written by
+unescaped for just as long, the `evidence` rungs, which until 0.4.2 were written by
 `Ledger.decide()` and rendered nowhere, so a decision an agent merely relayed looked exactly like one
-the server elicited from the user.
+the server elicited from the user, and the policy cascade, which then rendered as a relay that
+nobody had made.
 
 What to check, in both light and dark:
   1. prose reads as prose; paths, identifiers and enums read as monospace
@@ -21,11 +22,14 @@ What to check, in both light and dark:
   3. empty string, null and `{}` all render as "—" or "no as-is yet", never as `null` or `{}`
   4. the last pin's `<script>` and `<img onerror>` appear as TEXT, and no dialog opens
   5. `raw` still reveals the exact JSON — the projection may reformat, never hide
-  6. the three decided pins read as three different strengths WITHOUT reading the words: `elicited`
-     is green, `from the brief` neutral, `transcribed` amber on a tinted card. If they look alike,
-     the fix did not land — presence is not visibility.
+  6. the decided pins read as different strengths WITHOUT reading the words: `elicited` is green,
+     `from the brief` and `cascaded from a policy` neutral, `transcribed` amber on a tinted card. If
+     they look alike, the fix did not land — presence is not visibility.
   7. the transcribed pin quotes the human verbatim, escaped (its answer contains `"` and `<b>`), and
      the unquoted relay says so in amber. Only the weak rung is badged in the left-hand list.
+  8. the cascaded pin (the validation one) names the policy, its rule, how the POLICY was elected,
+     and quotes that answer — and says nothing about a relay, because nobody relayed anything about
+     this pin. That sentence is what the rung was added to stop.
 """
 from __future__ import annotations
 
@@ -166,6 +170,22 @@ def build() -> Ledger:
                rationale="the user said it is fine for now",
                flip_criteria="job latency exceeds the request budget",
                evidence="transcribed")
+
+    # `cascaded` (v0.11): nobody answered THIS pin — the user elected a policy over the cluster and
+    # this fell under it. Before the rung existed it rendered as "an agent relayed what the user
+    # said" plus the missing-quote warning, about the user's own rule. The card must now name the
+    # policy and how that was elected, and the quote it shows is the policy's.
+    led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
+                title="Validation lives in the handler, not at the boundary",
+                cluster_id="cl_nfrs",
+                as_is={"current_design": "each handler re-checks its own payload"})
+    led.add_policy(applies_to={"cluster_id": "cl_nfrs"},
+                   rule="validate at the contract boundary; structured errors from one taxonomy",
+                   default_outcome="validate at the boundary",
+                   evidence="transcribed",
+                   human_answer="yes — take the boundary rule for all of these, I'll flag the ones "
+                                "I want to argue about")
+    led.apply_policies()
     return led
 
 

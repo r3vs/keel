@@ -62,7 +62,11 @@ pre-decided with `evidence: "brief"` instead of asking again. It returns `create
 
 Then call `interview_seed_policies` for the catalog's per-cluster default policies. They are
 **offers**, not writes — Phase 2 opens with them and the user elects; nothing lands in the ledger
-until it does.
+until it does. Each offer arrives with `would_decide` / `held_back`: the pins accepting it would
+settle, and the blocker/high ones the threshold rule keeps as real questions. Carry that to Phase 2
+and put it in front of the user with the rule — what they accept is the radius. When they accept,
+`ledger_record_policy` is what writes the `Policy` and cascades it; there is no other way for one to
+enter the ledger, so an offer agreed to in conversation compresses nothing.
 
 Also run the **threat-model** pass here (`references/threat-model.md`): STRIDE over the decided
 elements materializes security `open_decision`s, so security is designed in from Phase 1, not

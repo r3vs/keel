@@ -121,6 +121,20 @@ whether a human can see it.
 
 ## 2. The tools the phases need are named by no phase — **CLOSED 2026-08-05** (`eb9c24c`)
 
+> **And it opened one, closed 2026-08-06.** Two adversarial reviewers found it independently. The
+> fix exposed the READ half of the policy step (`interview_seed_policies`) and left the WRITE half
+> doorless: nothing created a `Policy` or ran `apply_policies` on any host, while the same commit
+> ADDED four passages telling an agent the user elects a policy and that it then cascades. Exactly
+> the class this section is about, in the commit that closed the class. The door is now
+> `mcp:ledger_record_policy` (+ read-only `mcp:policy_preview`), built on `record_decision`'s shape.
+> The second finding was its consequence: `apply_policies` called `decide()` with no `evidence`, so
+> a user's own cascaded policy rendered as *"an agent relayed what the user said — ⚠ relayed with no
+> quote"* on all three of gap 1's surfaces. A cascade now has its own rung (`cascaded`, spec v0.11)
+> and names its policy by `policy_id`. Lesson worth keeping: **a new tool is not the deliverable —
+> the reachable state transition is.** `check_tool_carriers.py` would have caught the unnamed tool;
+> it cannot catch a tool that was never written, so the question to ask of any prose is not "does a
+> tool exist for this" but "name the tool that performs it, and run it".
+
 The class was closed, not just the instance. Rescue's phase-2 names `mcp:ledger_record_decision` as
 the commit step with the four things it enforces; greenfield's phase-2 says what actually happens as
 three tools, and `phase-1-frame.md` / `decision-catalog.md` name `interview_expand` where the
@@ -376,7 +390,10 @@ Settled with evidence; re-opening these costs a session and lands where it start
 - **No `ledger_decide`.** An agent may record an election, never make one. The tool refuses an
   outcome the pin's question did not offer, refuses freeform where the question forbids it, and
   refuses a transcribed decision with no quote. That is the invariant now — not the absence of a
-  tool, which is what left the human with no door for months.
+  tool, which is what left the human with no door for months. The same holds for
+  `ledger_record_policy` one level up: it refuses an offer the catalog never made, an offer restated
+  in the caller's words, and a relayed policy with no quote. Removing either door does not restore
+  the invariant, it only removes the human.
 - **No item-level `depends_on`.** Sequence lives on the pin: global ids, validated on write, levelled
   by `buildloop.waves()`. Removed rather than repaired, and the spec says why.
 - **Field-overlap similarity may propose, never decide.** `propose_correspondence` returns

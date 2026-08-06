@@ -16,21 +16,30 @@ The pins are **open decisions**, not code findings. So:
   - "Server-render unless interactivity genuinely demands a SPA."
   - "Generate every layer from one contract; never hand-duplicate a shape."
   Each becomes a `Policy` that auto-resolves the matching long-tail forks by default; the user
-  overrides by exception.
+  overrides by exception. The accepted ones are written by `mcp:ledger_record_policy` — take the
+  offer with `offer_id` alone (its rule, scope and outcome are the catalog's, and restating them is
+  refused), name the forks the user pulled out in `exceptions`, and the cascade runs in the same
+  call. High-fan-out forks stay `asked`: the threshold rule holds them back, which is why a policy
+  never quietly settles the domain model.
 - **Information-gain order is the catalog order**: domain model and persistence first (they fan
   out to everything downstream), delivery and observability last. Answering "what are the core
   entities and what's in v1" collapses more of the tree than any other question — ask it first.
 - **Options come from the catalog**, each carrying its downstream implication, so the user sees
   what a choice commits them to before choosing.
 
-> **The frame is code, not a script to improvise — but it is three tools, not one.**
+> **The frame is code, not a script to improvise — but it is four tools, not one.**
 > - `interview_expand` **materializes** the catalog as `open_decision` / `acceptance_criterion`
 >   pins. Phase 1 runs it (`references/phase-1-frame.md`); run it here if you are entering the
 >   interview on an unexpanded ledger, because the funnel can only compress pins that exist.
 > - `interview_seed_policies` returns the catalog's per-cluster default policies as the **offers**
->   you open with. It writes nothing: a `Policy` enters the ledger only when the user elects one,
->   because a policy then cascades outcomes over the medium/low tail — seeding them unasked would be
->   an agent deciding at scale.
+>   you open with, each carrying the pins it would decide. It writes nothing: a `Policy` enters the
+>   ledger only when the user elects one, because a policy then cascades outcomes over the
+>   medium/low tail — seeding them unasked would be an agent deciding at scale.
+> - `ledger_record_policy` is what writes the one they elect, and runs the cascade. Offer → answer →
+>   this call; skip it and the accepted policy exists only in the conversation, so nothing is
+>   compressed and every fork it covered comes back as its own question. It records, it does not
+>   elect: `offer_id` alone for a catalog offer, the user's words verbatim when you are relaying,
+>   and the server asks them itself where the host can elicit.
 > - `interview_next` returns the funnelled view in catalog order, threshold already enforced. It
 >   only reads, so on an unexpanded ledger it answers "no questions" — which is not the same fact as
 >   "no forks", and reading it as one is how a whole design goes un-elected.

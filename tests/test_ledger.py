@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.8). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.11). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -204,6 +204,45 @@ class TestEvidenceIsReachable(unittest.TestCase):
         self.assertEqual(event["evidence"], "transcribed")
         self.assertEqual(event["human_answer"], "option A, the DB is truth")
 
+    def test_a_cascade_is_not_recorded_as_a_relay(self):
+        """v0.11. The cascade used to take the `transcribed` default, so every surface said an agent
+        had relayed what the user said about a decision nobody relayed — the map warned about a
+        missing quote, the summary counted it as weak, the AGENTS.md line stated it in prose."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="low")
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
+                             default_outcome="db", evidence="transcribed",
+                             human_answer="the DB wins unless I say otherwise")
+        led.apply_policies()
+        event = led.data["decision_log"][-1]
+        self.assertEqual(event["evidence"], "cascaded")
+        self.assertEqual(event["policy_id"], pol["id"],
+                         "a cascaded event must name the election it derives from, by field — a "
+                         "surface should not have to parse `source` to find the policy")
+        self.assertNotIn("human_answer", event,
+                         "the quote belongs to the policy election, not restated on each pin")
+        self.assertEqual(led.summary()["decisions_by_evidence"], {"cascaded": 1})
+        self.assertEqual((pol["evidence"], pol["human_answer"]),
+                         ("transcribed", "the DB wins unless I say otherwise"))
+
+    def test_the_rung_and_the_source_imply_each_other(self):
+        """Both directions, because both are ways of lying about who answered."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        with self.assertRaises(LedgerError):   # a direct answer claiming a cascade
+            led.decide(pin["id"], "opt_a", "r", "flip", evidence="cascaded", policy_id="pol_0001")
+        with self.assertRaises(LedgerError):   # a cascade claiming a relay
+            led.decide(pin["id"], "opt_a", "r", "flip", source="policy:pol_0001",
+                       evidence="transcribed", human_answer="x")
+        with self.assertRaises(LedgerError):   # a cascade naming no policy
+            led.decide(pin["id"], "opt_a", "r", "flip", source="policy:pol_0001",
+                       evidence="cascaded")
+        with self.assertRaises(LedgerError):   # a direct answer pointing at a policy
+            led.decide(pin["id"], "opt_a", "r", "flip", human_answer="x", policy_id="pol_0001")
+        with self.assertRaises(LedgerError):   # a policy is elected, never derived from a policy
+            led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="r",
+                           default_outcome="db", evidence="cascaded")
+
 
 class TestThresholdAndPolicies(unittest.TestCase):
     """v0.3: 200 findings are not 200 decisions — but blocker|high never defaults silently."""
@@ -230,6 +269,23 @@ class TestThresholdAndPolicies(unittest.TestCase):
         led.apply_policies()
         event = led.data["decision_log"][-1]
         self.assertEqual(event["source"], f"policy:{pol['id']}")   # user-originated, amplified
+
+    def test_the_preview_is_the_cascade(self):
+        """What a user is shown before electing a policy must be what the cascade then does. One
+        matcher, two callers — the preview is not a second implementation that can drift."""
+        led = make_ledger()
+        low = add_simple_pin(led, severity="low")
+        med = add_simple_pin(led, severity="medium")
+        high = add_simple_pin(led, severity="blocker")
+        skip = add_simple_pin(led, severity="low")
+        preview = led.policy_preview({"kind": "contract_mismatch"}, exceptions=[skip["id"]])
+        self.assertEqual(preview["would_decide"], [low["id"], med["id"]])
+        self.assertEqual(preview["held_back"], [high["id"]])
+        self.assertEqual(preview["excepted"], [skip["id"]])
+        led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
+                       default_outcome="db", exceptions=[skip["id"]],
+                       human_answer="db wins")
+        self.assertEqual([p["id"] for p in led.apply_policies()], preview["would_decide"])
 
     def test_policy_exceptions_stay_asked(self):
         led = make_ledger()

@@ -34,6 +34,10 @@ Summary of what matters here:
   pin (`confidence: inferred|ambiguous`) instead of a silent decision (the assumptions doctrine).
   Both arcs **reopen, never decide** — the feedback loop closes the loop downstream, the challenger
   upstream.
+- v0.10/v0.11 add `evidence` on the `DecisionEvent` — how the human's answer reached the log
+  (`elicited | transcribed | brief | cascaded`), with `human_answer` quoting a relay verbatim and
+  `policy_id` naming the `Policy` behind a cascade. The `Policy` carries its own rung, because a
+  policy is where the human actually answered for a whole cluster.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen.
 

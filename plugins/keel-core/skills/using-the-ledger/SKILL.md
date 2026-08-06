@@ -40,6 +40,8 @@ what the spec says it means.
 | the state, before acting | `ledger_summary` |
 | the next real questions | `interview_next` (create them first with `interview_expand`) |
 | the opening policy offers, before asking anything | `interview_seed_policies` (offers only — a Policy exists once the human elects it) |
+| what a rule would decide, before proposing it | `policy_preview` (writes nothing; `would_decide` is what the user is really electing) |
+| the human accepted a policy | `ledger_record_policy` (creates it and cascades it — nothing else does either) |
 | add a finding / defect / `open_decision` | `ledger_add_pin` |
 | the human answered a fork | `ledger_record_decision` |
 | plan & close the gap | `ledger_add_remediation` · `ledger_set_remediation_status` · `ledger_resolve` |
@@ -63,6 +65,13 @@ asks the user and writes the reply itself — you never carry the value, and wha
 ignored. Otherwise you relay, and must quote the user verbatim in `human_answer`; that lands as
 `evidence: transcribed`, the weaker rung, visible to anyone reading the log. There is still no
 `ledger_decide`: no tool elects on its own authority.
+
+The same holds one level up, where it matters more. `ledger_record_policy` records a **policy** the
+human accepted and cascades it over the cluster — many pins from one answer — so it is held to the
+same discipline: a catalog offer is taken verbatim by `offer_id`, any other policy must state its
+rule, scope and outcome and quote the user, and the server asks the user itself where the host can
+elicit. Preview the radius first (`policy_preview`); the cascaded decisions record
+`evidence: cascaded` and point back at the policy, so nothing later claims a relay nobody made.
 
 Use it. A pin that never reaches `decided` blocks its own remediation, its dependents, and the
 reopen loop — the analysis was done and none of it can land.

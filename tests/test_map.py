@@ -4,8 +4,9 @@ The map is a user-facing deliverable and its correctness is a DOM, so it is veri
 browser — repeatably, via `python scripts/preview_map.py`, whose docstring lists what to look at.
 That pass covers the pin list, the `as_is`/`to_be` projection over every shape the spec allows, the
 three-column contract-diff with the disagreeing layer flagged, the linked interview question, the
-traffic-light, the four `evidence` states of a decision card (elicited / brief / transcribed with a
-quote / transcribed with none) reading as *different strengths* before the words are read, and
+traffic-light, the `evidence` states of a decision card (elicited / brief / transcribed with a
+quote / transcribed with none / cascaded, which also shows the policy and how it was elected)
+reading as *different strengths* before the words are read, and
 hostile content rendering as text rather than executing — in light and dark.
 
 These tests pin only what CI can guard without a browser: the output is one self-contained file
@@ -130,6 +131,27 @@ class TestDecisionEvidenceIsInlined(unittest.TestCase):
                                     "unreachable from the page, whatever the card says")
         self.assertEqual(event["evidence"], "transcribed")
         self.assertEqual(event["human_answer"], "option a — the DB is truth")
+
+    def test_a_cascaded_card_can_reach_the_policy_that_decided_it(self):
+        """The `cascaded` card states the rule the user elected and how they elected it, so the
+        second join — event.policy_id -> policies[] — has to land on the page too. It is a join on a
+        field, not on `source`'s `policy:<id>` prefix: a surface that parses a string to find its
+        record is one refactor away from silently finding nothing."""
+        led = demo_ledger()
+        pin = led.data["pins"][0]
+        pin["severity"] = "low"                      # blocker|high is held back by the threshold
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="the DB is truth",
+                             default_outcome="db", human_answer="db wins unless I flag one")
+        led.apply_policies()
+        payload = json.loads(mapmod.render(led.data, title="cascaded").split("const LEDGER =", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        event = next(e for e in payload["decision_log"] if e["id"] == pin["decision"]["event_id"])
+        self.assertEqual(event["evidence"], "cascaded")
+        policy = next((p for p in payload.get("policies", []) if p["id"] == event["policy_id"]), None)
+        self.assertIsNotNone(policy, "the map cannot resolve event.policy_id — the card would have "
+                                     "to say a policy decided this and be unable to say which")
+        self.assertEqual((policy["rule"], policy["evidence"], policy["human_answer"]),
+                         ("the DB is truth", "transcribed", "db wins unless I flag one"))
 
 
 class TestLiveMode(unittest.TestCase):

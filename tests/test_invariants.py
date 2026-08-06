@@ -95,13 +95,15 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     HUMAN_ONLY = {
         "decide": "reached only through record_decision, which records an election and cannot make one",
         "accept": "same channel: record_decision(accept_as_is=True), gated to design_concern",
+        "add_policy": "reached only through record_policy, which records a policy the human elected "
+                      "— from an offer taken verbatim, or quoted — and cannot set one",
+        "apply_policies": "same channel: the cascade is what electing a policy MEANS, so it runs "
+                          "inside record_policy and never as a step an agent can take alone",
     }
     #: Mutators reached through another governed entry point rather than a tool of their own.
     INTERNAL = {
         "set_question": "the interview funnel writes it (interview_next drives the surface)",
         "add_proposals": "the brainstorm agent's own write path; neutral by schema",
-        "add_policy": "a user-set policy cascade, elected in the interview",
-        "apply_policies": "runs inside the interview funnel",
         "assign_resolution_modes": "runs inside the interview funnel",
         "reopen": "the feedback loop's downstream arc, driven by a fired flip_signal",
         "challenge": "exposed as challenge_oracle, which applies upheld ChallengeEvents",
@@ -113,7 +115,7 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     def _mutators(self) -> set:
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
-        readonly = {"pin", "interview_view", "summary", "foresight"}
+        readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -182,6 +184,55 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         event = ledgermod.Ledger(led.path).data["decision_log"][-1]
         self.assertEqual(event["human_answer"], "yes, pull the helper out",
                          "the words the decision rests on must be in the ledger, not only in a chat")
+
+    def test_an_agent_can_record_a_policy_election_but_never_make_one(self):
+        """The same invariant one level up, where the leverage is: a policy decides a whole cluster.
+
+        It had no door at all — `add_policy`/`apply_policies` were reachable by nothing on any host,
+        while four shipped passages told an agent the user elects a policy and that it then
+        cascades. The door added here must not become the shortcut the absence was protecting
+        against, so what it refuses is asserted before what it writes.
+        """
+        import tools as mcp_tools
+        exposed = {n for n, _ in inspect.getmembers(mcp_tools, inspect.isfunction)}
+        self.assertNotIn("add_policy", exposed, "a policy is elected, never set by an agent")
+        self.assertIn("record_policy", exposed, "the human needs a door, or nothing ever cascades")
+
+        led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        pins = [led.add_pin(kind="contract_mismatch", title=f"drift {i}", severity=sev,
+                            confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                            cluster_id="cl_shape", as_is={"db": "int", "api": "string"})
+                for i, sev in enumerate(("low", "medium", "blocker"))]
+        led.save()
+
+        with self.assertRaises(ValueError, msg="a policy needs a rule, a scope and an outcome"):
+            mcp_tools.record_policy(led.path, applies_to={"cluster_id": "cl_shape"},
+                                    human_answer="db wins")
+        with self.assertRaises(ValueError, msg="relaying a policy without a quote is unfalsifiable"):
+            mcp_tools.record_policy(led.path, rule="DB wins", default_outcome="db",
+                                    applies_to={"cluster_id": "cl_shape"})
+        with self.assertRaises(ValueError, msg="an offer the catalog never made is an invention"):
+            mcp_tools.record_policy(led.path, offer_id="cl_not_a_cluster", human_answer="sure")
+        with self.assertRaises(ValueError, msg="an excepted pin that does not exist excepts nothing"):
+            mcp_tools.record_policy(led.path, rule="DB wins", default_outcome="db",
+                                    applies_to={"cluster_id": "cl_shape"},
+                                    exceptions=["pin_9999"], human_answer="db wins")
+
+        preview = mcp_tools.policy_prompt(led.path, rule="DB wins", default_outcome="db",
+                                          applies_to={"cluster_id": "cl_shape"})
+        out = mcp_tools.record_policy(led.path, rule="DB wins", default_outcome="db",
+                                      applies_to={"cluster_id": "cl_shape"},
+                                      human_answer="the DB wins unless I flag one")
+        self.assertEqual(out["cascaded"], preview["would_decide"],
+                         "what the user was shown must be what the cascade did")
+        self.assertEqual(out["held_back"], [pins[2]["id"]],
+                         "blocker|high is never settled by a policy — the threshold rule")
+        after = ledgermod.Ledger(led.path)
+        event = after.data["decision_log"][-1]
+        self.assertEqual((event["evidence"], event["policy_id"]), ("cascaded", out["policy_id"]))
+        self.assertEqual(after.data["policies"][-1]["human_answer"],
+                         "the DB wins unless I flag one",
+                         "the words a whole cluster rests on must be in the ledger, not a chat")
 
     def test_the_classification_itself_stays_honest(self):
         """A stale exemption is worse than none: it names a method that no longer exists and reads

@@ -32,7 +32,17 @@ pins  →  clusters  →  policies  →  real questions (asked)  →  proposed d
    apply to the group. Typically 200 → ~20.
 2. **Policy questions first** (4–5, highest leverage). Category-level rules that auto-resolve
    whole clusters by default. Each becomes a `Policy`; cascading it emits `DecisionEvent`s with
-   `source: "policy:<id>"` — still user-originated, just amplified. ~20 clusters → ~5 policies.
+   `source: "policy:<id>"` and `evidence: cascaded` — still user-originated, just amplified.
+   ~20 clusters → ~5 policies.
+
+   **One tool sets a policy and cascades it: `mcp:ledger_record_policy`.** Nothing else creates a
+   `Policy`, so a policy you only agreed to in conversation cascades over nothing and the whole
+   compression step silently does not happen. Put the rule to the user *with the pins it would
+   decide*: `mcp:policy_preview` answers that without writing, and greenfield's opening offers
+   arrive with it already attached from `mcp:interview_seed_policies`. It cannot be used to elect: a catalog
+   offer is taken verbatim by `offer_id`, any other policy must state its rule, scope and outcome
+   and quote the user, and where the host can elicit, the server asks and writes only on acceptance.
+   `blocker`/`high` pins are held back by the threshold rule below and stay `asked`.
 3. **Exception questions** — only what a policy doesn't cover: pins that contradict a policy,
    plus the genuine forks (rescue: `ambiguity` / `design_concern`; greenfield: high-fan-out
    `open_decision`). Few, and the valuable ones.
@@ -60,3 +70,9 @@ decision-catalog's option set (greenfield).
 Only the interview commits a decision: it sets `state: decided` and emits the `DecisionEvent`
 (with `flip_criteria`). The brainstorm (its own doctrine doc) only writes `proposals[]` and
 never decides. This separation is what keeps the interview neutral in both skills.
+
+Two tools carry that commit and no third one exists: `mcp:ledger_record_decision` for one pin,
+`mcp:ledger_record_policy` for a whole cluster. Both **record** an election and neither can make
+one — the outcome must come from the pin's own question, or from an offer the user was shown. The
+rung each answer travelled on is recorded (`evidence`), so a relay reads as weaker than an
+elicitation and a cascade reads as what it is: one answer, amplified.

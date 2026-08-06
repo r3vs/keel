@@ -13,7 +13,10 @@ elected design) — the toggle flips which side leads. `contract_mismatch` pins 
 cross-layer diff panel; every pin links its interview question; a completeness traffic-light sums
 the states. A decided pin states **how the human's answer got there** (`evidence`, spec v0.10) and
 shows the quote when an agent relayed it — the spec allows the weak rung only because it is made
-visible, and this is the surface people actually read.
+visible, and this is the surface people actually read. A pin decided by a policy cascade
+(`cascaded`, v0.11) shows the `Policy` it derives from and how *that* was elected, joined on the
+event's `policy_id`: the human answered once, for a whole cluster, and the card says so instead of
+reporting a relay that never happened.
 
 Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
 Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
@@ -175,7 +178,15 @@ const RUNG={
   brief:{label:'from the brief', cls:'mid',
     why:'settled in the project brief at frame time; the brief is the evidence'},
   transcribed:{label:'transcribed', cls:'weak',
-    why:'an agent relayed what the user said — an honest relay and a fabricated one are the same line here, so what you weigh is the quote'}};
+    why:'an agent relayed what the user said — an honest relay and a fabricated one are the same line here, so what you weigh is the quote'},
+  cascaded:{label:'cascaded from a policy', cls:'mid',
+    why:'the user elected a policy and this pin fell under it — the answer was given once, for the cluster, so what you weigh is not invention but FIT: whether the rule suits this pin'}};
+function policyById(id){
+  if(!id)return null;
+  const pols=LEDGER.policies||[];
+  for(let i=0;i<pols.length;i++)if(pols[i]&&pols[i].id===id)return pols[i];
+  return null;
+}
 function decisionEvent(id){
   if(!id)return null;
   const log=LEDGER.decision_log||[];
@@ -199,10 +210,27 @@ function decisionCard(p){
     :`<div class="warn">⚠ no evidence rung recorded — how this answer reached the ledger is unknown</div>`;
   if(r==='transcribed'&&!ev.human_answer)
     note+=`<div class="warn">⚠ relayed with no quote — nothing here separates it from an invention</div>`;
+  // A cascaded decision was never answered here: it points at the policy election that produced it,
+  // so the card shows that policy's rule AND how the human elected it. Joined on `policy_id`, the
+  // event's own field — the `policy:<id>` in `source` is not parsed, because a surface should not
+  // have to take a string apart to find the record it needs.
+  let pol='';
+  if(r==='cascaded'){
+    const P=policyById(ev.policy_id);
+    if(!P) note+=`<div class="warn">⚠ cascaded from policy ${esc(ev.policy_id||'(unnamed)')}, which this ledger does not contain</div>`;
+    else{
+      const pm=rungMeta(P.evidence?String(P.evidence):'');
+      pol=`<div class="kv"><b>policy</b><span>${esc(P.id)} · ${esc(P.rule)}</span></div>`
+        +`<div class="kv"><b>elected</b><span class="rung ${pm?pm.cls:'weak'}">${esc(pm?pm.label:'no rung recorded')}</span></div>`
+        +(P.human_answer?`<div class="quote">“${esc(P.human_answer)}”</div>`:'');
+      if(!P.human_answer&&(!P.evidence||String(P.evidence)==='transcribed'))
+        note+=`<div class="warn">⚠ the policy itself was relayed with no quote — this pin and every other one in its cluster rest on that</div>`;
+    }
+  }
   return `<div class="card dec ${cls}">
     <div class="kv"><b>decided</b><span>${esc(p.decision.outcome)}</span></div>
     <div class="kv"><b>evidence</b><span class="rung ${cls}">${esc(meta?meta.label:(r||'unrecorded'))}</span></div>
-    ${quote}${note}</div>`;
+    ${pol}${quote}${note}</div>`;
 }
 
 function trafficLight(){

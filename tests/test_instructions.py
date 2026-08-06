@@ -111,7 +111,23 @@ class TestEvidenceNote(unittest.TestCase):
             {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed",
              "human_answer": "the DB is truth"},
             {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
-        self.assertIn("1 of 2 recorded decisions were relayed by an agent", body)
+        self.assertIn("of 2 recorded decisions, 1 relayed by an agent", body)
+
+    def test_a_cascade_is_reported_as_a_cascade(self):
+        """v0.11. The clauses are kept apart because they fail differently: a relay may be an
+        invention, a cascade may simply not fit this pin. Summing them into "N weak" would put the
+        user's own elected policy in the same sentence as an agent's unquoted say-so — and reading a
+        missing rung as `transcribed`, which this used to do, said it outright."""
+        body = ins.render(self._with([
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "cascaded", "policy_id": "pol_0001"},
+            {"id": "ev_0002", "pin_id": "p_0003", "evidence": "elicited"}]))
+        self.assertIn("1 cascaded from a policy the user elected once", body)
+        self.assertNotIn("relayed by an agent", body)
+
+    def test_an_unrecorded_rung_is_not_reported_as_a_relay(self):
+        body = ins.render(self._with([{"id": "ev_0001", "pin_id": "p_0002"}]))
+        self.assertIn("1 with no rung recorded at all", body)
+        self.assertNotIn("relayed by an agent", body)
 
     def test_only_decision_events_are_counted(self):
         """`decision_log` also holds challenges, reopens and failures. Counting those would report a
@@ -120,7 +136,7 @@ class TestEvidenceNote(unittest.TestCase):
             {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed", "human_answer": "x"},
             {"id": "chl_0001", "pin_id": "p_0002", "class": "unfalsifiable"},
             {"id": "fal_0001", "pin_id": "p_0002", "class": "environment"}]))
-        self.assertIn("1 of 1 recorded decisions", body)
+        self.assertIn("of 1 recorded decisions", body)
 
     def test_the_declared_note_length_is_the_length_it_emits(self):
         """`_NOTE_LINES` is budget arithmetic, so it must be measured off the note, not asserted

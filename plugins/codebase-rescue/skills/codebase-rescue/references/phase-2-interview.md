@@ -24,6 +24,15 @@ in `references/core/interview-funnel.md`. Read it first.** How *rescue* sources 
   clusters — "DB is source of truth for schema mismatches unless noted", "dead code with no
   inbound reference → remove", "duplication → consolidate onto the most-tested copy". Each becomes
   a `Policy`; cascading it emits `DecisionEvent`s with `source: "policy:<id>"`. ~20 → ~5 policies.
+  **Record each accepted rule with `mcp:ledger_record_policy`** — it creates the `Policy` and runs
+  the cascade in one call, and nothing else does either. Rescue's policies come from the findings,
+  not from a catalog, so pass `rule` + `applies_to` (e.g. `{"cluster_id": "cl_dupe_auth"}`) +
+  `default_outcome`, and quote the user verbatim in `human_answer`: one unquoted claim here carries
+  a whole cluster, which is why the tool refuses it. `exceptions` names the pins the rule must not
+  touch; `blocker`/`high` matches are held back by the threshold rule and stay `asked`. Ask
+  `mcp:policy_preview` **first**, with the same arguments: it writes nothing and answers with the
+  pins the rule would decide. Put that list to the user, because what they are electing is the blast
+  radius, not the sentence.
 - **Exception questions:** pins a policy doesn't cover, plus genuine `ambiguity` and
   `design_concern` pins — the true forks where intent changes what would be built.
 - **Proposed defaults + severity threshold + information-gain order:** exactly as in the shared
@@ -34,9 +43,14 @@ Result: **200 findings → ~20 clusters → ~5 policies → ~10 real questions �
 
 > **Run the funnel — do not re-derive it.** It is implemented, not merely specified: the
 > `interview_next` tool returns the compressed view straight from the ledger — clusters collapsed,
-> policies cascaded, the severity threshold already enforced, `asked` questions already ordered by
-> information gain. Re-deriving that order in your head is exactly how the threshold gets quietly
-> skipped and a `blocker` slips into a silent default.
+> the severity threshold already enforced, `asked` questions already ordered by information gain.
+> Re-deriving that order in your head is exactly how the threshold gets quietly skipped and a
+> `blocker` slips into a silent default.
+>
+> It **reads**, and the cascade is not one of the things it does: pins already settled by a policy
+> are simply absent from the view because they are `decided`. Cascading is `ledger_record_policy`,
+> and only when the user elects one. Reading "the funnel is implemented" as "the policies have been
+> applied" is how a whole cluster stays open while the view looks compressed.
 
 ## Question shape
 

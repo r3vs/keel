@@ -96,7 +96,13 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
 def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> list[dict]:
     """The catalog's per-cluster default policies become the interview's opening policy offers.
     Each, if the user accepts it, auto-resolves the low-severity tail of that cluster (the funnel's
-    policy step). Not applied here — offered; the user elects."""
+    policy step). Not applied here — offered; the user elects (`mcp:ledger_record_policy`).
+
+    `default_outcome` is stated on the offer, not derived downstream, and for a catalog offer it is
+    the rule itself: the catalog's prescription is exactly what gets written as the outcome of every
+    pin the policy cascades over. Saying it here means the user is shown the words that will land in
+    the ledger, and the write tool copies the offer instead of composing one.
+    """
     offers = []
     for cluster in catalog["clusters"]:
         if project_type in cluster.get("prune_for", []):
@@ -104,6 +110,7 @@ def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> l
         if cluster.get("default_policy"):
             offers.append({"cluster_id": f"cl_{cluster['id']}",
                            "rule": cluster["default_policy"],
+                           "default_outcome": cluster["default_policy"],
                            "applies_to": {"cluster_id": f"cl_{cluster['id']}"}})
     return offers
 

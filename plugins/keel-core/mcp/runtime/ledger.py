@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.9). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.11). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -18,7 +18,9 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   correctness could not be established lands in an honest state instead of a green close;
 - v0.9 one closed failure vocabulary (`FAILURE_CLASSES`, a strict superset of the challenge
   classes) used by the challenger's premortem *before* the work and by `label_failure` *after*
-  it, so "what we feared" and "what happened" are comparable instead of two prose piles.
+  it, so "what we feared" and "what happened" are comparable instead of two prose piles;
+- v0.11 `cascaded` — a policy-cascaded DecisionEvent names its own rung and the `Policy` that
+  produced it, instead of taking the `transcribed` default and claiming a relay nobody made.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -31,13 +33,18 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.9"
+SCHEMA_VERSION = "0.11"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
 # would strand the one artifact the whole package treats as durable truth. Reading an older file
 # upgrades its `version` in memory; the upgrade lands on disk at the next `save()`.
-READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9")
+#
+# "0.10" is absent because no runtime ever wrote it: the spec bumped to v0.10 and this constant did
+# not follow, so every ledger on disk from that period says "0.9". That drift was not cosmetic —
+# `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
+# so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
+READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11")
 
 KINDS = {
     "contract_mismatch",
@@ -88,9 +95,14 @@ BUILD_ACTIONS = ("scaffold", "implement", "wire", "configure", "instrument")  # 
 EFFORTS = ("S", "M", "L")
 FLIP_SIGNAL_SOURCES = ("metrics", "logs", "traces", "manual_checkpoint", "incident")
 
-# How the human's answer reached the DecisionEvent. Not a confidence score — three different
+# How the human's answer reached the DecisionEvent. Not a confidence score — four different
 # failure modes, kept apart so a reader can weigh them (see `Ledger.decide`).
-DECISION_EVIDENCE = ("elicited", "transcribed", "brief")
+DECISION_EVIDENCE = ("elicited", "transcribed", "brief", "cascaded")
+
+# How a human's election reached a `Policy`. The same rungs minus `cascaded`: a policy is elected,
+# never derived from another policy, so that rung has no meaning here and is refused rather than
+# silently tolerated.
+POLICY_EVIDENCE = ("elicited", "transcribed", "brief")
 
 # severities that must never be silently defaulted (the threshold rule, v0.3)
 _NEVER_SILENT = ("blocker", "high")
@@ -324,6 +336,7 @@ class Ledger:
         apply_to_cluster: bool = False,
         evidence: str = "transcribed",
         human_answer: str = "",
+        policy_id: Optional[str] = None,
     ) -> list[dict]:
         """Append a DecisionEvent and materialize pin.state (last committed wins).
 
@@ -340,15 +353,33 @@ class Ledger:
           * `transcribed` — an agent relayed what the user said, recorded verbatim in
             `human_answer`. Weaker: honest relay and confabulation look identical here.
           * `brief` — pre-decided in the project brief at frame time; the brief is the evidence.
+          * `cascaded` — derived from a `Policy` the user elected (v0.11). The answer reached the
+            log ONCE, at the policy election, and this event is an amplification of it; the
+            `Policy` named by `policy_id` carries its own rung and quote. Its failure mode is
+            neither invention nor mis-relay but **fit**: the policy may not suit this pin.
 
         It defaults to `transcribed`, the WEAKER rung, deliberately: a caller that says nothing has
         not earned the strong claim, and the safe direction to be wrong in is understating what is
         known. Only the elicitation path may pass `elicited`, and it is the only caller that does.
+
+        `cascaded` and a `policy:` source imply each other, checked both ways. Before v0.11 a cascade
+        took the `transcribed` default, so `apply_policies` wrote "an agent relayed what the user
+        said" onto a decision nobody relayed, and every surface repeated it. The alternative — each
+        surface sniffing `source` for a `policy:` prefix — is string-parsing where an explicit field
+        is available, which this package forbids elsewhere and would not survive here either.
         """
         _require(source == "interview" or source.startswith("policy:"),
                  f"only the interview (or a user-set policy cascade) commits; got {source!r}")
         _require(evidence in DECISION_EVIDENCE,
                  f"evidence must be one of {DECISION_EVIDENCE}; got {evidence!r}")
+        _require((evidence == "cascaded") == source.startswith("policy:"),
+                 "`cascaded` is the rung of a policy cascade and of nothing else: a policy-sourced "
+                 "event must carry it, and a directly-answered one must not "
+                 f"(source={source!r}, evidence={evidence!r})")
+        _require((evidence == "cascaded") == bool(policy_id),
+                 "a cascaded decision must name the policy it derives from, and only a cascaded one "
+                 "may name one — otherwise the rung says a policy decided this and nothing says "
+                 "which, or a field points at a policy that decided nothing")
         # The "a transcribed decision must quote the human" rule is enforced one layer out, in
         # `mcp/tools.py::record_decision`, because that is the only boundary an AGENT can reach and
         # so the only place the claim is actually made. Enforcing it here as well would tax the
@@ -379,6 +410,8 @@ class Ledger:
                 "evidence": evidence,
                 "policy_hash": self._policy_hash(),
             }
+            if policy_id:
+                event["policy_id"] = policy_id
             if human_answer:
                 event["human_answer"] = human_answer
             if flip_signal is not None:
@@ -483,7 +516,19 @@ class Ledger:
     # -- policies (v0.3: user decisions, amplified) ---------------------------
 
     def add_policy(self, applies_to: dict, rule: str, default_outcome: Any,
-                   exceptions: Optional[list[str]] = None) -> dict:
+                   exceptions: Optional[list[str]] = None,
+                   evidence: str = "transcribed", human_answer: str = "") -> dict:
+        """Record a policy the HUMAN elected. `evidence`/`human_answer` say how that election
+        reached the log, exactly as they do on a `DecisionEvent` — and here they matter more, not
+        less: a policy decides a whole cluster, so an unevidenced one is an agent deciding at scale.
+
+        The rung is stored on the policy rather than repeated on each cascaded event: the answer
+        travelled once, at this election, and every event it produces points back here by
+        `policy_id`. Quoting is enforced one layer out, in `mcp/tools.py::record_policy`, for the
+        same reason it is for `decide` — that is the only boundary an agent can reach.
+        """
+        _require(evidence in POLICY_EVIDENCE,
+                 f"policy evidence must be one of {POLICY_EVIDENCE}; got {evidence!r}")
         policy = {
             "id": self._next_id("pol_", self.data["policies"]),
             "applies_to": applies_to,
@@ -491,37 +536,64 @@ class Ledger:
             "default_outcome": default_outcome,
             "set_by": "interview",
             "exceptions": exceptions or [],
+            "evidence": evidence,
         }
+        if human_answer:
+            policy["human_answer"] = human_answer
         self.data["policies"].append(policy)
         return policy
+
+    def policy_preview(self, applies_to: dict, exceptions: Optional[list[str]] = None) -> dict:
+        """What a policy with this scope WOULD do, without doing it. Read-only.
+
+        A policy is an election over a cluster, so the thing a human is being asked to elect is a
+        blast radius — and it must be showable before the write, not discoverable after it. Same
+        split as `decision_prompt` / `record_decision`: the thing that asks runs without the power
+        to write.
+
+        `apply_policies` calls this and cascades over exactly `would_decide`, so the preview cannot
+        drift from the cascade — one matcher, two callers.
+        """
+        excepted_ids = set(exceptions or [])
+        out: dict = {"would_decide": [], "held_back": [], "excepted": [], "already_settled": []}
+        for pin in self.data["pins"]:
+            if not all(pin.get(k) == v for k, v in applies_to.items()):
+                continue
+            if pin["state"] in ("decided", "resolved", "accepted", "deferred"):
+                out["already_settled"].append(pin["id"])
+            elif pin["id"] in excepted_ids:
+                out["excepted"].append(pin["id"])
+            elif pin["severity"] in _NEVER_SILENT:
+                out["held_back"].append(pin["id"])       # threshold rule — never silent
+            else:
+                out["would_decide"].append(pin["id"])
+        return out
 
     def apply_policies(self) -> list[dict]:
         """Cascade user-set policies over matching pins.
 
         Threshold rule (v0.3): blocker|high pins are never auto-resolved — they stay
         `asked` even when a policy matches; medium|low resolve as `policy_default`
-        with a DecisionEvent whose source names the policy (user-originated, amplified).
+        with a DecisionEvent whose source names the policy (user-originated, amplified)
+        and whose rung is `cascaded` (v0.11), pointing back at the election by `policy_id`.
         """
         decided = []
         for policy in self.data["policies"]:
-            for pin in self.data["pins"]:
-                if pin["state"] in ("decided", "resolved", "accepted", "deferred"):
-                    continue
-                if pin["id"] in policy["exceptions"]:
-                    continue
-                if not all(pin.get(k) == v for k, v in policy["applies_to"].items()):
-                    continue
-                if pin["severity"] in _NEVER_SILENT:
-                    pin["resolution_mode"] = "asked"   # top of the review batch, never silent
-                    continue
+            preview = self.policy_preview(policy["applies_to"], policy["exceptions"])
+            for pin_id in preview["held_back"]:
+                self.pin(pin_id)["resolution_mode"] = "asked"  # top of the review batch, never silent
+            for pin_id in preview["would_decide"]:
+                pin = self.pin(pin_id)
                 self.decide(
-                    pin["id"],
+                    pin_id,
                     outcome=json.dumps(policy["default_outcome"], ensure_ascii=False)
                     if not isinstance(policy["default_outcome"], str)
                     else policy["default_outcome"],
                     rationale=policy["rule"],
                     flip_criteria=f"an exception to policy {policy['id']} surfaces",
                     source=f"policy:{policy['id']}",
+                    evidence="cascaded",
+                    policy_id=policy["id"],
                 )
                 pin["resolution_mode"] = "policy_default"
                 decided.append(pin)
@@ -981,7 +1053,9 @@ class Ledger:
         # v0.10: the rung each decision reached. The summary is what an agent reads BEFORE acting, and
         # "17 decided, 15 of them on an agent's say-so" changes what a reviewer does next — while the
         # rung stored on the event and read by nobody changes nothing. Counts, never a blended score:
-        # the three rungs fail differently and averaging them would hide the weak one.
+        # the four rungs fail differently and averaging them would hide the weak one. `cascaded`
+        # (v0.11) is counted like the rest: "9 of 12 cascaded" says one policy election is carrying
+        # most of this ledger, which is a different thing to weigh than nine answered questions.
         by_evidence: dict[str, int] = {}
         for e in self.data["decision_log"]:
             if e["id"].startswith("fal_"):

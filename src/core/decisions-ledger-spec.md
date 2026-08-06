@@ -1,4 +1,4 @@
-# Decisions Ledger — Spec v0.10
+# Decisions Ledger — Spec v0.11
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -176,7 +176,8 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
   "rationale": "string",
   "flip_criteria": "if users appear with permissions beyond admin, reopen",  // DECISION 9
   "source": "interview",         // only "interview" commits — WHO was entitled to
-  "evidence": "elicited",        // elicited | transcribed | brief — HOW the answer got here
+  "evidence": "elicited",        // elicited | transcribed | brief | cascaded — HOW the answer got here
+  "policy_id": null,             // set iff evidence is "cascaded": WHICH policy produced this
   "human_answer": "yes, pull the helper out" }   // required when transcribed: the words, verbatim
 
 // RemediationItem (inside pin.remediation[]) — DECISION 8
@@ -238,9 +239,13 @@ A category rule the user sets in the interview that auto-resolves matching pins.
   "rule": "DB is the source of truth by default",
   "default_outcome": { "canonical_layer": "db" },
   "set_by": "interview",
+  "evidence": "transcribed",          // v0.11 — elicited | transcribed | brief; how the user elected it
+  "human_answer": "the DB wins unless I say otherwise",  // required when transcribed, verbatim
   "exceptions": ["pin_0042"] }        // excluded pins that stay `asked`
 ```
 When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "policy:<id>"` pointing back to the user's choice: it stays a **user-originated** decision, only amplified. Neutrality holds (the brainstorm still commits nothing).
+
+**Elected through `mcp:ledger_record_policy`, which cannot elect one.** A policy decides a whole cluster, so it is held to the discipline a single decision gets and not less: a catalog offer is taken verbatim (`mcp:interview_seed_policies` is what offers them, with the pins each would decide), a policy the offers did not contain must state its rule, scope and outcome and quote the user, and a relayed policy with no quote is refused. Where the host can elicit, the server shows the rule *and* the blast radius and writes only on acceptance. `evidence` on the `Policy` records which of those happened — the same axis as on a `DecisionEvent`, and it belongs here because this is where the human actually answered.
 
 ### `evidence` — how the human's answer reached the log (v0.10)
 
@@ -249,10 +254,11 @@ When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "
 - **`elicited`** — the MCP server asked the user through the host and wrote the reply itself (`mcp:ledger_record_decision` on a client that declares the elicitation capability). The agent never held the value, so it could not have invented it.
 - **`transcribed`** — an agent relayed what the user said. `human_answer` carries the words verbatim, and is **required**: without a quote, an honest relay and a fabricated one are the same line in the ledger.
 - **`brief`** — settled in the project brief at frame time; the brief is the evidence.
+- **`cascaded`** (v0.11) — derived from a `Policy` the user elected. The answer reached the log once, at the policy election; this event amplifies it, and `policy_id` names the `Policy` that carries the rung and the quote. Its failure mode is neither invention nor mis-relay but **fit**: the rule may not suit this pin. Written by `apply_policies` and by nothing else — `cascaded` and a `policy:` source imply each other, checked both ways.
 
-It defaults to `transcribed`, the weaker rung, on purpose: a writer that says nothing has not earned the stronger claim, and understating what is known is the safe direction to be wrong in.
+It defaults to `transcribed`, the weaker rung, on purpose: a writer that says nothing has not earned the stronger claim, and understating what is known is the safe direction to be wrong in. That default is also why `cascaded` had to become its own rung: a cascade took it, so the log said "an agent relayed what the user said" about a decision nobody relayed, and all three surfaces repeated it faithfully. The alternative — every surface testing `source` for a `policy:` prefix — is string-parsing where an explicit field is available.
 
-**Made visible by** — named, because "visible" with no surface is the claim this package exists to catch, and it was exactly that for one version: the map's decision card states the rung, colours the weak one, and quotes `human_answer` (`mcp:render_map`); `mcp:ledger_summary` returns `decisions_by_evidence` beside `failures_by_class`, so an agent reads the rungs *before* acting; and the projected `AGENTS.md` region carries one line when any decision was relayed (`mcp:generate_instructions` — one line and no more, because that region is byte-budgeted).
+**Made visible by** — named, because "visible" with no surface is the claim this package exists to catch, and it was exactly that for one version: the map's decision card states the rung, colours the weak one, quotes `human_answer`, and for a `cascaded` one shows the `Policy` it came from and how *that* was elected (`mcp:render_map`); `mcp:ledger_summary` returns `decisions_by_evidence` beside `failures_by_class`, so an agent reads the rungs *before* acting; and the projected `AGENTS.md` region carries one line when any decision was relayed, cascaded, or written with no rung at all (`mcp:generate_instructions` — one line and no more, because that region is byte-budgeted). A rung one of the three does not know is the same bug wearing a new name, so adding one means teaching all three.
 
 This is the same move as `provenance: agent_assumption` — the weak path is not forbidden, it is made **visible**, so a reader can weigh it and the challenger can attack it. Forbidding it outright is what the package did before v0.10, by shipping no election tool at all: that stopped an agent from choosing and also stopped the human from being recorded, so no pin could reach `decided` on any host.
 
@@ -648,3 +654,19 @@ Three properties, each chosen against a plausible alternative:
 - **It is a join key, not a security device.** Its only job is to make *"these two decisions were taken under different rules"* answerable. Treating it as tamper-evidence would be a claim the artifact cannot support — anyone who can edit the ledger can edit the hash.
 - **The components travel with the digest.** A bare hash tells you two decisions differ; the components tell you *which rule* changed, which is the only form of the answer anybody can act on.
 - **Absence is recorded, not implied.** An ungoverned ledger stamps `policy_hash: null` explicitly on every event. A missing field would read as fine, and an input that cannot be resolved lands in `missing` rather than being dropped — a fingerprint over three of four inputs is not a smaller fingerprint, it is a misleading one.
+
+---
+
+## v0.11 — The policy election gets a door, and the cascade says what it is
+
+Two halves of one failure, found by reading v0.10 back against what shipped.
+
+**The write half of the policy step had no door.** `Ledger.add_policy` and `Ledger.apply_policies` existed, worked, and were reachable by nobody: no MCP tool created a `Policy` or ran the cascade, and MCP is the only runtime channel on all four hosts. Meanwhile the shipped prose told an agent that the user elects a policy and that it then cascades — four passages of it, in the funnel doctrine, both Phase-2 playbooks and greenfield's Phase 1. Same shape as the v0.10 gap one level up: `decide()` worked and nothing could reach it, so no pin could be decided; here nothing could set a policy, so the funnel's *highest-leverage* step — the one that turns 20 clusters into 5 questions — was prose describing a mechanism the artifact did not perform.
+
+The door is `mcp:ledger_record_policy`, built on the same invariant as `mcp:ledger_record_decision`: **an agent may record an election, never make one.** It refuses an `offer_id` the catalog does not make, refuses an offer restated in the caller's own words, refuses a policy with no rule / scope / outcome, refuses an exception naming a pin that does not exist, and refuses a relayed policy with no verbatim quote. Where the client declares elicitation the server asks the user itself, showing the rule **and the pins it would decide**, and writes only on acceptance. That blast radius is not decoration: a policy is an election over a cluster, so what is being elected *is* the radius, and `Ledger.policy_preview` — the same matcher `apply_policies` cascades over, so the two cannot drift — is what makes it showable before the write instead of discoverable after it.
+
+**The cascade lied about itself.** `apply_policies` called `decide()` without an `evidence`, so every cascaded decision took the `transcribed` default: the map rendered *"an agent relayed what the user said"* plus *"⚠ relayed with no quote"*, `decisions_by_evidence` counted it under `transcribed`, and the projected `AGENTS.md` stated that N of N decisions were relayed by an agent. All three were false about the user's own elected policy, and all three were faithful readings of what the ledger said.
+
+So a cascade gets its own rung, `cascaded`, and its own pointer, `policy_id`. This is not a fourth flavour of "weak": *how the human's answer reached the log* is genuinely different here — it reached it once, at the policy election, and this event is derived from that — and the derived failure mode is **fit**, not invention. The rejected alternative was to leave the default and have each surface test `source` for a `policy:` prefix: string-parsing where an explicit field is available, in a package whose own rule is to anchor on the carrier.
+
+`evidence` and `human_answer` move onto the `Policy` itself for the same reason: that is where the human actually answered, so that is where the rung belongs, and every cascaded event points back at it rather than restating a quote nobody gave *here*.

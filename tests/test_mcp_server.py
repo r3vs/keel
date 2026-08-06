@@ -54,6 +54,10 @@ EXPECTED_TOOLS = {
     # `interview_expand` — the two run together at frame time, but a tool named "expand" must not
     # also do a thing its name does not say.
     "interview_expand", "interview_seed_policies", "ledger_record_decision",
+    # the policy step of the same funnel: what a rule would decide (read), and the election that
+    # sets it and cascades it (write). `add_policy`/`apply_policies` had no surface at all, while
+    # the playbooks told an agent the user elects a policy and that it then cascades.
+    "policy_preview", "ledger_record_policy",
     # design contract (DTCG) + the frontend/design scanner
     "generate_tokens", "tokens_diff", "extract_tokens", "design_scan",
     # cost & token telemetry — the measurer's surface
@@ -77,7 +81,7 @@ WRITE_TOOLS = {
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
     "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
-    "generator_observe", "interview_expand", "ledger_record_decision",
+    "generator_observe", "interview_expand", "ledger_record_decision", "ledger_record_policy",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
@@ -333,6 +337,106 @@ class TestRecordingAnElectionByRelay(_Session):
         with open(path, encoding="utf-8") as fh:
             event = json.load(fh)["decision_log"][-1]
         self.assertEqual(event["human_answer"], "yes, pull the helper out")
+
+
+CLUSTERED = {
+    "kind": "contract_mismatch", "title": "role enum drift", "severity": "low",
+    "confidence": "extracted", "provenance": [{"source": "recon", "detail": "shape diff"}],
+    "cluster_id": "cl_shape", "as_is": {"db": "enum", "api": "string"},
+}
+
+
+def _clustered_ledger(session, tmp):
+    """Two pins under one cluster_id — the population a policy elects over."""
+    path = os.path.join(tmp, "ledger.json")
+    for i in range(2):
+        session._request("tools/call", {"name": "ledger_add_pin", "arguments": {
+            "ledger": path, **CLUSTERED, "title": f"role enum drift {i}"}})
+    return path
+
+
+@NEEDS_UV
+class TestRecordingAPolicyByRelay(_Session):
+    """The write half of the funnel's policy step, over the wire. It had no door at all: nothing
+    created a `Policy` or ran the cascade on any host, while four shipped passages said the user
+    elects one and it cascades."""
+
+    def test_a_policy_relayed_without_a_quote_is_refused(self):
+        tmp = tempfile.mkdtemp()
+        path = _clustered_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_policy", "arguments": {
+            "ledger": path, "rule": "the DB is truth", "default_outcome": "db",
+            "applies_to": {"cluster_id": "cl_shape"}}})
+        self.assertTrue(res["result"].get("isError"),
+                        "one unquoted claim here would carry a whole cluster")
+
+    def test_the_cascade_records_itself_as_a_cascade(self):
+        tmp = tempfile.mkdtemp()
+        path = _clustered_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_policy", "arguments": {
+            "ledger": path, "rule": "the DB is truth", "default_outcome": "db",
+            "applies_to": {"cluster_id": "cl_shape"},
+            "human_answer": "the DB wins unless I flag one"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(len(out["cascaded"]), 2)
+        self.assertEqual(self.elicited, [], "the server must not ask a client that cannot answer")
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        event = data["decision_log"][-1]
+        self.assertEqual(event["evidence"], "cascaded")
+        self.assertEqual(event["policy_id"], out["policy_id"])
+        self.assertEqual(data["policies"][-1]["human_answer"], "the DB wins unless I flag one")
+
+
+@NEEDS_UV
+class TestSettingAPolicyByElicitation(_Session):
+    """The strong rung for a policy — and the refusal that matters more: a declined offer writes
+    nothing. A policy nobody accepted, cascaded anyway, would settle a whole cluster on silence."""
+
+    CAPABILITIES = {"elicitation": {}}
+    ELICIT_REPLY = {"action": "accept",
+                    "content": {"value": "do not set it — keep asking pin by pin"}}
+
+    def test_a_declined_policy_writes_nothing_and_shows_the_radius(self):
+        tmp = tempfile.mkdtemp()
+        path = _clustered_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_policy", "arguments": {
+            "ledger": path, "rule": "the DB is truth", "default_outcome": "db",
+            "applies_to": {"cluster_id": "cl_shape"}, "human_answer": "the caller's own words"}})
+        self.assertTrue(res["result"].get("isError"), "a declined offer is not an election")
+        self.assertTrue(self.elicited, "the server never asked")
+        asked = json.dumps(self.elicited[0])
+        self.assertIn("pin_0001", asked,
+                      "the user must be shown WHICH pins the rule would decide — the radius is "
+                      "what they are electing")
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["policies"], [], "a declined policy must not exist")
+
+
+@NEEDS_UV
+class TestAcceptingAPolicyByElicitation(_Session):
+    """Accepted through the host: the policy records the strong rung, and the caller's own
+    `human_answer` is discarded — it never carried the answer."""
+
+    CAPABILITIES = {"elicitation": {}}
+    ELICIT_REPLY = {"action": "accept",
+                    "content": {"value": "set this policy — decide the whole cluster this way"}}
+
+    def test_the_policy_records_the_rung_the_server_earned(self):
+        tmp = tempfile.mkdtemp()
+        path = _clustered_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_policy", "arguments": {
+            "ledger": path, "rule": "the DB is truth", "default_outcome": "db",
+            "applies_to": {"cluster_id": "cl_shape"}, "human_answer": "the caller's own words"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        self.assertEqual(res["result"]["structuredContent"]["evidence"], "elicited")
+        with open(path, encoding="utf-8") as fh:
+            policy = json.load(fh)["policies"][-1]
+        self.assertEqual(policy["evidence"], "elicited")
+        self.assertNotEqual(policy["human_answer"], "the caller's own words",
+                            "the elicited answer must win over what the caller passed — otherwise "
+                            "the strong rung is decoration")
 
 
 @NEEDS_UV

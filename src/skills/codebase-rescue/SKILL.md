@@ -141,8 +141,9 @@ pins → clusters → policies → real questions (asked) → proposed defaults 
 1. **Cluster**: one question per `cluster_id`, applied to the group.
 2. **Policy questions first** (4–5, highest leverage): category rules that auto-resolve
    whole clusters by default (e.g. "DB is source of truth for schema mismatches unless
-   noted"). Each becomes a `Policy` entity; cascading it emits `DecisionEvent`s with
-   `source: "policy:<id>"` — still user-originated, just amplified.
+   noted"). Each accepted rule becomes a `Policy` entity through `ledger_record_policy`, which
+   cascades it in the same call; the events it writes carry `source: "policy:<id>"` and
+   `evidence: cascaded` — still user-originated, just amplified.
 3. **Exception questions**: only pins the policies don't cover, plus genuine `ambiguity`
    and `design_concern` pins.
 4. **Proposed defaults**: everything else gets a low-confidence proposed resolution the

@@ -138,7 +138,10 @@ durable memory without it.
 
 `ledger_record_decision` has two rungs. The strong one (`evidence: "elicited"`) has **this server**
 ask the user through the host, so the answer never passes through the agent; the weak one
-(`transcribed`) has the agent relay a quote. Which fires is decided at runtime by
+(`transcribed`) has the agent relay a quote. `ledger_record_policy` has the same two, and the row
+below applies unchanged — it sends a two-option enum (accept / decline) with the rule and the pins
+it would decide in the message, so a host that renders our enum as a picker renders that one too.
+Which fires is decided at runtime by
 `src/mcp/server.py::_client_can_elicit`, which asks the live session rather than consulting a table
 that rots — `mcp/server/session.py::ServerSession.check_client_capability`, whose elicitation branch
 is a bare presence check (`if capability.elicitation is not None and client_caps.elicitation is
@@ -175,6 +178,14 @@ and that dict reaches the wire verbatim: `fastmcp/server/context.py:1190` passes
 `ElicitRequestFormParams(requestedSchema=…)` (`mcp/server/session.py:407-413`). So what a host
 parses is **one flat string property carrying an `enum`** — inside Claude Code's flat-primitives
 limit, and matching the one Codex variant that survives its `deny_unknown_fields`.
+
+`ledger_record_policy` sends the same shape, and this one was **captured on the wire** rather than
+traced through the library: a `stdio` client that declares `elicitation` and answers `decline`
+receives `mode: "form"`, `message: "Set this policy?\n\n<rule>\n\nIt decides 1 pin(s) without
+asking again: pin_0001"`, and a `requestedSchema` whose single `value` property carries the
+two-member enum `["set this policy — …", "do not set it — …"]`. So the rows above apply to it
+unchanged, and the pins a rule would decide are in the message a host renders, not only in the
+tool's return value.
 
 - **Claude Code — declares it, and honours the enum.** Read out of the binary that actually spawned
   our server on this machine (`…\claude-code\2.1.221\claude.exe`, found by walking the live

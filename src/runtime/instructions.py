@@ -60,21 +60,28 @@ on another. So the region is an **index with a hard line budget**, and truncatio
 **declared** (`+N more — read the ledger`), never silent: a shortened list that looks complete is the
 same lie as a clean bill of health from a scanner that did not run.
 
-What the budget bought and what it refused: `evidence` (v0.10)
---------------------------------------------------------------
-Each decision records the rung its answer travelled on — `elicited` / `transcribed` / `brief`. Two
-ways to project that, and only one earns its bytes:
+What the budget bought and what it refused: `evidence` (v0.10, v0.11)
+---------------------------------------------------------------------
+Each decision records the rung its answer travelled on — `elicited` / `transcribed` / `brief` /
+`cascaded`. Two ways to project that, and only one earns its bytes:
 
 - **Per decision, refused.** The `Elected` list is the section most likely to be clipped already, and
   a ` (transcribed)` suffix on every entry costs bytes on every line to restate a fact that is
   identical for nearly all of them — the elicitation rung only fires on hosts that declare the
   capability. Paying per line for a mostly-constant value is what pushes the *user's* prose past
   Codex's byte cap.
-- **One header line, taken** — and only when a weak rung is actually present. It is emitted only if
-  some decision was `transcribed`, so a project with none pays nothing, and it says what the agent
-  should DO (weigh them before building on one) rather than merely reporting a number. The full
-  per-decision detail is one `ledger_summary` call away (`decisions_by_evidence`) and is stated in
-  full on the map, which is where a human looks.
+- **One header line, taken** — and only when a rung worth weighing is actually present: some
+  decision `transcribed` (an agent's relay), or `cascaded` (one policy election deciding a whole
+  cluster), or written with no rung recorded at all. A project with none pays nothing, and the line
+  says what the agent should DO rather than merely reporting a number. The full per-decision detail
+  is one `ledger_summary` call away (`decisions_by_evidence`) and is stated in full on the map,
+  which is where a human looks.
+
+  The line reports only rungs that were *recorded*. It used to read a missing `evidence` as
+  `transcribed`, which was a claim about pre-v0.10 events nobody had evidenced — and after v0.11 it
+  would have been wrong in a second way, since a policy cascade is the one case where a missing rung
+  is most likely. Unrecorded is now its own clause, which is what the map and `ledger_summary`
+  already do.
 """
 from __future__ import annotations
 
@@ -142,20 +149,34 @@ def _pin_line(pin: dict, with_outcome: bool) -> str:
 
 
 def _evidence_note(data: dict) -> list:
-    """One line naming how many decisions rest on an agent's relay — or nothing at all.
+    """One line naming which decisions are worth weighing before building on them — or nothing.
 
     Reads the `decision_log`, not the pins: the rung is a property of the write, and `pin.decision`
-    carries only `{event_id, outcome}`. Emitted only when a `transcribed` decision exists, because a
+    carries only `{event_id, outcome}`. Emitted only when there is something to weigh, because a
     line that always says "0 of N" is bytes spent to report the absence of a problem.
+
+    Three clauses, at most one line, composed from what is present. They are kept apart rather than
+    summed into "N weak" because they fail differently: a relay may be an invention, a cascade may
+    simply not fit this pin, and an unrecorded rung is not weak — it is unknown.
     """
     events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
     if not events:
         return []
-    weak = sum(1 for e in events if (e.get("evidence") or "transcribed") == "transcribed")
-    if not weak:
+    rungs = [str(e.get("evidence") or "") for e in events]
+    clauses = []
+    relayed = rungs.count("transcribed")
+    cascaded = rungs.count("cascaded")
+    unrecorded = sum(1 for r in rungs if not r)
+    if relayed:
+        clauses.append(f"{relayed} relayed by an agent (`transcribed`), not elicited from the user")
+    if cascaded:
+        clauses.append(f"{cascaded} cascaded from a policy the user elected once for the cluster")
+    if unrecorded:
+        clauses.append(f"{unrecorded} with no rung recorded at all")
+    if not clauses:
         return []
-    return ["", f"*Evidence: {weak} of {len(events)} recorded decisions were relayed by an agent "
-                f"(`transcribed`), not elicited from the user — weigh those before building on one.*"]
+    return ["", f"*Evidence: of {len(events)} recorded decisions, " + "; ".join(clauses)
+                + " — weigh those before building on one.*"]
 
 
 def _section(title: str, lines: list, remaining: int, more_hint: str) -> list:
