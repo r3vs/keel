@@ -328,6 +328,11 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     this project type — comes back in `brief_unmatched`. Check that one too: it decided nothing and
     created nothing, so it is the one input this call can receive and leave no trace of.
 
+    Safe to re-run: a cluster already in this ledger is left exactly as it is and comes back in
+    `already_present` with its pin id and state. Nothing is duplicated, nothing is re-decided, and a
+    `brief_decisions` key naming one of them is reported ignored there — settle an existing pin with
+    `ledger_record_decision`.
+
     Args:
         ledger: Path to ledger.json (created if absent — this is the first write).
         project_type: Prunes clusters that do not apply (a fork absent from the type is not a question).

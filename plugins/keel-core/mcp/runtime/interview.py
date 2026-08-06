@@ -22,7 +22,7 @@ import json
 import pathlib
 from typing import Optional
 
-from ledger import pin_read
+from ledger import downstream_of, pin_read
 
 _HERE = pathlib.Path(__file__).resolve().parent
 
@@ -57,6 +57,30 @@ def load_catalog(path: str | pathlib.Path = None) -> dict:
                 "the decision catalog is not beside this runtime. Looked in:\n  " + looked +
                 "\nShipped, it is vendored to mcp/runtime/assets/ by scripts/build.py.")
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+
+
+#: The `provenance.source` every pin this module materialises carries. It is the carrier for *this
+#: pin came from that catalog cluster*, and `expand_catalog` is the only writer of it.
+CATALOG_SOURCE = "decision-catalog"
+
+
+def catalog_cluster(pin: dict) -> str:
+    """The catalog cluster this pin was materialised from, or `""` for a pin that was not (v0.27).
+
+    The one reading of that fact. `expand_catalog` writes it as a `provenance` entry — the field
+    whose entire job is *where this pin came from* — and this reads it back, so the tool that
+    materialises the catalog can tell what is already in the file. `cluster_id` is deliberately NOT
+    the carrier: `cl_<id>` is a SCOPE (a policy's `applies_to` selects on it, and `decide
+    (apply_to_cluster=True)` cascades over it), so any pin an agent groups with the persistence fork
+    carries it, and reading it as origin would make a hand-grouped finding look like a catalog fork.
+
+    Through `pin_read`, because this runs over a file this runtime did not necessarily write.
+    """
+    for entry in pin_read(pin).get("provenance") or []:
+        detail = str(entry.get("detail") or "")
+        if entry.get("source") == CATALOG_SOURCE and detail.startswith("cluster:"):
+            return detail[len("cluster:"):]
+    return ""
 
 
 def _fork_question(cluster: dict) -> Optional[dict]:
@@ -150,18 +174,48 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
     inputs beside it is the same class this module's own gate exists to close, one layer up. They
     come back in `brief_unmatched` with which of the two it was.
 
+    **A cluster already in the ledger is left alone (v0.27).** This is a PROJECTION of a fixed
+    catalog into the ledger, not an `add` door, and it was not idempotent: a second call
+    re-materialised every surviving fork, so `interview_expand` twice on the default catalog left
+    **24 pins for 12 clusters** — every question in the funnel duplicated, every `depends_on` edge
+    wired to the newer copy, and the older copy (which may already carry a decision, a brainstorm or
+    a remediation) orphaned beside it. Phase 1 is the step an agent re-runs after a crash, after a
+    context reset, or because a resumed session cannot tell whether it ran; "run it again" must be
+    the cheap answer there, and it was the expensive one. What each pin came from is already on the
+    pin (`catalog_cluster`, off `provenance`), so nothing new is stored to make this decidable — it
+    was decidable all along and nothing asked. Those clusters come back under `already_present` with
+    the pin and its state, and a `brief_decisions` key naming one is reported there as ignored: the
+    fork is in the file, and settling a pin that already exists is `mcp:ledger_record_decision`'s
+    job, at the door that holds the offered-options rule.
+
     depends_on is wired from catalog cluster ids to the freshly-created pin ids. Returns
-    {created, pruned, pre_decided, brief_held_back, brief_unmatched, id_map}.
+    {created, pruned, pre_decided, brief_held_back, brief_unmatched, already_present, id_map}.
     """
     brief_decisions = {cid: _brief_entry(cid, value)
                        for cid, value in (brief_decisions or {}).items()}
     id_map: dict[str, str] = {}       # catalog cluster id -> ledger pin id
-    created, pruned, pre_decided, held_back = [], [], [], []
+    created, pruned, pre_decided, held_back, already = [], [], [], [], []
+    # First occurrence wins, so a ledger written by a pre-v0.27 double call resolves to the pin the
+    # older edges already point at rather than to whichever copy happens to be last in the file.
+    materialised: dict[str, dict] = {}
+    for existing in ledger.readable_pins():
+        read = pin_read(existing)
+        origin = catalog_cluster(existing)
+        if origin and origin not in materialised:
+            materialised[origin] = read
 
     for cluster in sorted(catalog["clusters"], key=lambda c: c["order"]):
         cid = cluster["id"]
         if project_type in cluster.get("prune_for", []):
             pruned.append(cid)
+            continue
+        if cid in materialised:
+            read = materialised[cid]
+            id_map[cid] = read["id"]
+            entry = {"cluster_id": cid, "pin_id": read["id"], "state": read["state"]}
+            if cid in brief_decisions:
+                entry["brief_ignored"] = brief_decisions[cid]["outcome"]
+            already.append(entry)
             continue
         deps = [id_map[d] for d in cluster.get("depends_on", []) if d in id_map]
         question = _fork_question(cluster)
@@ -214,7 +268,8 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
                   "reason": "pruned_for_project_type" if cid in pruned else "no_such_cluster"}
                  for cid in sorted(brief_decisions) if cid not in id_map]
     return {"created": created, "pruned": pruned, "pre_decided": pre_decided,
-            "brief_held_back": held_back, "brief_unmatched": unmatched, "id_map": id_map}
+            "brief_held_back": held_back, "brief_unmatched": unmatched,
+            "already_present": already, "id_map": id_map}
 
 
 def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> dict:
@@ -265,8 +320,9 @@ def funnel(ledger) -> dict:
     """Run the compression over the current ledger and return the interview view.
 
     200 pins → clusters → policies → the few real questions (asked), the rest skimmable as
-    proposed_default. Order the asked questions by information gain (the ledger's interview_view
-    already sorts by transitive downstream fan-out). Returns a structured, renderable view.
+    proposed_default. Order the asked questions by information gain (the ledger's `interview_view`
+    already sorts by downstream fan-out, off the same `ledger.downstream_of` this reports).
+    Returns a structured, renderable view.
 
     An entry carries `proposals` when the brainstorm has written any (v0.17). `core/brainstorm.md`
     states the arc — *"its proposals surface back as options on that pin's interview question, so
@@ -290,22 +346,20 @@ def funnel(ledger) -> dict:
     # just returned and indexed three of the same fields directly, so guarding one and not the
     # other would have moved the crash two lines down rather than removed it — the two are halves
     # of one funnel and a file either reads or does not.
-    reads = [(p, pin_read(p)) for p in ledger.readable_pins()]
-
-    def transitive_downstream(pin_id: str, seen: frozenset = frozenset()) -> int:
-        total = 0
-        for _, r in reads:
-            if pin_id in r["depends_on"] and r["id"] not in seen:
-                total += 1 + transitive_downstream(r["id"], seen | {r["id"]})
-        return total
-
+    # v0.27: the fan-out is `ledger.downstream_of`, and it is imported rather than written here for
+    # the reason this line is commented at all. This function held `transitive_downstream`, a
+    # byte-identical copy of `interview_view`'s own nested `transitive` — same recursion, same
+    # per-branch `seen`, same defect: both counted simple PATHS, so one diamond in the roadmap
+    # inflated the `downstream` number this funnel prints beside every question. Two copies of a
+    # wrong answer is what let it survive two rounds of review of the surface it feeds.
+    reads = [pin_read(p) for p in ledger.readable_pins()]
     asked, tail = [], []
     for pin in view:
         read = pin_read(pin)
         entry = {"pin_id": read["id"], "title": read["title"],
                  "severity": read["severity"],
                  "prompt": read["question"].get("prompt", ""),
-                 "downstream": transitive_downstream(read["id"])}
+                 "downstream": len(downstream_of(read["id"], reads))}
         # v0.25 — through the SAME read, for the reason the three fields above already are. These
         # two were left indexing the file directly and both killed this tool over stdio: `or {}` is
         # a guard against absence and no guard at all against a `verification` that is a string, and

@@ -304,6 +304,13 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     `brief_unmatched` (v0.16). It used to come back nowhere: the docstring told the caller to check
     `brief_held_back`, and a typo'd or obsolete cluster id appeared on no list at all, so a fork the
     brief believed it had settled was reported as neither settled nor held.
+
+    **Calling it twice adds nothing (v0.27).** It projects a fixed catalog into the ledger, and it
+    used to re-materialise the whole of it: two calls left 24 pins for 12 clusters — the funnel
+    asking every question twice, with the first copy of each (which may already carry a decision)
+    orphaned. A cluster already in the file comes back under `already_present` with its pin and
+    state, and a `brief_decisions` key naming one is reported ignored there. This is the door an
+    agent re-runs after a context reset, so re-running it had to be the cheap answer.
     """
     import interview
     led = _open_or_create(ledger)

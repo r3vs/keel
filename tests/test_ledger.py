@@ -3683,6 +3683,55 @@ class TestTheBriefOwesTheBrief(unittest.TestCase):
         self.assertIn("quote", str(ctx.exception))
         self.assertEqual(led.data["decision_log"], [])
 
+    #: The rule `_brief_entry` carries, as its own two halves: an entry needs BOTH the outcome and
+    #: the passage. Derived from the product rather than listed, so neither half can be deleted
+    #: without a failure — which is what happened: the class above asserted only the bare-string
+    #: form, so `quote` was covered and `outcome` was covered by nothing. Planted and confirmed —
+    #: rewriting the condition to `if not quote:` left the whole suite green.
+    HALVES = (("", ""), ("reqresp", ""), ("", "v1 is request/response; no streaming."))
+
+    def _one_cluster(self):
+        return {"clusters": [{"id": "sync", "order": 1, "kind": "open_decision",
+                              "severity": "medium", "title": "Sync",
+                              "options": [{"id": "reqresp", "label": "request/response"}]}]}
+
+    def test_the_door_refuses_a_half_pair_whichever_half_is_missing(self):
+        import interview
+        for outcome, quote in self.HALVES:
+            with self.subTest(outcome=outcome, quote=quote):
+                with self.assertRaises(ValueError) as ctx:
+                    interview._brief_entry("sync", {"outcome": outcome, "quote": quote})
+                self.assertIn("quote", str(ctx.exception))
+                self.assertIn("outcome", str(ctx.exception))
+        self.assertEqual(interview._brief_entry("sync", {"outcome": "reqresp", "quote": "q"}),
+                         {"outcome": "reqresp", "quote": "q"},
+                         "the both-present case must pass, or the three refusals above prove "
+                         "nothing but that the door refuses everything")
+
+    def test_whitespace_is_not_a_passage_and_not_an_outcome(self):
+        """`human_answer`'s rule, at this door: what makes the rung checkable is the passage, and
+        whitespace is not one. Both halves, because both are `.strip()`ed by the same line."""
+        import interview
+        for entry in ({"outcome": "reqresp", "quote": "   "},
+                      {"outcome": " \t ", "quote": "v1 is request/response"},
+                      {"outcome": None, "quote": None}):
+            with self.subTest(entry=entry):
+                with self.assertRaises(ValueError):
+                    interview._brief_entry("sync", entry)
+
+    def test_the_refusal_reaches_the_caller_through_the_tool_that_takes_the_dict(self):
+        """The door-level half. `_brief_entry` runs before anything is created, so a half-pair
+        anywhere in the mapping leaves the ledger untouched — no pins, no events."""
+        import interview
+        for value in ("reqresp", {"outcome": "reqresp"}, {"quote": "v1 is request/response"}):
+            with self.subTest(value=value):
+                led = make_ledger()
+                with self.assertRaises(ValueError):
+                    interview.expand_catalog(led, self._one_cluster(),
+                                             brief_decisions={"sync": value})
+                self.assertEqual(led.data["pins"], [])
+                self.assertEqual(led.data["decision_log"], [])
+
     def test_a_quoted_brief_settles_the_fork_and_the_passage_is_on_the_event(self):
         import interview
         led = make_ledger()
@@ -3695,6 +3744,202 @@ class TestTheBriefOwesTheBrief(unittest.TestCase):
         event = led.data["decision_log"][-1]
         self.assertEqual((event["evidence"], event["brief_quote"]),
                          ("brief", "v1 is request/response; no streaming."))
+
+
+class TestThisRuntimeReadsWhatItWrites(unittest.TestCase):
+    """v0.27 — the stamp and the accept-list are one fact, and the bump raised one of them.
+
+    `SCHEMA_VERSION` went to `0.27`; `READABLE_VERSIONS` was a literal tuple ending at `0.26`. So
+    this runtime wrote a file and then refused to open it: `LedgerError: ledger schema '0.27' is not
+    readable by this runtime`, from `Ledger.__init__`, on every second call through
+    `_open_existing`/`_open_or_create`. Nothing named the rule — the constructor is the tuple's only
+    consumer — and it surfaced only because an unrelated gate's plant happened to reopen a ledger.
+    The tuple now ends in `SCHEMA_VERSION`; this asserts the property rather than the spelling.
+    """
+
+    def test_the_version_this_runtime_stamps_is_one_it_accepts(self):
+        import ledger as mod
+        self.assertIn(mod.SCHEMA_VERSION, mod.READABLE_VERSIONS)
+
+    def test_a_ledger_this_runtime_wrote_reopens(self):
+        """The behavioural half, and the one that reproduces the failure: write, then open."""
+        led = make_ledger()
+        add_simple_pin(led)
+        led.save()
+        reopened = Ledger(led.path)
+        self.assertEqual(reopened.data["version"], SCHEMA_VERSION)
+        self.assertEqual(len(reopened.readable_pins()), 1)
+
+
+class TestOneAnswerForHowMuchAForkCollapses(unittest.TestCase):
+    """v0.27 — the interview's information gain was computed twice, identically, and wrongly.
+
+    `Ledger.interview_view` held a nested `transitive` and `interview.funnel` a nested
+    `transitive_downstream`: same recursion, same `1 + recurse(...)`, same `seen` carried down one
+    branch and never across siblings. That counts simple PATHS. On the smallest diamond a roadmap
+    makes — `B` and `C` both depend on `A`, `D` on both — `A` reported **4** downstream pins and has
+    three. The number is the one the funnel prints beside every question and the key
+    `interview_view` sorts on, so the ordering the whole interview rests on drifts with the density
+    of the DAG. Two copies is why it survived: every round that looked at one of the two surfaces
+    saw a function that agreed with the other.
+    """
+
+    #: The functions allowed to call the carrier. Derived membership is asserted against this, so a
+    #: third surface that wants a fan-out number has to be added here — and be looked at.
+    CALLERS = {"interview_view", "funnel"}
+
+    #: Every OTHER function in the runtime that walks the pin dependency graph, with the question it
+    #: answers — because the two are different questions and neither is "how much does this fork
+    #: collapse". Both were reported by the derivation below on its first run, which is what the
+    #: declaration is for: a walk added tomorrow fails this until somebody writes down what it
+    #: computes, and if the answer is *downstream reach* the answer is `downstream_of`.
+    OTHER_WALKS = {
+        "buildloop.py::depth":
+            "UPSTREAM levelling — a pin's own longest dependency chain, for the wave scheduler. "
+            "Memoised per pin (`level`) and cycle-detecting by construction, so it is neither a "
+            "path count nor unbounded.",
+        "challenger.py::_inbound_fanout":
+            "the IMMEDIATE dependants, not the transitive ones — the `ignored_fanout` smell is "
+            "about how many decisions rest directly on this one, and its threshold is declared.",
+    }
+
+    @staticmethod
+    def _sources():
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parent.parent / "src"
+        return sorted(list((root / "runtime").glob("*.py")) + list((root / "mcp").glob("*.py")))
+
+    @staticmethod
+    def _walks_the_edge(tree, ast):
+        """Every function that walks the pin dependency graph, by either of the two shapes the
+        removed copies had: it re-enters itself while naming `depends_on` (a transitive walk), or
+        it tests membership against a `depends_on` value (the INBOUND edge — which is the only way
+        to ask who depends on this pin, since the field records the outbound one).
+
+        Iterating a `depends_on` is not on the list: reading a pin's own dependencies is what the
+        field is for, and every writer of it does that.
+        """
+        def is_edge(node) -> bool:
+            if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
+                return node.slice.value == "depends_on"
+            return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "get" and bool(node.args)
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "depends_on")
+
+        out = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            names = any(isinstance(n, ast.Constant) and n.value == "depends_on"
+                        for n in ast.walk(fn))
+            recurses = any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                           and c.func.id == fn.name for c in ast.walk(fn))
+            inbound = any(isinstance(n, ast.Compare)
+                          and any(isinstance(op, ast.In) for op in n.ops)
+                          and any(is_edge(c) for c in n.comparators)
+                          for n in ast.walk(fn))
+            if (names and recurses) or inbound:
+                out.append(fn.name)
+        return out
+
+    def test_the_detector_fires_on_the_code_it_was_written_against(self):
+        """The non-vacuity half, and it is not optional: the gate below asserts a set this tree
+        does not contain, so a detector that matched nothing would pass for ever. This is the
+        removed function, verbatim — and it matches on BOTH shapes."""
+        import ast
+        removed = (
+            "def funnel(ledger):\n"
+            "    def transitive_downstream(pin_id, seen=frozenset()):\n"
+            "        total = 0\n"
+            "        for _, r in reads:\n"
+            "            if pin_id in r['depends_on'] and r['id'] not in seen:\n"
+            "                total += 1 + transitive_downstream(r['id'], seen | {r['id']})\n"
+            "        return total\n"
+            "    return transitive_downstream\n")
+        self.assertEqual(self._walks_the_edge(ast.parse(removed), ast),
+                         ["funnel", "transitive_downstream"],
+                         "the ENCLOSING function is reported too, and deliberately: both copies "
+                         "were nested defs, so a detector that only saw the inner name would be "
+                         "silent about which surface carries the walk")
+
+    def test_every_walk_of_the_dependency_graph_is_the_carrier_or_declared(self):
+        import ast
+        found = {}
+        for path in self._sources():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for name in self._walks_the_edge(tree, ast):
+                found[f"{path.name}::{name}"] = True
+        self.assertEqual(set(found), set(self.OTHER_WALKS),
+                         f"a walk over the pin dependency graph at {sorted(set(found) - set(self.OTHER_WALKS))} "
+                         "answers to nothing — `ledger.downstream_of` is the one answer to *how "
+                         "much does this fork collapse*, and the last two copies of it agreed with "
+                         "each other and disagreed with the graph")
+        self.assertNotIn("ledger.py::downstream_of", found,
+                         "the carrier is reachability over a reverse index, not a recursion — if "
+                         "it matches this detector it has been rewritten into the shape it replaced")
+
+    def test_every_caller_of_the_carrier_is_declared(self):
+        import ast
+        found = set()
+        for path in self._sources():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                       and c.func.id == "downstream_of" for c in ast.walk(fn)):
+                    found.add(fn.name)
+        self.assertEqual(found, self.CALLERS,
+                         "a surface that reports how much a fork collapses is a surface a human "
+                         "sequences their work by — declare it here so it is read, not counted")
+
+    def _diamond(self):
+        """A → (B, C) → D. Three pins downstream of A; two simple paths to D."""
+        led = make_ledger()
+        ids = {}
+        for title, deps in (("A", ()), ("B", ("A",)), ("C", ("A",)), ("D", ("B", "C"))):
+            pin = add_simple_pin(led, kind="open_decision", title=title, severity="high",
+                                 as_is={"givens": [], "built": None},
+                                 depends_on=[ids[d] for d in deps])
+            ids[title] = pin["id"]
+        led.save()
+        return led, ids
+
+    def test_a_diamond_is_three_pins_and_not_four_paths(self):
+        from ledger import downstream_of, pin_read
+        led, ids = self._diamond()
+        reads = [pin_read(p) for p in led.readable_pins()]
+        self.assertEqual(downstream_of(ids["A"], reads), {ids["B"], ids["C"], ids["D"]})
+        self.assertEqual(downstream_of(ids["D"], reads), set())
+
+    def test_both_surfaces_report_the_carriers_answer(self):
+        """The callers, quantified: the number the funnel prints and the key the view sorts on are
+        the same number, and it is the carrier's."""
+        import interview
+        from ledger import downstream_of, pin_read
+        led, ids = self._diamond()
+        reads = [pin_read(p) for p in led.readable_pins()]
+        printed = {e["title"]: e["downstream"]
+                   for e in interview.funnel(led)["asked"] + interview.funnel(led)["proposed_default"]}
+        self.assertEqual(printed, {"A": 3, "B": 1, "C": 1, "D": 0})
+        ordered = [pin_read(p)["id"] for p in led.interview_view()]
+        self.assertEqual(ordered, sorted(ordered,
+                                         key=lambda i: (-len(downstream_of(i, reads)), i)))
+
+    def test_a_cycle_in_a_hand_edited_file_terminates_and_owns_nobody(self):
+        """`depends_on` is a list an agent writes and a human can edit, so it can hold a cycle. A
+        pin is never downstream of itself: *this fork collapses itself* is not a fact about
+        anything, and the old walk counted it."""
+        from ledger import downstream_of, pin_read
+        led = make_ledger()
+        first = add_simple_pin(led, title="A")
+        second = add_simple_pin(led, title="B", depends_on=[first["id"]])
+        first["depends_on"] = [second["id"]]
+        led.save()
+        reads = [pin_read(p) for p in led.readable_pins()]
+        self.assertEqual(downstream_of(first["id"], reads), {second["id"]})
+        self.assertEqual(downstream_of(second["id"], reads), {first["id"]})
 
 
 if __name__ == "__main__":

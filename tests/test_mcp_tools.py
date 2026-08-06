@@ -1304,6 +1304,139 @@ class TestNoWriteDoorDiesOnThePinAlreadyInTheFile(unittest.TestCase):
         self.assertEqual(crashes, [], "\n".join(crashes[:20]))
 
 
+class TestALedgerWideWriteDoorIsOnARosterToo(unittest.TestCase):
+    """v0.27 — the write-door roster had a hole the exact shape of `interview_expand`.
+
+    Every roster this branch derived is *a tool taking a `pin_id` that reaches the commit point*.
+    Four tools reach the commit point and take no `pin_id` at all, so all four were outside every
+    gate the write half of the surface acquired — and `TestNoWriteDoorDiesOnAMemberOfAListArgument`
+    named two of them in a hand-written table, which is the wrong half of the wrong list.
+
+    The defect the hole was hiding: **`interview_expand` was not idempotent.** Two calls on the
+    default catalog left 24 pins for 12 clusters — every fork in the funnel duplicated, the newer
+    copy taking the `depends_on` edges and the older one (which may already carry a decision, a
+    brainstorm, a remediation) orphaned beside it. It is the Phase-1 step an agent re-runs after a
+    context reset, i.e. the door most likely to be called twice by a caller that cannot tell whether
+    it already ran.
+
+    So the roster is derived over BOTH halves and their union is asserted to be every write door in
+    the module, and each ledger-wide door declares what a second identical call does. Both
+    directions are exercised: a `projects` door must add nothing, a `creates` door must add
+    something — otherwise the classification is a free pass rather than a claim.
+    """
+
+    #: tool -> (disposition, the arguments beyond `ledger`).
+    #:
+    #: `projects` — it materialises a fixed external set into the ledger, so a second call must be a
+    #: no-op. `creates` — each call records a fresh act (a finding, an assumption, an election), and
+    #: two of those are two records; collapsing them would be this runtime deciding that two things
+    #: a human did are one thing.
+    WIDE = {
+        "ledger_add_pin": ("creates", {
+            "kind": "defect", "title": "t", "severity": "low", "confidence": "extracted",
+            "provenance": [{"source": "recon", "detail": "x"}]}),
+        "ledger_surface_assumption": ("creates", {"title": "t", "detail": "d"}),
+        "interview_expand": ("projects", {}),
+        "record_policy": ("creates", {"offer_id": "cl_persistence",
+                                      "human_answer": "yes, take the default"}),
+    }
+
+    @staticmethod
+    def _wide_doors():
+        """Every function here that finishes a write and takes no `pin_id` — the other half of
+        `TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach._write_doors`."""
+        tree, ast = _ast_tools()
+        out = set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if "pin_id" in [a.arg for a in fn.args.args]:
+                continue
+            if "_saved" in {c.func.id for c in ast.walk(fn)
+                            if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}:
+                out.add(fn.name)
+        return out
+
+    def test_the_two_rosters_together_are_every_write_door_in_this_module(self):
+        """The hole, asserted rather than remembered: a door that writes and is on neither roster
+        is a door no write-path gate can see."""
+        tree, ast = _ast_tools()
+        every = {fn.name for fn in ast.walk(tree)
+                 if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and "_saved" in {c.func.id for c in ast.walk(fn)
+                                  if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}}
+        per_pin = set(TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach._write_doors())
+        wide = self._wide_doors()
+        self.assertGreaterEqual(len(every), 17, "the derivation went vacuous")
+        self.assertEqual(per_pin | wide, every)
+        self.assertEqual(wide, set(self.WIDE),
+                         "a ledger-wide write door with no declared call is exactly the position "
+                         "`interview_expand` was in when it duplicated every fork in the funnel")
+
+    def _seeded(self):
+        """A ledger with the catalog already in it — `record_policy` resolves its offer from that
+        catalog, and every door here needs a file that exists."""
+        ledger = os.path.join(tempfile.mkdtemp(), "ledger.json")
+        tools.interview_expand(ledger)
+        return ledger
+
+    @staticmethod
+    def _records(ledger):
+        with open(ledger, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {name: len(data.get(name) or []) for name in ("pins", "decision_log", "policies")}
+
+    def test_a_second_identical_call_does_what_the_door_declares(self):
+        for name, (disposition, kwargs) in sorted(self.WIDE.items()):
+            with self.subTest(door=name, disposition=disposition):
+                ledger = self._seeded()
+                getattr(tools, name)(ledger, **kwargs)
+                once = self._records(ledger)
+                getattr(tools, name)(ledger, **kwargs)
+                twice = self._records(ledger)
+                if disposition == "projects":
+                    self.assertEqual(twice, once,
+                                     f"{name} projects a fixed set into the ledger, so calling it "
+                                     f"again must add nothing — it used to add all of it again")
+                else:
+                    self.assertNotEqual(twice, once,
+                                        f"{name} is declared as recording a fresh act each time; "
+                                        f"if a second call adds nothing it is a projection and the "
+                                        f"declaration is wrong")
+
+    def test_the_projection_door_leaves_the_pins_it_found_exactly_as_they_were(self):
+        """Idempotent is not the same as harmless: the pins already there must come back untouched,
+        with their ids, so the `depends_on` edges an earlier call wired still resolve."""
+        ledger = self._seeded()
+        with open(ledger, encoding="utf-8") as fh:
+            before = json.load(fh)["pins"]
+        out = tools.interview_expand(ledger)
+        with open(ledger, encoding="utf-8") as fh:
+            after = json.load(fh)["pins"]
+        self.assertEqual(before, after)
+        self.assertEqual(out["created"], [])
+        self.assertEqual({e["pin_id"] for e in out["already_present"]},
+                         {p["id"] for p in after},
+                         "every pin the catalog put here is named back, so the caller can wire to "
+                         "the fork that exists rather than assume none does")
+        self.assertEqual({e["cluster_id"] for e in out["already_present"]},
+                         set(out["id_map"]),
+                         "and each one is in `id_map`, which is what `depends_on` is wired from")
+
+    def test_a_brief_naming_a_fork_that_already_exists_is_reported_not_applied(self):
+        """The one input the second call can still carry. It is not silently dropped and it is not
+        applied: the pin exists, and settling an existing pin is `record_decision`'s door."""
+        ledger = self._seeded()
+        with open(ledger, encoding="utf-8") as fh:
+            log_before = json.load(fh)["decision_log"]
+        out = tools.interview_expand(ledger, brief_decisions={
+            "persistence": {"outcome": "relational", "quote": "one relational store for v1"}})
+        entry = next(e for e in out["already_present"] if e["cluster_id"] == "persistence")
+        self.assertEqual(entry["brief_ignored"], "relational")
+        with open(ledger, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["decision_log"], log_before)
+
+
 class TestNoWriteDoorDiesOnAMemberOfAListArgument(unittest.TestCase):
     """v0.25 — three write doors refused the same malformed argument three different ways, and two
     of them did not refuse it at all.
@@ -1321,14 +1454,13 @@ class TestNoWriteDoorDiesOnAMemberOfAListArgument(unittest.TestCase):
     three doors somebody reproduced.
     """
 
-    #: The two doors that CREATE a pin, so they carry no `pin_id` and are outside the per-pin
-    #: roster. Their list arguments are the ones an agent composes first.
-    CREATE_CALL = {
-        "ledger_add_pin": {"kind": "defect", "title": "t", "severity": "low",
-                           "confidence": "extracted",
-                           "provenance": [{"source": "recon", "detail": "x"}]},
-        "ledger_surface_assumption": {"title": "t", "detail": "d"},
-    }
+    #: The doors that take no `pin_id`, and therefore fall outside the per-pin roster. **Not a
+    #: second table (v0.27):** this used to be two hand-written entries here, which is how it went
+    #: unnoticed that four tools are in that position and not two — the same hole that let
+    #: `interview_expand` duplicate every fork in the funnel. It is now the ledger-wide roster,
+    #: which is itself held to the derived set by equality one class up.
+    CREATE_CALL = {name: kwargs for name, (_disposition, kwargs)
+                   in TestALedgerWideWriteDoorIsOnARosterToo.WIDE.items()}
 
     @staticmethod
     def _lists_under(value, prefix=""):

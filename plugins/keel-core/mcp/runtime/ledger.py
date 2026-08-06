@@ -109,9 +109,9 @@ import json
 import os
 import tempfile
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
-SCHEMA_VERSION = "0.26"
+SCHEMA_VERSION = "0.27"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -123,8 +123,16 @@ SCHEMA_VERSION = "0.26"
 # not follow, so every ledger on disk from that period says "0.9". That drift was not cosmetic —
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
+#
+# `SCHEMA_VERSION` is appended rather than typed (v0.27): the two are one fact stated twice, and the
+# bump to 0.27 raised the stamp and left the tuple, so this runtime refused every file it had just
+# written — `_open_or_create` on its own output, `LedgerError: schema '0.27' is not readable`. It was
+# found by a plant in an unrelated gate, which is luck; the constructor is the only consumer and
+# nothing asserted the reflexive case. `tests/test_ledger.py::TestThisRuntimeReadsWhatItWrites` does
+# now, and this line makes the failure unreachable rather than merely tested.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23", "0.24", "0.25", "0.26")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22",
+                     "0.23", "0.24", "0.25", "0.26", SCHEMA_VERSION)
 
 KINDS = {
     "contract_mismatch",
@@ -1263,6 +1271,46 @@ def severity_rank(severity: str) -> int:
     is what stops a fourth.
     """
     return SEVERITIES.index(severity) if severity in SEVERITIES else len(SEVERITIES)
+
+
+def downstream_of(pin_id: str, reads: Iterable[dict]) -> set[str]:
+    """Every pin that transitively depends on `pin_id` — the SET of them, never a count of paths.
+
+    **The one answer to "how much does this fork collapse" in this package** (v0.27). It was two
+    answers, in two byte-identical nested functions: `Ledger.interview_view`'s `transitive` and
+    `interview.funnel`'s `transitive_downstream`. Both summed `1 + recurse(...)` over the inbound
+    edges with a `seen` set carried DOWN one branch and never across siblings — which counts simple
+    PATHS. On the smallest diamond a real roadmap makes (`B` and `C` both depend on `A`, `D` on
+    both) the answer for `A` was **4**, and `A` has three pins downstream of it. `D` was counted once
+    through `B` and once through `C`.
+
+    Both surfaces are the interview's ordering by information gain, so the inflation is not
+    cosmetic: it is the number the funnel hands the human and the key `interview_view` sorts on, and
+    it grows with every diamond — i.e. fastest exactly where the DAG is most entangled and the
+    ordering matters most. The old walk was also exponential in the number of diamonds (a chain of
+    twenty doubles twenty times), on a file an agent hands us.
+
+    Reachability, not arithmetic, so the shape of the graph cannot change the answer: a reverse
+    index over the edge, then a frontier. `pin_id` itself is never in the result — a `depends_on`
+    cycle in a hand-edited file makes a pin its own descendant, and "this fork collapses itself" is
+    not a fact about anything.
+
+    `reads` must be the GUARDED reads (`pin_read` output), for the reason every walker of this edge
+    reads it that way: a bare string in `depends_on` is iterable, so the raw field builds a DAG out
+    of letters.
+    """
+    inbound: dict[str, list[str]] = {}
+    for r in reads:
+        for dep in r["depends_on"]:
+            inbound.setdefault(dep, []).append(r["id"])
+    out: set[str] = set()
+    frontier = [pin_id]
+    while frontier:
+        for nxt in inbound.get(frontier.pop(), ()):
+            if nxt != pin_id and nxt not in out:
+                out.add(nxt)
+                frontier.append(nxt)
+    return out
 
 
 def read_collection(data: Any, name: str) -> list[dict]:
@@ -3397,16 +3445,14 @@ class Ledger:
         here and re-derived on the map, which re-derived them wrongly — see that constant. Every
         field this sorts on is read through `pin_read`, because this and `summary` (which calls it)
         are what an agent runs first on a file it did not write.
+
+        The fan-out it sorts on is `downstream_of` (v0.27). It was a nested `transitive` here and a
+        byte-identical `transitive_downstream` in `interview.funnel`, and both counted simple PATHS:
+        one diamond in the roadmap and the pin the funnel calls most informative may simply be the
+        pin with the most ways to reach the same dependants. See that function.
         """
         reads = [(p, pin_read(p)) for p in self.readable_pins()]
-
-        def transitive(pin_id: str, seen: frozenset = frozenset()) -> int:
-            total = 0
-            for _, r in reads:
-                if pin_id in r["depends_on"] and r["id"] not in seen:
-                    total += 1 + transitive(r["id"], seen | {r["id"]})
-            return total
-
+        guarded = [r for _, r in reads]
         pending = [(p, r) for p, r in reads if r["state"] in INTERVIEW_STATES]
         # An unverifiable blocker outranks information gain. Fan-out orders questions that are still
         # open; a `blocker|high` whose correctness could not be established is not a question to
@@ -3417,7 +3463,7 @@ class Ledger:
                          and r["severity"] in _NEVER_SILENT) else 1
         return [p for p, _ in sorted(
             pending,
-            key=lambda pr: (unverifiable_first(pr[1]), -transitive(pr[1]["id"]),
+            key=lambda pr: (unverifiable_first(pr[1]), -len(downstream_of(pr[1]["id"], guarded)),
                             severity_rank(pr[1]["severity"]), pr[1]["id"]),
         )]
 

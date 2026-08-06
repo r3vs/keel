@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.26
+# Decisions Ledger — Spec v0.27
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1278,3 +1278,42 @@ The table's structural gate derived the carrier set from the AST of `settlement_
 ### The general shape
 
 v0.24: *a rule paid at a set's members is unpaid for whatever satisfies the set's definition without joining it.* v0.25: *a gate is only as good as the corpus it runs on.* This one is both, aimed at the half of the surface nobody had asked: **a rule proved of the readers is unproved for the writers, and a write door is a reader first.** The question to ask of any read-path hardening is not "which readers are covered" but *name every door that READS this record before it writes it, and run the same corpus at that door.*
+
+
+## v0.27 — The number the interview orders by, and the door that ran twice
+
+Three findings, one surface: the **interview**. Two rounds of write-path hardening ended at the doors that take a `pin_id`; this one starts where those rosters could not reach and ends at the number the funnel prints.
+
+### `downstream_of` — how much a fork collapses is a set of pins, not a count of paths
+
+`Ledger.interview_view` held a nested `transitive` and `interview.funnel` a byte-identical `transitive_downstream`. Both summed `1 + recurse(…)` over the inbound edges with a `seen` set carried down one branch and never across siblings — which counts **simple paths**. On the smallest diamond a roadmap makes (`B` and `C` depend on `A`, `D` on both) `A` reported **4** and has three pins downstream of it: `D` was counted once through `B` and once through `C`.
+
+That number is the interview's information gain: it is the key `interview_view` sorts on and the `downstream` the funnel prints beside every question. So the ordering the whole compressed interview rests on inflates with the density of the DAG — fastest exactly where the graph is most entangled and the ordering matters most. The old walk was also exponential in the number of diamonds, on a file an agent hands us.
+
+```
+ledger.downstream_of(pin_id, reads) -> set[str]     reachability over a reverse index
+```
+
+Reachability rather than arithmetic, so the shape of the graph cannot change the answer, and a `depends_on` cycle in a hand-edited file terminates instead of counting the pin as its own descendant. **Two identical copies is the finding as much as the arithmetic is**: every round that reviewed one of the two surfaces saw a function that agreed with the other. The gate derives every walk of the pin dependency graph in `src/runtime` and `src/mcp` — a function that recurses while naming `depends_on`, or that tests membership against a `depends_on` value — and holds the set to a declared table with the question each one answers. It reported two on its first run (`buildloop.depth`, upstream levelling, memoised; `challenger._inbound_fanout`, the immediate dependants), and both are declared rather than silenced.
+
+### The write-door roster had a hole shaped like a door that takes no pin
+
+Every roster v0.24–v0.26 derived is *a tool taking a `pin_id` that reaches the commit point*. **Four tools reach the commit point and take no `pin_id`**, so all four sat outside every gate the write half acquired, and the one hand-written list that named any of them named two.
+
+What the hole was hiding: **`interview_expand` was not idempotent.** Two calls on the default catalog left **24 pins for 12 clusters** — every fork in the funnel duplicated, the newer copy taking the `depends_on` edges and the older one (which may already carry a decision, a brainstorm or a remediation) orphaned beside it. It is a projection of a fixed catalog into the ledger, not an `add` door, and it is the Phase-1 step an agent re-runs after a context reset — i.e. the door most likely to be called twice by a caller that cannot tell whether it already ran.
+
+Nothing new is stored to fix it. What a pin was materialised from is already on the pin: `provenance` = `{"source": "decision-catalog", "detail": "cluster:<id>"}`, read back by `interview.catalog_cluster`. `cluster_id` is deliberately not the carrier — `cl_<id>` is a **scope** (a policy's `applies_to` selects on it, `decide(apply_to_cluster=True)` cascades over it), so any pin an agent groups with the persistence fork carries it, and reading it as origin would make a hand-grouped finding look like a catalog fork. Those clusters come back under `already_present` with their pin and state, and a `brief_decisions` key naming one is reported ignored there: the fork exists, and settling a pin that exists is `ledger_record_decision`'s door, where the offered-options rule lives.
+
+The roster is now derived over both halves, their union is asserted to be every write door in the module, and each ledger-wide door declares what a second identical call does — `projects` (must add nothing) or `creates` (must add something). Both directions are exercised, so the classification is a claim rather than a free pass.
+
+### A rule whose gate did not cover its own door
+
+`interview._brief_entry` is the door-level half of v0.24's brief-quote rule. Deleting half its condition — `if not outcome or not quote` → `if not quote` — left the whole suite green, `TestTheBriefOwesTheBrief` included: the one test that reached the door passed a bare string, which exercises the `quote` half and nothing else. The refusal is now derived from the two halves of the pair, so neither can be deleted without a failure.
+
+### The version this runtime stamps is a version it accepts
+
+Introduced by this round's own bump and caught by one of its plants: `SCHEMA_VERSION` went to `0.27` and `READABLE_VERSIONS` was a literal tuple ending at `0.26`, so the runtime wrote a ledger and then refused to open it (`LedgerError: ledger schema '0.27' is not readable by this runtime`, from `Ledger.__init__`). The constructor is that tuple's only consumer and nothing asked the reflexive question. The tuple now ends in `SCHEMA_VERSION`, which makes the failure unreachable rather than merely tested.
+
+### The general shape
+
+v0.26 asked *which doors read this record before writing it*. This one asks the two questions that survives: **is the number a surface prints the number it claims to be**, and **what is outside the roster BECAUSE of how the roster is derived**. A derivation is a claim about a class, and every derivation this branch wrote said "takes a `pin_id`" — so the doors that write without naming a pin were invisible not by oversight but by construction. The question to ask of any derived roster: *state the predicate out loud, then name what writes and does not satisfy it.*

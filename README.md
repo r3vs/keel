@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-888%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-903%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -319,7 +319,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 13 composable ones, with the runtime **largely
-implemented**: 32 modules, 58 MCP tools, **888 tests green in CI**, 4 hosts.
+implemented**: 32 modules, 58 MCP tools, **903 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were
