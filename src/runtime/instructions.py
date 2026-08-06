@@ -196,11 +196,16 @@ _HEAD_TEMPLATE = (
 #: the floor below so a tight budget can never squeeze every section out and fall back to "nothing
 #: elected yet" on a ledger that has decisions — the note must cost the sections nothing.
 _NOTE_LINES = 2
+#: The nonconformance note (blank line + one line), emitted only when the file holds something the
+#: schema does not describe. Counted in the floor for exactly the reason above, and it is counted
+#: because the first draft was not: at the floor it displaced `### Standing rules` — the rules an
+#: agent must obey — which is the one thing this budget promises survives.
+_NONCONF_LINES = 2
 
-#: Header + the evidence note + a heading + one item + its clip note. Below this a budget cannot be
-#: honoured at all, and overrunning it silently is the exact failure the budget exists to prevent —
-#: so it is refused.
-_MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + 4
+#: Header + both conditional notes + a heading + one item + its clip note. Below this a budget
+#: cannot be honoured at all, and overrunning it silently is the exact failure the budget exists to
+#: prevent — so it is refused.
+_MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + _NONCONF_LINES + 4
 
 def _fingerprint(body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
@@ -280,6 +285,35 @@ _POLICY_WEAKNESS_CLAUSE = {
     "unknown_rung": "elected on a rung this projection does not know",
     "unquoted_relay": "relayed with no quote",
 }
+
+
+def _nonconformance_note(data: dict) -> list:
+    """One line saying what this file holds that the schema does not describe — or nothing.
+
+    **v0.25, and it was the last surface with no such line.** The map has carried a banner since
+    v0.23 and `ledger_summary` has reported `pre_rule_events` since v0.21; this projection called
+    `nonconforming` nowhere at all. On one hostile ledger the three surfaces gave three accounts of
+    one file: `ledger_summary` said 8 pins and 24 nonconformances across 15 rules, the map showed a
+    banner, and the region every fresh agent loads listed 6 pins and said nothing — the shortest
+    list, in the one file no host loads on request. A projection that silently drops what it could
+    not read is telling an agent there is less here than there is, which is the same claim a blank
+    map makes, made where it is hardest to notice.
+
+    Counts and rule names, not ids: the region is a budgeted index and the ids are on the map and in
+    `ledger_summary`, both of which this line names. It costs bytes only when there is something to
+    say, exactly as `_evidence_note` does.
+    """
+    from ledger import nonconforming
+    report = nonconforming(data)
+    if not report:
+        return []
+    total = sum(len(ids) for ids in report.values())
+    rules = ", ".join(f"`{r}`" for r in sorted(report))
+    return ["", f"*This ledger holds {total} thing(s) the schema does not describe ({rules}), so "
+                f"what is listed below is what a reader can index — not all the file contains. "
+                f"`ledger_summary` reports the same list under `pre_rule_events`; the map shows it "
+                f"as a banner. Nothing was rewritten, and a file in this state does not get its "
+                f"`version` raised.*"]
 
 
 def _evidence_note(data: dict) -> list:
@@ -410,12 +444,14 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     # copy in every reader is the thing this file's own module docstring keeps finding one surface
     # over. `read_collection` is `Ledger.readable`'s body — this function holds no `Ledger`, which is
     # exactly why the guard on the method never reached it. What is dropped is reported by
-    # `nonconforming` under `entry_shape` / `collection_shape`, on the same file.
+    # `nonconforming` under `entry_shape` / `collection_shape` — and from v0.25 it is reported HERE
+    # too, in the region's own header, rather than only on the two surfaces that already said it.
     from ledger import read_collection
     pins = read_collection(data, "pins")
     policies = read_collection(data, "policies")
 
     head = ([line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
+            + _nonconformance_note(data)
             + _evidence_note(data))
 
     # The two sets are the ledger's, not this module's (see the module docstring). Imported here

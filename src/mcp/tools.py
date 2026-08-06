@@ -1001,21 +1001,34 @@ def _unregister_live_map(ledger: str, out: str) -> None:
 def _refresh_live_maps(ledger: str) -> None:
     """Re-project every live map registered for this ledger. Best-effort by design: a render failure
     must never break the ledger write that triggered it, and a ledger with no live map pays nothing
-    (the marker check returns immediately)."""
+    (the marker check returns immediately).
+
+    **`Exception`, and the narrow tuple that was here is the finding (v0.25).** The docstring said
+    *never* and the handler caught `(OSError, ValueError)` — not `AttributeError`, `TypeError` or
+    `KeyError`, which are precisely the failure classes this whole round is about. A ledger the
+    renderer chokes on would therefore have taken down the WRITE that had already succeeded and been
+    persisted: the pin is on disk, the tool returns `isError`, and the agent is told its write
+    failed. The rule is the docstring's own, so the handler is the rule's: anything the projection
+    raises is the projection's problem, and the marker is read the same way for the same reason (a
+    marker file holding a JSON list met `.get`).
+
+    Nothing is swallowed that a caller needed: `render_map` is the door that RENDERS, and it does
+    not go through here — a failure there is reported to the caller who asked for a render.
+    """
     m = _livemap_marker(ledger)
     if not m.is_file():
         return
     try:
         outs = json.loads(m.read_text(encoding="utf-8")).get("outs", [])
-    except (OSError, ValueError):
+    except Exception:
         return
-    if not outs:
+    if not isinstance(outs, list) or not outs:
         return
     import map as M
     for out in outs:
         try:
             M.render_file(ledger, out, live=True)
-        except (OSError, ValueError):
+        except Exception:
             continue
 
 

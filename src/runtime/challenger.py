@@ -80,8 +80,11 @@ def scan(ledger) -> list[dict]:
     # is served read-only, so it is under the same rule the summary is — reading a ledger is never
     # the operation that fails on it. `kind` is not one of `pin_read`'s five and is asked with
     # `.get`, which is what a membership test wanted anyway.
-    for pin in ledger.readable_pins():
-        read = pin_read(pin)
+    for raw in ledger.readable_pins():
+        # The WHOLE pin through the guarded read (v0.25), not five fields of it. v0.22 bound `read`
+        # for the fields somebody had reproduced and went on asking `pin.get("to_be")` beside it,
+        # which is the split this round removed: `pin_read` returns the pin, and `read` IS the pin.
+        pin = read = pin_read(raw)
         if read["state"] not in ("decided", "accepted"):
             continue
 
@@ -127,17 +130,21 @@ def premortem_required(ledger, pin: dict) -> dict:
     Whether the premortem is any *good* is judgment and stays with the agent; this only answers
     whether one is owed.
     """
+    # The guarded pin first, so every read below is one (v0.25). A `readiness` that is a bare
+    # string met `.get("verdict")` here and took `mcp:agent_ready` down through `premortem_gaps` —
+    # a read-only tool, on a file it did not write.
+    pin = pin_read(pin)
     because = []
     if pin.get("severity") in ("blocker", "high"):
         because.append(f"severity {pin['severity']} — never handled silently")
     verdict = (pin.get("readiness") or {}).get("verdict")
     if verdict in ("harden_first", "redesign"):
         because.append(f"landing zone is {verdict} — the ground is already known to be weak")
-    if any(e.get("pin_id") == pin_read(pin)["id"]
+    if any(e.get("pin_id") == pin["id"]
            and str(e.get("id") or "").startswith(("chl_", "rev_"))
            for e in ledger.readable("decision_log")):
         because.append("this pin has been reopened before")
-    fanout = _inbound_fanout(ledger, pin_read(pin)["id"])
+    fanout = _inbound_fanout(ledger, pin["id"])
     if fanout >= _FANOUT_THRESHOLD:
         because.append(f"{fanout} decisions depend on it")
     return {"required": bool(because), "because": because, "determinism": "D0"}
@@ -147,12 +154,13 @@ def premortem_gaps(ledger) -> list[dict]:
     """Pins that owe a premortem and do not have one. The challenger's own queue — and the
     `needs_challenge` route of the agent-ready card (`agentready.py`)."""
     out = []
-    for pin in ledger.readable_pins():
-        if pin_read(pin)["state"] in ("resolved", "accepted", "deferred") or pin.get("premortem"):
+    for raw in ledger.readable_pins():
+        pin = pin_read(raw)
+        if pin["state"] in ("resolved", "accepted", "deferred") or pin.get("premortem"):
             continue
         req = premortem_required(ledger, pin)
         if req["required"]:
-            out.append({"pin_id": pin_read(pin)["id"], "title": pin.get("title"),
+            out.append({"pin_id": pin["id"], "title": pin["title"],
                         "because": req["because"]})
     return out
 

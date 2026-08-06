@@ -39,7 +39,7 @@ def _actionable(pin: dict) -> bool:
 
 
 def _items_done(pin: dict) -> bool:
-    items = pin.get("remediation")
+    items = pin_read(pin).get("remediation")
     items = [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
     return bool(items) and all(i.get("status") == "done" for i in items)
 
@@ -90,7 +90,7 @@ def next_item(ledger) -> Optional[tuple]:
     """The single next (pin, remediation_item) to work — the first todo item on the first ready
     pin. Returns None when nothing is ready (loop done, or blocked on upstream waves)."""
     for pin in ready(ledger):
-        for item in (pin.get("remediation") or []):
+        for item in (pin_read(pin).get("remediation") or []):
             if not isinstance(item, dict) or item.get("status") != "done":
                 return pin, item
         # a ready pin with no items yet is itself the next unit of work (needs items planned)

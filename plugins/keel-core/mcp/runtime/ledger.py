@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.24"
+SCHEMA_VERSION = "0.25"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -124,7 +124,7 @@ SCHEMA_VERSION = "0.24"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23", "0.24")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23", "0.24", "0.25")
 
 KINDS = {
     "contract_mismatch",
@@ -551,6 +551,29 @@ def _require(cond: bool, msg: str) -> None:
         raise LedgerError(msg)
 
 
+def _require_objects(items: Any, name: str, why: str) -> list:
+    """THE refusal for a list argument whose members this runtime indexes (v0.25). Returns the list.
+
+    Three write doors refused the same malformed argument three different ways, and two of them did
+    not refuse it at all: `premortem` said *"each failure mode must be an object"*, while
+    `add_proposals` reached `p.get("recommended")` and `add_pin`'s assumption check reached
+    `src.get("source")` — both a raw `AttributeError` over the wire, on an argument an agent
+    composes and therefore gets wrong. A refusal is a sentence a caller can act on; a `TypeError`
+    from inside a comprehension is a stack trace naming a line of ours about a mistake of theirs.
+
+    Same shape as the read half one section up and for the same reason: the rule *"a member of this
+    list is an object"* gets ONE carrier, and
+    `tests/test_mcp_server.py::TestNoWriteDoorDiesOnAMemberOfAListArgument` quantifies over every
+    write tool the server serves rather than over the three that were reported.
+    """
+    _require(isinstance(items, list),
+             f"{name} must be a list — {why}; got {type(items).__name__}")
+    for index, item in enumerate(items):
+        _require(isinstance(item, dict),
+                 f"{name}[{index}] must be an object — {why}; got {type(item).__name__}")
+    return items
+
+
 # -- reading events an older runtime wrote (v0.13) --------------------------------------------
 #
 # `decide()` has required `source` to be `"interview"` or `"policy:<id>"` at every version of this
@@ -811,64 +834,198 @@ def _check_event(event: dict) -> None:
 # both shape rules. `summary` read each one as `self.data[…]` and died the same way on each; fixing
 # the one that was reported would have left the file's other two halves for the next reviewer.
 LEDGER_COLLECTIONS = ("pins", "decision_log", "policies")
-PIN_RULES = (
-    ("pin_id",
-     lambda p: bool(str(p.get("id") or "")),
-     lambda p: "a pin carries no `id`, so nothing can depend on it, name it or link to it"),
-    ("pin_state",
-     lambda p: p.get("state") in STATES,
-     lambda p: f"state must be one of {STATES}; got {p.get('state')!r} — every surface that sorts, "
-               f"counts or gates on a pin reads this field"),
-    ("pin_severity",
-     lambda p: p.get("severity") in SEVERITIES,
-     lambda p: f"severity must be one of {SEVERITIES}; got {p.get('severity')!r} — the threshold "
-               f"rule and the interview's ordering both read it"),
-    ("pin_depends_on",
-     lambda p: isinstance(p.get("depends_on", []), list)
-     and all(isinstance(d, str) for d in p.get("depends_on", [])),
-     lambda p: f"depends_on must be a list of pin ids; got {p.get('depends_on')!r} — the DAG every "
-               f"wave is levelled by is read off it"),
-    ("pin_question",
-     lambda p: p.get("question") is None or isinstance(p.get("question"), dict),
-     lambda p: f"question must be an object or absent; got {type(p.get('question')).__name__} — "
-               f"`interview.funnel` reads `question.prompt` off it, so a fork that is not an object "
-               f"takes the whole funnel down rather than one entry"),
-    # v0.23. Both arrived with the two PROJECTIONS (`map.render`, `instructions.render`), which is
-    # where the read path had never been applied: a title that is not a string met `.strip()` and a
-    # `decision` that is a bare string met `.get("outcome")`, in the one file every host loads
-    # unprompted.
-    ("pin_title",
-     lambda p: p.get("title") is None or isinstance(p.get("title"), str),
-     lambda p: f"title must be a string or absent; got {type(p.get('title')).__name__} — it is the "
-               f"pin's name on every surface, and the projected AGENTS.md strips it"),
-    ("pin_decision",
-     lambda p: p.get("decision") is None or isinstance(p.get("decision"), dict),
-     lambda p: f"decision must be an object or absent; got {type(p.get('decision')).__name__} — "
-               f"`{{event_id, outcome}}`, and both projections index `outcome` off it"),
-)
 
 
+# -- THE SHAPE TABLE: the one carrier the read path, the rules and the corpus all derive from -----
+#
+# **v0.25, and the lesson is the corpus rather than any one field.** The three parts above —
+# `PIN_RULES` ↔ `pin_read` held by set equality, `nonconforming` replaying the table — were correct
+# and were checked against a HAND-WRITTEN list of seven broken pins in two test modules. A reviewer
+# extended that list with eleven more shapes, every one of them naming a field `PIN_FIELDS` already
+# declares, and the unchanged gates failed: `verification: "observed"` and
+# `brainstorm: {"proposals": "opt_a"}` killed `interview_next` over stdio, on the surface the branch
+# had spent three rounds naming. **The gates proved what somebody had thought to write down.**
+#
+# So the schema declares the SHAPE of every path a reader indexes, once, and everything else is
+# derived from it: the rules (`PIN_RULES`), the substitution (`pin_read`), the sentence the map
+# prints (`shape_note`), and the test corpus. A field added tomorrow is covered by all four without
+# anyone remembering.
+#
+# **The membership rule, stated so the table can be held to the writers rather than trusted.** A
+# path is declared iff a reader can INDEX INTO its value — every object and every list this runtime
+# writes into a record — plus the top-level scalars a reader coerces (`title` is `.strip()`ped,
+# `severity` is ranked, `id`/`state` are bucketed). A scalar nested inside a declared object is NOT
+# here, and the reason is the same one that keeps `EVENT_RULES` narrow: nothing indexes into a
+# string, so a wrong-typed one renders oddly and kills nothing.
+# `tests/test_ledger.py::TestTheShapeTableIsTheWritersOwnShapes` walks every writer and holds both
+# directions of that rule.
+#
+# The shape vocabulary is closed and small. `None` always holds — every one of these fields is
+# optional and `add_pin` itself writes `as_is`/`to_be`/`question`/`brainstorm`/`decision` as `None`,
+# so "absent" and "explicitly null" are one case and always were.
+SHAPE_HOLDS = {
+    "str": lambda v: isinstance(v, str),
+    "object": lambda v: isinstance(v, dict),
+    "list": lambda v: isinstance(v, list),
+    "list[str]": lambda v: isinstance(v, list) and all(isinstance(x, str) for x in v),
+    "list[object]": lambda v: isinstance(v, list) and all(isinstance(x, dict) for x in v),
+}
+#: What a reader gets where the file's value does not hold its shape. Never a plausible value: `""`
+#: is not `low`, `{}` is not an invented envelope, `[]` is not a DAG edge. The substitution is
+#: always the EMPTY reading, and `nonconforming` names every one of them.
+SHAPE_EMPTY: dict = {"str": "", "object": {}, "list": [], "list[str]": [], "list[object]": []}
+#: The English for a shape, in the sentence a surface prints to a human.
+SHAPE_ENGLISH = {"str": "a string", "object": "an object", "list": "a list",
+                 "list[str]": "a list of strings", "list[object]": "a list of objects"}
+
+#: Every path inside a `Pin` whose value a reader indexes into, plus the coerced top-level scalars.
+#: Dotted where it is nested. Ordered as the schema lists them (`PIN_FIELDS`), so `PIN_RULES` and
+#: `pre_rule_events` read in the envelope's own order rather than alphabetically.
+PIN_SHAPES = {
+    "id": "str",
+    "title": "str",
+    "severity": "str",
+    "state": "str",
+    "provenance": "list[object]",
+    "anchors": "list[object]",
+    "as_is": "object",
+    # The one key inside `as_is` that is not free-form per kind: the map builds a `Set` out of it to
+    # colour the layers that disagree, so it is indexed and therefore declared. Found by this
+    # table's own writer gate rather than by reading the map — which is what the gate is for.
+    "as_is.disagreeing_layers": "list[str]",
+    "to_be": "object",
+    "question": "object",
+    "question.options": "list[object]",
+    "brainstorm": "object",
+    "brainstorm.proposals": "list[object]",
+    "decision": "object",
+    "depends_on": "list[str]",
+    "remediation": "list[object]",
+    "verification": "object",
+    "verification.attempted": "list",
+    "verification.cross_derived_by": "list[str]",
+    "readiness": "object",
+    "readiness.zone": "object",
+    "readiness.evidence": "object",
+    "readiness.hardens": "list[str]",
+    "premortem": "object",
+    "premortem.failure_modes": "list[object]",
+    "premortem.guardrails": "list",
+    "premortem.abort_criteria": "list",
+    "premortem.paper_tigers": "list[object]",
+    "cross_derivations": "list[object]",
+}
+
+#: The same table for the ledger's other record. Three paths, and all three were already rules.
+POLICY_SHAPES = {"id": "str", "rule": "str", "applies_to": "object"}
+
+#: Where a path's rule is STRONGER than its shape, the stronger one is the rule — one name, one
+#: verdict, no second entry saying a weaker version of the same thing. Each is `(holds, message)`
+#: and each implies the declared shape, which
+#: `tests/test_ledger.py::TestTheShapeTableIsTheWritersOwnShapes` asserts rather than assumes.
+PIN_STRONGER = {
+    "id": (lambda v: isinstance(v, str) and bool(v),
+           lambda v: "a pin carries no `id`, so nothing can depend on it, name it or link to it"),
+    "state": (lambda v: v in STATES,
+              lambda v: f"state must be one of {STATES}; got {v!r} — every surface that sorts, "
+                        f"counts or gates on a pin reads this field"),
+    "severity": (lambda v: v in SEVERITIES,
+                 lambda v: f"severity must be one of {SEVERITIES}; got {v!r} — the threshold rule "
+                           f"and the interview's ordering both read it"),
+}
+POLICY_STRONGER = {
+    "id": (lambda v: isinstance(v, str) and bool(v),
+           lambda v: "a policy carries no `id`, so no cascaded decision can name the rule it "
+                     "derives from"),
+    "rule": (lambda v: isinstance(v, str) and bool(v.strip()),
+             lambda v: f"rule must be a non-empty string; got {v!r} — it IS the standing rule, and "
+                       f"it is what both the map's card and the projected AGENTS.md print"),
+}
+
+#: The paths `pin_read` MATERIALISES when the file carries none, and the only ones. Every caller
+#: below indexes them unconditionally and has since v0.21, which is the whole reason they are named
+#: here rather than discovered: a projection that materialised the rest would put an empty
+#: `verification` envelope and an empty fork on every pin in the file, and the map's cards select on
+#: presence (`if(p.question)`, `if(p.decision)`). So the SAME table drives two readings that differ
+#: on exactly one axis — whether an absent path is filled — and `pin_read(pin, fill=False)` is the
+#: projection's.
+PIN_GUARANTEED = ("id", "state", "severity", "depends_on", "question", "title", "decision")
+POLICY_GUARANTEED = ("id", "rule", "applies_to")
+
+
+def _at(record: dict, path: str) -> Any:
+    """The value at a dotted path, or `None` where any step is absent or not an object."""
+    node: Any = record
+    for step in path.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(step)
+    return node
+
+
+def _rules_from(shapes: dict, stronger: dict, prefix: str) -> tuple:
+    """`(name, holds(record) -> bool, message(record) -> str)` per declared path.
+
+    One rule per path and one name per path: where `stronger` carries an entry the rule is that
+    one, because a membership rule already implies the shape and two entries would report one
+    fault twice under two names.
+    """
+    out = []
+    for path, shape in shapes.items():
+        name = prefix + path.replace(".", "_")
+        if path in stronger:
+            holds, message = stronger[path]
+            out.append((name,
+                        (lambda p, h: lambda r: h(_at(r, p)))(path, holds),
+                        (lambda p, m: lambda r: m(_at(r, p)))(path, message)))
+            continue
+        out.append((
+            name,
+            (lambda p, s: lambda r: _at(r, p) is None or SHAPE_HOLDS[s](_at(r, p)))(path, shape),
+            (lambda p, s: lambda r: f"`{p}` must be {SHAPE_ENGLISH[s]} or absent; got "
+                                    f"{type(_at(r, p)).__name__} — a reader indexes into it, so "
+                                    f"what the file carries is read as {SHAPE_EMPTY[s]!r} and "
+                                    f"reported here rather than silently substituted")(path, shape),
+        ))
+    return tuple(out)
+
+
+PIN_RULES = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_")
 #: A `Policy` is the ledger's other record with its own surfaces, and it acquired the pin half's
 #: exact bug one collection over: `instructions.render` called `.strip()` on `policy["rule"]` and
 #: `.items()` on `policy["applies_to"]`, so an elected standing rule whose scope is a string took
-#: down the projection every host loads. Same three parts as `PIN_RULES` — a rule per substituted
-#: field, `policy_read` to substitute it, `nonconforming` to report that it did — because a second
-#: answer to one question is what this round exists to remove.
-POLICY_RULES = (
-    ("policy_id",
-     lambda p: bool(str(p.get("id") or "")),
-     lambda p: "a policy carries no `id`, so no cascaded decision can name the rule it derives "
-               "from"),
-    ("policy_rule",
-     lambda p: isinstance(p.get("rule"), str) and bool(p.get("rule").strip()),
-     lambda p: f"rule must be a non-empty string; got {p.get('rule')!r} — it IS the standing rule, "
-               f"and it is what both the map's card and the projected AGENTS.md print"),
-    ("policy_applies_to",
-     lambda p: p.get("applies_to") is None or isinstance(p.get("applies_to"), dict),
-     lambda p: f"applies_to must be an object or absent; got "
-               f"{type(p.get('applies_to')).__name__} — it is the SCOPE, and a scope that cannot be "
-               f"read is a rule nobody can tell the radius of"),
-)
+#: down the projection every host loads. Same table, same derivation, one prefix apart.
+POLICY_RULES = _rules_from(POLICY_SHAPES, POLICY_STRONGER, "policy_")
+
+
+def shape_note(rule: str) -> str:
+    """The one-line English a SURFACE prints for a derived rule name, or `""` for a name this table
+    did not produce.
+
+    The map keeps hand-written sentences for the rules that carry argued prose, and falls back to
+    this for the derived ones — because a table of thirty-one hand-written sentences beside a table
+    of thirty-one derived rules is the drift this round exists to remove. The page cannot fall
+    behind the schema: the sentences are inlined from here, exactly as `__SETTLED__` and
+    `__ASKABLE__` already are.
+    """
+    for shapes, prefix in ((PIN_SHAPES, "pin_"), (POLICY_SHAPES, "policy_")):
+        for path, shape in shapes.items():
+            if prefix + path.replace(".", "_") != rule:
+                continue
+            record = "pin" if prefix == "pin_" else "standing rule"
+            return (f"a {record}'s `{path}` that is not {SHAPE_ENGLISH[shape]} — every surface "
+                    f"reads it as {SHAPE_EMPTY[shape]!r}, so what the file carries is on no page")
+    return ""
+
+
+def shape_notes() -> dict:
+    """`rule name -> sentence` for every rule the two shape tables derive. What the map inlines."""
+    out = {}
+    for shapes, prefix in ((PIN_SHAPES, "pin_"), (POLICY_SHAPES, "policy_")):
+        for path in shapes:
+            name = prefix + path.replace(".", "_")
+            out[name] = shape_note(name)
+    return out
 
 
 def policy_violations(policy: dict) -> list:
@@ -884,10 +1041,50 @@ def pin_violations(pin: dict) -> list:
     return [name for name, holds, _ in PIN_RULES if not holds(pin)]
 
 
-def pin_read(pin: Any) -> dict:
-    """The five fields the read path INDEXES, as a reader may use them. Never raises.
+def _shape_guarded(record: Any, shapes: dict, guaranteed: tuple, fill: bool) -> dict:
+    """`record` as a reader may index it: every declared path that does not hold its shape replaced
+    by that shape's EMPTY value, everything else carried through untouched. Never raises.
 
-    What each absence becomes, and why — a substitution nobody can name is a heuristic:
+    Copies rather than rewrites — the file is not touched and `nonconforming(data)` still answers
+    about it as it stands. `fill` decides the one axis the two callers differ on: a reader that
+    indexes a path unconditionally needs it present (`fill=True`, the default), a PROJECTION must
+    not invent a record the file does not carry (`fill=False`).
+    """
+    out = dict(record) if isinstance(record, dict) else {}
+    for path, shape in shapes.items():
+        parent, _, leaf = path.rpartition(".")
+        holder = out if not parent else _at(out, parent)
+        if not isinstance(holder, dict):
+            continue                       # the parent is itself substituted; nothing to guard in
+        present = leaf in holder and holder[leaf] is not None
+        if present and SHAPE_HOLDS[shape](holder[leaf]):
+            continue
+        if not present and not (fill and path in guaranteed):
+            continue
+        if parent:                         # copy-on-write, so the file's own sub-object is not hit
+            holder = dict(holder)
+            _set_at(out, parent, holder)
+        empty = SHAPE_EMPTY[shape]
+        # A fresh mutable each time: one shared `{}` handed to every pin in the file would be one
+        # object a caller could write a fork into and see on every other pin.
+        holder[leaf] = type(empty)(empty) if isinstance(empty, (dict, list)) else empty
+    return out
+
+
+def _set_at(record: dict, path: str, value: Any) -> None:
+    parent, _, leaf = path.rpartition(".")
+    holder = record if not parent else _at(record, parent)
+    if isinstance(holder, dict):
+        holder[leaf] = value
+
+
+def pin_read(pin: Any, fill: bool = True) -> dict:
+    """The pin as a reader may index it — every path `PIN_SHAPES` declares, guaranteed to hold its
+    declared shape. Never raises.
+
+    What each substitution becomes is the shape's empty value, and the argument for each is the
+    same one: **a substitution nobody can name is a heuristic**, so the reading is always the
+    emptiest true one and `nonconforming` reports every instance.
 
       * `id`, `state` — `""`. Neither is in any closed vocabulary, so a pin with no state is in no
         state's bucket and one with no id is depended on by nothing. It is still counted, still
@@ -898,53 +1095,30 @@ def pin_read(pin: Any) -> dict:
         among severities this runtime can rank, and an unrankable one is not evidence of anything.
       * `depends_on` — `[]` unless it is a list of strings. A bare string here is iterable, so the
         old readers walked it character by character and built a DAG out of letters.
-      * `question` — `{}` unless it is an object, which is falsy exactly where `pin["question"]`
-        already was. It is here because `interview.funnel` indexes `question.prompt`, and it is
-        returned by reference: a reader may look at the fork, never rewrite it (`set_question` is
-        the door, and it is write-if-absent).
-      * `title` — `""`. The pin's name on every surface. It is `.strip()`ped by the projected
-        `AGENTS.md`, which is the one file every host loads unprompted, so a title that is not a
-        string took that whole file down (v0.23).
-      * `decision` — `{}` unless it is an object, for the same reason `question` is: both
-        projections index `outcome` off it, and both did it with `.get` on whatever was there.
+      * `question`, `decision` — `{}`, falsy exactly where the raw field already was.
+      * `verification`, `brainstorm.proposals` — `{}` / `[]` (v0.25). These are the two that were
+        missing, and both killed `interview_next` over stdio: `(pin.get("verification") or {}).get`
+        on a string, and a `proposals` that is truthy and not a list of objects walked character by
+        character into `p.get(...)`.
+
+    `fill` is the only axis on which the two readings differ, and it is named rather than forked:
+    with it, the seven paths every caller indexes unconditionally are materialised; without it, an
+    absent path stays absent, which is what a PROJECTION needs — the map's cards select on presence,
+    and filling them would put an empty envelope on every pin in the file.
     """
-    src = pin if isinstance(pin, dict) else {}
-    deps = src.get("depends_on")
-    question = src.get("question")
-    decision = src.get("decision")
-    title = src.get("title")
-    return {
-        "id": str(src.get("id") or ""),
-        "state": str(src.get("state") or ""),
-        "severity": str(src.get("severity") or ""),
-        "depends_on": [d for d in deps if isinstance(d, str)] if isinstance(deps, list) else [],
-        "question": question if isinstance(question, dict) else {},
-        "title": title if isinstance(title, str) else "",
-        "decision": decision if isinstance(decision, dict) else {},
-    }
+    return _shape_guarded(pin, PIN_SHAPES, PIN_GUARANTEED, fill)
 
 
-def policy_read(policy: Any) -> dict:
-    """The three fields a projection INDEXES on a `Policy`, as a reader may use them. Never raises.
+def policy_read(policy: Any, fill: bool = True) -> dict:
+    """`pin_read`'s twin, one collection over, off the same machinery and the same argument.
 
-    `pin_read`'s twin, and it exists because the pin half was fixed alone: `rule` met `.strip()` and
-    `applies_to` met `.items()` in `instructions.render`, on a collection the same function had
-    already learned to guard the container of. What each absence becomes:
-
-      * `id` — `""`. Nothing cascades from a rule that cannot be named.
-      * `rule` — `""`, which every surface renders as an empty rule rather than as a plausible one.
-      * `applies_to` — `{}`. Read as a scope, `{}` is the UNIVERSAL selector, which is the widest
-        possible reading and therefore the honest one: a scope this runtime cannot read must not
-        quietly narrow the radius a human is shown. It is reported under `policy_applies_to`.
+    It exists because the pin half was fixed alone: `rule` met `.strip()` and `applies_to` met
+    `.items()` in `instructions.render`, on a collection the same function had already learned to
+    guard the container of. `applies_to` reads as `{}` where the file's value cannot be read, and
+    `{}` is the UNIVERSAL selector — the widest possible reading and therefore the honest one: a
+    scope this runtime cannot read must not quietly narrow the radius a human is shown.
     """
-    src = policy if isinstance(policy, dict) else {}
-    rule = src.get("rule")
-    applies_to = src.get("applies_to")
-    return {
-        "id": str(src.get("id") or ""),
-        "rule": rule if isinstance(rule, str) else "",
-        "applies_to": applies_to if isinstance(applies_to, dict) else {},
-    }
+    return _shape_guarded(policy, POLICY_SHAPES, POLICY_GUARANTEED, fill)
 
 
 def severity_rank(severity: str) -> int:
@@ -990,10 +1164,22 @@ def readable_ledger(data: Any) -> dict:
     describe — which is what makes the page's own JavaScript safe without a second guard written in
     a second language. The original is not mutated and not rewritten: a shallow copy with three keys
     replaced, so `nonconforming(data)` still answers about the file as it stands.
+
+    **The FIELDS come through too, from v0.25.** Guarding the container and handing the page a pin
+    whose `verification` is a string is half a read path: the map's own JavaScript then renders
+    *"no rung recorded"* over a file that records one, and nothing on the page contradicted it. So
+    every entry goes through its record's guarded read with `fill=False` — malformed values are
+    substituted, ABSENT ones stay absent, because the page's cards select on presence and a filled
+    envelope would appear on every pin in the file.
     """
     out = dict(data) if isinstance(data, dict) else {}
     for name in LEDGER_COLLECTIONS:
-        out[name] = read_collection(data, name)
+        entries = read_collection(data, name)
+        if name == "pins":
+            entries = [pin_read(e, fill=False) for e in entries]
+        elif name == "policies":
+            entries = [policy_read(e, fill=False) for e in entries]
+        out[name] = entries
     return out
 
 
@@ -1034,6 +1220,15 @@ def nonconforming(data: dict) -> dict:
     same one every other entry carries: a file with an unreadable pin does not get its `version`
     raised, because the stamp is a claim of conformance and that file does not conform.
     """
+    # v0.25 — the rule about the FILE, asked before any rule about a record in it. A ledger whose
+    # top level is not an object killed all four surfaces with a raw `AttributeError` (`[...]` and
+    # `"..."` both reproduced on every one of them), and this function was among the things that
+    # died: it is `Ledger.__init__`'s first call, so the report that exists to describe an
+    # unreadable file was itself unable to open one. `readable_ledger` already answered `{}` for it
+    # and said nothing, which is the silent-substitution failure one layer up.
+    if not isinstance(data, dict):
+        return {"ledger_shape": [type(data).__name__]}
+
     def entries(name: str) -> list:
         value = data.get(name)
         return value if isinstance(value, list) else []
@@ -1069,7 +1264,13 @@ def nonconforming(data: dict) -> dict:
             continue                                    # already reported as `entry_shape`
         # By id where there is one, by position where there is not — the same rule `log_entry_kind`
         # follows, for the same reason: a thing with no name is named by where it sits.
-        label = str(pin.get("id") or "")
+        #
+        # Through `pin_read` (v0.25), because `str(pin.get("id") or "")` was a SECOND answer to
+        # "what is this pin's id": on `id: 7` this report said `7` and every surface said `""`, so
+        # the map could not join its per-record card to the report entry about that very record.
+        # One carrier for the id, and a record this runtime cannot name is named by where it sits —
+        # which is what the surfaces then look for.
+        label = pin_read(pin)["id"]
         for rule in pin_violations(pin):
             out.setdefault(rule, []).append(label or f"pins[{index}]")
     # The third collection, on the same terms as the second (v0.23). `add_policy` settles every one
@@ -1079,7 +1280,7 @@ def nonconforming(data: dict) -> dict:
     for index, policy in enumerate(entries("policies")):
         if not isinstance(policy, dict):
             continue                                    # already reported as `entry_shape`
-        label = str(policy.get("id") or "")
+        label = policy_read(policy)["id"]
         for rule in policy_violations(policy):
             out.setdefault(rule, []).append(label or f"policies[{index}]")
     return out
@@ -1142,6 +1343,17 @@ class Ledger:
         if os.path.exists(path):
             with open(path, encoding="utf-8") as fh:
                 self.data = json.load(fh)
+            # v0.25 — the first thing asked of the file, because everything below indexes it. A
+            # ledger whose top level is a list or a string reached `self.data.get("version")` and
+            # died with a bare `AttributeError` on all four surfaces at once. The refusal is a
+            # `LedgerError` and not a guarded read: this constructor serves the WRITE path too, and
+            # a write onto a file this runtime cannot read is exactly the operation that must fail.
+            # The two PROJECTIONS build no `Ledger` and answer instead — `readable_ledger` reads it
+            # as an empty file and `nonconforming` names it under `ledger_shape`.
+            _require(isinstance(self.data, dict),
+                     f"a ledger is an object with `pins`, `decision_log` and `policies`; this file "
+                     f"holds a bare {type(self.data).__name__} at its top level, so there is "
+                     f"nothing here to read a version, a pin or a decision off")
             found = self.data.get("version")
             _require(found in READABLE_VERSIONS,
                      f"ledger schema {found!r} is not readable by this runtime "
@@ -1257,8 +1469,11 @@ class Ledger:
                  "kind 'other' requires kind_detail (the open escape hatch is named, not blank)")
         _require(severity in SEVERITIES, f"severity must be one of {SEVERITIES}")
         _require(confidence in CONFIDENCES, f"confidence must be one of {CONFIDENCES}")
-        _require(isinstance(provenance, list) and len(provenance) > 0,
-                 "provenance is required (who found this, how)")
+        _require_objects(provenance, "provenance",
+                         "each entry names the source that found this and how")
+        _require(len(provenance) > 0, "provenance is required (who found this, how)")
+        _require_objects(list(anchors or []), "anchors",
+                         "each entry names a node and where in the tree it sits")
         _validate_question(question)
         for dep in depends_on or []:
             self.pin(dep)  # must exist — the DAG is real, not aspirational
@@ -1437,6 +1652,8 @@ class Ledger:
                  f"state it has and its proposals reach no surface — `interview_view` selects "
                  f"{INTERVIEW_STATES}. Pose the fork first (`set_question`), then propose against "
                  f"it.")
+        _require_objects(proposals, "proposals",
+                         "each one carries a summary, an effort and no outcome of its own")
         _require(sum(1 for p in proposals if p.get("recommended")) <= 1,
                  "at most one proposal may be `recommended` — two make the recommendation "
                  "uncomparable to what the human elects, which is the point of marking it")
@@ -2126,12 +2343,18 @@ class Ledger:
         for* rather than *does not have the key* — the two differ on exactly those fields, and a
         sentence that got it backwards would be the preview lying more precisely.
         """
+        # `readable_pins`, not `self.data["pins"]` (v0.25). This function is reached by
+        # `mcp:policy_preview`, which is served READ-ONLY: a ledger with no `pins` key made it a
+        # bare `KeyError`, and one whose `pins` is a bool made it a `TypeError` from `len`. The
+        # write path's `self.data[…]` is deliberate and stays; this is not the write path, and the
+        # matcher one function up already went through the guarded read.
+        pins = self.readable_pins()
         parts = []
-        total = len(self.data["pins"])
+        total = len(pins)
         for key, value in (applies_to or {}).items():
             if value is not None:
                 continue
-            matched = sum(1 for p in self.data["pins"] if p.get(key) == value)
+            matched = sum(1 for p in pins if p.get(key) == value)
             parts.append(f"every pin that carries no value for `{key}` — {matched} of {total}")
         if not parts:
             return ""
@@ -2346,11 +2569,12 @@ class Ledger:
         _require(source in _CHALLENGE_SOURCES,
                  f"source must be one of {_CHALLENGE_SOURCES}; got {source!r} — the same vocabulary "
                  f"`challenge` checks, because this is the same role's second mode")
-        _require(isinstance(failure_modes, list) and bool(failure_modes),
+        _require_objects(failure_modes, "failure_modes",
+                         "each one names a class, a description and how the work dies")
+        _require(bool(failure_modes),
                  "a premortem needs at least one failure mode — 'nothing will go wrong' is the "
                  "belief the exercise exists to break")
         for fm in failure_modes:
-            _require(isinstance(fm, dict), "each failure mode must be an object")
             _require(fm.get("class") in FAILURE_CLASSES,
                      f"failure mode class must be one of {FAILURE_CLASSES}")
             _require(fm.get("class") != "other" or bool(fm.get("detail")),
@@ -2363,8 +2587,9 @@ class Ledger:
                  "name at least one guardrail or abort criterion — failures without responses "
                  "are a worry list, not a premortem")
         tigers = []
-        for pt in paper_tigers or []:
-            _require(isinstance(pt, dict) and bool(str(pt.get("risk", "")).strip()),
+        for pt in _require_objects(list(paper_tigers or []), "paper_tigers",
+                                   "each one names a risk and the evidence it is already mitigated"):
+            _require(bool(str(pt.get("risk", "")).strip()),
                      "each paper_tiger needs the risk it names")
             _require(bool(str(pt.get("evidence", "")).strip()),
                      "a paper_tiger needs the EVIDENCE that it is already mitigated — without it "
@@ -3041,11 +3266,16 @@ class Ledger:
             # its own kind is counted by lands in `unrecorded` — the same answer `decision_rung`
             # already gives one line down, rather than a second vocabulary for absence.
             eid = str(e.get("id") or "")
+            # `str(...)`, and not because these are printed (v0.25): the value becomes a dict
+            # KEY, so a `class` or a `door` that is a list made this whole summary a bare
+            # `TypeError: unhashable type` — the same class of death `e["id"]` was, one line up,
+            # two rounds after that one was fixed. Found by the derived log corpus rather than by
+            # anyone reading for it: `.get` guards absence and says nothing about type.
             if eid.startswith("fal_"):
-                cls = e.get("class") or "unrecorded"
+                cls = str(e.get("class") or "unrecorded")
                 by_failure[cls] = by_failure.get(cls, 0) + 1
             elif eid.startswith("stl_"):
-                door = e.get("door") or "unrecorded"
+                door = str(e.get("door") or "unrecorded")
                 by_door[door] = by_door.get(door, 0) + 1
             elif eid.startswith("ev_"):
                 rung = decision_rung(e) or "unrecorded"

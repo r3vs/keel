@@ -12,6 +12,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "mcp"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # `shape_corpus`, the derived corpus
 import tools  # noqa: E402
 from ledger import Ledger  # noqa: E402
 
@@ -737,18 +738,17 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         "instructions_diff": {},
     }
 
-    #: The pin shapes, identical to `tests/test_ledger.py`'s list, because the principle is one.
-    BROKEN_PINS = (
-        {"id": "pin_0003", "kind": "contract_mismatch", "state": "needs_input"},   # no severity
-        {"id": "pin_0004", "kind": "contract_mismatch", "state": "needs_input", "severity": None},
-        {"id": "pin_0005", "kind": "contract_mismatch", "state": "needs_input", "severity": "huge"},
-        {"id": "pin_0006", "kind": "contract_mismatch", "severity": "medium"},     # no state
-        {"kind": "contract_mismatch", "state": "needs_input", "severity": "medium"},  # no id
-        {"id": "pin_0008", "kind": "contract_mismatch", "state": "needs_input",
-         "severity": "medium", "question": "which side wins?"},                   # fork not an object
-        {"id": "pin_0009", "kind": "contract_mismatch", "state": "needs_input",
-         "severity": "medium", "depends_on": "pin_0001"},                         # DAG edge as a str
-    )
+    #: **DERIVED, not listed (v0.25).** This was seven hand-written pin shapes with a comment
+    #: saying it was identical to `tests/test_ledger.py`'s list "because the principle is one" —
+    #: and the principle was one while the CORPUS was two copies of somebody's memory. A reviewer
+    #: extended it in a scratch copy of HEAD with eleven more shapes, all naming fields
+    #: `PIN_FIELDS` already declared, and this unchanged gate went red: `verification: "observed"`
+    #: killed `interview_next` over stdio. So the cases come from the schema the rule is about —
+    #: see `tests/shape_corpus.py`.
+    @staticmethod
+    def BROKEN_PINS():
+        from shape_corpus import broken_pins
+        return broken_pins()
 
     @staticmethod
     def _read_only_ledger_tools():
@@ -800,16 +800,21 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
                 fn(path, **self.MINIMAL_CALL[name])
 
     def test_no_read_only_ledger_tool_dies_on_a_pin_shape(self):
-        for broken in self.BROKEN_PINS:
-            tmp = tempfile.mkdtemp()
-            path = _ledger_with_pins(tmp)
+        tmp = tempfile.mkdtemp()
+        roster = self._read_only_ledger_tools()
+        cases = self.BROKEN_PINS()
+        self.assertGreater(len(cases), 60, "the derived corpus went vacuous")
+        for index, (label, broken) in enumerate(cases):
+            path = _ledger_with_pins(tempfile.mkdtemp(dir=tmp))
             with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
-            data["pins"].append(dict(broken))
+            broken = dict(broken)
+            broken.setdefault("id", f"pin_{index + 900:04d}")
+            data["pins"].append(broken)
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(data, fh)
-            for name, fn in self._read_only_ledger_tools():
-                with self.subTest(tool=name, pin=broken):
+            for name, fn in roster:
+                with self.subTest(tool=name, pin=label):
                     try:
                         fn(path, **self.MINIMAL_CALL[name])
                     except self.SHAPE_DEATHS as exc:
@@ -817,6 +822,87 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
                                   f"{type(exc).__name__}: {exc}")
                     except Exception:
                         pass          # a refusal about the CALL is a legitimate answer
+
+    def test_no_read_only_ledger_tool_dies_on_a_policy_shape(self):
+        """The same corpus one collection over. `policies` was the collection whose CONTAINER was
+        guarded a round before its FIELDS were, so it is exactly the half a pin-shaped corpus
+        cannot see."""
+        from shape_corpus import broken_policies
+        tmp = tempfile.mkdtemp()
+        roster = self._read_only_ledger_tools()
+        for index, (label, broken) in enumerate(broken_policies()):
+            path = _ledger_with_pins(tempfile.mkdtemp(dir=tmp))
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            broken = dict(broken)
+            broken.setdefault("id", f"pol_{index + 900:04d}")
+            data.setdefault("policies", []).append(broken)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            for name, fn in roster:
+                with self.subTest(tool=name, policy=label):
+                    try:
+                        fn(path, **self.MINIMAL_CALL[name])
+                    except self.SHAPE_DEATHS as exc:
+                        self.fail(f"{name} died on the file rather than answering about it: "
+                                  f"{type(exc).__name__}: {exc}")
+                    except Exception:
+                        pass
+
+    def test_no_read_only_ledger_tool_dies_on_a_log_entry_shape(self):
+        """The LOG half, derived from `LOG_ENTRY_PREFIXES`. It is here because the pin corpus could
+        not see it: a well-formed log let `learning.divergences`' `e["id"].startswith(...)` survive
+        a plant of its own reversal, and that expression is the one v0.18 removed from `summary()`
+        with a comment naming it."""
+        from shape_corpus import broken_events
+        tmp = tempfile.mkdtemp()
+        roster = self._read_only_ledger_tools()
+        cases = broken_events()
+        self.assertGreater(len(cases), 20, "the derived corpus went vacuous")
+        for label, entry in cases:
+            path = _ledger_with_pins(tempfile.mkdtemp(dir=tmp))
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            data.setdefault("decision_log", []).append(entry)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            for name, fn in roster:
+                with self.subTest(tool=name, event=label):
+                    try:
+                        fn(path, **self.MINIMAL_CALL[name])
+                    except self.SHAPE_DEATHS as exc:
+                        self.fail(f"{name} died on the file rather than answering about it: "
+                                  f"{type(exc).__name__}: {exc}")
+                    except Exception:
+                        pass
+
+    def test_no_read_only_ledger_tool_dies_on_the_shape_of_the_file_itself(self):
+        """The container half and the top level, derived from `LEDGER_COLLECTIONS` the way the
+        record half is derived from the shape tables. A ledger whose ROOT is a list or a string is
+        the one nothing covered: it killed all four surfaces with a raw `AttributeError` because
+        `Ledger.__init__` reached `self.data.get("version")` before any guard ran. The answer is a
+        refusal that names the fault — never a stack trace, which is what `SHAPE_DEATHS` asserts."""
+        from shape_corpus import broken_ledgers
+        tmp = tempfile.mkdtemp()
+        roster = self._read_only_ledger_tools()
+        base_path = _ledger_with_pins(tempfile.mkdtemp(dir=tmp))
+        with open(base_path, encoding="utf-8") as fh:
+            base = json.load(fh)
+        cases = broken_ledgers(base)
+        self.assertGreater(len(cases), 12, "the derived corpus went vacuous")
+        for label, data in cases:
+            path = os.path.join(tempfile.mkdtemp(dir=tmp), "ledger.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            for name, fn in roster:
+                with self.subTest(tool=name, file=label):
+                    try:
+                        fn(path, **self.MINIMAL_CALL[name])
+                    except self.SHAPE_DEATHS as exc:
+                        self.fail(f"{name} died on the file rather than answering about it: "
+                                  f"{type(exc).__name__}: {exc}")
+                    except Exception:
+                        pass
 
 def _ast_tools():
     import ast
@@ -1123,6 +1209,208 @@ class TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach(unittest.TestCase
                                   "reason — that is how a door passes this gate vacuously")
                 else:
                     call()
+
+
+class TestNoWriteDoorDiesOnAMemberOfAListArgument(unittest.TestCase):
+    """v0.25 — three write doors refused the same malformed argument three different ways, and two
+    of them did not refuse it at all.
+
+    Reproduced over real stdio against the shipped plugin: `ledger_premortem` said *"each failure
+    mode must be an object"*, while `ledger_add_proposals` returned `'str' object has no attribute
+    'get'` and `ledger_add_pin`'s assumption check returned the same from inside a generator
+    expression. A refusal is a sentence an agent can act on; a `TypeError` naming a line of ours is
+    a stack trace about a mistake of theirs — and the argument is one an agent COMPOSES, so it is
+    the argument most likely to arrive wrong.
+
+    The rule gets one carrier (`ledger._require_objects`) and this quantifies over every door that
+    takes a list, with the probe points DERIVED from the declared call of the roster one class up —
+    which is itself held to the derived door roster by set equality. Nothing here is a list of the
+    three doors somebody reproduced.
+    """
+
+    #: The two doors that CREATE a pin, so they carry no `pin_id` and are outside the per-pin
+    #: roster. Their list arguments are the ones an agent composes first.
+    CREATE_CALL = {
+        "ledger_add_pin": {"kind": "defect", "title": "t", "severity": "low",
+                           "confidence": "extracted",
+                           "provenance": [{"source": "recon", "detail": "x"}]},
+        "ledger_surface_assumption": {"title": "t", "detail": "d"},
+    }
+
+    def _probes(self):
+        """(tool, kwargs, the list-valued argument) for every list an agent can pass to a door."""
+        roster = TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach
+        out = []
+        for tool_name, kwargs in sorted(roster.CALL.items()):
+            for key, value in kwargs.items():
+                if isinstance(value, list):
+                    out.append((tool_name, kwargs, key, True))
+        for tool_name, kwargs in sorted(self.CREATE_CALL.items()):
+            for key, value in kwargs.items():
+                if isinstance(value, list):
+                    out.append((tool_name, kwargs, key, False))
+        return out
+
+    def test_the_probe_set_is_derived_and_not_empty(self):
+        probes = self._probes()
+        self.assertGreaterEqual(len(probes), 5, "the derivation went vacuous")
+        self.assertIn("ledger_premortem", {t for t, _k, _a, _p in probes})
+        self.assertIn("ledger_add_proposals", {t for t, _k, _a, _p in probes})
+        self.assertIn("ledger_add_pin", {t for t, _k, _a, _p in probes})
+
+    def test_a_bare_string_where_an_object_goes_is_refused_not_crashed(self):
+        from ledger import Ledger
+        roster = TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach
+        for tool_name, kwargs, argument, per_pin in self._probes():
+            with self.subTest(door=tool_name, argument=argument):
+                tmp = tempfile.mkdtemp()
+                path = os.path.join(tmp, "ledger.json")
+                led = Ledger(path)
+                pin = led.add_pin(kind="defect", title="double charge", severity="high",
+                                  confidence="extracted",
+                                  provenance=[{"source": "recon", "detail": "x"}],
+                                  question={"prompt": "which?",
+                                            "options": [{"id": "a", "label": "A"},
+                                                        {"id": "b", "label": "B"}],
+                                            "allow_freeform": True})
+                led.save()
+                broken = dict(kwargs)
+                broken[argument] = ["a bare string where an object goes"]
+                args = (path, pin["id"]) if per_pin else (path,)
+                try:
+                    getattr(tools, tool_name)(*args, **broken)
+                except (AttributeError, TypeError, KeyError, IndexError) as exc:
+                    self.fail(f"{tool_name}({argument}=…) crashed on an argument an agent composed "
+                              f"rather than refusing it: {type(exc).__name__}: {exc}")
+                except Exception:
+                    pass          # a refusal naming the argument is the answer
+                # `roster.CALL` is only read here to prove the two classes share one source
+                self.assertIn(tool_name, set(roster.CALL) | set(self.CREATE_CALL))
+
+
+class TestEveryProjectionSaysWhatItCouldNotRead(unittest.TestCase):
+    """v0.25 — the projection every fresh agent loads was the one surface with no such line.
+
+    On one hostile ledger the three surfaces gave three accounts of one file: `ledger_summary`
+    reported the pins and the nonconformances, the map showed a banner, and the region generated
+    into the user's `AGENTS.md` listed the readable pins and said nothing at all — the shortest
+    list, in the one file every host loads unprompted. A projection that silently drops what it
+    could not read tells an agent there is less here than there is.
+
+    The roster is DERIVED from `tools.py` itself: a function that takes a `ledger` and ANSWERS
+    `written` has produced a surface a reader will open. Nothing is listed, so a third projection
+    arrives under this gate — and the derivation is the answer rather than the signature, because
+    `instructions_diff` also takes a `ledger` and a `root` and writes nothing at all.
+    """
+
+    @staticmethod
+    def _projections():
+        tree, ast = _ast_tools()
+        out = []
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            names = [a.arg for a in node.args.args]
+            if "ledger" not in names:
+                continue
+            answers_written = any(
+                isinstance(k, ast.Constant) and k.value == "written"
+                for ret in ast.walk(node) if isinstance(ret, ast.Return)
+                for d in ast.walk(ret) if isinstance(d, ast.Dict) for k in d.keys if k is not None)
+            if not answers_written:
+                continue
+            key = "out" if "out" in names else "root"
+            out.append((node.name, getattr(tools, node.name), key))
+        return out
+
+    def test_the_roster_is_derived_and_holds_both_projections(self):
+        names = {n for n, _f, _k in self._projections()}
+        self.assertEqual(names, {"render_map", "generate_instructions"},
+                         "a tool that takes a ledger and writes a file is a projection, and every "
+                         "one of them owes a reader this line")
+
+    def test_every_projection_names_the_rules_the_file_breaks(self):
+        from ledger import nonconforming
+        from shape_corpus import worst_ledger
+        data = worst_ledger()
+        report = nonconforming(data)
+        self.assertGreater(len(report), 10, "the corpus stopped producing a hostile file")
+        for name, fn, kind in self._projections():
+            with self.subTest(projection=name):
+                tmp = tempfile.mkdtemp()
+                path = os.path.join(tmp, "ledger.json")
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump(data, fh)
+                target = os.path.join(tmp, "map.html") if kind == "out" else tmp
+                fn(path, target)
+                chunks = []
+                for root, _d, files in os.walk(tmp):
+                    for f in files:
+                        if f == "ledger.json":
+                            continue
+                        with open(os.path.join(root, f), encoding="utf-8") as fh:
+                            chunks.append(fh.read())
+                produced = "\n".join(chunks)
+                missing = [rule for rule in report if rule not in produced]
+                self.assertEqual(missing, [],
+                                 f"{name} produced a surface that never mentions {missing} — one "
+                                 f"ledger, and this surface's account of it is shorter than "
+                                 f"`ledger_summary`'s")
+
+
+class TestARenderFailureNeverBreaksTheWriteThatTriggeredIt(unittest.TestCase):
+    """v0.25 — `_refresh_live_maps`' docstring said *"a render failure must never break the ledger
+    write that triggered it"* and its handler caught `(OSError, ValueError)`.
+
+    Not `AttributeError`, `TypeError` or `KeyError` — which are the failure classes this whole
+    round is about. So a ledger the renderer chokes on would have taken down a write that had
+    already succeeded and been persisted: the pin is on disk, the tool returns `isError`, and the
+    agent is told its write failed and does it again.
+
+    The rule is the docstring's own, so the gate is the docstring's: whatever the projection
+    raises, the write stands."""
+
+    def test_the_write_stands_when_the_projection_raises(self):
+        import map as M
+        tmp = tempfile.mkdtemp()
+        ledger = os.path.join(tmp, "ledger.json")
+        out = os.path.join(tmp, "map.html")
+        pin = tools.ledger_add_pin(ledger, kind="defect", title="double charge", severity="high",
+                                   confidence="extracted",
+                                   provenance=[{"source": "recon", "detail": "x"}])["pin_id"]
+        tools.render_map(ledger, out, live=True)
+        original = M.render_file
+
+        def exploding(*_a, **_kw):
+            raise AttributeError("'str' object has no attribute 'get'")
+
+        M.render_file = exploding
+        try:
+            tools.ledger_label_failure(ledger, pin, failure_class="untested_path",
+                                       detail="it came back", phase="production")
+        finally:
+            M.render_file = original
+        with open(ledger, encoding="utf-8") as fh:
+            data = json.load(fh)
+        self.assertTrue([e for e in data["decision_log"] if str(e.get("id")).startswith("fal_")],
+                        "the write was rolled back by a render that has nothing to do with it")
+
+    def test_a_marker_this_runtime_did_not_write_does_not_break_the_write(self):
+        """The same rule one line up: the marker is read with `.get`, and a marker holding a JSON
+        list met it."""
+        tmp = tempfile.mkdtemp()
+        ledger = os.path.join(tmp, "ledger.json")
+        out = os.path.join(tmp, "map.html")
+        pin = tools.ledger_add_pin(ledger, kind="defect", title="t", severity="low",
+                                   confidence="extracted",
+                                   provenance=[{"source": "recon", "detail": "x"}])["pin_id"]
+        tools.render_map(ledger, out, live=True)
+        marker = tools._livemap_marker(ledger)
+        for content in ('["not an object"]', '"not an object"', "{}", "not json at all"):
+            with self.subTest(marker=content):
+                marker.write_text(content, encoding="utf-8")
+                tools.ledger_label_failure(ledger, pin, failure_class="untested_path",
+                                           detail="d", phase="production")
 
 
 if __name__ == "__main__":

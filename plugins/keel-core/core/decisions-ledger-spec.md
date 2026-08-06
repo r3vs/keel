@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.24
+# Decisions Ledger — Spec v0.25
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1189,3 +1189,50 @@ Two carrier findings at the tool layer, both the same shape. `mcp/tools.py` had 
 ### The general shape
 
 v0.23's was *"a rule paid at a class's methods is unpaid for every caller that holds the class's data."* This one is the same sentence about sets: **a rule paid at a set's members is unpaid for whatever satisfies the set's definition without joining it.** `cross_derive` reopened pins and was not an arc; four write doors touched pins and were not on the closed-work list; `brief` was in `DECISION_EVIDENCE` and was the only member nothing asked anything of. The counter-move is the one this branch converged on: **one carrier per rule, and a structural test that quantifies over all of its callers** — and, where the corpus can be derived from the schema the rule is about, derive it, because a hand-written list of cases proves only what somebody thought to write down.
+
+
+## v0.25 — The gate was a corpus, and the corpus was hand-written
+
+v0.24 closed with the counter-move this branch had converged on: *one carrier per rule, and a structural test that quantifies over all of its callers* — plus a sharper half a reviewer added, **where the corpus can be derived from the schema the rule is about, derive it.** This round is what happens when you take the second half seriously about the read path, which is the one place the first half had already been applied twice.
+
+The read path had three parts held to each other by construction: `PIN_RULES` ↔ `pin_read` by set equality, `LEDGER_COLLECTIONS` driving an AST gate, `nonconforming` replaying the rule table. All three ran against a **hand-written list of seven broken pins**, copied into two test modules under a comment saying the principle was one. A reviewer extended that list in a scratch copy of HEAD with eleven more shapes, every one naming a field `PIN_FIELDS` already declared, and the unchanged gates went red. The gates were proving what somebody had thought to write down, which is a strictly weaker claim than the one they were making.
+
+### The shape table is the carrier; the rules, the read and the corpus are derived from it
+
+```
+SHAPE_HOLDS / SHAPE_EMPTY / SHAPE_ENGLISH   the closed shape vocabulary
+PIN_SHAPES     path -> shape, 31 paths, dotted where nested
+POLICY_SHAPES  the same, one collection over
+PIN_STRONGER   where a path's rule is stronger than its shape (id, state, severity)
+PIN_RULES      = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_")
+pin_read       = _shape_guarded(pin, PIN_SHAPES, PIN_GUARANTEED, fill)
+shape_notes()  the sentence the map prints, per derived rule
+```
+
+The membership rule is stated and held to the writers rather than trusted: **a path is declared iff a reader can INDEX INTO its value** — every object and every list this runtime writes into a record, plus the top-level scalars a reader coerces. A nested scalar is deliberately absent, because nothing indexes into a string. `TestTheShapeTableIsTheWritersOwnShapes` drives every door that writes onto one pin and asserts both directions of that rule; it found `as_is.disagreeing_layers`, which the map builds a `Set` out of and which nothing had declared.
+
+`pin_read` returns the whole pin with every declared path guaranteed to hold its shape, rather than the seven fields it used to return. `fill` is the one axis on which its two callers differ and it is a parameter, not a fork: a reader that indexes a path unconditionally needs it materialised, a PROJECTION must not invent a record the file does not carry — the map's cards select on presence, so filling them would put an empty envelope and an empty fork on every pin in the file.
+
+### What the derived corpus found that the hand-written one could not
+
+`interview_next` — one of the four surfaces the previous round names in that phrase — died on a `verification` or `brainstorm` that is not an object and on a `brainstorm.proposals` of the wrong type. Five isolated files plus a combined worst case, all `isError` over stdio. `learning_report` died with a bare `KeyError: 'id'` on a log entry carrying none — the exact expression v0.18 removed from `summary()`, whose comment names it, left standing one module over. Running the derived corpus over the whole read-only tool roster then produced three more nobody had reported: `agent_ready` on a `readiness` that is a bool and a `remediation` member that is a string, and `policy_preview` / `interview_seed_policies` on `self.data["pins"]` — the write path's deliberate direct index, reached from a read-only tool.
+
+### A ledger whose top level is not an object
+
+`Ledger.__init__` called `self.data.get("version")` before any guard ran, so `[...]` and `"..."` killed all four surfaces with a raw `AttributeError` — `nonconforming` among them, which is the report that exists to describe an unreadable file. The constructor now refuses with a `LedgerError` naming the fault (it serves the WRITE path, and a write onto a file this runtime cannot read is exactly the operation that must fail), and `nonconforming` answers `ledger_shape` before any rule about a record in the file.
+
+### The projection every fresh agent loads was the one surface with no nonconformance note
+
+`instructions.render` named `nonconforming` in a comment and called it nowhere. On one hostile ledger the three surfaces gave three accounts of one file: `ledger_summary` reported the pins and the nonconformances, the map showed a banner, and the region generated into the user's `AGENTS.md` listed the readable pins and said nothing — the shortest account, in the one file every host loads unprompted. The roster for that gate is derived from `tools.py`: a function that takes a `ledger` and answers `written` has produced a surface a reader will open.
+
+### The map stated something false and no surface contradicted it
+
+A pin carrying `verification: "observed"` rendered as *"no rung recorded"*. That reading is what the guarded page can honestly say; what was missing is that nothing told the reader the file says otherwise. Two halves: `readable_ledger` now takes every entry through its record's guarded read (`fill=False`), and the page gained a per-record card listing the rules **this** record breaks, derived from the same `NONCONF` report the banner already carried. The sentence per derived rule is inlined from `ledger.shape_notes` rather than hand-written, because thirty-one sentences beside thirty-one derived rules is a table that falls behind its schema the first time a field is added.
+
+### Two smaller ones, same shape
+
+`_refresh_live_maps`' docstring said *"a render failure must never break the ledger write that triggered it"* and its handler caught `(OSError, ValueError)` — not the failure classes this whole round is about, so a ledger the renderer chokes on would have taken down a write that had already been persisted. And three write doors refused the same malformed argument three different ways: `ledger_premortem` cleanly, `ledger_add_proposals` and `add_pin`'s provenance loop with raw `AttributeError`s. One carrier (`_require_objects`), and a gate whose probe points are derived from the declared call of the write-door roster.
+
+### The general shape
+
+v0.23: *a rule paid at a class's methods is unpaid for every caller that holds the class's data.* v0.24: *a rule paid at a set's members is unpaid for whatever satisfies the set's definition without joining it.* This one is about the evidence rather than the rule: **a gate is only as good as the corpus it runs on, and a hand-written corpus proves what somebody remembered.** Where the cases can be generated from the schema the rule is about, generating them is not a convenience — it is the difference between "no shape we listed breaks this" and "no shape the schema can describe breaks this".

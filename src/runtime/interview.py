@@ -302,14 +302,20 @@ def funnel(ledger) -> dict:
     asked, tail = [], []
     for pin in view:
         read = pin_read(pin)
-        entry = {"pin_id": read["id"], "title": str(pin.get("title") or ""),
+        entry = {"pin_id": read["id"], "title": read["title"],
                  "severity": read["severity"],
                  "prompt": read["question"].get("prompt", ""),
                  "downstream": transitive_downstream(read["id"])}
-        blocked_by = (pin.get("verification") or {}).get("blocked_by")
+        # v0.25 — through the SAME read, for the reason the three fields above already are. These
+        # two were left indexing the file directly and both killed this tool over stdio: `or {}` is
+        # a guard against absence and no guard at all against a `verification` that is a string, and
+        # a `proposals` that is truthy and not a list of objects was walked character by character
+        # into `p.get(...)`. `interview_next` is one of the four surfaces an agent meets a strange
+        # file on, and a funnel that dies reports zero open questions.
+        blocked_by = (read.get("verification") or {}).get("blocked_by")
         if blocked_by:
             entry["blocked_by"] = blocked_by
-        proposals = (pin.get("brainstorm") or {}).get("proposals") or []
+        proposals = (read.get("brainstorm") or {}).get("proposals") or []
         if proposals:
             entry["proposals"] = [{"id": p.get("id"), "summary": p.get("summary"),
                                    "effort": p.get("effort"),

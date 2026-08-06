@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # `shape_corpus`, the derived corpus
 
 from ledger import SCHEMA_VERSION, Ledger, LedgerError, refuted_claim  # noqa: E402
 
@@ -40,6 +41,66 @@ def add_simple_pin(led: Ledger, **overrides) -> dict:
     )
     defaults.update(overrides)
     return led.add_pin(**defaults)
+
+
+def walk_every_pin_writer() -> tuple:
+    """Drive every door that writes onto ONE pin; return `(keys written, a snapshot per door)`.
+
+    Snapshots and not a final state, for the reason the key accumulation below already gives one
+    level up: three doors REPLACE `pin["verification"]` wholesale, so `cross_derived_by` is written
+    by `cross_derive` and correctly gone by the time `resolve` returns. A gate reading the last pin
+    would call that path unwritten, which is a claim about the snapshot rather than about the
+    writers.
+
+    Extracted in v0.25 because two declarations are now held to the writers rather than trusted —
+    `PIN_FIELDS` (which fields a policy scope may name) and `PIN_SHAPES` (what shape each one is) —
+    and a second copy of this walk would be the second answer to "what does this runtime write",
+    which is the thing both declarations exist to prevent.
+
+    A defect, so the walk can end at `resolved`: the door's kind escape is what admits a pin that is
+    no longer in `decided`, and the order is the settlement rules' rather than a convenience.
+    `correctness_unknown` takes a pin out of `decided` and NOT out of `resolved` (the way back from
+    finished work is `reopen`), and the disagreement that writes `substate` may only touch a pin
+    that is not closed — so: decided -> unknown -> contested -> resolved on a later observation.
+
+    The keys are ACCUMULATED across the walk rather than read off the final pin (v0.22): `_settle`
+    clears `substate` on every door that lands the pin in `SETTLED_STATES`, so the field is written,
+    read and then correctly gone by the time `resolve` returns. "A field no writer writes" is a
+    question about the writers, and a snapshot of the last state answers a different one.
+    """
+    import copy
+    led = make_ledger()
+    pin = add_simple_pin(led, kind="defect", severity="medium", cluster_id="cl_x",
+                         depends_on=[], anchors=[{"node_id": "n_1", "loc": "a.py:1"}],
+                         to_be={"db": "ENUM('admin','user','auditor')"})
+    written: set = set(pin)
+    shots: list = [copy.deepcopy(pin)]
+
+    def door(fn, *args, **kw):
+        fn(*args, **kw)
+        written.update(pin)
+        shots.append(copy.deepcopy(pin))
+
+    door(led.add_proposals, pin["id"], [{"summary": "s"}])
+    door(led.set_readiness, pin["id"], "ready", zone={"files": ["a.py"]}, evidence={})
+    door(led.premortem, pin["id"], [{"class": "environment", "description": "d"}],
+         guardrails=["g"], abort_criteria=["a"],
+         paper_tigers=[{"risk": "r", "evidence": "already mitigated by X"}])
+    door(led.cross_derive, pin["id"], claim="c", agreement="agree", derivations=[
+        {"provider": "anthropic", "model": "m", "result": "a"},
+        {"provider": "openai", "model": "n", "result": "a"}])
+    door(led.decide, pin["id"], "opt_a", "r", "f")
+    item = led.add_remediation(pin["id"], action="align", ladder_rung=1)
+    door(led.set_remediation_status, pin["id"], item["id"], "done")
+    door(led.mark_correctness_unknown, pin["id"], blocked_by="b", attempted=["tests"])
+    door(led.cross_derive, pin["id"], claim="c2", agreement="disagree", derivations=[
+        {"provider": "anthropic", "model": "m", "result": "a"},
+        {"provider": "openai", "model": "n", "result": "b"}])       # writes `substate`
+    door(led.resolve, pin["id"], evidence="observed it on staging", rung="observed")
+    led.data["pins"][0]["kind_detail"] = "x"      # only `other` writes it, and it is scopeable
+    written |= set(led.data["pins"][0])
+    shots.append(copy.deepcopy(led.data["pins"][0]))
+    return written, shots
 
 
 class TestEnvelope(unittest.TestCase):
@@ -1274,46 +1335,13 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         field a writer adds without becoming scopeable would silently be unmatchable, and a field
         listed here that nobody writes would be a scope key that selects nothing."""
         import ledger as ledger_mod
-        led = make_ledger()
-        # A defect, so the walk below can end at `resolved`: the door's kind escape is what admits a
-        # pin that is no longer in `decided`, and the order here is the settlement rules' rather
-        # than a convenience. `correctness_unknown` takes a pin out of `decided` and NOT out of
-        # `resolved` (the way back from finished work is `reopen`), and the disagreement that writes
-        # `substate` may only touch a pin that is not closed — so: decided -> unknown -> contested
-        # -> resolved on a later observation.
-        #
-        # The keys are ACCUMULATED across the walk rather than read off the final pin (v0.22):
-        # `_settle` now clears `substate` on every door that lands the pin in `SETTLED_STATES`, so
-        # the field is written, read and then correctly gone by the time `resolve` returns. "A
-        # scopeable field no writer writes" is a question about the writers, and a snapshot of the
-        # last state answers a different one — which is what a policy scoping on `substate` would
-        # match mid-walk, exactly where a disputed pin lives.
-        pin = add_simple_pin(led, kind="defect", severity="medium", cluster_id="cl_x",
-                             depends_on=[], anchors=[{"node_id": "n_1", "loc": "a.py:1"}])
-        written: set = set(pin)
-        led.add_proposals(pin["id"], [{"summary": "s"}])
-        led.set_readiness(pin["id"], "ready", zone={"files": ["a.py"]}, evidence={})
-        led.premortem(pin["id"], [{"class": "environment", "description": "d"}], guardrails=["g"])
-        led.cross_derive(pin["id"], claim="c", agreement="agree", derivations=[
-            {"provider": "anthropic", "model": "m", "result": "a"},
-            {"provider": "openai", "model": "n", "result": "a"}])
-        led.decide(pin["id"], "opt_a", "r", "f")
-        item = led.add_remediation(pin["id"], action="align", ladder_rung=1)
-        led.set_remediation_status(pin["id"], item["id"], "done")
-        led.mark_correctness_unknown(pin["id"], blocked_by="b", attempted=["tests"])
-        led.cross_derive(pin["id"], claim="c2", agreement="disagree", derivations=[
-            {"provider": "anthropic", "model": "m", "result": "a"},
-            {"provider": "openai", "model": "n", "result": "b"}])       # writes `substate`
-        written |= set(pin)
+        written, _shots = walk_every_pin_writer()
         self.assertIn("substate", written, "the disagreement is what writes it")
-        led.resolve(pin["id"], evidence="observed it on staging", rung="observed")
-        written |= set(pin)
-        led.data["pins"][0]["kind_detail"] = "x"      # only `other` writes it, and it is scopeable
-        written |= set(led.data["pins"][0])
         self.assertEqual(sorted(written - set(ledger_mod.PIN_FIELDS)), [],
                          "a Pin field no policy scope can name")
         self.assertEqual(sorted(set(ledger_mod.PIN_FIELDS) - written), [],
                          "a scopeable field no writer writes")
+
 
 
 class TestComingBackIntoTheOpenSetIsGovernedToo(unittest.TestCase):
@@ -2691,12 +2719,85 @@ class TestReadingAPinIsNeverTheOperationThatFails(unittest.TestCase):
         self.assertEqual(view[-1], "pin_0001", "an unrankable severity must sort last")
 
     def test_every_field_the_read_path_substitutes_has_a_rule_that_reports_it(self):
-        """The inverted half, and the one that keeps this honest: a field added to `pin_read` with
-        no `PIN_RULES` entry is a silent substitution, which is the failure this class fixed."""
-        from ledger import PIN_RULES, pin_read
+        """The inverted half, and the one that keeps this honest: a field the read path substitutes
+        with no `PIN_RULES` entry is a silent substitution, which is the failure this class fixed.
+
+        Held against `PIN_SHAPES` from v0.25 rather than against `set(pin_read({}))`. The old
+        equality was true and weak: `pin_read` returned exactly the seven keys it materialises, so
+        the two sets agreed *because both were the same hand-written seven*. The table is the
+        carrier now, both are derived from it, and the equality says what it always meant to."""
+        from ledger import PIN_RULES, PIN_SHAPES
         self.assertEqual({name.removeprefix("pin_") for name, _h, _m in PIN_RULES},
-                         set(pin_read({})),
+                         {path.replace(".", "_") for path in PIN_SHAPES},
                          "a guarded read and a reported rule are two halves of one mechanism")
+
+    def test_the_read_actually_delivers_every_shape_it_declares(self):
+        """The claim `pin_read` makes, asked of every declared path over the DERIVED corpus rather
+        than of the seven somebody wrote down. This is the assertion the round turns on: whatever
+        the file carries at a declared path, a reader gets that path's declared shape."""
+        from ledger import PIN_SHAPES, SHAPE_HOLDS, _at, pin_read
+        from shape_corpus import broken_pins
+        cases = broken_pins()
+        self.assertGreater(len(cases), 60, "the derivation went vacuous")
+        for label, pin in cases:
+            with self.subTest(shape=label):
+                read = pin_read(pin)
+                for path, shape in PIN_SHAPES.items():
+                    value = _at(read, path)
+                    if value is None:
+                        continue          # absent stays absent unless it is one of the guaranteed
+                    self.assertTrue(SHAPE_HOLDS[shape](value),
+                                    f"`{path}` reached a reader as {type(value).__name__} on "
+                                    f"{label!r} — the read path guarantees {shape}")
+
+    def test_every_declared_shape_has_a_probe_that_refuses_it(self):
+        """The corpus's own floor. A shape token no probe violates would give that path an EMPTY
+        corpus — a gate that runs zero cases and passes, which is precisely the failure the derived
+        corpus was built to end. So the probe set is held to the shape vocabulary, not to the
+        paths."""
+        from ledger import SHAPE_HOLDS
+        from shape_corpus import PROBES
+        for shape, holds in SHAPE_HOLDS.items():
+            with self.subTest(shape=shape):
+                self.assertTrue(any(not holds(v) for _label, v in PROBES),
+                                f"no probe violates {shape!r}, so every path declaring it is "
+                                f"tested by nothing")
+
+    def test_every_derived_violation_is_reported_by_its_own_rule(self):
+        """Nothing is substituted in silence, over the whole derived corpus — the pin half of the
+        promise `nonconforming` makes, asked of every path instead of the five it was written for."""
+        from ledger import nonconforming
+        from shape_corpus import GOOD_PIN, broken_pins
+        base = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [], "policies": []}
+        self.assertEqual(nonconforming({**base, "pins": [dict(GOOD_PIN)]}), {},
+                         "the corpus's own control pin is not conforming, so every case below "
+                         "would report a rule it did not mean to")
+        for label, pin in broken_pins():
+            with self.subTest(shape=label):
+                report = nonconforming({**base, "pins": [pin]})
+                self.assertTrue(report, f"{label!r} is substituted by the read path and reported "
+                                        f"by nobody")
+
+    def test_a_ledger_whose_top_level_is_not_an_object_is_refused_not_crashed(self):
+        """v0.25 — `Ledger.__init__` called `self.data.get("version")` before any guard ran, so a
+        file holding a bare list or string killed every surface at once with an `AttributeError`.
+        The constructor serves the WRITE path, so it refuses; the two projections build no `Ledger`
+        and must answer instead."""
+        import instructions
+        import map as mapmod
+        from ledger import nonconforming, readable_ledger
+        for raw in (["nope"], "nope", 7):
+            with self.subTest(top=type(raw).__name__):
+                path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump(raw, fh)
+                with self.assertRaises(LedgerError) as ctx:
+                    Ledger(path)
+                self.assertIn("top level", str(ctx.exception))
+                self.assertEqual(nonconforming(raw), {"ledger_shape": [type(raw).__name__]})
+                self.assertEqual(readable_ledger(raw)["pins"], [])
+                mapmod.render(raw, title="t")          # a projection answers about it
+                instructions.render(raw)
 
     def test_no_pin_this_runtime_writes_can_break_one_of_these_rules(self):
         """`PIN_RULES` has one caller where `EVENT_RULES` has two, and this is the claim that
@@ -2741,6 +2842,71 @@ class TestReadingAPinIsNeverTheOperationThatFails(unittest.TestCase):
                          "the interview reads every open state but the one that poses no fork")
 
 
+class TestTheShapeTableIsTheWritersOwnShapes(unittest.TestCase):
+    """`PIN_SHAPES` is the carrier every other part of the read path is derived from, so it is the
+    one thing that cannot itself be a declaration nobody checks.
+
+    Its membership rule is stated on the table and is what is asserted here, in both directions:
+    **a path is declared iff a reader can INDEX INTO its value** — every object and every list this
+    runtime writes into a pin, plus the top-level scalars a reader coerces. A nested scalar is
+    deliberately absent, because nothing indexes into a string.
+
+    Driven by `walk_every_pin_writer`, the same walk `PIN_FIELDS` is held to — one answer to "what
+    does this runtime write", asked by both declarations."""
+
+    def test_every_container_a_writer_writes_is_declared_with_the_shape_it_wrote(self):
+        import ledger as ledger_mod
+        _written, shots = walk_every_pin_writer()
+        undeclared, wrong = set(), set()
+        for pin in shots:
+            for field, value in pin.items():
+                pairs = [(field, value)]
+                if isinstance(value, dict):
+                    pairs += [(f"{field}.{k}", v) for k, v in value.items()]
+                for path, val in pairs:
+                    if not isinstance(val, (dict, list)):
+                        continue
+                    if path not in ledger_mod.PIN_SHAPES:
+                        undeclared.add(path)
+                    elif not ledger_mod.SHAPE_HOLDS[ledger_mod.PIN_SHAPES[path]](val):
+                        wrong.add(f"{path}: declared {ledger_mod.PIN_SHAPES[path]}, wrote "
+                                  f"{type(val).__name__}")
+        self.assertEqual(sorted(undeclared), [],
+                         "a container this runtime writes into a pin that no shape declares — a "
+                         "reader indexes into it, so it is exactly the class the corpus is derived "
+                         "from")
+        self.assertEqual(sorted(wrong), [],
+                         "the table declares a shape its own writer does not write")
+
+    def test_every_declared_path_is_one_a_writer_can_reach(self):
+        """The inverse, and the one that stops the table growing paths nothing produces: a declared
+        path that no door writes is a rule that reports on nothing and a corpus of dead cases."""
+        import ledger as ledger_mod
+        from ledger import _at
+        _written, shots = walk_every_pin_writer()
+        unreachable = [p for p in ledger_mod.PIN_SHAPES
+                       if all(_at(pin, p) is None for pin in shots)]
+        self.assertEqual(sorted(unreachable), [],
+                         "a declared path no writer in this package writes")
+
+    def test_a_stronger_rule_implies_the_shape_it_replaces(self):
+        """`PIN_STRONGER` replaces a path's shape rule with a membership one, under one name. That
+        is only sound while the stronger predicate is actually stronger — a membership rule that
+        admitted a non-string would leave the shape unreported under a name that claims to cover
+        it."""
+        import ledger as ledger_mod
+        for table, shapes in ((ledger_mod.PIN_STRONGER, ledger_mod.PIN_SHAPES),
+                              (ledger_mod.POLICY_STRONGER, ledger_mod.POLICY_SHAPES)):
+            for path, (holds, _msg) in table.items():
+                with self.subTest(path=path):
+                    shape = shapes[path]
+                    for _label, probe in __import__("shape_corpus").PROBES:
+                        if holds(probe):
+                            self.assertTrue(ledger_mod.SHAPE_HOLDS[shape](probe),
+                                            f"the stronger rule on `{path}` admits a "
+                                            f"{type(probe).__name__}, which its shape refuses")
+
+
 class TestReadingAPolicyIsNeverTheOperationThatFails(unittest.TestCase):
     """v0.23 — `pin_read`'s twin, and it exists because the pin half was fixed alone.
 
@@ -2755,10 +2921,25 @@ class TestReadingAPolicyIsNeverTheOperationThatFails(unittest.TestCase):
     """
 
     def test_every_field_the_policy_read_substitutes_has_a_rule_that_reports_it(self):
-        from ledger import POLICY_RULES, policy_read
+        from ledger import POLICY_RULES, POLICY_SHAPES
         self.assertEqual({name.removeprefix("policy_") for name, _h, _m in POLICY_RULES},
-                         set(policy_read({})),
+                         {path.replace(".", "_") for path in POLICY_SHAPES},
                          "a guarded read and a reported rule are two halves of one mechanism")
+
+    def test_the_policy_read_delivers_every_shape_it_declares(self):
+        """`pin_read`'s gate, one collection over, over the same derived corpus."""
+        from ledger import POLICY_SHAPES, SHAPE_HOLDS, _at, policy_read
+        from shape_corpus import broken_policies
+        cases = broken_policies()
+        self.assertGreaterEqual(len(cases), 9, "the derivation went vacuous")
+        for label, policy in cases:
+            with self.subTest(shape=label):
+                read = policy_read(policy)
+                for path, shape in POLICY_SHAPES.items():
+                    value = _at(read, path)
+                    if value is None:
+                        continue
+                    self.assertTrue(SHAPE_HOLDS[shape](value), f"`{path}` on {label!r}")
 
     def test_no_policy_this_runtime_writes_can_break_one_of_these_rules(self):
         """The claim the one-caller table rests on, asserted rather than argued — `set_policy`'s

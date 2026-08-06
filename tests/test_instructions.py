@@ -165,7 +165,13 @@ class TestArrivingInASectionThatInvertsTheMeaning(unittest.TestCase):
                       "medium", outcome=f"choice_{i}") for i in range(6, 12)]
         log = [{"id": f"ev_{i:04d}", "pin_id": p["id"], "evidence": "transcribed",
                 "human_answer": "yes"} for i, p in enumerate(pins)]
-        body = ins.render({"pins": pins, "decision_log": log, "policies": []}, max_lines=22)
+        # `+ _NONCONF_LINES`: this fixture's events carry no `flip_criteria`, so from v0.25 the
+        # header also says the file holds something the schema does not describe. Written as the
+        # constant rather than as 24, because the budget arithmetic is what the assertion below is
+        # about — a literal here would silently change what "clips" means the next time a
+        # conditional line is added.
+        body = ins.render({"pins": pins, "decision_log": log, "policies": []},
+                          max_lines=22 + ins._NONCONF_LINES)
         self.assertRegex(body, r"\(\+4 more")               # the budget clips, and says so
         clipped = [p["id"] for p in pins if f"`{p['id']}`" not in body]
         elected = {p["id"] for p in pins if p["state"] == "decided"}
@@ -428,6 +434,18 @@ class TestEvidenceNote(unittest.TestCase):
         note = ins._evidence_note(self._with([
             {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed", "human_answer": "x"}]))
         self.assertEqual(len(note), ins._NOTE_LINES)
+
+    def test_the_declared_nonconformance_note_length_is_the_length_it_emits(self):
+        """`_NONCONF_LINES` is budget arithmetic and is measured off the note, for the reason the
+        assertion above gives — and because the first draft of this note was NOT counted and
+        displaced `### Standing rules` at the floor, which is the one section this budget promises
+        survives."""
+        note = ins._nonconformance_note({"pins": ["a bare string where a pin goes"],
+                                         "decision_log": [], "policies": []})
+        self.assertEqual(len(note), ins._NONCONF_LINES)
+        self.assertEqual(ins._nonconformance_note(
+            {"pins": [], "decision_log": [], "policies": []}), [],
+            "the note costs bytes on a conforming file")
 
     def test_the_note_never_costs_a_section_its_room(self):
         noted = self._with([{"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed",

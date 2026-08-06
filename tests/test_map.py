@@ -538,12 +538,60 @@ class TestThePageIsRenderedFromWhatAReaderCanIndex(unittest.TestCase):
         import ledger as ledger_mod
         table = mapmod._TEMPLATE.split("const NONCONF_WHY={", 1)[1].split("};", 1)[0]
         keys = set(re.findall(r"^\s*(\w+):", table, re.MULTILINE))
+        # v0.25 — the two shape tables now DERIVE their rules, so the page derives their sentences
+        # too (`__SHAPE_WHY__`, inlined from `ledger.shape_notes`). Hand-writing thirty-one
+        # sentences beside thirty-one derived rules is the drift this gate exists to catch, one
+        # table over. The hand-written entries stay for the rules whose prose was argued, and they
+        # win the lookup; what this asserts is that between the two there is no rule with nothing.
+        derived = ledger_mod.shape_notes()
+        self.assertTrue(all(derived.values()), "a derived rule name got an empty sentence")
         produced = ({n for n, _h, _m in ledger_mod.PIN_RULES}
                     | {n for n, _h, _m in ledger_mod.POLICY_RULES}
                     | {n for n, _h, _m in ledger_mod.EVENT_RULES}
-                    | {"collection_shape", "entry_shape", "log_entry_kind"})
-        self.assertEqual(produced - keys, set(),
+                    | {"ledger_shape", "collection_shape", "entry_shape", "log_entry_kind"})
+        self.assertEqual(produced - keys - set(derived), set(),
                          "a rule `nonconforming` can report has no sentence on the page")
+
+    def test_the_page_can_join_the_report_to_the_record_it_is_about(self):
+        """v0.25 — the banner is a fact about the FILE, and a reader looking at one card was never
+        told that this card's own record was in it. A pin carrying `verification: "observed"`
+        rendered *"no rung recorded"* — true of the guarded reading — over a file that records one,
+        and nothing contradicted it.
+
+        The join is by id, so it only works while there is ONE answer to what a record's id is.
+        There were two: `nonconforming` labelled by `str(pin.get("id") or "")` and every surface
+        read `pin_read`, so a pin carrying `id: 7` was reported as `7` and rendered as `""`. Both
+        now go through the carrier, and a record this runtime cannot name is named by position on
+        both sides — which the card says, rather than showing a clean one."""
+        from ledger import nonconforming, pin_read
+        from shape_corpus import worst_ledger
+        data = worst_ledger()
+        report = nonconforming(data)
+        labelled = {i for ids in report.values() for i in ids}
+        joinable = [pin_read(p)["id"] for p in data["pins"] if isinstance(p, dict)
+                    and pin_read(p)["id"]]
+        hit = [i for i in joinable if i in labelled]
+        self.assertGreater(len(hit), 20,
+                           "no broken pin in the worst file the corpus can build is reachable from "
+                           "the report by its own id — the per-record card would never fire")
+        self.assertIn("nonconfCard", mapmod._TEMPLATE, "the card was removed from the page")
+        for anchor in ("${nonconfCard(p.id)}", "${nonconfCard(P.id)}"):
+            self.assertIn(anchor, mapmod._TEMPLATE,
+                          f"a detail view stopped asking the report about its own record ({anchor})")
+
+    def test_the_derived_sentences_actually_reach_the_page(self):
+        """`__SHAPE_WHY__` is inlined, so the claim above is only worth what the substitution is:
+        a placeholder that stopped being filled would leave the fallback table empty and every
+        derived rule would print as `no sentence here describes this rule` — which is exactly what
+        the browser walk found the last time this page quantified over less than the report
+        produces."""
+        import json as _json
+        import ledger as ledger_mod
+        html = mapmod.render(self._base(), title="t")
+        inlined = _json.loads(html.split("const SHAPE_WHY =", 1)[1].split(";\n", 1)[0]
+                              .replace("\\u003c", "<"))
+        self.assertEqual(inlined, ledger_mod.shape_notes())
+        self.assertIn("pin_verification", inlined)
 
     def test_the_map_counts_what_ledger_summary_counts(self):
         """They used to be the raw array lengths, so the map and the tool an agent calls before

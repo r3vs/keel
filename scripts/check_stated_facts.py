@@ -144,6 +144,14 @@ FACTS = (
         "patterns": (
             re.compile(r"\*?\*?(\d+) tests? green"),            # README.md's status line
             re.compile(r"(\d+) tests? passing in CI"),
+            # README.md's shields.io BADGE, added in 2026-08-06. It said `tests-592 passing` while
+            # the status line 314 lines below it said 828 — two claims about one number, in one
+            # file, disagreeing by 236. This gate was built for exactly that instance and its own
+            # docstring names "592" three times; what it did not do was quantify over the shape the
+            # number is written in when it is a badge, where the space is `%20` and the word is
+            # `passing` rather than `green`. A gate that covers the prose and not the picture of
+            # the prose is the corpus problem in miniature.
+            re.compile(r"tests-(\d+)%20passing"),
         ),
     },
     {

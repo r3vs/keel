@@ -511,6 +511,7 @@ function policyDetail(P){
                         :'what gets written from here rests on it';
   return h`<h2>${P.rule}</h2>
     <div class="sub"><span class="pol">standing rule</span> · ${P.id} · elected by the ${P.set_by||'interview'}</div>
+    ${nonconfCard(P.id)}
     <div class="card dec ${rungInfo(P.evidence).cls}">${policyRows(P)}${exc}
       ${policyRungWarning(P,rests)}${did}</div>`;
 }
@@ -627,7 +628,13 @@ const NONCONF = __NONCONF__;
 // agent about that pin); this one addresses the reader of a whole file about a whole class, which is
 // the same split `WEAK_WHY` makes against `policy_weakness`. A rule with no sentence here is printed
 // as its bare name rather than dropped — `unknownNote`'s discipline, one table over.
+// The sentence per rule the two SHAPE tables derive, computed by `ledger.shape_notes` and inlined
+// here for the same reason `__SETTLED__` is: thirty-one derived rules against thirty-one
+// hand-written sentences is a table that falls behind its schema the first time a field is added.
+// `NONCONF_WHY` below wins where it has an entry — those are the rules whose prose was argued.
+const SHAPE_WHY = __SHAPE_WHY__;
 const NONCONF_WHY={
+  ledger_shape:'the file’s top level is not an object at all — there is nothing here to read a pin, a decision or a version off',
   collection_shape:'a whole collection is not a list, so everything in it is missing from this page',
   entry_shape:'an entry is not an object, so it is in the file and on no surface',
   log_entry_kind:'a log entry whose id names no kind — nothing dispatches it',
@@ -659,13 +666,43 @@ const NONCONF_WHY={
 function nonconfCount(){
   let n=0; for(const k in NONCONF) n+=(NONCONF[k]||[]).length; return n;
 }
+// One lookup, two tables, the argued sentence first. A rule in neither is printed as its bare name
+// rather than dropped — `unknownNote`'s discipline, one table over.
+function nonconfWhy(k){
+  if(has(NONCONF_WHY,k)) return NONCONF_WHY[k];
+  if(has(SHAPE_WHY,k)&&SHAPE_WHY[k]) return SHAPE_WHY[k];
+  return 'no sentence here describes this rule';
+}
+// The rules this ONE pin breaks — the banner's report, asked by id. The banner is a fact about the
+// file and a reader looking at a card was not being told that the card's own pin was in it: a pin
+// carrying `verification: "observed"` rendered *"no verification rung recorded"*, which is what the
+// guarded read makes true, over a file that records one — and no surface contradicted it. The
+// report knows; it just had no place on the card until v0.25.
+function nonconfFor(id){
+  const out=[]; if(!id) return out;
+  for(const k in NONCONF) if((NONCONF[k]||[]).indexOf(id)>=0) out.push(k);
+  return out;
+}
+function nonconfCard(id){
+  // A record this runtime cannot NAME cannot be joined to a report entry about it, and the honest
+  // move is to say so rather than to show a clean card. `nonconforming` names such a record by its
+  // position (`pins[5]`), which is a thing a reader can find in the banner and this page cannot
+  // match against a card. Not a guess and not silence — the third option.
+  if(!id) return h`<div class="card dec weak"><div class="ch">this record carries no readable id</div>
+    <div class="why">so the report at the top of this page cannot be joined to this card. Whatever
+      it says about this record is listed there by POSITION — look for <code>pins[N]</code> or
+      <code>policies[N]</code>.</div></div>`;
+  const rules=nonconfFor(id); if(!rules.length) return '';
+  return h`<div class="card dec weak"><div class="ch">this record breaks ${rules.length} rule(s) of
+      the schema — what the cards below show is the guarded reading, not the file</div>
+    ${rules.map(k=>h`<div class="kv"><b>${k}</b><span>${nonconfWhy(k)}</span></div>`)}</div>`;
+}
 function nonconfBanner(){
   const keys=Object.keys(NONCONF);
   if(!keys.length) return '';
   return h`<div class="card dec weak"><div class="ch">this ledger holds ${nonconfCount()} thing(s)
       the schema does not describe</div>
-    ${keys.map(k=>h`<div class="kv"><b>${k}</b><span>${
-      has(NONCONF_WHY,k)?NONCONF_WHY[k]:'no sentence here describes this rule'} —
+    ${keys.map(k=>h`<div class="kv"><b>${k}</b><span>${nonconfWhy(k)} —
       <span class="chips">${(NONCONF[k]||[]).map(scalarHTML)}</span></span></div>`)}
     <div class="why">the counts and the list on this page are what a reader can index, which is why
       they can be smaller than the arrays in the file. Nothing was rewritten;
@@ -1081,7 +1118,7 @@ function detail(p){
   body.push(remediationCard(p));
   body.push(premortemCard(p));
   body.push(trailCard(p));
-  return h`<h2>${p.title}</h2><div class="sub">${sevBadge(p.severity)} · ${p.kind} · ${p.state}${p.substate?' ('+p.substate+')':''}</div>${modeLine(p)}${body}`;
+  return h`<h2>${p.title}</h2><div class="sub">${sevBadge(p.severity)} · ${p.kind} · ${p.state}${p.substate?' ('+p.substate+')':''}</div>${modeLine(p)}${nonconfCard(p.id)}${body}`;
 }
 function select(i){const p=(LEDGER.pins||[])[i];sel=i;selPol=null;renderList();
   mount('detail',()=>detail(p),p);}
@@ -1241,7 +1278,7 @@ def _inline(value) -> str:
 #: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
 #: so no substitution can ever run over content a previous one inlined.
 _PLACEHOLDER_RE = re.compile(
-    r"__(?:DATA|NONCONF|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|ASKABLE|TITLE"
+    r"__(?:DATA|NONCONF|SHAPE_WHY|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|ASKABLE|TITLE"
     r"|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
 
 
@@ -1265,7 +1302,7 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
     surviving into the page as literal text.
     """
     from ledger import (INTERVIEW_STATES, REOPENED_SUBSTATES, SETTLED_STATES, nonconforming,
-                        readable_ledger)
+                        readable_ledger, shape_notes)
     # v0.23 — the page is rendered from the GUARDED view, never from the file. Two things follow,
     # and they are the whole of this round's map half:
     #
@@ -1284,6 +1321,12 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
         # script-safe: no `<` from the data reaches the page's script text at all (`_inline`)
         "__DATA__": _inline(readable_ledger(ledger_data)),
         "__NONCONF__": _inline(nonconforming(ledger_data)),
+        # The sentence per DERIVED rule name (v0.25). `PIN_SHAPES` grew from five rules to
+        # thirty-one, and hand-writing thirty-one sentences beside a table that derives thirty-one
+        # rules is the drift this round exists to remove — so the page inlines the schema's own,
+        # exactly as it already inlines `__SETTLED__` and `__ASKABLE__`, and `NONCONF_WHY` keeps
+        # only the entries that carry argued prose.
+        "__SHAPE_WHY__": _inline(shape_notes()),
         "__DERIVED__": _inline(derived_rungs(ledger_data)),
         "__WEAK_POLICIES__": _inline(weak_policies(ledger_data)),
         # the schema's own set, so the page cannot fall behind it (v0.16 added `deferred`)

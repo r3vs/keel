@@ -31,8 +31,12 @@ wrong* is the part that stops it coming back.
 > than of classes: *a rule paid at a set's MEMBERS is unpaid for whatever satisfies the set's
 > definition without joining it.* `cross_derive` reopened pins and was not on `REOPEN_ARCS`; four
 > write doors touched pins and were on no closed-work list; `brief` was in `DECISION_EVIDENCE` and
-> was the only member nothing asked anything of. **A closed section is a claim about a class, and the
-> class is where the next instance lives.**
+> was the only member nothing asked anything of. **§24** is the fourteenth's, and it is the first
+> round whose subject is the GATE rather than the rule: *when the gate is a corpus, the corpus is
+> the weak link.* The read path's three parts were held to each other by construction and all three
+> ran against a hand-written list of seven broken pins; extending that list with eleven shapes the
+> schema already declares made the unchanged gates fail. **A closed section is a claim about a
+> class, and the class is where the next instance lives.**
 >
 > | # | Gap | One line |
 > |---|---|---|
@@ -55,6 +59,7 @@ wrong* is the part that stops it coming back.
 > | ~~21~~ | ~~the reopen leaves the carriers the settlement doors gate on~~ | **CLOSED** — one declared table of carriers, held to the predicate's own AST; the derived read-tool gate then found three more readers |
 > | ~~22~~ | ~~the two projections read a ledger nobody had guarded~~ | **CLOSED** — `readable_ledger` is the one door for a caller holding ledger data; `nonconforming` reaches the page; `mount` is the page's one failure boundary; six new gates |
 > | ~~23~~ | ~~six rules paid at a set's members~~ | **CLOSED** — `cross_derive` is the third arc; a re-derivation may not launder a refutation; `PIN_WRITE_DOORS`; `brief_quote`; one commit point; one quote refusal |
+> | ~~24~~ | ~~the gate was a corpus, and the corpus was hand-written~~ | **CLOSED** — `PIN_SHAPES` is the one carrier the rules, the read and the corpus all derive from; the derived corpus then found three readers nobody had reported |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -2012,6 +2017,19 @@ refusal, one derived roster — and the round's own cheapest lesson came from th
 WHICH refusal fires, not that one did.** The closed-work gate caught `set_question` answering *"already
 poses a fork"* on a `resolved` pin, which is a true sentence that sends an agent to the wrong door.
 
+**§24 is the fourteenth's, and it does not add a class — it adds a QUESTION TO ASK OF EVERY ROW
+ALREADY HERE: what corpus does this gate run against, and who wrote it?** Every family of gates
+below is set equality computed from the source, which is exactly right and says nothing about the
+*cases*. Three of the read path's gates were computed from the source and run against seven pin
+shapes somebody had typed; eleven more shapes, all named by a table the repo already declared, were
+enough to make all three fail. So the standing answer gains a clause: **a rule gets one carrier, a
+structural test that quantifies over all its callers, and — where the schema can generate them — a
+corpus derived rather than listed.** The test of whether a corpus is derived is simple and worth
+applying to the rows below: if a field were added to the schema tomorrow, would this gate cover it
+without anyone remembering? `tests/shape_corpus.py` is the first answer that says yes, and its own
+non-vacuity floor (`test_every_declared_shape_has_a_probe_that_refuses_it`) exists because a derived
+corpus can go silently empty in a way a written list cannot.
+
 ### Gated
 
 **A new surface arrives without the invariant that governs the old one.** The register's most
@@ -2707,6 +2725,112 @@ because a plant that breaks the syntax proves nothing.
   argument, not a wider tuple.
 
 ---
+## 24. The gate was a corpus, and the corpus was hand-written — **CLOSED 2026-08-06** (ledger v0.25)
+
+The fourteenth round, and the first whose subject is the **gate** rather than the rule it enforces.
+§23 closed with the counter-move this branch had converged on — *one carrier per rule, and a
+structural test that quantifies over all of its callers* — plus a sharper half a reviewer added in
+the same review: **where the corpus can be derived from the schema the rule is about, derive it.**
+This round is what happens when the second half is taken seriously about the read path, which is
+the one place the first half had already been applied twice.
+
+Every finding was **reproduced over real `uv run --script plugins/keel-core/mcp/server.py` stdio
+from a foreign cwd**, or opened in Chromium, before it was a test — and every one of them passed
+856 tests and nine green gates.
+
+### Verified — what the hand-written corpus was hiding
+
+`PIN_RULES` and `pin_read` were held together by set equality, `LEDGER_COLLECTIONS` drove an AST
+gate, and `nonconforming` replayed the rule table. The corpus all three ran against was **seven pin
+shapes, written by hand, copied into two test modules** under a comment saying the principle was
+one. A reviewer extended it in a scratch copy of HEAD with eleven more shapes — every one naming a
+field `PIN_FIELDS` already declared — and the unchanged gates went red.
+
+1. **`interview_next` died on `verification` / `brainstorm` / `brainstorm.proposals`.** One of the
+   four surfaces this branch keeps naming in that phrase. `(pin.get("verification") or {}).get` is
+   a guard against absence and no guard at all against a string; a `proposals` that is truthy and
+   not a list of objects was walked character by character into `p.get(...)`. Five isolated files
+   plus a combined worst case, all `isError` over stdio.
+2. **A ledger whose top level is not an object killed all four surfaces** with a raw
+   `AttributeError`: `Ledger.__init__` reached `self.data.get("version")` before any guard ran, and
+   `nonconforming` — the report that exists to describe an unreadable file — was itself among the
+   things that could not open one.
+3. **`learning.divergences` did `e["id"].startswith(...)`** — the exact expression v0.18 removed
+   from `summary()`, whose comment names it, left standing one module over. `learning_report` died
+   with a bare `KeyError: 'id'` where `ledger_summary` answered about the same file.
+4. **The projection every fresh agent loads was the one surface with no nonconformance note.**
+   `instructions.render` named `nonconforming` in a comment and called it nowhere: on one hostile
+   ledger `ledger_summary` reported the pins and the nonconformances, the map showed a banner, and
+   the region generated into the user's `AGENTS.md` listed the readable pins and said nothing.
+5. **The map stated something false and no surface contradicted it.** A pin carrying
+   `verification: "observed"` rendered as *"no rung recorded"*, with the warning that goes with it,
+   and the banner never mentioned `verification`.
+6. **`_refresh_live_maps` promised more than its handler delivered.** The docstring: *"a render
+   failure must never break the ledger write that triggered it"*; the handler:
+   `except (OSError, ValueError)` — not the failure classes this whole round is about.
+7. **Three write doors refused one malformed argument three ways.** `ledger_premortem` cleanly,
+   `ledger_add_proposals` and `add_pin`'s provenance loop with raw `AttributeError`s — on the
+   argument an agent composes and therefore gets wrong.
+8. **`README.md:8`'s badge said `tests-592 passing` while `:322` said 828 tests green.**
+   `check_stated_facts.py` was added on this branch for exactly this claim and its docstring names
+   "592" three times; it did not quantify over the shape the number is written in when it is a
+   badge.
+
+### What was built
+
+**One carrier — `ledger.PIN_SHAPES` — and the rules, the read, the map's sentence and the test
+corpus are all derived from it.** 31 declared paths, dotted where nested, with a stated membership
+rule that is held to the writers rather than trusted: *a path is declared iff a reader can INDEX
+INTO its value.* `PIN_RULES = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_")`; `pin_read` is the
+whole pin with every declared path guaranteed to hold its shape (`fill` naming the one axis on
+which its two callers differ); `shape_notes()` is what the page inlines; `tests/shape_corpus.py`
+turns each declaration into every way it can be violated, by probing the declared shape against a
+fixed set of values and keeping the ones it refuses.
+
+**The derived corpus then found three readers nobody had reported** — `agent_ready` on a
+`readiness` that is a bool and a `remediation` member that is a string, `policy_preview` and
+`interview_seed_policies` on `self.data["pins"]` (the write path's deliberate direct index, reached
+from a read-only tool) — and **the writer gate found `as_is.disagreeing_layers`**, which the map
+builds a `Set` out of and which nothing had declared. Neither class was in anyone's list.
+
+**One answer to what a record's id is.** `nonconforming` labelled by `str(pin.get("id") or "")`
+while every surface read `pin_read`, so a pin carrying `id: 7` was reported as `7` and rendered as
+`""` — which is why the map's new per-record card could not join the report to the card it is
+about. Found in the browser, not in a test.
+
+### Proved
+
+- All eight reproductions re-run verbatim over stdio against the **rebuilt** shipped plugin.
+- **The browser pass**, light and dark, on the worst file the corpus can build (149 pins, 20
+  policies, 35 rules, 172 instances): every rule on the banner carries a sentence (no *"no sentence
+  here describes this rule"*), no console errors on load, the per-record card fires on a pin and on
+  a policy, and a record with no readable id says *this record carries no readable id* rather than
+  showing a clean card.
+- New gates: `tests/test_ledger.py::TestTheShapeTableIsTheWritersOwnShapes` (both directions,
+  driven by `walk_every_pin_writer`) plus `test_the_read_actually_delivers_every_shape_it_declares`,
+  `test_every_declared_shape_has_a_probe_that_refuses_it` (the corpus's own non-vacuity floor) and
+  `test_a_ledger_whose_top_level_is_not_an_object_is_refused_not_crashed`;
+  `tests/test_mcp_tools.py::TestNoWriteDoorDiesOnAMemberOfAListArgument`,
+  `TestEveryProjectionSaysWhatItCouldNotRead` (roster derived from *answers `written`*) and
+  `TestARenderFailureNeverBreaksTheWriteThatTriggeredIt`; `tests/test_map.py`'s join gate and its
+  derived-sentence gate.
+
+### Residuals, registered rather than fixed
+
+- **`add_pin`'s `anchors` guard is library-level only.** The MCP tool does not expose `anchors`, so
+  the FastMCP schema refuses the argument before `_require_objects` is reached. Both refusals exist
+  and agree; the parameter not existing is the stronger statement, exactly as `ledger_defer`'s
+  required `human_answer` was left in section 23.
+- **A record with no readable id cannot be joined to the report.** The page says so rather than
+  guessing, and `nonconforming` names such a record by position on both sides. Making the join
+  index-based would require the guarded read to carry a source index, which is a change to what a
+  projection returns and needs its own argument.
+- **`PIN_SHAPES` declares no nested scalar.** That is the membership rule, and it is right for
+  Python readers — nothing indexes into a string — but a page that renders one still renders it
+  oddly, and the banner does not name it because no rule is broken.
+
+---
+
 
 ## Do not re-litigate
 
