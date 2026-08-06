@@ -152,7 +152,7 @@ def card(ledger, pin_id: str) -> dict:
 
 def _challenges_for(ledger, pin_id: str) -> list[dict]:
     return [{"id": e["id"], "class": e["class"], "upheld": e["upheld"], "argument": e["argument"]}
-            for e in ledger.data["decision_log"]
+            for e in ledger.readable("decision_log")
             if e.get("pin_id") == pin_id and e["id"].startswith("chl_")]
 
 

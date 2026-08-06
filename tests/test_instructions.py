@@ -227,6 +227,66 @@ class TestArrivingInASectionThatInvertsTheMeaning(unittest.TestCase):
         self.assertTrue(line.endswith("**pg**"), line)
 
 
+class TestTheProjectionIsNotWhereAProjectionShouldDie(unittest.TestCase):
+    """v0.23 — this module writes the one file every host loads unprompted, and five ordinary
+    malformations took it down over real stdio against the shipped server:
+
+        severity is a list          -> unhashable type: 'list'          (used as a dict key)
+        title is not a string       -> 'dict' object has no attribute 'strip'
+        decision is a string        -> 'str' object has no attribute 'get'
+        a policy scope is a string  -> 'str' object has no attribute 'items'
+        a policy rule is a list     -> 'list' object has no attribute 'strip'
+
+    Every one of them is a field the reading surfaces index, on a file `ledger_summary` reads and
+    reports the nonconformance of. `render` never dies here now, and the fields come through
+    `pin_read` / `policy_read` so the substitutions are the schema's rather than this module's."""
+
+    BROKEN = {
+        "severity is a list": {"pins": [{"id": "pin_0001", "kind": "defect", "state": "decided",
+                                         "title": "t", "severity": ["high"]}]},
+        "title is not a string": {"pins": [{"id": "pin_0001", "kind": "defect", "state": "decided",
+                                            "title": {"text": "nope"}, "severity": "high"}]},
+        "decision is a string": {"pins": [{"id": "pin_0001", "kind": "defect", "state": "decided",
+                                           "title": "t", "severity": "high",
+                                           "decision": "ev_0001"}]},
+        "a policy scope is a string": {"policies": [{"id": "pol_0001", "rule": "prefer X",
+                                                     "applies_to": "everything",
+                                                     "default_outcome": "opt_a"}]},
+        "a policy rule is a list": {"policies": [{"id": "pol_0001", "rule": ["prefer", "X"],
+                                                  "applies_to": {},
+                                                  "default_outcome": "opt_a"}]},
+        "a pin is null": {"pins": [None]},
+        "pins is not a list": {"pins": "everything is fine"},
+        "policies is not a list": {"policies": None},
+    }
+
+    def test_render_answers_on_every_shape_instead_of_raising(self):
+        for name, data in self.BROKEN.items():
+            with self.subTest(shape=name):
+                ins.render(dict({"version": "0.23", "pins": [], "decision_log": [],
+                                 "policies": []}, **data))
+
+    def test_a_severity_the_file_states_outranks_one_it_does_not(self):
+        """The finding itself. `_SEVERITY_RANK` read a MISSING severity as `low`, so `pin_0001` —
+        whose file says nothing about how bad it is — led the section, ahead of a pin that states
+        `low` and of one that states a severity outside the set. Reproduced over stdio; this is the
+        order the region carries now, and it is `ledger.severity_rank`'s."""
+        data = {"version": "0.23", "decision_log": [], "policies": [], "pins": [
+            {"id": "pin_0001", "kind": "defect", "title": "no severity stated at all",
+             "state": "decided", "decision": {"event_id": "ev_0001", "outcome": "fix"}},
+            {"id": "pin_0002", "kind": "defect", "title": "a severity outside the set",
+             "severity": "catastrophic", "state": "decided",
+             "decision": {"event_id": "ev_0002", "outcome": "fix"}},
+            {"id": "pin_0003", "kind": "defect", "title": "a stated low", "severity": "low",
+             "state": "decided", "decision": {"event_id": "ev_0003", "outcome": "fix"}},
+        ]}
+        listed = [ln.split("`")[1] for ln in ins.render(data).splitlines()
+                  if ln.startswith("- `pin_")]
+        self.assertEqual(listed, ["pin_0003", "pin_0001", "pin_0002"],
+                         "a pin whose file states no severity is ahead of one that states a "
+                         "severity — the projection is reading a claim the file does not make")
+
+
 class TestNoStateNameIsKeptInThisFile(unittest.TestCase):
     """`TestEveryStateReachesTheRegion` states the rule — *a set the schema owns cannot be kept
     here, because a state added there does not come here* — and this module went on comparing

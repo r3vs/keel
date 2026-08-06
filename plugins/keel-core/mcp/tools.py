@@ -602,7 +602,7 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     # by the reopen and never cleared, so a second, AGREEING derivation over the same pin reported
     # `reopened: true` while its own event recorded `false`. Two carriers for one fact, disagreeing —
     # in the return shape of the tool whose whole subject is two derivations disagreeing.
-    event = next(e for e in led.data["decision_log"] if e["id"] == record["event_id"])
+    event = next(e for e in led.readable("decision_log") if e.get("id") == record["event_id"])
     return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
             "event_id": event["id"],
             "reopened": event["reopened"],
@@ -689,7 +689,8 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     # `evidence = "transcribed"` that was passed down AND reported back — one fact with two
     # carriers, and the parameter it was passed into is the one that has just been removed. The
     # rung the caller is told about is now the rung the log actually holds.
-    event = next(e for e in led.data["decision_log"] if e["id"] == pin["decision"]["event_id"])
+    event = next(e for e in led.readable("decision_log")
+                 if e.get("id") == pin["decision"]["event_id"])
     return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer",
             "evidence": event["evidence"]}
 

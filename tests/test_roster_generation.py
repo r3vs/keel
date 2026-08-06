@@ -179,6 +179,28 @@ class TestTheBuildEnforcesIt(unittest.TestCase):
         r = self._build()
         self.assertEqual(r.returncode, 0, f"plugins/ is out of sync with src/:\n{r.stdout}")
 
+    def test_the_number_reported_as_evidence_counts_the_tree_the_sweep_keeps(self):
+        """The count printed under `plugins/ in sync (…, N files)` is quoted as evidence that the
+        tree is what the build produced — and it counted `__pycache__`, which the REMOVE sweep
+        twelve lines above explicitly excludes. Two loops over one tree, asking two questions, and
+        the number in the report was the wrong one.
+
+        One predicate now answers both, so this asserts that: the string `__pycache__` occurs in
+        exactly one function of `build.py`. A second site is the divergence, restarted."""
+        import ast
+        source = (ROOT / "scripts" / "build.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        owners = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Constant) and inner.value in ("__pycache__", ".pyc"):
+                    owners.add(node.name)
+        self.assertEqual(owners, {"_debris"},
+                         f"the question 'is this file build output' is asked in {sorted(owners)} — "
+                         "it has one answer, and the count and the sweep must both ask it")
+
     def test_a_role_without_a_prompt_fails_the_build(self):
         original = ROSTER.read_text(encoding="utf-8")
         try:

@@ -57,6 +57,21 @@ payloads, and everything else is projected because a projection is a claim about
 `interview_view` returns. Reach is now read off `ledger.INTERVIEW_STATES` (`__ASKABLE__`) plus the
 pin's own options, and a pin failing either half is told so instead of being told a countdown.
 
+**Reading is never the operation that fails, and what could not be read is ON the page** (v0.23).
+This surface was the last one still projecting a ledger it had not read through the guarded path,
+and it failed in both directions at once: a `null` entry in `pins`, or a `pins` that is not a list,
+threw inside the page's own `trafficLight` before anything was mounted — so the document rendered
+its header and nothing else, while `render_map` returned `{"written": …}` with `isError: false`; and
+a non-object entry in `decision_log` or `policies` made `render` itself raise in Python. Both halves
+have one answer, and it is the one the schema already gave: `ledger.readable_ledger` is what this
+module renders, so the page cannot be handed an entry the schema does not describe, and
+`ledger.nonconforming` is inlined beside it so the page SAYS what was dropped (`nonconfBanner`) —
+which it had never done, on any file, though `ledger_summary` reported it in the same session.
+The counts here are therefore the counts `ledger_summary` reports; they used to be the raw array
+lengths. Inside a record — free-form by kind, so not enumerable without guessing — the answer is the
+one boundary at `mount`: it takes a thunk and renders what it could not project as a card a human
+reads, rather than leaving the pane blank as it did for a `brainstorm.proposals` that was not a list.
+
 Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
 Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
 pins land, preserving selection / view / scroll across reloads and flashing pins whose state
@@ -194,6 +209,10 @@ dl.fields dl.fields{grid-column:1/-1;padding-left:12px;border-left:2px solid var
 .trail b{font-weight:650}.trail .imp{color:var(--mut);padding:1px 0 0}
 .quote{margin:9px 0 0;padding:5px 0 5px 12px;border-left:3px solid var(--line);font-style:italic;
   overflow-wrap:anywhere}
+/* The banner sits between the header and the two panes: what it says is true of the FILE, so it may
+   not live inside a pane one selection can replace. Empty and zero-height when the file conforms. */
+#warnbar:not(:empty){padding:0 22px;border-bottom:1px solid var(--line)}
+#warnbar .card{margin:12px 0}
 __LIVE_STYLE__</style></head><body>
 <header>
   <h1>🧭 Decisions map</h1>__LIVE_BADGE__
@@ -202,6 +221,7 @@ __LIVE_STYLE__</style></head><body>
   <div class="toggle"><button id="bAsis" class="on" onclick="setView('as_is')">as-is</button>
     <button id="bTobe" onclick="setView('to_be')">to-be</button></div>
 </header>
+<div id="warnbar"></div>
 <main><div class="list" id="list"></div><div class="detail" id="detail"></div></main>
 <script>
 const LEDGER = __DATA__;
@@ -254,7 +274,36 @@ function h(strings){
   for(let i=1;i<arguments.length;i++) out+=frag(arguments[i])+strings[i];
   return new H(out);
 }
-function mount(id,node){document.getElementById(id).innerHTML=frag(node);}
+// -- the only way this page STOPS building HTML ------------------------------------------------
+// `mount` takes a THUNK, not a node, and that one signature change is the whole of the second
+// mechanism. It used to take an already-built node, so anything that threw while building one threw
+// BEFORE the sink was reached and the pane was simply never written: clicking a pin whose
+// `brainstorm.proposals` was not a list left the detail pane blank, in a browser, with no console
+// reader — and the list beside it went on showing the pin as selected. A pane that renders nothing
+// says "there is nothing here", which is the same lie as a blank map.
+//
+// The rule this page is held to is the schema's own: **a surface that cannot render something says
+// so where a human reads, never blank and never raised.** The Python side guarantees the CONTAINER
+// (`ledger.readable_ledger`), so what reaches here is always a list of objects; this is the answer
+// for everything inside one of those objects, which is free-form by kind and cannot be enumerated
+// without guessing. One boundary serves every pane and every card added later, and the subject is
+// shown raw so nothing is hidden by the failure to project it.
+function mount(id,build,subject){
+  let node;
+  try{ node=build(); }
+  catch(err){ node=cannotRender(err,subject); }
+  document.getElementById(id).innerHTML=frag(node);
+}
+function cannotRender(err,subject){
+  return h`<div class="card dec weak"><div class="ch">this map could not render this</div>
+    <div class="warn">⚠ ${String((err&&err.message)||err)}</div>
+    <div class="why">something inside this record is not the shape the schema describes, so the
+      projection of it stopped here. Nothing has been hidden and nothing has been rewritten — the
+      ledger is exactly as it was. Run <code>ledger_summary</code> for the file's own nonconformance
+      report; the record itself is below.</div>
+    ${subject===undefined?'':h`<details class="raw" open><summary>the record, as the file holds it</summary>
+      <pre>${JSON.stringify(subject,null,2)}</pre></details>`}</div>`;
+}
 // A colour from a closed table, never a value off the file: `SEV[p.severity]` reached
 // `constructor` and every other inherited name, and put a function body inside a style attribute.
 // The fallback is a real badge and is held to the same bar as the four named ones: at `#888` it
@@ -557,23 +606,95 @@ function decisionCard(p){
     ${pol}${quote}${notes}</div>`;
 }
 
+// -- what this file holds that the schema does not describe --------------------------------------
+// `ledger.nonconforming()` has existed since the log half was guarded and has been readable through
+// `ledger_summary`'s `pre_rule_events` since v0.21 — and it reached this page, the surface a HUMAN
+// opens, nowhere at all. So the map could count nine pins where the file holds eleven, or report
+// "all settled" over a `pins` collection that is not a list, and say nothing about either.
+// It is a banner and not a card because it is a fact about the FILE, true whatever is selected.
+const NONCONF = __NONCONF__;
+// The sentence per rule name. Not the schema's own message (`PIN_RULES` writes one per pin, for an
+// agent about that pin); this one addresses the reader of a whole file about a whole class, which is
+// the same split `WEAK_WHY` makes against `policy_weakness`. A rule with no sentence here is printed
+// as its bare name rather than dropped — `unknownNote`'s discipline, one table over.
+const NONCONF_WHY={
+  collection_shape:'a whole collection is not a list, so everything in it is missing from this page',
+  entry_shape:'an entry is not an object, so it is in the file and on no surface',
+  log_entry_kind:'a log entry whose id names no kind — nothing dispatches it',
+  pin_id:'a pin with no id: nothing can depend on it or link to it',
+  pin_state:'a state outside the schema’s set — it is in no bucket and no count',
+  pin_severity:'a severity this runtime cannot rank; it sorts last rather than being guessed at',
+  pin_depends_on:'a `depends_on` that is not a list of pin ids — no wave is levelled by it',
+  pin_question:'a `question` that is not an object, so the interview has no fork to ask',
+  pin_title:'a title that is not a string',
+  pin_decision:'a `decision` that is not an object — the elected outcome cannot be read off it',
+  policy_id:'a standing rule with no id: no decision can name it',
+  policy_rule:'a standing rule with no readable rule text',
+  policy_applies_to:'a scope that is not an object — the radius of the rule cannot be read',
+  // `EVENT_RULES`, which reports on the LOG and whose membership question is different: these are
+  // decidable from the stored event alone, and a file predating the rule keeps its old version
+  // rather than being rewritten. The first draft of this table left all seven out and the browser
+  // walk showed two of them on the page as "no sentence here describes this rule" — a table
+  // quantifying over less than the report can produce, which is the class this register calls its
+  // worst. The gate is derived from all three tuples now.
+  committing_source:'a decision whose `source` is neither the interview nor a policy — nothing says who committed it',
+  evidence_rung:'a decision on a rung the schema does not name — how the answer travelled cannot be weighed',
+  cascade_rung:'a decision whose rung and whose source disagree about whether a policy decided it',
+  cascade_policy_id:'a cascaded decision that names no policy, or a policy named by a decision that did not cascade',
+  flip_criteria:'a decision with no `flip_criteria` — nothing says when to reopen it',
+  flip_signal_source:'a flip signal whose source is not one the measurer can read',
+  offered_outcome:'a decision whose outcome the pin’s own question never offered',
+  settled_state:'a `settles_as` naming a state no election produces'};
+function nonconfCount(){
+  let n=0; for(const k in NONCONF) n+=(NONCONF[k]||[]).length; return n;
+}
+function nonconfBanner(){
+  const keys=Object.keys(NONCONF);
+  if(!keys.length) return '';
+  return h`<div class="card dec weak"><div class="ch">this ledger holds ${nonconfCount()} thing(s)
+      the schema does not describe</div>
+    ${keys.map(k=>h`<div class="kv"><b>${k}</b><span>${
+      has(NONCONF_WHY,k)?NONCONF_WHY[k]:'no sentence here describes this rule'} —
+      <span class="chips">${(NONCONF[k]||[]).map(scalarHTML)}</span></span></div>`)}
+    <div class="why">the counts and the list on this page are what a reader can index, which is why
+      they can be smaller than the arrays in the file. Nothing was rewritten;
+      <code>ledger_summary</code> reports the same list under <code>pre_rule_events</code>, and a
+      file in this state does not get its <code>version</code> raised.</div></div>`;
+}
+
 function trafficLight(){
   const pins=LEDGER.pins||[]; const done=pins.filter(p=>SETTLED.has(p.state)).length;
   const openBlockers=pins.filter(p=>!SETTLED.has(p.state)&&(p.severity==='blocker')).length;
   const pct=pins.length?Math.round(100*done/pins.length):100;
-  document.getElementById('prog').style.width=pct+'%';
   const tl=document.getElementById('tl'); const txt=document.getElementById('tltext');
   // "settled", not "resolved": the bar counts every pin that has stopped being open, and one of
   // those states is `deferred` — a question the human answered with "not now". Calling that
   // resolved would be this surface reporting work that was not done as work that was.
-  if(openBlockers>0){tl.style.background='var(--blocker)';txt.textContent=openBlockers+' open blocker(s) · '+pct+'% settled';}
-  else if(pct<100){tl.style.background='var(--high)';txt.textContent=pct+'% settled';}
+  //
+  // And a file with unreadable content NEVER reads green, whatever the readable part says. This
+  // light used to sum the raw arrays: on a ledger whose `pins` is not a list it went full green and
+  // said "all settled", which is a completeness claim about a file this page could not read.
+  const bad=nonconfCount();
+  // "nonconforming", the schema's own word, and not "unreadable": most of what this report names IS
+  // readable and merely breaks a rule (a decision on a rung the schema does not name, a legacy
+  // cascade). Only the collection case below is genuinely unreadable, and it says so in its own
+  // sentence rather than borrowing this one.
+  const unreadable=bad?' · '+bad+' nonconforming':'';
+  // A ledger with no pins is 100% settled — there is nothing to settle. A ledger whose pins could
+  // not be READ is not, and the bar has to say so too: on a `pins` that is not a list this page
+  // showed a full green bar over the words "all settled", which is a completeness claim about a
+  // file it had failed to open.
+  const nothingReadable=!pins.length&&bad;
+  document.getElementById('prog').style.width=(nothingReadable?0:pct)+'%';
+  if(openBlockers>0){tl.style.background='var(--blocker)';txt.textContent=openBlockers+' open blocker(s) · '+pct+'% settled'+unreadable;}
+  else if(nothingReadable){tl.style.background='var(--high)';txt.textContent='nothing on this file could be read'+unreadable;}
+  else if(pct<100||bad){tl.style.background='var(--high)';txt.textContent=pct+'% settled'+unreadable;}
   else{tl.style.background='var(--ok)';txt.textContent='all settled';}
 }
 function renderList(){
   const pins=LEDGER.pins||[];
   const pols=LEDGER.policies||[];
-  if(!pins.length&&!pols.length){mount('list',h`<div class="empty">empty ledger</div>`);return;}
+  if(!pins.length&&!pols.length){mount('list',()=>h`<div class="empty">empty ledger</div>`);return;}
   // The policies lead the list because one of them decides a whole cluster, and because a rule the
   // human elected must be reachable whether or not it happened to bind a pin.
   const polRows=!pols.length?'':[h`<div class="grp">Standing rules — elected by the human</div>`,
@@ -587,7 +708,7 @@ function renderList(){
     pins.length?h`<div class="grp">Pins</div>`:''];
   // Only the WEAK rung is badged in the list. Badging all three would turn the signal into
   // decoration; the card states the rung for every decision, whichever it is.
-  mount('list',[polRows,pins.map((p,i)=>{
+  mount('list',()=>[polRows,pins.map((p,i)=>{
     const r=rungOf(p), m=r===null?null:rungInfo(r);
     const weak=r!==null&&m.cls==='weak';
     return h`<div class="pin${i===sel?' sel':''}" data-pin="${i}" onclick="select(${i})">
@@ -951,16 +1072,18 @@ function detail(p){
   body.push(trailCard(p));
   return h`<h2>${p.title}</h2><div class="sub">${sevBadge(p.severity)} · ${p.kind} · ${p.state}${p.substate?' ('+p.substate+')':''}</div>${modeLine(p)}${body}`;
 }
-function select(i){sel=i;selPol=null;renderList();mount('detail',detail((LEDGER.pins||[])[i]));}
-function selectPolicy(j){selPol=j;sel=null;renderList();
-  mount('detail',policyDetail((LEDGER.policies||[])[j]));}
+function select(i){const p=(LEDGER.pins||[])[i];sel=i;selPol=null;renderList();
+  mount('detail',()=>detail(p),p);}
+function selectPolicy(j){const P=(LEDGER.policies||[])[j];selPol=j;sel=null;renderList();
+  mount('detail',()=>policyDetail(P),P);}
 function setView(v){view=v;document.getElementById('bAsis').classList.toggle('on',v==='as_is');
   document.getElementById('bTobe').classList.toggle('on',v==='to_be');
-  if(sel!=null)mount('detail',detail(LEDGER.pins[sel]));}
+  if(sel!=null){const p=LEDGER.pins[sel];mount('detail',()=>detail(p),p);}}
+mount('warnbar',nonconfBanner);
 trafficLight();renderList();
 if((LEDGER.pins||[]).length)select(0);
 else if((LEDGER.policies||[]).length)selectPolicy(0);
-else mount('detail',detail(null));
+else mount('detail',()=>detail(null));
 __LIVE_SCRIPT__</script></body></html>
 """
 
@@ -1019,9 +1142,9 @@ def derived_rungs(ledger_data: dict) -> dict:
     `as_recorded` carries the value the file actually holds, so the card can state the disagreement
     instead of quietly winning it. Nothing is rewritten; the ledger inlined beside this is untouched.
     """
-    from ledger import cascaded_from, decision_rung
+    from ledger import cascaded_from, decision_rung, read_collection
     out: dict = {}
-    for event in ledger_data.get("decision_log") or []:
+    for event in read_collection(ledger_data, "decision_log"):
         if not str(event.get("id") or "").startswith("ev_"):
             continue
         rung = decision_rung(event)
@@ -1048,12 +1171,12 @@ def weak_policies(ledger_data: dict) -> dict:
     fixture one surface badged two standing rules and the other reported one. Neither number was
     wrong on its own terms, which is precisely why a reader could act on neither.
     """
-    from ledger import policy_weakness
+    from ledger import policy_read, policy_weakness, read_collection
     out: dict = {}
-    for policy in ledger_data.get("policies") or []:
+    for policy in read_collection(ledger_data, "policies"):
         reason = policy_weakness(policy)
         if reason:
-            out[str(policy.get("id"))] = reason
+            out[policy_read(policy)["id"]] = reason
     return out
 
 
@@ -1096,8 +1219,8 @@ def _inline(value) -> str:
 
     **This function is the only path, which is what makes that enumeration worth anything.** Every
     payload the page carries is substituted by `render` from a call to this function — `__DATA__`,
-    `__DERIVED__`, `__WEAK_POLICIES__`, `__SETTLED__` — and `json.dumps` is called nowhere else in
-    this module. `tests/test_map.py::TestTheOnlyWayDataEntersThePage` asserts both by AST, because
+    `__NONCONF__`, `__DERIVED__`, `__WEAK_POLICIES__`, `__SETTLED__` — and `json.dumps` is called
+    nowhere else in this module. `tests/test_map.py::TestTheOnlyWayDataEntersThePage` asserts both by AST, because
     the two escaping bugs this file has had were both a SITE that did not go through the mechanism,
     and a fifth payload inlined by hand would be the third.
     """
@@ -1107,7 +1230,7 @@ def _inline(value) -> str:
 #: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
 #: so no substitution can ever run over content a previous one inlined.
 _PLACEHOLDER_RE = re.compile(
-    r"__(?:DATA|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|ASKABLE|TITLE"
+    r"__(?:DATA|NONCONF|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|ASKABLE|TITLE"
     r"|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
 
 
@@ -1130,10 +1253,26 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
     the order of the lines around it. An unknown placeholder raises `KeyError` here rather than
     surviving into the page as literal text.
     """
-    from ledger import INTERVIEW_STATES, REOPENED_SUBSTATES, SETTLED_STATES
+    from ledger import (INTERVIEW_STATES, REOPENED_SUBSTATES, SETTLED_STATES, nonconforming,
+                        readable_ledger)
+    # v0.23 — the page is rendered from the GUARDED view, never from the file. Two things follow,
+    # and they are the whole of this round's map half:
+    #
+    #  * the page's own JavaScript can no longer be handed an entry the schema does not describe.
+    #    `pins.filter(...)` on a string and `p.state` on a `null` both threw inside `trafficLight`,
+    #    which runs before anything is mounted, so the document rendered its header and NOTHING —
+    #    while `render_map` returned `{"written": …}` with `isError: false`. A blank map reads as
+    #    "no findings", which is the most expensive wrong answer this surface can give, and it is
+    #    the same failure `_inline` was fixed for one hole over.
+    #  * the counts on this page are now the counts `ledger_summary` reports for the same file,
+    #    because both read the same carrier. They used to be the raw array lengths.
+    #
+    # And what the guard DROPPED is stated on the page rather than silently missing (`__NONCONF__`):
+    # `nonconforming` is asked of the ORIGINAL, so the banner describes the file as it stands.
     values = {
         # script-safe: no `<` from the data reaches the page's script text at all (`_inline`)
-        "__DATA__": _inline(ledger_data),
+        "__DATA__": _inline(readable_ledger(ledger_data)),
+        "__NONCONF__": _inline(nonconforming(ledger_data)),
         "__DERIVED__": _inline(derived_rungs(ledger_data)),
         "__WEAK_POLICIES__": _inline(weak_policies(ledger_data)),
         # the schema's own set, so the page cannot fall behind it (v0.16 added `deferred`)

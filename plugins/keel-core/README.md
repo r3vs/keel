@@ -267,7 +267,7 @@ needs a container and a key, so it stays opt-in.
 
 ## Shared doctrine
 
-`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.22), the interview
+`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.23), the interview
 funnel, the brainstorm protocol, the field-shape engine, contract testing, the feedback loop, the
 static-analysis and knowledge-source doctrines, the assumption-surfacing rule, the agent roster, the
 model tiers, and the self-model.

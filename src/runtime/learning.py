@@ -59,8 +59,8 @@ def divergences(ledger) -> dict:
     """
     out = {"brainstorm_vs_election": [], "upheld_challenges": [], "failures": [], "reopens": [],
            "unmatched_elections": [], "determinism": "D0"}
-    events = ledger.data["decision_log"]
-    for pin in ledger.data["pins"]:
+    events = ledger.readable("decision_log")
+    for pin in ledger.readable_pins():
         proposals = ((pin.get("brainstorm") or {}).get("proposals")) or []
         recommended = next((p for p in proposals if p.get("recommended")), None)
         decision = pin.get("decision")

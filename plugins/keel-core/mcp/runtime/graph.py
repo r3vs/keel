@@ -258,7 +258,8 @@ def anchor_ledger(ledger_data: dict, graph: Graph, head: Optional[str] = None,
             report["skipped_stale"] = True
             return report
 
-    for pin in ledger_data.get("pins", []):
+    from ledger import read_collection
+    for pin in read_collection(ledger_data, "pins"):
         for a in pin.get("anchors", []):
             report["anchors_total"] += 1
             nid = str(a["node_id"]) if a.get("node_id") else None

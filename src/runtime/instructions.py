@@ -202,15 +202,28 @@ _NOTE_LINES = 2
 #: so it is refused.
 _MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + 4
 
-_SEVERITY_RANK = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
-
-
 def _fingerprint(body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
 
 
 def _order(pin: dict) -> tuple:
-    return (_SEVERITY_RANK.get(pin.get("severity", "low"), 9), str(pin.get("id", "")))
+    """Severity then id, through the schema's own ordering — and the table this module used to keep
+    is gone (v0.23).
+
+    It read a MISSING severity as `low` and an unrecognised one as 9, so a pin whose file says
+    nothing about how bad it is sorted AHEAD of a pin that states a severity outside the set — in
+    the section a tight budget clips first. `ledger.severity_rank` says the opposite, with an
+    argument (`pin_read`): an unrankable severity is not evidence of anything, and *missing* and
+    *unrecognised* are the same amount of nothing. Two surfaces ordering the same pins by two
+    tables, the newer one contradicting the older's argued direction; one of them had to go, and it
+    is the one that carried no argument.
+
+    Both fields come through `pin_read`, which is also what stops `severity` being used as a dict
+    key: a list severity is unhashable, and that is how the whole projection died on one pin.
+    """
+    from ledger import pin_read, severity_rank
+    read = pin_read(pin)
+    return (severity_rank(read["severity"]), read["id"])
 
 
 def _pin_line(pin: dict) -> str:
@@ -235,13 +248,20 @@ def _pin_line(pin: dict) -> str:
     `_evidence_note` and the leave-as-is section make: nothing on the common case, a clause where the
     default reading would be false. The substate is not compared to a name — `ledger.REOPENED_SUBSTATES`
     owns that set, for the reason the module docstring gives about every set the schema owns.
+
+    Every field it indexes comes through `pin_read` (v0.23). Two of them killed this function over
+    real stdio on ordinary malformations — `.strip()` on a title that was an object, `.get()` on a
+    `decision` that was a string — and the file it kills is `AGENTS.md`, the one thing every host
+    loads unprompted. `kind` stays a plain `.get`: it is only interpolated, never indexed, so
+    substituting it would be inventing a claim about the pin rather than avoiding a crash.
     """
-    from ledger import REOPENED_SUBSTATES
+    from ledger import REOPENED_SUBSTATES, pin_read
+    read = pin_read(pin)
     kind = pin.get("kind", "other")
     if kind == "other" and pin.get("kind_detail"):
         kind = f"other:{pin['kind_detail']}"
-    line = f"- `{pin.get('id', '?')}` [{kind}] {pin.get('title', '').strip()}"
-    outcome = (pin.get("decision") or {}).get("outcome")
+    line = f"- `{read['id'] or '?'}` [{kind}] {read['title'].strip()}"
+    outcome = read["decision"].get("outcome")
     if outcome:
         line += f" — **{outcome}**"
         substate = pin.get("substate")
@@ -282,9 +302,10 @@ def _evidence_note(data: dict) -> list:
     rules those are is `ledger.policy_weakness`'s answer and not this module's (v0.16) — the two
     surfaces that report it must not be able to disagree about the count.
     """
-    events = [e for e in (data.get("decision_log") or [])
-              if isinstance(e, dict) and str(e.get("id", "")).startswith("ev_")]
-    policies = [p for p in (data.get("policies") or []) if isinstance(p, dict)]
+    from ledger import read_collection
+    events = [e for e in read_collection(data, "decision_log")
+              if str(e.get("id", "")).startswith("ev_")]
+    policies = read_collection(data, "policies")
     sentences = []
     if events:
         # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`,
@@ -385,12 +406,14 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
             f"file. Minimum {_MIN_LINES}. Refusing rather than silently overrunning the budget — an "
             f"exceeded cap that reports success is the failure this budget exists to prevent."
         )
-    # v0.21: only the entries a reader can index. Every read below is already a `.get`, so the six
-    # pin shapes that took `summary` down never reached here — but a `pins` entry that is not an
-    # object has no `.get` at all, and this is the projection every host loads unprompted. The
-    # dropped entry is reported by `nonconforming` under `entry_shape`, on the same file.
-    pins = [p for p in (data.get("pins") or []) if isinstance(p, dict)]
-    policies = [p for p in (data.get("policies") or []) if isinstance(p, dict)]
+    # v0.21 filtered the two collections here, inline; v0.23 asks the carrier, because a rule with a
+    # copy in every reader is the thing this file's own module docstring keeps finding one surface
+    # over. `read_collection` is `Ledger.readable`'s body — this function holds no `Ledger`, which is
+    # exactly why the guard on the method never reached it. What is dropped is reported by
+    # `nonconforming` under `entry_shape` / `collection_shape`, on the same file.
+    from ledger import read_collection
+    pins = read_collection(data, "pins")
+    policies = read_collection(data, "policies")
 
     head = ([line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
             + _evidence_note(data))
@@ -398,16 +421,21 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     # The two sets are the ledger's, not this module's (see the module docstring). Imported here
     # rather than at module scope for the same reason `_evidence_note` imports what it needs: the
     # rule has one implementation, in the module that owns the schema.
-    from ledger import LEAVE_AS_IS_STATES, OPEN_STATES, SETTLED_STATES
+    from ledger import LEAVE_AS_IS_STATES, OPEN_STATES, SETTLED_STATES, policy_read
     settled = sorted((p for p in pins if p.get("state") in SETTLED_STATES), key=_order)
     build_on = [p for p in settled if p.get("state") not in LEAVE_AS_IS_STATES]
     leave_as_is = [p for p in settled if p.get("state") in LEAVE_AS_IS_STATES]
     openp = sorted((p for p in pins if p.get("state") in OPEN_STATES), key=_order)
+    # `policy_read` for the two fields this line INDEXES — `.strip()` on the rule and `.items()` on
+    # the scope, both of which killed the whole projection on a hand-written policy (v0.23).
+    # `default_outcome` is interpolated and not indexed, so it stays a plain `.get` for the reason
+    # `_pin_line` gives about `kind`.
+    reads = [(policy_read(p), p) for p in policies]
     sections = [
         ("Standing rules",
-         [f"- {p.get('rule', '').strip()} *(applies to "
-          f"{', '.join(f'{k}={v}' for k, v in (p.get('applies_to') or {}).items()) or 'all pins'}; "
-          f"default: {p.get('default_outcome')})*" for p in policies],
+         [f"- {r['rule'].strip()} *(applies to "
+          f"{', '.join(f'{k}={v}' for k, v in r['applies_to'].items()) or 'all pins'}; "
+          f"default: {p.get('default_outcome')})*" for r, p in reads],
          "see `policies` in the ledger"),
         ("Settled — build on these", [_pin_line(p) for p in build_on], "run `ledger_summary`"),
         ("Settled — elected NOT to be built ("

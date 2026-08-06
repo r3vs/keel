@@ -74,19 +74,24 @@ def _open_pins_in_zone(ledger_data: dict, zone_files: set) -> list[dict]:
     You are about to build on ground that the ledger already says is broken. No new signal needed:
     this is the package's own state read back at the moment it matters most.
     """
+    # Through the guarded read, and ordered by the schema's own table (v0.23): this function kept a
+    # third copy of the four severity pairs, and a copy is how the projection one module over came
+    # to sort a pin with no severity ahead of a pin with an unrecognised one.
+    from ledger import pin_read, read_collection, severity_rank
     out = []
-    for p in ledger_data.get("pins", []):
+    for p in read_collection(ledger_data, "pins"):
         if p.get("state") in _DONE_STATES:
             continue
-        hits = [a for a in p.get("anchors", [])
-                if (a.get("loc") or "").split(":")[0] in zone_files]
+        anchors = p.get("anchors")
+        hits = [a for a in (anchors if isinstance(anchors, list) else [])
+                if isinstance(a, dict) and (a.get("loc") or "").split(":")[0] in zone_files]
         if hits:
-            out.append({"pin": p["id"], "severity": p.get("severity"),
-                        "kind": p.get("kind"), "state": p.get("state"),
-                        "title": p.get("title"),
+            read = pin_read(p)
+            out.append({"pin": read["id"], "severity": p.get("severity"),
+                        "kind": p.get("kind"), "state": read["state"],
+                        "title": read["title"],
                         "anchors_in_zone": [a.get("loc") for a in hits]})
-    order = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
-    return sorted(out, key=lambda x: (order.get(x["severity"], 4), x["pin"]))
+    return sorted(out, key=lambda x: (severity_rank(str(x["severity"] or "")), x["pin"]))
 
 
 def _churn(repo: str, files: Iterable[str], since: str = "") -> dict:

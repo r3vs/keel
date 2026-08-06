@@ -371,10 +371,40 @@ class TestTheSafePathIsTheOnlyPath(unittest.TestCase):
                          "the page writes markup in more than one place (or a comment says the "
                          "word). Every write goes through `mount`, which escapes anything that is "
                          "not an assembled fragment — a second sink is a second escaping rule.")
-        line = next(ln for ln in body.splitlines() if "innerHTML" in ln)
-        self.assertIn("function mount(", line)
+        sink_line = next(i for i, ln in enumerate(body.splitlines()) if "innerHTML" in ln)
+        opener = next(i for i, ln in enumerate(body.splitlines()) if "function mount(" in ln)
+        self.assertLess(opener, sink_line, "the one write is outside `mount`")
+        self.assertLess(sink_line - opener, 8, "the one write is not in `mount`'s own body")
         for sink in self.SINKS:
             self.assertNotIn(sink, body, f"{sink} bypasses `mount` and its escaping")
+
+    #: `mount(` appears once as its own definition; every other occurrence is a call.
+    def test_every_call_to_the_sink_hands_it_a_thunk_and_not_a_node(self):
+        """v0.23 — the sink is also the page's one failure boundary, and that only works if the
+        node is built INSIDE it.
+
+        `mount(id, node)` evaluated its argument at the call site, so anything that threw while
+        building one threw before the sink was reached: the pane was never written and the page said
+        nothing. Reproduced in Chromium on a pin whose `brainstorm.proposals` was a string — the
+        list rendered, the row showed as selected, and the detail pane stayed empty.
+
+        A call that passes an already-built node is that bug again, one card later, so it is not a
+        thing you can write here. Same limit as the class above: this reads our own template as
+        text; the rendered half is the preview walk and the browser run recorded in
+        `docs/open-gaps.md` §22."""
+        body = mapmod._TEMPLATE
+        sites = [seg for seg in body.split("mount(")[1:]
+                 if not seg.startswith("id,build,subject")]      # the definition is not a call
+        self.assertGreaterEqual(len(sites), 5,
+                                "the mount call sites vanished — this guard is vacuous")
+        # The second argument, up to the first comma or paren that follows it. Two legitimate
+        # shapes and no others: an arrow that builds nothing until `mount` calls it, or the bare
+        # name of a function. A value expression is the bug.
+        offenders = [s[:60] for s in sites
+                     if not re.match(r"[^,]+,\s*(\(\)\s*=>|[A-Za-z_$][\w$]*\s*[,)])", s)]
+        self.assertEqual(offenders, [],
+                         f"a mount call evaluates its node at the call site: {offenders} — "
+                         "anything that throws there throws outside the one boundary this page has")
 
     def test_only_the_tagged_template_can_produce_an_unescaped_fragment(self):
         """`frag` escapes everything that is not an `H`, so `new H(` IS the escape hatch. There is
@@ -425,6 +455,111 @@ class TestNothingInTheDataCanEndTheDocument(unittest.TestCase):
     def test_the_document_still_closes_after_the_script(self):
         html = self._rendered()
         self.assertIn("</script></body></html>", html.replace("\n", ""))
+
+
+class TestThePageIsRenderedFromWhatAReaderCanIndex(unittest.TestCase):
+    """v0.23 — the map was the last surface still projecting a ledger it had not read through the
+    guarded path, and it failed in both directions at once.
+
+    A `null` entry in `pins`, or a `pins` that is not a list, threw inside the page's own
+    `trafficLight` — which runs before anything is mounted, so the document rendered its header and
+    NOTHING, under a full green bar, while `render_map` returned `{"written": …}` with
+    `isError: false`. Observed in Chromium. One collection over, a non-object entry in
+    `decision_log` or `policies` made `render` itself raise in Python.
+
+    Both halves have one answer and it is the schema's: `readable_ledger` is what this module
+    renders. What that DROPPED is the second half — `nonconforming` reaches the page as a banner,
+    which it had never done on any file, though `ledger_summary` reported it in the same session."""
+
+    #: Every malformation reproduced over stdio against the shipped server, as raw ledger data.
+    BROKEN = {
+        "a null pin": {"pins": [None]},
+        "pins is not a list": {"pins": "everything is fine"},
+        "a log entry is a string": {"decision_log": ["ev_0001 happened"]},
+        "decision_log is not a list": {"decision_log": {"ev_0001": "happened"}},
+        "a policy is a string": {"policies": ["always prefer X"]},
+        "policies is not a list": {"policies": None},
+    }
+
+    @staticmethod
+    def _base() -> dict:
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(kind="defect", title="an ordinary pin", severity="high",
+                    confidence="extracted", provenance=[{"source": "recon", "detail": "x"}])
+        return led.data
+
+    def test_render_answers_on_every_shape_instead_of_raising(self):
+        for name, override in self.BROKEN.items():
+            with self.subTest(shape=name):
+                data = dict(self._base())
+                data.update(override)
+                mapmod.render(data, title=name)
+
+    def test_the_page_is_handed_no_entry_the_schema_does_not_describe(self):
+        """The property that makes the page's own JavaScript safe without a second guard written in
+        a second language: whatever the file holds, `LEDGER.pins` is a list of objects."""
+        for name, override in self.BROKEN.items():
+            with self.subTest(shape=name):
+                data = dict(self._base())
+                data.update(override)
+                html = mapmod.render(data, title=name)
+                payload = json.loads(html.split("const LEDGER =", 1)[1].split(";\n", 1)[0]
+                                     .replace("\\u003c", "<"))
+                for collection in ("pins", "decision_log", "policies"):
+                    self.assertIsInstance(payload[collection], list, collection)
+                    for entry in payload[collection]:
+                        self.assertIsInstance(entry, dict,
+                                              f"{collection} carries a non-object into the page")
+
+    def test_what_the_guard_dropped_is_on_the_page_and_not_merely_absent(self):
+        """A count that silently shrinks is the map telling a human there is less here than there
+        is — the same claim a blank page makes, made quietly."""
+        from ledger import nonconforming
+        for name, override in self.BROKEN.items():
+            with self.subTest(shape=name):
+                data = dict(self._base())
+                data.update(override)
+                html = mapmod.render(data, title=name)
+                inlined = json.loads(html.split("const NONCONF =", 1)[1].split(";\n", 1)[0]
+                                     .replace("\\u003c", "<"))
+                self.assertEqual(inlined, nonconforming(data),
+                                 "the page's report is not the file's own report")
+                self.assertTrue(inlined, f"{name} reaches the page as nothing at all")
+
+    def test_every_rule_the_report_can_name_has_a_sentence_on_the_page(self):
+        """`NONCONF_WHY` is a closed table over the rule names the schema can produce, held to them
+        the way every other closed table this page reads is held to its tuple — so a rule added to
+        any of the three arrives here instead of printing as a bare token.
+
+        **Its first draft quantified over two of the three tuples and the browser walk caught it**:
+        the hostile ledger put `committing_source` and `flip_criteria` on the page reading *"no
+        sentence here describes this rule"*. `EVENT_RULES` is the log half and is exactly as
+        reportable as the other two."""
+        import ledger as ledger_mod
+        table = mapmod._TEMPLATE.split("const NONCONF_WHY={", 1)[1].split("};", 1)[0]
+        keys = set(re.findall(r"^\s*(\w+):", table, re.MULTILINE))
+        produced = ({n for n, _h, _m in ledger_mod.PIN_RULES}
+                    | {n for n, _h, _m in ledger_mod.POLICY_RULES}
+                    | {n for n, _h, _m in ledger_mod.EVENT_RULES}
+                    | {"collection_shape", "entry_shape", "log_entry_kind"})
+        self.assertEqual(produced - keys, set(),
+                         "a rule `nonconforming` can report has no sentence on the page")
+
+    def test_the_map_counts_what_ledger_summary_counts(self):
+        """They used to be the raw array lengths, so the map and the tool an agent calls before
+        acting reported two different totals for one file."""
+        for name, override in self.BROKEN.items():
+            with self.subTest(shape=name):
+                tmp = os.path.join(tempfile.mkdtemp(), "ledger.json")
+                data = dict(self._base())
+                data.update(override)
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    json.dump(data, fh)
+                html = mapmod.render(data, title=name)
+                payload = json.loads(html.split("const LEDGER =", 1)[1].split(";\n", 1)[0]
+                                     .replace("\\u003c", "<"))
+                self.assertEqual(len(payload["pins"]), Ledger(tmp).summary()["pins"],
+                                 "the map and `ledger_summary` disagree about one file")
 
 
 class TestTheSurfacesAgreeAboutOneLedger(unittest.TestCase):

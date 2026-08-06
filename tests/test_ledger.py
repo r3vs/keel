@@ -2547,6 +2547,25 @@ class TestReadingAPinIsNeverTheOperationThatFails(unittest.TestCase):
         "pins is absent": lambda d: d.pop("pins"),
         "decision_log is absent": lambda d: d.pop("decision_log"),
         "policies is absent": lambda d: d.pop("policies"),
+        # v0.23 — every one of these was reproduced over stdio against the SHIPPED server, on the
+        # two surfaces this class's own `test_no_reading_surface_dies_on_any_of_them` walks and
+        # never caught: they are the PROJECTIONS, and neither builds a `Ledger`.
+        "a pin is null": lambda d: d["pins"].append(None),
+        "pins is not a list": lambda d: d.update(pins="everything is fine"),
+        "decision_log is not a list": lambda d: d.update(decision_log={"ev_0001": "happened"}),
+        "policies is not a list": lambda d: d.update(policies=None),
+        "a log entry is a string": lambda d: d["decision_log"].append("ev_0001 happened"),
+        "a policy is a string": lambda d: d["policies"].append("always prefer X"),
+        "severity is a list": lambda d: d["pins"][0].update(severity=["high"]),
+        "title is not a string": lambda d: d["pins"][0].update(title={"text": "nope"}),
+        "decision is a string": lambda d: d["pins"][0].update(state="decided",
+                                                              decision="ev_0001"),
+        "a policy rule is not a string": lambda d: d["policies"].append(
+            {"id": "pol_0001", "rule": ["prefer", "X"], "applies_to": {},
+             "default_outcome": "opt_a"}),
+        "a policy scope is a string": lambda d: d["policies"].append(
+            {"id": "pol_0002", "rule": "prefer X", "applies_to": "everything",
+             "default_outcome": "opt_a"}),
     }
 
     def _broken(self, mutate) -> tuple:
@@ -2589,6 +2608,15 @@ class TestReadingAPinIsNeverTheOperationThatFails(unittest.TestCase):
             "a pin is not an object": "entry_shape",
             "pins is absent": "collection_shape",
             "decision_log is absent": "collection_shape",
+            "a pin is null": "entry_shape",
+            "pins is not a list": "collection_shape",
+            "a log entry is a string": "entry_shape",
+            "a policy is a string": "entry_shape",
+            "severity is a list": "pin_severity",
+            "title is not a string": "pin_title",
+            "decision is a string": "pin_decision",
+            "a policy rule is not a string": "policy_rule",
+            "a policy scope is a string": "policy_applies_to",
         }
         for name, rule in expected.items():
             with self.subTest(shape=name):
@@ -2669,6 +2697,144 @@ class TestReadingAPinIsNeverTheOperationThatFails(unittest.TestCase):
         self.assertEqual(set(ledger_mod.INTERVIEW_STATES),
                          set(ledger_mod.OPEN_STATES) - {"detected"},
                          "the interview reads every open state but the one that poses no fork")
+
+
+class TestReadingAPolicyIsNeverTheOperationThatFails(unittest.TestCase):
+    """v0.23 — `pin_read`'s twin, and it exists because the pin half was fixed alone.
+
+    `instructions.render` called `.strip()` on `policy["rule"]` and `.items()` on
+    `policy["applies_to"]`, on the collection whose CONTAINER the same function had already learned
+    to guard one line above. Reproduced over stdio against the shipped server: a policy whose scope
+    is a string returned `'str' object has no attribute 'items'` from `generate_instructions`, which
+    writes the one file every host loads unprompted.
+
+    Same three assertions the pin half carries, because it is the same mechanism: the read
+    substitutes, a rule reports that it did, and the write cannot produce a record either refuses.
+    """
+
+    def test_every_field_the_policy_read_substitutes_has_a_rule_that_reports_it(self):
+        from ledger import POLICY_RULES, policy_read
+        self.assertEqual({name.removeprefix("policy_") for name, _h, _m in POLICY_RULES},
+                         set(policy_read({})),
+                         "a guarded read and a reported rule are two halves of one mechanism")
+
+    def test_no_policy_this_runtime_writes_can_break_one_of_these_rules(self):
+        """The claim the one-caller table rests on, asserted rather than argued — `set_policy`'s
+        twin of `add_pin`'s."""
+        from ledger import POLICY_EVIDENCE, policy_violations
+        led = make_ledger()
+        for evidence in POLICY_EVIDENCE:
+            for scope in ({"kind": "contract_mismatch"}, {}):
+                policy = led.add_policy(rule="the DB wins on nullability", applies_to=scope,
+                                        default_outcome="opt_a", evidence=evidence,
+                                        human_answer="the DB is the source of truth")
+                self.assertEqual(policy_violations(policy), [],
+                                 f"set_policy composed a {evidence} policy the read path cannot "
+                                 f"index")
+
+    def test_an_unreadable_scope_is_read_as_the_widest_one_and_not_the_narrowest(self):
+        """The substitution has a direction and it is the honest one. `{}` as a scope is the
+        UNIVERSAL selector, so a rule whose radius cannot be read is shown at its widest — the
+        alternative is a surface quietly telling a human that a rule they are about to elect binds
+        less than it might."""
+        from ledger import policy_read
+        self.assertEqual(policy_read({"id": "pol_0001", "rule": "x",
+                                      "applies_to": "everything"})["applies_to"], {})
+
+
+class TestOneSeverityOrderingForTheWholePackage(unittest.TestCase):
+    """`instructions._SEVERITY_RANK` read a MISSING severity as `low` and an unrecognised one as 9,
+    so a pin whose file says nothing about how bad it is sorted AHEAD of a pin that states a
+    severity outside the set — in the section a tight line budget clips first. `severity_rank` says
+    the opposite and carries the argument for it. Two surfaces, two tables, and the newer one
+    contradicted the older's argued direction.
+
+    Three copies existed (`instructions`, `readiness`, `findings`). The gate is derived from
+    `SEVERITIES` itself, so a fourth fails on the day it is written rather than on the day someone
+    reads for it."""
+
+    def test_the_direction_is_the_one_pin_read_argues_for(self):
+        from ledger import pin_read, severity_rank
+        stated = severity_rank(pin_read({"severity": "low"})["severity"])
+        missing = severity_rank(pin_read({})["severity"])
+        unknown = severity_rank(pin_read({"severity": "catastrophic"})["severity"])
+        self.assertLess(stated, missing,
+                        "a severity the file states must sort ahead of one it does not")
+        self.assertEqual(missing, unknown,
+                         "missing and unrecognised are the same amount of nothing — reading one of "
+                         "them as `low` is reading a claim the file does not make")
+
+    def test_no_module_but_the_schema_carries_a_severity_ordering(self):
+        """A dict literal mapping severity names to numbers, anywhere in the runtime or the MCP
+        layer, IS a second ordering. Membership is `SEVERITIES`, so the gate cannot fall behind the
+        vocabulary; two names is the threshold because one pair is not an ordering."""
+        import ast
+        import pathlib
+        from ledger import SEVERITIES
+        root = pathlib.Path(__file__).resolve().parent.parent / "src"
+        offenders = []
+        for path in sorted(list((root / "runtime").glob("*.py"))
+                           + list((root / "mcp").glob("*.py"))):
+            if path.name == "ledger.py":
+                continue                     # the one home of the table
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Dict):
+                    continue
+                keys = {k.value for k in node.keys
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+                ranked = all(isinstance(v, ast.Constant) and isinstance(v.value, int)
+                             for v in node.values) and bool(node.values)
+                if ranked and len(keys & set(SEVERITIES)) >= 2:
+                    offenders.append(f"{path.name}:{node.lineno}")
+        self.assertEqual(offenders, [],
+                         f"a second severity ordering lives at {offenders} — `severity_rank` is "
+                         "the one table, and the last copy of it disagreed with it")
+
+
+class TestEveryReaderOfACollectionGoesThroughTheCarrier(unittest.TestCase):
+    """The gate for the class this whole round is: **a rule paid at a class's methods is unpaid for
+    every caller that holds the class's DATA instead of the class.**
+
+    `Ledger.readable` guarded the three collections in v0.21. `map.render` and
+    `instructions.render` read a ledger as JSON and never build a `Ledger`, so both walked
+    `data.get("policies") or []` and called `.get` on whatever came out — four reproductions over
+    stdio, all `'str' object has no attribute 'get'`, on files `ledger_summary` reported the
+    nonconformance of in the same session. Two rounds of hardening the read path went straight past
+    them because nothing asked *who else names these collections*.
+
+    So: naming one of `LEDGER_COLLECTIONS` as a subscript or a `.get` key, outside the module that
+    owns the schema, is what this forbids. The names come from the tuple, so a fourth collection is
+    covered the day it is declared. `ledger.py` is excluded because it is the carrier's home AND the
+    WRITE path, which deliberately keeps `self.data[…]` — a write onto a file this runtime cannot
+    read is a different question, and the answer there is to refuse."""
+
+    def test_no_module_but_the_schema_indexes_a_collection_directly(self):
+        import ast
+        import pathlib
+        from ledger import LEDGER_COLLECTIONS
+        root = pathlib.Path(__file__).resolve().parent.parent / "src"
+        names = set(LEDGER_COLLECTIONS)
+        offenders = []
+        for path in sorted(list((root / "runtime").glob("*.py"))
+                           + list((root / "mcp").glob("*.py"))):
+            if path.name == "ledger.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
+                        and node.slice.value in names and isinstance(node.ctx, ast.Load)):
+                    offenders.append(f"{path.name}:{node.lineno} [{node.slice.value!r}]")
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "get" and node.args
+                        and isinstance(node.args[0], ast.Constant)
+                        and node.args[0].value in names):
+                    offenders.append(f"{path.name}:{node.lineno} .get({node.args[0].value!r})")
+        self.assertEqual(offenders, [],
+                         f"a collection is read outside the guarded path at {offenders} — "
+                         "`read_collection` / `readable_ledger` / `Ledger.readable` is the one "
+                         "door, and every reader that skipped it died on a shape the same file's "
+                         "`ledger_summary` reported")
 
 
 if __name__ == "__main__":

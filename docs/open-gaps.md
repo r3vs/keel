@@ -11,9 +11,9 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06 (seventh pass).** **§1–§17 and §19–§21 are all closed.** Nothing on this list
+> **STATUS 2026-08-06 (eighth pass).** **§1–§17 and §19–§22 are all closed.** Nothing on this list
 > is open. **§18** is not a defect but the standing answer to the question this register exists to
-> ask: *after eleven adversarial rounds, which recurring class still has no gate?* **§19** was the
+> ask: *after twelve adversarial rounds, which recurring class still has no gate?* **§19** was the
 > ninth round's answer — §5 built a new surface and left four rules its siblings enforce — and
 > **§20** is the tenth's, which is that question asked **backwards**: two sections were closed
 > correctly and each left the other half of its own claim standing. §7 guarded a true sentence with
@@ -22,8 +22,13 @@ wrong* is the part that stops it coming back.
 > six shapes. **§21** is the eleventh's, and it is the same question asked of the CARRIERS a
 > predicate decides from: the way back into the open set rewrote the state and left standing every
 > other carrier a settlement door reads, so a pin reopened **by an incident** re-closed on the
-> evidence the incident had refuted. **A closed section is a claim about a class, and the class is
-> where the next instance lives.**
+> evidence the incident had refuted. **§22** is the twelfth's, and it names the class in its
+> sharpest form yet: *a rule paid at a class's METHODS is unpaid for every caller that holds the
+> class's DATA instead of the class* — both projections read a ledger as JSON and never build a
+> `Ledger`, so two rounds of hardening the read path went past them, `render_map` reported success
+> over a page that rendered nothing, and `generate_instructions` died on five ordinary
+> malformations. **A closed section is a claim about a class, and the class is where the next
+> instance lives.**
 >
 > | # | Gap | One line |
 > |---|---|---|
@@ -44,6 +49,7 @@ wrong* is the part that stops it coming back.
 > | ~~19~~ | ~~four rules true on one side of a pairing, absent on the other~~ | **CLOSED** — the reopen half held to the settlement half's own rules; one residual registered, not built |
 > | ~~20~~ | ~~two closures that held for one half of what they claimed~~ | **CLOSED** — §7's guard reads the interview's own states; §17g's principle reaches the pins; the envelope gate stopped being a word search |
 > | ~~21~~ | ~~the reopen leaves the carriers the settlement doors gate on~~ | **CLOSED** — one declared table of carriers, held to the predicate's own AST; the derived read-tool gate then found three more readers |
+> | ~~22~~ | ~~the two projections read a ledger nobody had guarded~~ | **CLOSED** — `readable_ledger` is the one door for a caller holding ledger data; `nonconforming` reaches the page; `mount` is the page's one failure boundary; six new gates |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -65,8 +71,9 @@ wrong* is the part that stops it coming back.
 > | 19. four rules true on one side of a pairing | ledger v0.20 | `ledger.LOG_ENTRY_PREFIXES`'s `cas_` + `_reopen_minimal`'s per-pin `CascadeEvent`; `Ledger.cascaded_by`, called by both arcs' tools; `ledger._CHALLENGE_SOURCES` on `challenge` **and** `premortem`; `add_proposals`'s `CLOSED_STATES` refusal; `allow_freeform` inside `_validate_question`; gates `tests/test_ledger.py::TestEveryForkThisRuntimeComposes` and the seven new cases in `TestComingBackIntoTheOpenSetIsGovernedToo` |
 > | 21. the reopen leaves the settlement doors' carriers standing | ledger v0.22 | `ledger.SETTLEMENT_CARRIERS` + `REOPEN_DISPOSITIONS`, paid by `_reopen_minimal` -> `Ledger._invalidate_settlement_claims`; the `substate` clear moved into `_settle`; `unasked_verdict` · `question_offers` · `policy_preview` through `pin_read`/`readable_pins`, and `buildloop.py` · `agentready.py` · `challenger.py` with them; `add_proposals`'s fork requirement; gates `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheirCarriers` and `tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape` (roster derived from `readOnlyHint`) |
 > | 7. + 17g. two closures that held for one half | ledger v0.21 | `ledger.INTERVIEW_STATES`, read by `interview_view` and inlined as the map's `__ASKABLE__`; `map.py`'s `outOfReach` / `forkOptions` around `modeLine`; `Ledger.readable` + `ledger.pin_read` + `severity_rank` + `ledger.PIN_RULES` (with `collection_shape` / `entry_shape` in `nonconforming`); `ledger._MAY_BE_SILENT`; gates `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails` and `tests/test_map.py::code_only` with its two plants |
+> | 22. the two projections read a ledger nobody had guarded | ledger v0.23 | `ledger.read_collection` + `readable_ledger` (with `Ledger.readable` delegating to them), read by `map.render` · `instructions.render` · `graph` · `readiness` · `learning` · `agentready` · `mcp/tools`; `pin_read`'s `title`/`decision` and `ledger.POLICY_RULES` + `policy_read`; `severity_rank` as the package's ONE ordering; the map's `NONCONF_WHY` banner, its honest traffic light and `mount`'s thunk boundary; `build.py::_debris` + `shipped_files`; gates `tests/test_ledger.py::TestEveryReaderOfACollectionGoesThroughTheCarrier` · `TestOneSeverityOrderingForTheWholePackage` · `TestReadingAPolicyIsNeverTheOperationThatFails`, `tests/test_map.py::TestThePageIsRenderedFromWhatAReaderCanIndex` and the thunk row in `TestTheSafePathIsTheOnlyPath` |
 >
-> **Closed does not mean nothing remains.** Seven residuals are recorded inside closed sections
+> **Closed does not mean nothing remains.** Eight residuals are recorded inside closed sections
 > rather than fixed, each with the argument for leaving it — read the section before re-finding one:
 >
 > - **§5** — `_reopen_minimal` cascades over `("decided", "resolved", "accepted")`, three states where
@@ -93,6 +100,11 @@ wrong* is the part that stops it coming back.
 >   gate reported three of the four on its first run, because `build_waves` / `agent_ready` /
 >   `challenge_oracle` are read-only MCP tools taking nothing but a ledger path — which is the same
 >   class *and* the same exposure. `learning.divergences` passed the gate and is left as it was.
+> - **§22** — `learning.divergences` and `agentready._challenges_for` read their COLLECTIONS through
+>   the carrier now (§22's AST gate forces that) and still index the fields *inside* a pin or an
+>   event directly. Left as it is, with the same argument `_pin_line` makes about `kind`: a field
+>   that is only interpolated is not a field that is indexed, and substituting one with no failing
+>   case is a change with no carrier.
 > - **§3** — the two below.
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
@@ -1970,6 +1982,18 @@ gate reads the predicate's own AST. The second row is the one worth copying: a r
 **derived from the server's own `readOnlyHint`**, exercised against broken pin shapes — and its
 first run reported three readers nobody had read for, which is the §20 residual closing itself.
 
+**§22 is the twelfth's, and it adds six rows — the most mechanizable round yet, because its question
+is lexical.** Two rounds hardened the ledger read path and neither reached `map.render` or
+`instructions.render`. The reason is one sentence and it generalises: **a rule paid at a class's
+METHODS is unpaid for every caller that holds the class's DATA instead of the class.** That is
+decidable by an AST walk — *who names one of these collections* — where the sibling question is not,
+and the answer is set equality against a tuple the schema owns. Its first two rows are that walk and
+its severity twin; its last two are the same question asked of a page and of a build script rather
+than of the runtime, which is where the class had also been sitting unlooked-at. §22 also produced
+this section's cheapest lesson yet, and it did **not** come from a gate: the browser walk showed two
+rule names on the map reading *"no sentence here describes this rule"*, because the table's first
+draft quantified over two of the schema's three rule tuples. **Look at the thing.**
+
 ### Gated
 
 **A new surface arrives without the invariant that governs the old one.** The register's most
@@ -1993,6 +2017,12 @@ added rather than on the day someone reads for it:
 | every field the read path substitutes, reported by a rule | `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails::test_every_field_the_read_path_substitutes_has_a_rule_that_reports_it` (2026-08-06 — §20) |
 | every carrier a settlement door reads, with what the reopen owes it | `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheirCarriers::test_every_carrier_a_settlement_door_reads_has_a_declared_disposition` (2026-08-06 — §21) |
 | every read-only ledger tool, against a broken pin | `tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape` — roster derived from `readOnlyHint` (2026-08-06 — §21) |
+| every module that names one of the ledger's collections | `tests/test_ledger.py::TestEveryReaderOfACollectionGoesThroughTheCarrier` — names from `LEDGER_COLLECTIONS`, AST over `src/runtime` + `src/mcp` (2026-08-06 — §22) |
+| every severity ordering in the package | `tests/test_ledger.py::TestOneSeverityOrderingForTheWholePackage::test_no_module_but_the_schema_carries_a_severity_ordering` — membership from `SEVERITIES` (2026-08-06 — §22) |
+| every field `policy_read` substitutes, reported by a rule | `tests/test_ledger.py::TestReadingAPolicyIsNeverTheOperationThatFails` — `pin_read`'s twin for the third collection (2026-08-06 — §22) |
+| every rule `nonconforming` can report, given a sentence on the map | `tests/test_map.py::…::test_every_rule_the_report_can_name_has_a_sentence_on_the_page` — union of `PIN_RULES` + `POLICY_RULES` + `EVENT_RULES` (2026-08-06 — §22) |
+| every call to the page's one DOM sink, passing a thunk | `tests/test_map.py::TestTheSafePathIsTheOnlyPath::test_every_call_to_the_sink_hands_it_a_thunk_and_not_a_node` (2026-08-06 — §22) |
+| the file count `--check` reports, asking the sweep's own question | `tests/test_roster_generation.py::…::test_the_number_reported_as_evidence_counts_the_tree_the_sweep_keeps` (2026-08-06 — §22) |
 
 **The residual, and it is not closable.** Each row gates *one* invariant. The class is *"the
 invariant nobody thought to check at the new door"*, and no gate can enumerate invariants that do
@@ -2300,7 +2330,12 @@ the honest sentence instead.
   reported them without anybody reading for them, because `build_waves` / `agent_ready` /
   `challenge_oracle` are read-only MCP tools taking nothing but a ledger path. The residual was
   right about the class and wrong that these run only over a ledger the agent just built.
-  `learning.divergences` passed the gate and stays as it was.
+  **§22 closed the fourth's container half and left its field half standing, on purpose.**
+  `learning.divergences` and `agentready._challenges_for` read their collections through
+  `Ledger.readable` now — that is forced, by §22's own AST gate — and both still index the fields
+  *inside* a pin or an event directly. That stays registered rather than fixed: it is the same
+  argument `_pin_line` makes about `kind`, one module over. A field only interpolated is not a field
+  indexed, and substituting one without a failing case is a change with no carrier.
 - **Do not "simplify" `modeLine`'s two guards into one.** `SETTLED` and `ASKABLE` answer different
   questions — *is the mode history* and *can the interview reach this at all* — and the right output
   differs: silence for the first, an explanation for the second.
@@ -2430,6 +2465,103 @@ Then over real stdio, from a directory that is not this repo: walk a defect to `
   fork and says `detected`. The refusal is anchored on the fork, so that shape reaches the state
   move, and leaving it `detected` would be the same unreachable write one shape over.
 
+
+---
+
+## 22. The two projections read a ledger nobody had guarded — **CLOSED 2026-08-06** (ledger v0.23)
+
+Seven findings from an adversarial review. Every one was reproduced over real
+`uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd, and the map half was
+then read in Chromium in **both** themes. Same class as §19–§21, and the sharpest statement of it so
+far: **a rule paid at a class's methods is unpaid for every caller that holds the class's data
+instead of the class.** `map.render` and `instructions.render` read a ledger as JSON and never build
+a `Ledger`, which is exactly why two rounds of hardening the read path went straight past them.
+
+### Verified — the seven, and what each did
+
+| | BEFORE | AFTER |
+|---|---|---|
+| **A** [HIGH] `render_map` on a `null` entry in `pins`, and on `pins` that is not a list | `{"written": …}`, `isError: false` — and the page renders its header and **nothing**: no list, no detail pane, no traffic-light text, under a full green bar. Both throw inside `trafficLight`, which runs before anything is mounted. Observed in Chromium. | the page renders; the traffic light reads `0% settled · 1 unreadable`; a banner names `entry_shape → pins[1]` |
+| **B** [HIGH] `render_map` on a non-object entry in `decision_log` / `policies`, and on either not being a list | `isError: true — 'str' object has no attribute 'get'` (four reproductions) | `isError: false`, the entry reported in the banner |
+| **C** [HIGH] `generate_instructions` on five ordinary malformations | `unhashable type: 'list'` · `'dict' object has no attribute 'strip'` · `'str' object has no attribute 'get'` · `'str' object has no attribute 'items'` · `'list' object has no attribute 'strip'` | all five `isError: false`; the region is written |
+| **D** [HIGH] two surfaces ordering the same pins by two severity tables | the `AGENTS.md` region listed `pin_0001` (no severity stated at all) **ahead of** `pin_0003` (`low`) | `pin_0003`, `pin_0001`, `pin_0002` — a severity the file states outranks one it does not |
+| **E** [MEDIUM] the map's totals, and `nonconforming` reaching no surface | full green bar over *"all settled"* on a file whose `pins` is not a list; counts taken off the raw arrays; no nonconformance on the page, ever | `nothing on this file could be read · 1 unreadable`, empty bar, banner; and the map's pin count is `ledger_summary`'s |
+| **F** [MEDIUM] clicking a pin whose `brainstorm.proposals` / `cross_derivations` is not a list | the detail pane stays **blank** in a browser with no console reader, while the list shows the row as selected | a card: *this map could not render this — props.map is not a function*, with the record as the file holds it |
+| **G** [LOW] `build.py --check`'s reported file count | counted `__pycache__`, which the REMOVE sweep twelve lines above excludes — the number quoted as evidence that the tree is in sync counted files the tree does not have | `_debris` is one predicate and both loops ask it |
+
+### Why it matters
+
+A blank map reads as *no findings*. It is the most expensive wrong answer this surface can give, and
+the tool that produced it reported success — the same sentence `_inline` was fixed under one hole
+over, now true of the data rather than of the escaping. `generate_instructions` writes the one file
+every host loads unprompted, so a pin shape that kills it leaves a fresh agent with a blank slate
+about a project that has a fully elected design. And D is worse than a tie broken the wrong way: the
+projection has a hard line budget and clips, so the pin whose file says nothing about how bad it is
+survived a tight budget at the expense of one that states a severity.
+
+### Done looks like
+
+**One path, and it is the one the schema already had.** `Ledger.readable` becomes the module-level
+`read_collection(data, name)`; `readable_ledger(data)` is the whole file with the three collections
+guarded and everything else carried through; both projections read it. `pin_read` gains the two
+fields that killed the second projection (`title`, `decision`), `policy_read` is its twin for the
+third collection, and every substitution has a `PIN_RULES` / `POLICY_RULES` entry so `nonconforming`
+reports that it happened — the existing set-equality gate makes that mandatory rather than
+remembered. `severity_rank` is the package's one severity ordering; the copies in `instructions`,
+`readiness` and `findings` are gone.
+
+**And the surface says what it dropped.** `nonconforming` is inlined and rendered as a banner
+between the header and the panes (a fact about the FILE may not live in a pane one selection
+replaces); the traffic light never reads green while that report is non-empty; and `mount` takes a
+thunk, so the page has exactly one place where a build failure becomes something a reader sees. That
+last one is the answer for everything *inside* a record, which is free-form by kind and cannot be
+enumerated without guessing — the rule is `a surface that cannot render something says so where a
+human reads, never blank and never raised`, not a field table.
+
+### The gates, and the one thing a gate did not catch
+
+Six new rows in §18's table. Eight plants were run and all eight fire — a reader naming a collection
+directly, a second severity table, a mount call that builds its node at the call site, a policy field
+substituted with no rule reporting it, the map handed the file instead of the guarded view,
+`nonconforming` stopped from reaching the page, the file count asking its own question again, and
+the old ordering table restored.
+
+What no gate caught, and what closes the loop on this section's own advice: the **browser walk**
+found that `NONCONF_WHY`'s first draft quantified over `PIN_RULES` and `POLICY_RULES` and forgot
+`EVENT_RULES`, so `committing_source` and `flip_criteria` rendered on the page as *"no sentence here
+describes this rule"*. The gate written beside it had the identical hole, because the round that
+writes a gate is the round least likely to plant against it (§18's standing argument). Both are
+derived from all three tuples now.
+
+### Prove it
+
+```bash
+# a ledger holding every malformation above, over the SHIPPED server from a foreign cwd
+python scripts/build.py
+# render it, then open the file and look — light and dark
+#   render_map      -> isError: false, and the page shows a banner naming what it dropped
+#   ledger_summary  -> the same list under pre_rule_events, and the version is NOT raised
+#   generate_instructions -> isError: false, `low` ahead of a pin that states no severity
+python -m unittest tests.test_ledger tests.test_map tests.test_instructions
+```
+
+### Traps
+
+- **`readable_ledger` copies, it does not rewrite.** `nonconforming` is asked of the ORIGINAL, so the
+  banner describes the file as it stands. A guard that edited the data would be this package
+  silently repairing the artifact it exists to audit.
+- **`policy_read` substitutes `{}` for an unreadable `applies_to`, and `{}` is the UNIVERSAL scope.**
+  That is deliberate and is the widest reading: a scope this runtime cannot read must not quietly
+  narrow the radius a human is shown before they elect the rule.
+- **`kind`, `kind_detail` and `default_outcome` stay plain `.get`s.** They are interpolated, never
+  indexed. Substituting a field that cannot crash is inventing a claim about the record rather than
+  avoiding a failure — the line `_pin_line` and the policy line both state.
+- **The map's `||[]` fallbacks stay** even though the payload is now guaranteed. They cost nothing
+  and the page is a file people copy; what they must not become is the reason someone believes the
+  page is safe. The Python side is the guarantee.
+- **`ledger.py` is excluded from the collection gate on purpose.** It is the carrier's home AND the
+  write path, which deliberately keeps `self.data[…]`: a write onto a file this runtime cannot read
+  is a different question, and the answer there is to refuse.
 
 ---
 

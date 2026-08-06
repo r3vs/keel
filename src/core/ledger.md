@@ -120,6 +120,17 @@ Summary of what matters here:
   writing `resolved` over a live `substate: reopened`; `unasked_verdict` and `policy_preview` join
   the guarded read, since a read-only tool must never be the call that fails on a ledger; and
   `add_proposals` refuses a pin that poses no fork, where its own output is unreachable.
+- v0.23 carries that same read to the two **projections**, which is where two rounds of hardening it
+  had never reached: neither `map.render` nor `instructions.render` builds a `Ledger`, so a guard
+  living on the class was a guard neither could use. `readable_ledger` is the one door for a caller
+  holding ledger DATA, `policy_read` is `pin_read`'s twin for the third collection, and
+  `severity_rank` is now the package's ONE severity ordering — the copy in the `AGENTS.md`
+  projection read a *missing* severity as `low`, so a pin whose file states nothing outranked one
+  that states a severity outside the set, in the section a tight budget clips first. On the map,
+  what the guard drops is now **stated on the page**: `nonconforming` reaches a banner, the traffic
+  light never reads green over a file it could not read, and `mount` is a failure boundary that
+  renders what it could not project instead of leaving a pane blank. A surface that cannot render
+  something says so where a human reads — never blank, never raised.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.

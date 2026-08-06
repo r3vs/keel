@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.22"
+SCHEMA_VERSION = "0.23"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -124,7 +124,7 @@ SCHEMA_VERSION = "0.22"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23")
 
 KINDS = {
     "contract_mismatch",
@@ -659,7 +659,47 @@ PIN_RULES = (
      lambda p: f"question must be an object or absent; got {type(p.get('question')).__name__} — "
                f"`interview.funnel` reads `question.prompt` off it, so a fork that is not an object "
                f"takes the whole funnel down rather than one entry"),
+    # v0.23. Both arrived with the two PROJECTIONS (`map.render`, `instructions.render`), which is
+    # where the read path had never been applied: a title that is not a string met `.strip()` and a
+    # `decision` that is a bare string met `.get("outcome")`, in the one file every host loads
+    # unprompted.
+    ("pin_title",
+     lambda p: p.get("title") is None or isinstance(p.get("title"), str),
+     lambda p: f"title must be a string or absent; got {type(p.get('title')).__name__} — it is the "
+               f"pin's name on every surface, and the projected AGENTS.md strips it"),
+    ("pin_decision",
+     lambda p: p.get("decision") is None or isinstance(p.get("decision"), dict),
+     lambda p: f"decision must be an object or absent; got {type(p.get('decision')).__name__} — "
+               f"`{{event_id, outcome}}`, and both projections index `outcome` off it"),
 )
+
+
+#: A `Policy` is the ledger's other record with its own surfaces, and it acquired the pin half's
+#: exact bug one collection over: `instructions.render` called `.strip()` on `policy["rule"]` and
+#: `.items()` on `policy["applies_to"]`, so an elected standing rule whose scope is a string took
+#: down the projection every host loads. Same three parts as `PIN_RULES` — a rule per substituted
+#: field, `policy_read` to substitute it, `nonconforming` to report that it did — because a second
+#: answer to one question is what this round exists to remove.
+POLICY_RULES = (
+    ("policy_id",
+     lambda p: bool(str(p.get("id") or "")),
+     lambda p: "a policy carries no `id`, so no cascaded decision can name the rule it derives "
+               "from"),
+    ("policy_rule",
+     lambda p: isinstance(p.get("rule"), str) and bool(p.get("rule").strip()),
+     lambda p: f"rule must be a non-empty string; got {p.get('rule')!r} — it IS the standing rule, "
+               f"and it is what both the map's card and the projected AGENTS.md print"),
+    ("policy_applies_to",
+     lambda p: p.get("applies_to") is None or isinstance(p.get("applies_to"), dict),
+     lambda p: f"applies_to must be an object or absent; got "
+               f"{type(p.get('applies_to')).__name__} — it is the SCOPE, and a scope that cannot be "
+               f"read is a rule nobody can tell the radius of"),
+)
+
+
+def policy_violations(policy: dict) -> list:
+    """The names of the `POLICY_RULES` this policy does not satisfy, in table order."""
+    return [name for name, holds, _ in POLICY_RULES if not holds(policy)]
 
 
 def pin_violations(pin: dict) -> list:
@@ -685,25 +725,102 @@ def pin_read(pin: Any) -> dict:
       * `depends_on` — `[]` unless it is a list of strings. A bare string here is iterable, so the
         old readers walked it character by character and built a DAG out of letters.
       * `question` — `{}` unless it is an object, which is falsy exactly where `pin["question"]`
-        already was. It is here because `interview.funnel` indexes `question.prompt`, and it is the
-        only one of the five whose value is returned by reference: a reader may look at the fork,
-        never rewrite it (`set_question` is the door, and it is write-if-absent).
+        already was. It is here because `interview.funnel` indexes `question.prompt`, and it is
+        returned by reference: a reader may look at the fork, never rewrite it (`set_question` is
+        the door, and it is write-if-absent).
+      * `title` — `""`. The pin's name on every surface. It is `.strip()`ped by the projected
+        `AGENTS.md`, which is the one file every host loads unprompted, so a title that is not a
+        string took that whole file down (v0.23).
+      * `decision` — `{}` unless it is an object, for the same reason `question` is: both
+        projections index `outcome` off it, and both did it with `.get` on whatever was there.
     """
     src = pin if isinstance(pin, dict) else {}
     deps = src.get("depends_on")
     question = src.get("question")
+    decision = src.get("decision")
+    title = src.get("title")
     return {
         "id": str(src.get("id") or ""),
         "state": str(src.get("state") or ""),
         "severity": str(src.get("severity") or ""),
         "depends_on": [d for d in deps if isinstance(d, str)] if isinstance(deps, list) else [],
         "question": question if isinstance(question, dict) else {},
+        "title": title if isinstance(title, str) else "",
+        "decision": decision if isinstance(decision, dict) else {},
+    }
+
+
+def policy_read(policy: Any) -> dict:
+    """The three fields a projection INDEXES on a `Policy`, as a reader may use them. Never raises.
+
+    `pin_read`'s twin, and it exists because the pin half was fixed alone: `rule` met `.strip()` and
+    `applies_to` met `.items()` in `instructions.render`, on a collection the same function had
+    already learned to guard the container of. What each absence becomes:
+
+      * `id` — `""`. Nothing cascades from a rule that cannot be named.
+      * `rule` — `""`, which every surface renders as an empty rule rather than as a plausible one.
+      * `applies_to` — `{}`. Read as a scope, `{}` is the UNIVERSAL selector, which is the widest
+        possible reading and therefore the honest one: a scope this runtime cannot read must not
+        quietly narrow the radius a human is shown. It is reported under `policy_applies_to`.
+    """
+    src = policy if isinstance(policy, dict) else {}
+    rule = src.get("rule")
+    applies_to = src.get("applies_to")
+    return {
+        "id": str(src.get("id") or ""),
+        "rule": rule if isinstance(rule, str) else "",
+        "applies_to": applies_to if isinstance(applies_to, dict) else {},
     }
 
 
 def severity_rank(severity: str) -> int:
-    """Where a severity sorts — `SEVERITIES`' own order, and a value it does not carry sorts last."""
+    """Where a severity sorts — `SEVERITIES`' own order, and a value it does not carry sorts last.
+
+    **The one severity ordering in this package** (v0.23). `instructions.py` kept a second table
+    that read a MISSING severity as `low`, so a pin whose file says nothing about how bad it is
+    sorted AHEAD of a pin that states a severity outside the set, in the section a tight budget
+    clips — two surfaces ordering the same pins by two tables, and the newer one contradicting the
+    argued direction of the older. The direction is `pin_read`'s and is stated there: an unrankable
+    severity is not evidence of anything, so it sorts last, and *missing* and *unrecognised* are the
+    same amount of nothing. `readiness.py` and `findings.py` kept their own copies of the same four
+    pairs; they are gone too, and `tests/test_ledger.py::TestOneSeverityOrderingForTheWholePackage`
+    is what stops a fourth.
+    """
     return SEVERITIES.index(severity) if severity in SEVERITIES else len(SEVERITIES)
+
+
+def read_collection(data: Any, name: str) -> list[dict]:
+    """One of `LEDGER_COLLECTIONS` as a reader can index it — the CONTAINER half of the guarded
+    read, for a caller holding raw ledger DATA rather than a `Ledger`.
+
+    `Ledger.readable` is this function with `self.data` supplied, and that is the whole point: v0.21
+    put the guard on the `Ledger` method, and the two surfaces that read a ledger **as data** —
+    `map.render` and `instructions.render`, neither of which constructs a `Ledger` — went on walking
+    `data.get("policies") or []` and calling `.get` on whatever came out. Four reproductions over
+    stdio, all of them `'str' object has no attribute 'get'`, on files `ledger_summary` reported the
+    nonconformance of in the same session.
+
+    A dropped entry is never hidden: `nonconforming` reports a non-list collection under
+    `collection_shape` and a non-object entry under `entry_shape`.
+    """
+    value = (data or {}).get(name) if isinstance(data, dict) else None
+    return [e for e in value if isinstance(e, dict)] if isinstance(value, list) else []
+
+
+def readable_ledger(data: Any) -> dict:
+    """The whole file as a reader may index it: all three collections guarded, everything else
+    (`version`, `governance`, anything a later schema adds) carried through untouched.
+
+    This is what a PROJECTION reads. The map inlines its output into the page and the instruction
+    region is generated from it, so neither surface can be handed an entry the schema does not
+    describe — which is what makes the page's own JavaScript safe without a second guard written in
+    a second language. The original is not mutated and not rewritten: a shallow copy with three keys
+    replaced, so `nonconforming(data)` still answers about the file as it stands.
+    """
+    out = dict(data) if isinstance(data, dict) else {}
+    for name in LEDGER_COLLECTIONS:
+        out[name] = read_collection(data, name)
+    return out
 
 
 def nonconforming(data: dict) -> dict:
@@ -781,6 +898,16 @@ def nonconforming(data: dict) -> dict:
         label = str(pin.get("id") or "")
         for rule in pin_violations(pin):
             out.setdefault(rule, []).append(label or f"pins[{index}]")
+    # The third collection, on the same terms as the second (v0.23). `add_policy` settles every one
+    # of these at the write, exactly as `add_pin` does for `PIN_RULES`, so what the table buys here
+    # is the READER — and a policy is the record with the widest blast radius in the file, because
+    # one of them decides a whole cluster.
+    for index, policy in enumerate(entries("policies")):
+        if not isinstance(policy, dict):
+            continue                                    # already reported as `entry_shape`
+        label = str(policy.get("id") or "")
+        for rule in policy_violations(policy):
+            out.setdefault(rule, []).append(label or f"policies[{index}]")
     return out
 
 
@@ -892,9 +1019,14 @@ class Ledger:
 
         The WRITE path deliberately keeps `self.data[…]`: a write onto a file this runtime cannot
         read is a different question from a read of it, and the answer there is to refuse.
+
+        The rule itself moved to the module-level `read_collection` in v0.23, and this method is now
+        that function with `self.data` supplied. It had to: the two PROJECTIONS read a ledger as
+        data and never build a `Ledger`, so a guard that lived on the method was a guard they could
+        not reach — which is exactly how they came to be the last two surfaces still dying on a
+        shape `summary()` reports.
         """
-        value = self.data.get(name)
-        return [e for e in value if isinstance(e, dict)] if isinstance(value, list) else []
+        return read_collection(self.data, name)
 
     def readable_pins(self) -> list[dict]:
         """`readable("pins")` — named because it is the one nearly every reader wants."""

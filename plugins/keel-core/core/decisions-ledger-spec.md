@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.22
+# Decisions Ledger — Spec v0.23
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1084,3 +1084,49 @@ The refusal reads the `question`, not the state, because the fork is what a prop
 ### The general shape
 
 v0.21's was *"name every place the principle applies."* This one narrows it to the thing that makes a rule enforceable at all: **for every predicate that decides, enumerate the carriers it reads — and make the enumeration a table the opposite arc is held to.** Each defect above is a rule that was fixed correctly at the doors it was written for, on an object whose other doors kept the old behaviour. Not a lapse: a rule with no single carrier can only be held by every author remembering it, and one never does.
+
+---
+
+## v0.23 — The two projections read a ledger nobody had guarded, and the map said nothing about what it dropped
+
+v0.21 made *reading a ledger is never the operation that fails on it* a rule and paid it at `Ledger.readable` / `pin_read`; v0.22 carried it to the third reader. It was never carried to the two **projections** — `map.render` and `instructions.render` — and they are the pair that reaches a human and a fresh agent respectively. Neither constructs a `Ledger`, so the guard that lived on the method was a guard neither could reach. Every defect below was observed over real `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd, and the map half was then read in Chromium in both themes.
+
+### `readable_ledger` — a projection renders what a reader can index, or it says why not
+
+`render_map` returned `{"written": …}` with `isError: false` on a ledger holding a `null` entry in `pins`, and on one whose `pins` is not a list. The page that was written rendered its header and **nothing else**: `trafficLight` runs before anything is mounted and both shapes throw inside it, so the list, the detail pane and the traffic-light text were all absent, under a full green bar. `ledger_summary` on the identical file reported `entry_shape` / `collection_shape`. A blank map reads as *no findings*, which is the most expensive wrong answer this surface can give — the same sentence `_inline` was fixed under one hole over, now true of the data rather than of the escaping.
+
+One collection over, the same file class made `render` itself raise in Python: `'str' object has no attribute 'get'` from a non-object entry in `decision_log` or in `policies`, and from either being present-but-not-a-list. Four reproductions.
+
+```
+read_collection(data, name)  -> the entries of one collection a reader can index
+readable_ledger(data)        -> the whole file, three collections guarded, everything else untouched
+```
+
+`Ledger.readable` is now `read_collection` with `self.data` supplied — one implementation, and the projections reach it. The map inlines `readable_ledger(...)` rather than the file, so the page's own JavaScript cannot be handed an entry the schema does not describe and needs no second guard written in a second language. A consequence worth stating: the counts on the map are now the counts `ledger_summary` reports for the same file. They were the raw array lengths.
+
+### `nonconforming` reaches the surface a human opens
+
+`ledger.nonconforming()` has answered *what does this file hold that the schema does not describe* since v0.13 and has been readable through `summary()`'s `pre_rule_events` since v0.21 — and it reached the map, on any ledger, **nowhere**. So the page could count nine pins where the file holds eleven and say nothing, or report *all settled* over a `pins` that is not a list. It is now a banner between the header and the panes (a fact about the FILE may not live in a pane one selection replaces), one sentence per rule name, and the traffic light never reads green while the report is non-empty.
+
+### `pin_read` gains `title` and `decision`; `policy_read` is its twin
+
+Five ordinary malformations killed `generate_instructions`, which writes the one file every host loads unprompted: a list `severity` used as a dict key (unhashable), `.strip()` on a title that is an object, `.get("outcome")` on a `decision` that is a string, `.strip()` on a policy `rule` that is a list, `.items()` on an `applies_to` that is a string. The first is `pin_read`'s existing `severity` substitution reaching a caller that had not asked for it; the rest are two fields the pin half had never covered and a record — `Policy` — that had no read half at all.
+
+```
+POLICY_RULES  = (policy_id, policy_rule, policy_applies_to)
+policy_read(p) -> {"id", "rule", "applies_to"}
+```
+
+Same three parts as the pin half, for the same reason: a rule per substituted field, a function that substitutes it, and `nonconforming` reporting that it did. `applies_to` substitutes `{}` — which as a scope is the UNIVERSAL selector and therefore the widest, most honest reading: a scope this runtime cannot read must not quietly narrow the radius a human is shown.
+
+### One severity ordering for the whole package
+
+`instructions._SEVERITY_RANK` read a **missing** severity as `low`, so a pin whose file says nothing about how bad it is sorted AHEAD of a pin that states a severity outside the set — in the section a tight line budget clips first. `ledger.severity_rank` says the opposite and carries the argument (`pin_read`): an unrankable severity is not evidence of anything, and *missing* and *unrecognised* are the same amount of nothing. Two surfaces, two tables, the newer one contradicting the older's argued direction; the one with no argument is gone, and so are the copies in `readiness.py` and `findings.py`.
+
+### `mount` takes a thunk — the page's one failure boundary
+
+Inside a record the payload is free-form by kind, so it cannot be enumerated without guessing, and the answer is not a field table: it is that the page has **one** place where a build failure becomes something a reader sees. `mount(id, node)` evaluated its node at the call site, so a `brainstorm.proposals` that is a string, or a `cross_derivations` that is one, threw before the sink was reached — the detail pane stayed empty in a browser with no console reader while the list beside it showed the row as selected. `mount(id, build, subject)` calls the builder itself and renders what it could not project as a card carrying the error and the record as the file holds it.
+
+### The general shape
+
+v0.22's was *"enumerate the carriers a predicate reads."* This one is about who the enumeration is FOR: **a rule paid at a class's methods is unpaid for every caller that holds the class's data instead of the class.** Both projections read a ledger as JSON and never build a `Ledger`, which is precisely why two rounds of hardening the read path went past them. And the surface half of it is one sentence: *a surface that cannot render something says so where a human reads — never blank, never raised.*
