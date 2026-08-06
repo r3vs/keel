@@ -20,11 +20,38 @@ import json
 import pathlib
 from typing import Optional
 
-CATALOG_PATH = (pathlib.Path(__file__).resolve().parent.parent
-                / "skills" / "greenfield-forge" / "assets" / "decision-catalog.json")
+_HERE = pathlib.Path(__file__).resolve().parent
+
+#: Where the catalog is, in each of the two trees this module lives in. The authoring path was the
+#: only one for a while, and it cannot resolve after install: shipped, this module is
+#: `keel-core/mcp/runtime/interview.py`, so `parent.parent` is `keel-core/mcp` — and the catalog is
+#: in a DIFFERENT plugin (`greenfield-forge/skills/...`), which no plugin may read. So
+#: `interview_expand` and `interview_seed_policies` raised FileNotFoundError on every host while 704
+#: tests passed, because every test hands `load_catalog` an explicit path. `build.py` vendors the
+#: file beside the runtime for exactly this; the candidate order puts the shipped location first,
+#: since that is the one a user actually runs.
+_CATALOG_CANDIDATES = (
+    _HERE / "assets" / "decision-catalog.json",
+    _HERE.parent / "skills" / "greenfield-forge" / "assets" / "decision-catalog.json",
+)
+CATALOG_PATH = next((p for p in _CATALOG_CANDIDATES if p.is_file()), _CATALOG_CANDIDATES[0])
 
 
-def load_catalog(path: str | pathlib.Path = CATALOG_PATH) -> dict:
+def load_catalog(path: str | pathlib.Path = None) -> dict:
+    """The machine-usable catalog. Resolved at CALL time, never at import time.
+
+    A module-level constant is evaluated once, when the server starts, and this file is imported by
+    a server whose install layout differs from the repo's — so a stale constant would freeze the
+    wrong answer for the process's whole life. The failure also has to name both places it looked:
+    a bare `FileNotFoundError` on a path the reader has never seen is how this stayed invisible.
+    """
+    if path is None:
+        path = next((p for p in _CATALOG_CANDIDATES if p.is_file()), None)
+        if path is None:
+            looked = "\n  ".join(str(p) for p in _CATALOG_CANDIDATES)
+            raise FileNotFoundError(
+                "the decision catalog is not beside this runtime. Looked in:\n  " + looked +
+                "\nShipped, it is vendored to mcp/runtime/assets/ by scripts/build.py.")
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
 
 

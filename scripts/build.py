@@ -543,6 +543,12 @@ def plugin_payload(name: str, spec: dict) -> dict:
             out[f"mcp/{m.name}"] = read(m)
         for r in sorted(RUNTIME.glob("*.py")):
             out[f"mcp/runtime/{r.name}"] = read(r)
+        # The runtime reads one data file, and it is not a `.py`: `interview.load_catalog()`. Its
+        # source of truth stays in the skill that owns it — but the skill ships as a DIFFERENT
+        # plugin, which this server may not read, so the bytes have to travel with the runtime that
+        # opens them. Consumer: `interview._CATALOG_CANDIDATES[0]`.
+        out["mcp/runtime/assets/decision-catalog.json"] = read(
+            SKILLS / "greenfield-forge" / "assets" / "decision-catalog.json")
         # Claude Code reads this at the plugin root; Codex's manifest points at it. Two hosts, one
         # file, zero user action.
         out[".mcp.json"] = mcp_json()

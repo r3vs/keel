@@ -145,6 +145,28 @@ class TestRunsFromAnInstalledLocation(unittest.TestCase):
         self.assertEqual(r.returncode, 0, f"vendored tool layer failed to import from a foreign cwd:\n{r.stderr}")
         self.assertIn("ok ledger_summary buildloop", r.stdout)
 
+    def test_the_two_catalog_tools_run_on_the_installed_tree(self):
+        # The same bug class as this file's headline, in the one place it survived: `interview.py`
+        # reads a DATA file, and the build vendored only `*.py`. Shipped, the module sits at
+        # `keel-core/mcp/runtime/`, so its authoring-relative path pointed at
+        # `keel-core/mcp/skills/greenfield-forge/...` — while the catalog ships inside a different
+        # plugin, which this one may not read. Both tools raised FileNotFoundError on every host
+        # with the suite green, because every unit test hands `load_catalog` an explicit path. So
+        # this asserts the TOOLS, from the copied tree, with the cwd in a foreign project.
+        code = (
+            "import sys, json, os; sys.path.insert(0, r'%s'); import tools;\n"
+            "led = os.path.join(r'%s', 'ledger.json');\n"
+            "e = tools.interview_expand(led);\n"
+            "s = tools.interview_seed_policies(led);\n"
+            "print(json.dumps({'pins': len(e['created']), 'offers': len(s['offers'])}))"
+            % (self.mcp, self.userproj)
+        )
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=self.userproj)
+        self.assertEqual(r.returncode, 0, f"the catalog tools cannot run as installed:\n{r.stderr}")
+        got = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertGreater(got["pins"], 0, "expanding the catalog created no pins")
+        self.assertGreater(got["offers"], 0, "the catalog offered no default policies")
+
     def test_no_shipped_file_names_a_repo_relative_runtime_path(self):
         # verify_commands.py enforces this on the source; this asserts it survived the build, since
         # the build is what a user actually receives. With the CLI gone, `scripts/runtime/` is a

@@ -203,6 +203,22 @@ whether a human can see it.
 > The question is not "is the rule enforced" but *"name every artifact this rule is now false of,
 > and say what reads them."*
 >
+> **And the whole lineage rested on two tools that could not run at all — closed 2026-08-06.** Found
+> by the final reviewer, at the only place it was ever visible: the SHIPPED tree. `interview.py`
+> reads a **data** file, and `build.py` vendored only `*.py`, so `interview_expand` and
+> `interview_seed_policies` raised `FileNotFoundError` on every host, on every call. Installed, that
+> module is `keel-core/mcp/runtime/interview.py`, so its authoring-relative constant pointed at
+> `keel-core/mcp/skills/greenfield-forge/…` — while the catalog ships inside a **different plugin**,
+> which this one may not read. Nothing saw it because every test hands `load_catalog` an explicit
+> path (`tests/test_interview.py:21`), so 704 tests exercised the parser and none the default. The
+> build now ships the catalog to `mcp/runtime/assets/`, resolution happens at call time against both
+> candidate trees, the failure names both paths it looked in, and
+> `test_installed_package.py::test_the_two_catalog_tools_run_on_the_installed_tree` calls **the two
+> tools** from a foreign cwd on a copied plugin — verified to fail when the asset is removed. This is
+> the repo's oldest bug class (`python runtime/ledger.py`), and the honest lesson is narrower than
+> "check the install": **a gate that tests a function's parameter never tests its default**, and the
+> default is the only form a tool caller can use.
+>
 > One more from the same round, worth its own line because it is the failure mode of a *gate*:
 > `tests/test_tool_roster.py::test_every_served_tool_is_documented_and_nothing_else_is` filtered its
 > entries through the served set before comparing (`if n in known`), so the "nothing else is" half
