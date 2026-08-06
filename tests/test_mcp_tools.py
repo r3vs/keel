@@ -1211,6 +1211,99 @@ class TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach(unittest.TestCase
                     call()
 
 
+class TestNoWriteDoorDiesOnThePinAlreadyInTheFile(unittest.TestCase):
+    """v0.26 — the read path was hardened twice; the write doors read the same pins.
+
+    Reproduced over real `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd,
+    on shapes `shape_corpus` already derives: **42 crash sites across all fourteen per-pin write
+    doors.** `KeyError: 'state'` at every one, from `_gate_closed`; `'str' object has no attribute
+    'get'` at `add_remediation`, `challenge`, `reopen` and `cross_derive`; `KeyError: 'title'` at
+    the election door `record_decision`, before `decide` was reached; `KeyError: 'depends_on'` at
+    `set_readiness`. A write door that crashes on the file it was given is the same defect as a
+    reader that does, and it is worse — the caller is mid-transaction.
+
+    Both halves are derived. The roster is `TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach
+    ._write_doors()`, which is *any tool taking a `pin_id` that reaches the commit point*; the
+    corpus is `shape_corpus.broken_pins()`, which is every violation `PIN_SHAPES` can describe.
+    Nothing here is a list of what somebody reproduced.
+    """
+
+    CRASH = (AttributeError, TypeError, KeyError, IndexError)
+
+    @staticmethod
+    def _looks_a_pin_up(name, source_tree=None):
+        """The attribute names this tool calls on its ledger with a `pin_id`."""
+        tree, ast = _ast_tools()
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
+        bound = _ledger_bound(fn, ast)
+        return {c.func.attr for c in ast.walk(fn)
+                if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                and isinstance(c.func.value, ast.Name) and c.func.value.id in bound}
+
+    def test_no_write_door_looks_a_pin_up_any_other_way(self):
+        """The structural half, and the one that would have caught `record_decision`: it reached
+        `decide` (which is guarded) and died at `_prompt_from_pin` on its OWN `led.pin(pin_id)`,
+        three lines earlier. So the rule is not *a door reaches the carrier* but **the carrier is
+        the only per-pin lookup on the write path**."""
+        roster = TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach
+        doors = roster._write_doors()
+        self.assertGreaterEqual(len(doors), 13, "the derivation went vacuous")
+        for name in sorted(doors):
+            with self.subTest(door=name):
+                self.assertNotIn("pin", self._looks_a_pin_up(name),
+                                 f"{name} looks a pin up through the READ lookup, which guards a "
+                                 f"shape instead of refusing it — use `writable_pin`")
+
+    def test_every_ledger_method_a_door_reaches_goes_through_the_carrier(self):
+        """The same rule one layer in, over `PIN_WRITE_DOORS` — derived, so a door added to the
+        table inherits it. A method that delegates to another door is covered by that door."""
+        import ast
+        import inspect
+
+        import ledger as mod
+        source = inspect.getsource(mod)
+        tree = ast.parse(source)
+        for name in sorted(mod.PIN_WRITE_DOORS):
+            fn = next(n for n in ast.walk(tree)
+                      if isinstance(n, ast.FunctionDef) and n.name == name)
+            called = {c.func.attr for c in ast.walk(fn)
+                      if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                      and isinstance(c.func.value, ast.Name) and c.func.value.id == "self"}
+            with self.subTest(door=name):
+                self.assertTrue("writable_pin" in called or called & set(mod.PIN_WRITE_DOORS),
+                                f"`Ledger.{name}` takes a pin_id and never reaches `writable_pin`, "
+                                f"so it indexes whatever the file holds")
+                self.assertNotIn("pin", called,
+                                 f"`Ledger.{name}` uses the READ lookup on the write path")
+
+    def test_no_door_crashes_on_any_shape_the_schema_can_describe(self):
+        """The behavioural half: every derived door against every derived broken pin. A refusal is
+        the answer; a `KeyError` naming a line of ours about somebody's file is the finding."""
+        from shape_corpus import broken_pins
+        import ledger as mod
+        roster = TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach
+        doors = sorted(roster._write_doors())
+        cases = broken_pins()
+        self.assertGreaterEqual(len(cases), 100, "the corpus derivation went vacuous")
+        tmp = tempfile.mkdtemp()
+        crashes = []
+        for index, (label, broken) in enumerate(cases):
+            pin_id = mod.pin_read(broken)["id"]
+            for door in doors:
+                path = os.path.join(tmp, f"l{index}.json")
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump({"version": mod.SCHEMA_VERSION, "pins": [json.loads(
+                        json.dumps(broken))], "decision_log": [], "policies": []}, fh)
+                try:
+                    getattr(tools, door)(path, pin_id, **roster.CALL[door])
+                except self.CRASH as exc:
+                    crashes.append(f"{door} on [{label}]: {type(exc).__name__}: {exc}")
+                except Exception:
+                    pass                      # a refusal naming what cannot be read is the answer
+        self.assertEqual(crashes, [], "\n".join(crashes[:20]))
+
+
 class TestNoWriteDoorDiesOnAMemberOfAListArgument(unittest.TestCase):
     """v0.25 — three write doors refused the same malformed argument three different ways, and two
     of them did not refuse it at all.
@@ -1237,18 +1330,51 @@ class TestNoWriteDoorDiesOnAMemberOfAListArgument(unittest.TestCase):
         "ledger_surface_assumption": {"title": "t", "detail": "d"},
     }
 
+    @staticmethod
+    def _lists_under(value, prefix=""):
+        """Every dotted path to a list INSIDE this argument, the argument itself included.
+
+        **v0.26 — the rule was paid only at TOP-LEVEL list arguments.** This walk used to be one
+        `isinstance(value, list)` per kwarg, so a list one level inside a dict argument was outside
+        the whole mechanism: `ledger_add_pin(question={"options": ["a bare string"]})` and
+        `ledger_set_question` with the byte-identical dict both returned `'str' object has no
+        attribute 'get'` over real stdio — the exact failure `_require_objects` was written to
+        close, at the two doors that compose the fork the whole funnel runs on. Recursive, so a
+        third nesting level arrives under the gate rather than under the next reviewer.
+        """
+        out = []
+        if isinstance(value, list):
+            out.append(prefix)
+        elif isinstance(value, dict):
+            for key, sub in value.items():
+                out += TestNoWriteDoorDiesOnAMemberOfAListArgument._lists_under(
+                    sub, f"{prefix}.{key}" if prefix else key)
+        return out
+
+    @staticmethod
+    def _broken_at(value, path):
+        """A deep copy of `value` with the list at `path` replaced by one bare string."""
+        bare = ["a bare string where an object goes"]
+        steps = path.split(".")
+        if len(steps) == 1:                 # the argument IS the list
+            return bare
+        broken = json.loads(json.dumps(value))
+        node = broken
+        for step in steps[1:-1]:
+            node = node[step]
+        node[steps[-1]] = bare
+        return broken
+
     def _probes(self):
-        """(tool, kwargs, the list-valued argument) for every list an agent can pass to a door."""
+        """(tool, kwargs, the dotted path to a list) for every list an agent can pass to a door,
+        at any depth."""
         roster = TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach
         out = []
-        for tool_name, kwargs in sorted(roster.CALL.items()):
-            for key, value in kwargs.items():
-                if isinstance(value, list):
-                    out.append((tool_name, kwargs, key, True))
-        for tool_name, kwargs in sorted(self.CREATE_CALL.items()):
-            for key, value in kwargs.items():
-                if isinstance(value, list):
-                    out.append((tool_name, kwargs, key, False))
+        for per_pin, table in ((True, roster.CALL), (False, self.CREATE_CALL)):
+            for tool_name, kwargs in sorted(table.items()):
+                for key, value in kwargs.items():
+                    for path in self._lists_under(value, key):
+                        out.append((tool_name, kwargs, path, per_pin))
         return out
 
     def test_the_probe_set_is_derived_and_not_empty(self):
@@ -1257,6 +1383,10 @@ class TestNoWriteDoorDiesOnAMemberOfAListArgument(unittest.TestCase):
         self.assertIn("ledger_premortem", {t for t, _k, _a, _p in probes})
         self.assertIn("ledger_add_proposals", {t for t, _k, _a, _p in probes})
         self.assertIn("ledger_add_pin", {t for t, _k, _a, _p in probes})
+        self.assertIn(("ledger_set_question", "question.options"),
+                      {(t, a) for t, _k, a, _p in probes},
+                      "a list one level inside a dict argument is the v0.26 finding, and the probe "
+                      "set that cannot reach it is the gate that missed it")
 
     def test_a_bare_string_where_an_object_goes_is_refused_not_crashed(self):
         from ledger import Ledger
@@ -1274,8 +1404,9 @@ class TestNoWriteDoorDiesOnAMemberOfAListArgument(unittest.TestCase):
                                                         {"id": "b", "label": "B"}],
                                             "allow_freeform": True})
                 led.save()
+                top, _, _rest = argument.partition(".")
                 broken = dict(kwargs)
-                broken[argument] = ["a bare string where an object goes"]
+                broken[top] = self._broken_at(kwargs[top], argument)
                 args = (path, pin["id"]) if per_pin else (path,)
                 try:
                     getattr(tools, tool_name)(*args, **broken)

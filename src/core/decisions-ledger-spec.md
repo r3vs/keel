@@ -1,4 +1,4 @@
-# Decisions Ledger — Spec v0.25
+# Decisions Ledger — Spec v0.26
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1234,3 +1234,45 @@ A pin carrying `verification: "observed"` rendered as *"no rung recorded"*. That
 ### The general shape
 
 v0.23: *a rule paid at a class's methods is unpaid for every caller that holds the class's data.* v0.24: *a rule paid at a set's members is unpaid for whatever satisfies the set's definition without joining it.* This one is about the evidence rather than the rule: **a gate is only as good as the corpus it runs on, and a hand-written corpus proves what somebody remembered.** Where the cases can be generated from the schema the rule is about, generating them is not a convenience — it is the difference between "no shape we listed breaks this" and "no shape the schema can describe breaks this".
+
+
+## v0.26 — A write door reads the pin already in the file
+
+The read path is hard: `pin_read` substitutes, `PIN_RULES` reports every substitution, `readable_ledger` carries both into the two projections, and the corpus those gates run on is derived from `PIN_SHAPES`. None of it reached the **write** doors. A per-pin write door reads the record before it writes anything, so every guarantee built for the readers applies to it — and the caller is mid-transaction, which makes a crash there worse than a reader's, not better.
+
+### `writable_pin` — a write onto a record this runtime cannot read is refused
+
+Reproduced over real `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd: **42 crash sites across all 14 per-pin write doors**, over pin shapes the derived corpus already describes. `KeyError: 'state'` at every door, from `_gate_closed`; `AttributeError: 'str' object has no attribute 'get'` at `add_remediation`, `challenge`, `reopen` and `cross_derive` on a `remediation` or `verification` this runtime did not write; `KeyError: 'title'` at the election door `ledger_record_decision`, before `decide` was reached at all; `KeyError: 'depends_on'` at `set_readiness`.
+
+```
+Ledger.pin(pin_id)            the READ lookup — guarded, never raises on a shape
+Ledger.writable_pin(pin_id)   the WRITE lookup — refuses, naming every rule the record breaks
+```
+
+The split is the file's standing rule applied to a record: *reading a ledger is never the operation that fails on it, and a write onto something this runtime cannot read is exactly the operation that must fail* — the same sentence `Ledger.__init__` already makes about the whole file. Substituting here is not available: the door writes the pin back, so a guarded read on the write path is a silent repair of somebody's file. The verdict is `pin_violations`, i.e. `PIN_RULES`, i.e. `PIN_SHAPES` — one table for the rules, the reader's substitution, the report, the corpus and this refusal. The roster is **derived**: a door is any tool taking a `pin_id` that reaches the commit point, and no such door may look a pin up any other way.
+
+### `PIN_REQUIRED` — what a write door may assume is on the pin
+
+`PIN_GUARANTEED` is the reader's answer to the same question and is deliberately a different one: a reader gets an absent path materialised, a writer gets the write refused. Materialising on the write path is not open to us — `question` and `decision` are guaranteed and `add_pin` writes both as an explicit `None`, so filling them would put `{}` on every pin in the file, and `{}` is falsy in Python and **truthy** in JavaScript: an empty fork card on the map for every finding. The membership rule is the writer's own output — every declared path `add_pin` composes — and the gate derives the set from a pin `add_pin` actually writes rather than trusting the tuple. `_rules_from` gained `required`, so absence and wrong-type are one rule, one name and one entry in `pre_rule_events`.
+
+### `kind` — the third closed vocabulary a pin carries
+
+`state` and `severity` were both in `PIN_STRONGER` with a membership rule; `kind` was in neither table, so a `kind` of `7` or `"defekt"` was invisible to `nonconforming` on every surface while its two siblings were reported on all of them — and `settlement_verdict` sends a `defect` and a `design_concern` down different branches on it. It is now declared, and the corpus covers it. Its predicate asks `isinstance` first, because `KINDS` is the one closed vocabulary held as a `set`: `v in KINDS` on an unhashable value **raises** rather than answering, inside `nonconforming`, inside `Ledger.__init__` — found by the derived corpus on its first run.
+
+### `RUNG_WRITER_RUNGS` — the door that records an absence may not claim an observation
+
+`VERIFICATION_RUNG_WRITERS` declared four kinds of rung writer and enforced none of them, and the one that mattered was the kind whose description asserted the enforcement: `records_absence` reads *"writes a rung BELOW the closing ones, or none at all… so it is asked nothing"*, while `mark_correctness_unknown` accepted `rung` against the whole of `VERIFICATION_RUNGS`. So the door whose entire meaning is *correctness could not be established* handed the pin the claim that its behaviour **was** observed, on `verification`, which `SETTLEMENT_CARRIERS` names as the single carrier `resolve` opens on. Reproduced over stdio in five calls with no human in the loop: resolve at `observed` → reopen on an incident (which correctly demoted the envelope, and `ledger_resolve` correctly refused as `unverified`) → `ledger_mark_correctness_unknown(rung="observed")` wrote the closing rung back → `ledger_resolve(evidence="I looked")` closed the pin green.
+
+That is v0.24's laundering finding one door over. `_writable_rung` is the one refusal, every writer in the table pays it with its own name, and the AST gate asserts that — so a fifth writer must declare its kind **and** go through the gate.
+
+### `SETTLEMENT_CARRIERS` said DOOR and its gate asked one FUNCTION
+
+The table's structural gate derived the carrier set from the AST of `settlement_verdict` alone, so *"every carrier a settlement door decides on"* was proved of the predicate and asserted of the five doors. `resolve` gated on a fifth: `pin.get("evidence")`, the pin's own field — which is the observation the **last** resolve rested on, and after a reopen it names precisely what production refuted. The gate now derives from every settlement door's `_require` conditions as well (a `_require` is this runtime's one refusal, so a read inside one is a read the settlement is decided by), and `resolve` demands the observation **this** call rests on. The table is unchanged because the fix removed the carrier rather than adding a disposition: an arc cannot owe anything to a claim no door reads.
+
+### The list-member rule, one nesting level down
+
+`_require_objects` was introduced in v0.25 as the one carrier for *a member of this list is an object*, and it was paid only at **top-level list arguments**. A list one level inside a dict argument was outside all of it: `ledger_add_pin(question={"options": ["a bare string"]})` and `ledger_set_question` with the byte-identical dict both returned `'str' object has no attribute 'get'` over stdio — the exact failure the rule was written to close, at the two doors that compose the fork the whole funnel runs on. `_validate_question` now goes through the carrier, and the gate's probe points are derived by walking **into** each declared call's dict arguments, not only across them.
+
+### The general shape
+
+v0.24: *a rule paid at a set's members is unpaid for whatever satisfies the set's definition without joining it.* v0.25: *a gate is only as good as the corpus it runs on.* This one is both, aimed at the half of the surface nobody had asked: **a rule proved of the readers is unproved for the writers, and a write door is a reader first.** The question to ask of any read-path hardening is not "which readers are covered" but *name every door that READS this record before it writes it, and run the same corpus at that door.*

@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.25"
+SCHEMA_VERSION = "0.26"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -124,7 +124,7 @@ SCHEMA_VERSION = "0.25"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23", "0.24", "0.25")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22", "0.23", "0.24", "0.25", "0.26")
 
 KINDS = {
     "contract_mismatch",
@@ -385,10 +385,22 @@ ARC_MOVES = {
 }
 ARC_CASCADES = {"reopen": True, "challenge": True, "cross_derive": False}
 
-# Every carrier a SETTLEMENT DOOR reads off a pin, and what the way BACK into the open set owes each
-# one (v0.22). The question this table exists to force, asked once here instead of per arc:
-# **which carriers does `settlement_verdict` decide on, and which of them does the reopen leave
+# Every carrier a SETTLEMENT DOOR gates on, and what the way BACK into the open set owes each one
+# (v0.22). The question this table exists to force, asked once here instead of per arc:
+# **which carriers does a settlement door decide on, and which of them does the reopen leave
 # standing?**
+#
+# **The table said DOOR and its gate asked one FUNCTION (v0.26).** `TestTheWayBackOwesTheDoorsTheir
+# Carriers` derived the set from the AST of `settlement_verdict` alone, so the sentence above was
+# proved of the predicate and asserted of the five doors — and `resolve` gated on a fifth carrier
+# the table does not name: `_require(pin.get("evidence") or evidence)`, the pin's OWN `evidence`
+# field, which is the observation the LAST resolve rested on. After a reopen that field names
+# precisely what production refuted, so the stale sentence satisfied the demand for the fresh one.
+# The gate now derives from every door's `_require` conditions as well as from the predicate — a
+# `_require` is this runtime's one refusal, so a read inside one is a read the settlement is
+# decided by — and `resolve` now demands the observation THIS call rests on. The table is unchanged
+# because the fix removed the carrier rather than adding a disposition: an arc cannot owe anything
+# to a claim no door reads.
 #
 # v0.20 gave the arcs the settlement half's EVENTS. This is the same asymmetry one layer in, on the
 # thing the doors actually read. `_reopen_minimal` wrote `state`, `substate` and `resolution_mode`
@@ -699,6 +711,61 @@ VERIFICATION_RUNG_WRITERS = {
 }
 RUNG_WRITER_KINDS = ("fresh_observation", "re_derivation", "records_absence", "demotion")
 
+# Which rungs each kind of writer may actually put on an envelope (v0.26).
+#
+# **The table above declared four kinds and enforced none of them, and the one that mattered was
+# the one whose description asserted the enforcement.** `records_absence` reads *"writes a rung
+# BELOW the closing ones, or none at all. It cannot open a settlement gate by construction, so it
+# is asked nothing"* — and `mark_correctness_unknown` accepted `rung` against `VERIFICATION_RUNGS`,
+# the whole vocabulary, closing rungs included. So the door whose entire meaning is *correctness
+# could NOT be established* handed the pin the claim that its behaviour WAS observed, on
+# `verification`, which `SETTLEMENT_CARRIERS` names as the single carrier `resolve` opens on.
+# Reproduced over real stdio against the shipped plugin, five calls with no human in the loop:
+# `resolve(rung="observed")` closed the pin, `reopen(fired="incident")` demoted the envelope and
+# `ledger_resolve` correctly refused as `unverified` — then one
+# `ledger_mark_correctness_unknown(blocked_by="no oracle exists for this", rung="observed")` wrote
+# the closing rung straight back onto that envelope, and `ledger_resolve(evidence="I looked")`
+# closed the pin green. That is v0.24's laundering finding one door over: `cross_derive` was gated
+# on `refuted_claim` because a re-derivation is not an observation, and the door beside it could
+# still simply assert one.
+#
+# So the third column stops being prose. `_writable_rung` is its one refusal, every writer in the
+# table above pays it with its own name, and
+# `tests/test_ledger.py::TestOnlyAFreshObservationRaisesARefutedClaim` asserts that from the AST —
+# so a fifth writer must say which kind it is AND go through the gate before the suite passes.
+#
+#   * `fresh_observation` — `_CLOSING_RUNGS`, and nothing weaker: `resolve` is the door that CLOSES,
+#     and a rung below the closing ones is what `correctness_unknown` exists to record.
+#   * `re_derivation` — `cross_derived` alone. It is not an observation, and `refuted_claim` is the
+#     second half of that rule, unchanged.
+#   * `records_absence` — everything that is NOT a closing rung, plus `None`. Derived from
+#     `_CLOSING_RUNGS` rather than listed, so a rung added to `VERIFICATION_RUNGS` lands on the
+#     correct side of this line without anybody choosing.
+#   * `demotion` — `None` only. Taking a claim off is the whole of what the arcs do to an envelope.
+RUNG_WRITER_RUNGS = {
+    "fresh_observation": _CLOSING_RUNGS,
+    "re_derivation": ("cross_derived",),
+    "records_absence": tuple(r for r in VERIFICATION_RUNGS if r not in _CLOSING_RUNGS) + (None,),
+    "demotion": (None,),
+}
+
+
+def _writable_rung(writer: str, rung: Any) -> Any:
+    """THE refusal for a rung a door may not write — the one carrier of `RUNG_WRITER_RUNGS`.
+
+    Returns the rung, so a writer pays it in the expression that writes it and cannot pay it
+    somewhere the value then changes.
+    """
+    kind = VERIFICATION_RUNG_WRITERS[writer]
+    allowed = RUNG_WRITER_RUNGS[kind]
+    _require(rung in allowed,
+             f"`{writer}` is a {kind} writer of the verification envelope, so the rungs it may "
+             f"record are {allowed}; got {rung!r}. `verification.rung` is the single carrier "
+             f"`settlement_verdict` opens the `resolved` gate on, and {_CLOSING_RUNGS} say the "
+             f"behaviour was OBSERVED — only `resolve`, which demands the observation it rests on, "
+             f"may state that.")
+    return rung
+
 
 # -- the rules a DecisionEvent carries on its own (v0.15) --------------------------------------
 #
@@ -883,6 +950,16 @@ SHAPE_ENGLISH = {"str": "a string", "object": "an object", "list": "a list",
 #: `pre_rule_events` read in the envelope's own order rather than alphabetically.
 PIN_SHAPES = {
     "id": "str",
+    # v0.26 — the THIRD closed vocabulary a pin carries, and until now the only one with no rule.
+    # `state` and `severity` are both here with a membership rule in `PIN_STRONGER`; `kind` was in
+    # neither table, so a pin whose `kind` was `7` or `"defekt"` was reported by `nonconforming` on
+    # no surface while its two siblings were reported on every one. It is not a nested scalar and
+    # not free text: `settlement_verdict` refuses `accept` on anything but a `design_concern` and
+    # opens two branches for a `defect`, `_accept_implication` prints it, and the map and the
+    # projection both dispatch on it — so a value outside `KINDS` silently takes a pin down a
+    # branch nobody elected. That is exactly what the membership rule below means by a scalar a
+    # reader COERCES, and it belongs to the same class as the two that were already declared.
+    "kind": "str",
     "title": "str",
     "severity": "str",
     "state": "str",
@@ -926,6 +1003,15 @@ POLICY_SHAPES = {"id": "str", "rule": "str", "applies_to": "object"}
 PIN_STRONGER = {
     "id": (lambda v: isinstance(v, str) and bool(v),
            lambda v: "a pin carries no `id`, so nothing can depend on it, name it or link to it"),
+    # `isinstance` first, and it is not belt-and-braces: `KINDS` is the one closed vocabulary in
+    # this file held as a `set`, so `v in KINDS` on an unhashable value raises `TypeError` instead
+    # of answering False — and this predicate runs inside `nonconforming`, which runs inside
+    # `Ledger.__init__`. Found by the derived corpus on its first run: `kind: {"rung": "observed"}`
+    # took every surface down at the load, which is the failure this whole table exists to remove.
+    "kind": (lambda v: isinstance(v, str) and v in KINDS,
+             lambda v: f"kind must be one of {sorted(KINDS)}; got {v!r} — it is what the pin IS, "
+                       f"and `settlement_verdict` sends a `defect` and a `design_concern` down "
+                       f"different branches on it"),
     "state": (lambda v: v in STATES,
               lambda v: f"state must be one of {STATES}; got {v!r} — every surface that sorts, "
                         f"counts or gates on a pin reads this field"),
@@ -952,6 +1038,27 @@ POLICY_STRONGER = {
 PIN_GUARANTEED = ("id", "state", "severity", "depends_on", "question", "title", "decision")
 POLICY_GUARANTEED = ("id", "rule", "applies_to")
 
+#: The declared paths a WRITE door may assume are on the pin, because `add_pin` composes every one
+#: of them on every pin it writes (v0.26).
+#:
+#: `PIN_GUARANTEED` is the READER's answer to the same question and it is a different answer on
+#: purpose: a reader gets an absent path MATERIALISED, and a writer gets the write REFUSED. That
+#: split is this file's standing rule — *reading a ledger is never the operation that fails on it,
+#: and a write onto a record this runtime cannot read is exactly the operation that must fail*
+#: (`Ledger.__init__` says it of the file; this says it of the record). Materialising on the write
+#: path is not available: `question` and `decision` are `PIN_GUARANTEED` and `add_pin` writes both
+#: as an explicit `None`, so filling them would put `{}` on every pin in the file — and `{}` is
+#: falsy in Python and TRUTHY in JavaScript, which is an empty fork card on the map for every
+#: finding in the ledger.
+#:
+#: The membership rule is the writer's own output and nothing else, which is why the tuple can be
+#: held to it rather than trusted:
+#: `tests/test_ledger.py::TestAWriteOntoAPinThisRuntimeCannotReadIsRefused` derives the set from a
+#: pin `add_pin` actually composes and asserts equality. A path added to the envelope tomorrow joins
+#: it iff `add_pin` writes it, and the doors may then index it.
+PIN_REQUIRED = ("id", "kind", "title", "severity", "state", "provenance", "anchors",
+                "depends_on", "remediation")
+
 
 def _at(record: dict, path: str) -> Any:
     """The value at a dotted path, or `None` where any step is absent or not an object."""
@@ -963,12 +1070,34 @@ def _at(record: dict, path: str) -> Any:
     return node
 
 
-def _rules_from(shapes: dict, stronger: dict, prefix: str) -> tuple:
+def _shape_message(path: str, shape: str, required: bool) -> Any:
+    """The sentence for a path whose rule is its declared shape — one function so the two halves of
+    that rule (`must hold the shape`, `must be there at all`) cannot be worded by two authors."""
+    def message(record: dict) -> str:
+        if required and _at(record, path) is None:
+            return (f"`{path}` is absent, and `add_pin` writes it on every pin — so every per-pin "
+                    f"write door indexes it unconditionally and dies here on a record this runtime "
+                    f"did not compose. A reader substitutes {SHAPE_EMPTY[shape]!r}; a write is "
+                    f"refused, because inventing half a record is not a write anyone asked for")
+        return (f"`{path}` must be {SHAPE_ENGLISH[shape]}"
+                f"{'' if required else ' or absent'}; got {type(_at(record, path)).__name__} — a "
+                f"reader indexes into it, so what the file carries is read as "
+                f"{SHAPE_EMPTY[shape]!r} and reported here rather than silently substituted")
+    return message
+
+
+def _rules_from(shapes: dict, stronger: dict, prefix: str, required: tuple = ()) -> tuple:
     """`(name, holds(record) -> bool, message(record) -> str)` per declared path.
 
     One rule per path and one name per path: where `stronger` carries an entry the rule is that
     one, because a membership rule already implies the shape and two entries would report one
     fault twice under two names.
+
+    `required` (v0.26) is the third thing a path's rule can say, and it is one rule rather than a
+    second table for the same reason: a path that is absent and a path that is the wrong type are
+    the same fault to every caller — the value cannot be indexed — so they are one name, one
+    verdict, and one entry in `pre_rule_events`. Every `stronger` entry already implies presence
+    (`v in STATES` is false of `None`), so the two never both apply to one path.
     """
     out = []
     for path, shape in shapes.items():
@@ -979,18 +1108,17 @@ def _rules_from(shapes: dict, stronger: dict, prefix: str) -> tuple:
                         (lambda p, h: lambda r: h(_at(r, p)))(path, holds),
                         (lambda p, m: lambda r: m(_at(r, p)))(path, message)))
             continue
+        must = path in required
         out.append((
             name,
-            (lambda p, s: lambda r: _at(r, p) is None or SHAPE_HOLDS[s](_at(r, p)))(path, shape),
-            (lambda p, s: lambda r: f"`{p}` must be {SHAPE_ENGLISH[s]} or absent; got "
-                                    f"{type(_at(r, p)).__name__} — a reader indexes into it, so "
-                                    f"what the file carries is read as {SHAPE_EMPTY[s]!r} and "
-                                    f"reported here rather than silently substituted")(path, shape),
+            (lambda p, s, m: lambda r: (_at(r, p) is None and not m)
+             or SHAPE_HOLDS[s](_at(r, p)))(path, shape, must),
+            _shape_message(path, shape, must),
         ))
     return tuple(out)
 
 
-PIN_RULES = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_")
+PIN_RULES = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_", PIN_REQUIRED)
 #: A `Policy` is the ledger's other record with its own surfaces, and it acquired the pin half's
 #: exact bug one collection over: `instructions.render` called `.strip()` on `policy["rule"]` and
 #: `.items()` on `policy["applies_to"]`, so an elected standing rule whose scope is a string took
@@ -1323,8 +1451,19 @@ def _validate_question(question: Optional[dict]) -> None:
         return
     _require(isinstance(question, dict), "question must be a dict")
     _require(bool(question.get("prompt")), "question.prompt is required")
-    options = question.get("options", [])
-    _require(isinstance(options, list), "question.options must be a list")
+    # v0.26 — through the ONE carrier, which is where the rule was already written and was being
+    # paid only at TOP-LEVEL list arguments. `_require_objects` was introduced for `proposals`,
+    # `provenance`, `anchors`, `failure_modes` and `paper_tigers` — every list an agent hands a door
+    # directly — and a list one level inside a dict argument was outside all of it. Reproduced over
+    # real stdio on the shipped plugin: `ledger_add_pin(question={"options": ["a bare string"]})`
+    # and `ledger_set_question` with the byte-identical dict both returned `'str' object has no
+    # attribute 'get'`, from the `opt.get("id")` two lines below — the exact failure the rule was
+    # written to close, one nesting level down, at the two doors that compose the fork the whole
+    # funnel runs on.
+    options = _require_objects(question.get("options", []), "question.options",
+                               "each one is a branch of the fork with an `id` and a `label`, and "
+                               "`question.options[].id` is the carrier the offered-options rule "
+                               "anchors on at both election doors")
     for opt in options:
         _require(bool(opt.get("id")) and bool(opt.get("label")),
                  "every question option needs id and label")
@@ -1425,6 +1564,49 @@ class Ledger:
             if pin_read(p)["id"] == pin_id:
                 return p
         raise LedgerError(f"no such pin: {pin_id}")
+
+    def writable_pin(self, pin_id: str) -> dict:
+        """THE lookup of the WRITE path: the pin itself, or a refusal naming what cannot be read
+        on it (v0.26).
+
+        **Why this exists.** Two rounds hardened the read path — `pin_read` substitutes, `PIN_RULES`
+        reports, `readable_ledger` carries both into the projections — and every one of the fourteen
+        per-pin write doors went on indexing the raw record. A write door READS the pin already in
+        the file before it writes anything, so every guarantee built for the readers applies to it,
+        and none of it was applied. Reproduced over real stdio against the shipped plugin, on
+        malformations the derived corpus already describes: 42 crash sites across all fourteen
+        doors, the election door `ledger_record_decision` among them, each of them a bare
+        `KeyError`/`AttributeError`/`TypeError` naming a line of ours about a file somebody else
+        hand-edited — and the caller is mid-transaction, which is worse than a reader's crash, not
+        better.
+        - `KeyError: 'state'` at every door, from `_gate_closed`;
+        - `AttributeError: 'str' object has no attribute 'get'` at `add_remediation`, `challenge`,
+          `reopen`, `cross_derive` on a `remediation`/`verification` this runtime did not write;
+        - `KeyError: 'title'` at `record_decision`, before `decide` was even reached;
+        - `KeyError: 'depends_on'` at `set_readiness`, on a pin missing the list `add_pin` always
+          writes.
+
+        **Refuse rather than substitute, and that is the split, not an inconsistency.** `pin_read`
+        answers *what may a reader index*; this answers *may this record be written to at all*.
+        `Ledger.__init__` already draws the same line one level out for the whole file, in the same
+        words: a write onto something this runtime cannot read is exactly the operation that must
+        fail. Substituting here would persist the substitution — the door writes the pin back — so
+        a guarded read on the write path is a silent repair of somebody's file.
+
+        The verdict is `pin_violations`, which is `PIN_RULES`, which is derived from `PIN_SHAPES`
+        and `PIN_REQUIRED`: one table for the rules, the reader's substitution, the report, the
+        corpus and this refusal. The message names the rules and points at
+        `mcp:ledger_summary`'s `pre_rule_events`, which is where the same names are already listed
+        for the whole file — a refusal an agent cannot act on is a wall.
+        """
+        pin = self.pin(pin_id)
+        broken = set(pin_violations(pin))
+        reasons = "; ".join(message(pin) for name, _holds, message in PIN_RULES if name in broken)
+        _require(not broken,
+                 f"{pin_id} cannot be written to: this runtime cannot read "
+                 f"{', '.join(sorted(broken))} on it. {reasons}. Every one of these is reported by "
+                 f"`ledger_summary` under `pre_rule_events` — fix the record, then write.")
+        return pin
 
     def _next_id(self, prefix: str, collection: list, key: str = "id") -> str:
         n = 1 + sum(1 for item in collection if str(item.get(key, "")).startswith(prefix))
@@ -1580,7 +1762,7 @@ class Ledger:
         not un-decided by acquiring a question, because un-deciding is the reopen arc and has its
         own door.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         # Asked FIRST, on `settlement_verdict`'s own stated rule and on `add_proposals`' — *a rule
         # that every door must obey is asked before any door speaks*. It ran last here, so a
         # `resolved` pin that already poses a fork was told the weaker of the two true reasons
@@ -1644,7 +1826,7 @@ class Ledger:
         fork is told the stronger of the two reasons: the work is over, and the answer is `reopen`,
         not `set_question`.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         self._gate_closed(pin, "add_proposals")
         _require(bool(pin_read(pin)["question"]),
                  f"{pin_id} poses no fork, and a proposal is an option for one. This door moves a "
@@ -1788,7 +1970,7 @@ class Ledger:
         # library's own callers — `expand_catalog`, `accept`, the tests — for a risk none of them
         # carry. It is also, for the same reason, not an `EVENT_RULES` entry: the event records the
         # quote, never whether one was owed.
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         door = _door_for(settles_as)
         # Gated BEFORE the event is built: a refusal must not leave an orphan DecisionEvent in an
         # append-only log. `_settle` asks the same predicate again, because it is the single writer
@@ -1850,7 +2032,7 @@ class Ledger:
         the existing rule that only `resolved`/`accepted` close an edge means the change cannot
         start until the ground is actually fixed.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         self._gate_closed(pin, "set_readiness")
         _require(verdict in READINESS_VERDICTS, f"verdict must be one of {READINESS_VERDICTS}")
         zone_files = {f for f in (zone or {}).get("files", [])}
@@ -1942,7 +2124,7 @@ class Ledger:
         """
         self.decide(pin_id, outcome="defer", rationale=rationale, flip_criteria=flip_criteria,
                     evidence="transcribed", human_answer=human_answer, settles_as="deferred")
-        return self.pin(pin_id)
+        return self.writable_pin(pin_id)
 
     def accept(self, pin_id: str, rationale: str, flip_criteria: str,
                evidence: str = "transcribed", human_answer: str = "") -> dict:
@@ -1953,7 +2135,7 @@ class Ledger:
         """
         self.decide(pin_id, outcome="keep", rationale=rationale, flip_criteria=flip_criteria,
                     evidence=evidence, human_answer=human_answer, settles_as="accepted")
-        return self.pin(pin_id)
+        return self.writable_pin(pin_id)
 
     # -- policies (v0.3: user decisions, amplified) ---------------------------
 
@@ -2166,7 +2348,16 @@ class Ledger:
             # is not a second one that outranks it.
             if state not in ("decided", "correctness_unknown") and pin["kind"] != "defect":
                 return "not_decided"
-            if not pin.get("remediation") or any(i["status"] != "done" for i in pin["remediation"]):
+            # `.get`, and the reason is `PIN_SHAPES`' own membership rule rather than an oversight
+            # (v0.26): the table declares `remediation` a `list[object]` and stops there, because a
+            # SCALAR nested inside a declared object is not something a reader indexes INTO. That is
+            # true of what it renders and false of what it subscripts — `i["status"]` was a bare
+            # `KeyError` on an item carrying no status, which no corpus derived from that table can
+            # produce. So the rule the write path falls back to is the read path's own, stated in
+            # v0.18 and carrying no qualifier: every read of a record this runtime did not write is
+            # a `.get`. An item with no status is not done.
+            if not pin.get("remediation") or any(i.get("status") != "done"
+                                                 for i in pin["remediation"]):
                 return "remediation_open"
             # The envelope is the single carrier, so it is read the way absence is read everywhere
             # else in this package: as the WEAKER rung, never as permission. `rung: None` inside a
@@ -2513,7 +2704,7 @@ class Ledger:
                  f"and an arc that never elects may not sign itself with the door that does "
                  f"(`interview` was accepted here for four versions, on an event that then reopened "
                  f"a human's decided pin)")
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         reopened = bool(upheld) and self.reopen_verdict(pin, "challenge") == "would_reopen"
         event = {
             "id": self._next_id("chl_", self.data["decision_log"]),
@@ -2564,7 +2755,7 @@ class Ledger:
         the record says who wrote it, and a record that can be signed `interview` is a record about
         nobody.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         self._gate_closed(pin, "premortem")
         _require(source in _CHALLENGE_SOURCES,
                  f"source must be one of {_CHALLENGE_SOURCES}; got {source!r} — the same vocabulary "
@@ -2667,7 +2858,7 @@ class Ledger:
         un-closing finished work needs its own justification and has its own arc. The other two arcs
         already worked this way: `challenge` and `reopen` each append before they move anything.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         _require(agreement in ("agree", "disagree", "partial"),
                  "agreement must be agree | disagree | partial")
         _require(bool(str(claim).strip()), "name the claim being re-derived")
@@ -2727,7 +2918,7 @@ class Ledger:
             record["refuted_claim"] = refuted
         if event["rung_raised"]:
             verification = pin.get("verification") or {}
-            verification["rung"] = "cross_derived"
+            verification["rung"] = _writable_rung("cross_derive", "cross_derived")
             verification["cross_derived_by"] = sorted(providers)
             pin["verification"] = verification
         elif event["reopened"]:
@@ -2768,7 +2959,7 @@ class Ledger:
         with the premortem is the whole point — it is what lets 'what we feared' and 'what happened'
         be compared at all, instead of being two prose piles nobody can join.
         """
-        self.pin(pin_id)
+        self.writable_pin(pin_id)
         _require(failure_class in FAILURE_CLASSES, f"class must be one of {FAILURE_CLASSES}")
         _require(failure_class != "other" or bool(detail),
                  "class 'other' requires detail (the open escape hatch is named, not blank)")
@@ -2830,7 +3021,7 @@ class Ledger:
         *which class of assumption production falsified* is judgment, and `core/feedback-loop.md` is
         where that standard is set, not here.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         _require(bool(str(reason).strip()),
                  "a reopen must say what production showed. It un-settles work a human elected, and "
                  "'signal fired' with no reading is a state change nobody downstream can weigh")
@@ -2984,7 +3175,7 @@ class Ledger:
             return
         pin["verification"] = {
             **envelope,
-            "rung": None,
+            "rung": _writable_rung("_invalidate_settlement_claims", None),
             "blocked_by": (f"this pin closed at the `{envelope['rung']}` rung; that observation "
                            f"was refuted by {via} ({arc}), and nothing has been observed since"),
         }
@@ -3009,7 +3200,7 @@ class Ledger:
         parameter that accepts anything and changes nothing is worse than its absence, because it
         reads as a capability.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         self._gate_closed(pin, "add_remediation")
         is_build = build_track is not None
         allowed = BUILD_ACTIONS if is_build else REMEDIATION_ACTIONS
@@ -3036,10 +3227,13 @@ class Ledger:
 
     def set_remediation_status(self, pin_id: str, item_id: str, status: str) -> dict:
         _require(status in ("todo", "in_progress", "done"), "bad remediation status")
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         self._gate_closed(pin, "set_remediation_status")
         for item in pin["remediation"]:
-            if item["id"] == item_id:
+            # `.get` for `settlement_verdict`'s reason one method over: the item's own keys are
+            # nested scalars, which `PIN_SHAPES` deliberately does not describe, so the read that
+            # reaches them is the read path's `.get` rather than a rule.
+            if item.get("id") == item_id:
                 item["status"] = status
                 return item
         raise LedgerError(f"no remediation item {item_id} on {pin_id}")
@@ -3061,17 +3255,22 @@ class Ledger:
         closing rung when it gets here. A pin carrying no such rung needs one passed, which is what
         `resolved` meaning OBSERVED costs.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         if evidence is not None:
             _require(bool(str(evidence).strip()), "evidence, when given, must not be blank")
             pin["evidence"] = evidence
         if rung is not None:
-            _require(rung in _CLOSING_RUNGS,
-                     f"a resolving rung is one of {_CLOSING_RUNGS}, not {rung!r} — the other two "
-                     "rungs are what `correctness_unknown` exists to record")
-            _require(pin.get("evidence") or evidence,
-                     "a claimed rung needs the observation it rests on — pass `evidence`")
-            pin["verification"] = {**(pin.get("verification") or {}), "rung": rung}
+            # v0.26 — the module-level carrier rather than this door's own `_require`. It said
+            # exactly what `RUNG_WRITER_RUNGS["fresh_observation"]` says, and saying it here is how
+            # the door beside it came to accept a closing rung with nothing to check it against.
+            _require(str(evidence or "").strip(),
+                     "a claimed rung needs the observation it rests on — pass `evidence`. It used "
+                     "to be satisfied by the `evidence` already ON the pin, which is the "
+                     "observation the LAST resolve rested on: after a reopen that field names "
+                     "exactly what production refuted, so a stale sentence opened the gate for a "
+                     "fresh claim (v0.26, `SETTLEMENT_CARRIERS`)")
+            pin["verification"] = {**(pin.get("verification") or {}),
+                                   "rung": _writable_rung("resolve", rung)}
         self._settle(pin, "resolve", verification_rung=(pin.get("verification") or {}).get("rung"))
         return pin
 
@@ -3121,7 +3320,7 @@ class Ledger:
         diff-risk review), which is why `attempted` and `blocked_by` are recorded rather than
         optional decoration. The state blocks closure; the next move is an explicit decision.
         """
-        pin = self.pin(pin_id)
+        pin = self.writable_pin(pin_id)
         # The one door that moves a pin OUT of a settled state, and it is on the same table as the
         # four that move it in (v0.16) — `not_decided` is what "applies to work that was actually
         # done" now says, in the words every other door answers in.
@@ -3135,11 +3334,13 @@ class Ledger:
                  "diff_review) — reaching for this state without trying is a shrug, not a finding")
         if determinism is not None:
             _require(determinism in DETERMINISM, f"determinism must be one of {DETERMINISM}")
-        if rung is not None:
-            _require(rung in VERIFICATION_RUNGS, f"rung must be one of {VERIFICATION_RUNGS}")
         pin["verification"] = {
             "determinism": determinism,
-            "rung": rung,
+            # v0.26 — through the carrier, which is what `records_absence` had always claimed and
+            # nothing checked. This read `_require(rung in VERIFICATION_RUNGS)`: the whole
+            # vocabulary, closing rungs included, on the one door whose meaning is that correctness
+            # could NOT be established. See `RUNG_WRITER_RUNGS`.
+            "rung": _writable_rung("mark_correctness_unknown", rung),
             "attempted": attempted,
             "blocked_by": str(blocked_by).strip(),
         }

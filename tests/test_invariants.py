@@ -147,7 +147,13 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                     # and not in INTERNAL for `cascaded_by`'s reason — INTERNAL is for writers
                     # reached through another door, and a reader reached through no door at all is
                     # not a write path anybody needs to govern.
-                    "readable", "readable_pins"}
+                    "readable", "readable_pins",
+                    # v0.26: `pin`'s twin on the WRITE path, and it is here for exactly the reason
+                    # `pin` is. It looks a record up and REFUSES when this runtime cannot read it;
+                    # it assigns nothing. Naming it a mutator because every mutator calls it would
+                    # make the classification a claim about who its callers are rather than about
+                    # what it does — and its callers are already the governed doors.
+                    "writable_pin"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:

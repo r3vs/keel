@@ -241,7 +241,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     """
     from ledger import Ledger
     led = _open_existing(ledger)
-    pin = led.pin(pin_id)
+    pin = led.writable_pin(pin_id)
     prompt = _prompt_from_pin(pin)
     offered = {o["id"] for o in prompt["options"]}
 
@@ -632,7 +632,7 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     led = _open_existing(ledger)
     record = led.cross_derive(pin_id, claim, derivations, agreement, notes)
     _saved(ledger, led)
-    pin = led.pin(pin_id)
+    pin = led.writable_pin(pin_id)
     # v0.16: what the disagreement DID, said rather than inferred from the state. A closed pin is
     # recorded and not reopened — un-closing finished work has its own arc — and a caller that
     # cannot tell the two apart would read "recorded" as "handled".
@@ -776,7 +776,7 @@ def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_sign
     led = _open_existing(ledger)
     event = led.reopen(pin_id, reason=reason, fired=fired, source=source)
     _saved(ledger, led)
-    pin = led.pin(pin_id)
+    pin = led.writable_pin(pin_id)
     return {"pin_id": pin_id, "event_id": event["id"], "reopened": event["reopened"],
             "state": pin["state"], "substate": pin.get("substate"),
             "also_reopened": led.cascaded_by(event["id"])}
@@ -814,7 +814,7 @@ def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str
     event = led.challenge(pin_id, target=target, challenge_class=challenge_class,
                           argument=argument, severity=severity, upheld=bool(upheld), source=source)
     _saved(ledger, led)
-    pin = led.pin(pin_id)
+    pin = led.writable_pin(pin_id)
     return {"pin_id": pin_id, "event_id": event["id"], "upheld": event["upheld"],
             "reopened": event["reopened"], "state": pin["state"],
             "substate": pin.get("substate"),

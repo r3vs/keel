@@ -1717,32 +1717,59 @@ class TestTheWayBackOwesTheDoorsTheirCarriers(unittest.TestCase):
     # -- the structural half ---------------------------------------------------------------------
 
     @staticmethod
-    def _carriers_settlement_verdict_reads():
-        """Every key `Ledger.settlement_verdict` reads OFF THE PIN, from its own source.
-
-        Anchored on the name `pin`, which is the parameter, and on the two shapes a read can take
+    def _pin_keys(node):
+        """Every key read OFF the local named `pin` under `node`, in the two shapes a read takes
         here — `pin["x"]` in a Load context and `pin.get("x")`. Items inside `pin["remediation"]`
         are a different object and are deliberately not collected: the question is what the DOOR
-        decides from, and the arc's obligation is to the pin.
+        decides from, and the arc's obligation is to the pin."""
+        import ast
+        keys = set()
+        for n in ast.walk(node):
+            if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
+                    and n.value.id == "pin" and isinstance(n.ctx, ast.Load)
+                    and isinstance(n.slice, ast.Constant)
+                    and isinstance(n.slice.value, str)):
+                keys.add(n.slice.value)
+            elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                  and n.func.attr == "get" and isinstance(n.func.value, ast.Name)
+                  and n.func.value.id == "pin" and n.args
+                  and isinstance(n.args[0], ast.Constant)):
+                keys.add(n.args[0].value)
+        return keys
+
+    @classmethod
+    def _carriers_the_doors_gate_on(cls):
+        """Every carrier a settlement DOOR decides from — the predicate's whole body, plus every
+        `_require` CONDITION in the five doors themselves.
+
+        **The table says DOOR and this used to ask one FUNCTION (v0.26).** It read
+        `settlement_verdict` alone, so *"every carrier a settlement door decides on"* was proved of
+        the predicate and asserted of the doors — and `resolve` gated on a fifth the table does not
+        name (`pin.get("evidence")`, the observation the LAST resolve rested on). A `_require` is
+        this runtime's one refusal, so a pin field read inside one is a field the settlement is
+        decided by; anything else a door reads it is merely writing to or reporting.
         """
         import ast
+        import ledger as mod
         path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
         with open(path, encoding="utf-8") as fh:
             tree = ast.parse(fh.read(), filename=path)
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, ast.FunctionDef) and n.name == "settlement_verdict")
-        keys = set()
-        for node in ast.walk(fn):
-            if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
-                    and node.value.id == "pin" and isinstance(node.ctx, ast.Load)
-                    and isinstance(node.slice, ast.Constant)
-                    and isinstance(node.slice.value, str)):
-                keys.add(node.slice.value)
-            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                  and node.func.attr == "get" and isinstance(node.func.value, ast.Name)
-                  and node.func.value.id == "pin" and node.args
-                  and isinstance(node.args[0], ast.Constant)):
-                keys.add(node.args[0].value)
+        doors = {"settlement_verdict"} | {
+            "mark_correctness_unknown" if d == "correctness_unknown" else d
+            for d in mod.SETTLEMENT_DOORS}
+        seen, keys = set(), set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef) or fn.name not in doors:
+                continue
+            seen.add(fn.name)
+            if fn.name == "settlement_verdict":
+                keys |= cls._pin_keys(fn)
+                continue
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id == "_require" and node.args):
+                    keys |= cls._pin_keys(node.args[0])
+        assert seen == doors, f"a settlement door this gate never found: {sorted(doors - seen)}"
         return keys
 
     def test_every_carrier_a_settlement_door_reads_has_a_declared_disposition(self):
@@ -1751,9 +1778,9 @@ class TestTheWayBackOwesTheDoorsTheirCarriers(unittest.TestCase):
         which "every carrier" is a claim about the code rather than about two functions remembering
         each other."""
         import ledger as ledger_mod
-        self.assertEqual(self._carriers_settlement_verdict_reads(),
+        self.assertEqual(self._carriers_the_doors_gate_on(),
                          set(ledger_mod.SETTLEMENT_CARRIERS),
-                         "a carrier `settlement_verdict` decides from, with nothing said about "
+                         "a carrier a settlement DOOR decides from, with nothing said about "
                          "what a reopen does to it — declare it in `SETTLEMENT_CARRIERS`")
         self.assertEqual(set(ledger_mod.SETTLEMENT_CARRIERS.values())
                          - set(ledger_mod.REOPEN_DISPOSITIONS), set())
@@ -2889,6 +2916,28 @@ class TestTheShapeTableIsTheWritersOwnShapes(unittest.TestCase):
         self.assertEqual(sorted(unreachable), [],
                          "a declared path no writer in this package writes")
 
+    def test_every_scalar_a_settlement_door_decides_on_has_a_membership_rule(self):
+        """v0.26 — `kind` was the third closed vocabulary a pin carries and the only one with no
+        rule, so a wrong-typed or out-of-set `kind` was invisible to `nonconforming` on every
+        surface while `state` and `severity` were reported on all of them.
+
+        Derived from `SETTLEMENT_CARRIERS` rather than listed: a carrier a door decides from, whose
+        value is a SCALAR, picks a branch — `settlement_verdict` sends a `defect` and a
+        `design_concern` down different ones — so a value outside the set silently takes the pin
+        somewhere nobody elected. The container carriers are excluded because a rule about their
+        MEMBERS is a different question, and `PIN_SHAPES` answers it.
+        """
+        import ledger as ledger_mod
+        scalars = [c for c in ledger_mod.SETTLEMENT_CARRIERS
+                   if ledger_mod.PIN_SHAPES.get(c) == "str"]
+        self.assertEqual(sorted(scalars), ["kind", "state"], "the derivation went vacuous")
+        for path in scalars:
+            with self.subTest(carrier=path):
+                self.assertIn(path, ledger_mod.PIN_STRONGER,
+                              f"`{path}` decides a settlement branch and its only rule is that it "
+                              f"is a string — every value outside the closed set reads as a valid "
+                              f"one on every surface")
+
     def test_a_stronger_rule_implies_the_shape_it_replaces(self):
         """`PIN_STRONGER` replaces a path's shape rule with a membership one, under one name. That
         is only sound while the stronger predicate is actually stronger — a membership rule that
@@ -3293,6 +3342,185 @@ class TestOnlyAFreshObservationRaisesARefutedClaim(unittest.TestCase):
                 self.assertEqual(refuted_claim(shape), "")
         self.assertEqual(refuted_claim({"verification": {"rung": None, "blocked_by": "why"}}),
                          "why")
+
+    # -- v0.26: the table's THIRD column stops being prose ----------------------------------------
+
+    def test_every_rung_writer_goes_through_the_one_refusal_with_its_own_name(self):
+        """`VERIFICATION_RUNG_WRITERS` declared four KINDS of writer and enforced none of them.
+
+        The kind that mattered is the one whose description asserted the enforcement:
+        `records_absence` reads *"writes a rung BELOW the closing ones, or none at all… so it is
+        asked nothing"*, and `mark_correctness_unknown` checked `rung in VERIFICATION_RUNGS` — the
+        whole vocabulary. So the AST half is the load-bearing one: every writer must pay
+        `_writable_rung`, and pay it under its own name, or a fifth writer inherits the same prose.
+        """
+        import ast
+
+        import ledger as mod
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        paid = {}
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id == "_writable_rung" and node.args
+                        and isinstance(node.args[0], ast.Constant)):
+                    paid.setdefault(fn.name, set()).add(node.args[0].value)
+        self.assertEqual(set(paid), set(mod.VERIFICATION_RUNG_WRITERS),
+                         "a writer of the rung a settlement gate opens on that does not go through "
+                         "`_writable_rung` — the kind it declares is then a sentence nothing checks")
+        for name, named in sorted(paid.items()):
+            self.assertEqual(named, {name},
+                             f"{name} pays the carrier under somebody else's name, so it is judged "
+                             f"by somebody else's kind")
+        self.assertEqual(set(mod.RUNG_WRITER_RUNGS), set(mod.RUNG_WRITER_KINDS),
+                         "a declared kind with no rungs is a column with no rule")
+
+    def test_the_door_that_records_an_absence_may_not_claim_an_observation(self):
+        """The reproduction, over the library. Derived: every writer whose kind is
+        `records_absence` is exercised with every closing rung, and every one must refuse."""
+        import ledger as mod
+        absence = [n for n, kind in mod.VERIFICATION_RUNG_WRITERS.items()
+                   if kind == "records_absence"]
+        self.assertEqual(absence, ["mark_correctness_unknown"],
+                         "the behavioural half below covers exactly this writer; a second member "
+                         "would be uncovered")
+        for rung in mod._CLOSING_RUNGS:
+            with self.subTest(rung=rung):
+                led = make_ledger()
+                pin = add_simple_pin(led, kind="defect", severity="high")
+                with self.assertRaises(LedgerError) as ctx:
+                    led.mark_correctness_unknown(pin["id"], blocked_by="no oracle exists",
+                                                 attempted=["tests"], rung=rung)
+                self.assertIn("records_absence", str(ctx.exception))
+                self.assertIsNone(pin.get("verification"),
+                                  "the envelope was written before the rung was judged")
+
+    def test_the_rungs_it_does_record_still_land(self):
+        """The other direction: refusing the two closing rungs is not refusing the door."""
+        import ledger as mod
+        for rung in mod.RUNG_WRITER_RUNGS["records_absence"]:
+            with self.subTest(rung=rung):
+                led = make_ledger()
+                pin = add_simple_pin(led, kind="defect", severity="high")
+                led.mark_correctness_unknown(pin["id"], blocked_by="no oracle exists",
+                                             attempted=["tests"], rung=rung)
+                self.assertEqual(pin["verification"]["rung"], rung)
+                self.assertEqual(pin["state"], "correctness_unknown")
+
+    def test_the_laundering_route_the_reproduction_walked_is_closed(self):
+        """Five calls, no human: resolve at `observed` -> reopen on an incident -> the correct
+        `unverified` refusal -> `mark_correctness_unknown(rung="observed")` -> resolve, green."""
+        led = make_ledger()
+        pin = led.add_pin(kind="defect", title="double charge on retry", severity="high",
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="replayed on staging; one charge", rung="observed")
+        led.reopen(pin["id"], reason="p95 blew the threshold", fired="incident")
+        self.assertTrue(refuted_claim(pin))
+        with self.assertRaises(LedgerError):
+            led.mark_correctness_unknown(pin["id"], blocked_by="no oracle exists for this",
+                                         attempted=["tests"], rung="observed")
+        self.assertTrue(refuted_claim(pin), "the refutation is still standing")
+        with self.assertRaises(LedgerError) as ctx:
+            led.resolve(pin["id"], evidence="I looked")
+        self.assertIn("unverified", str(ctx.exception))
+
+    def test_a_claimed_rung_rests_on_the_observation_this_call_states(self):
+        """`SETTLEMENT_CARRIERS`' fifth carrier, removed rather than declared. `resolve` demanded
+        *the observation it rests on* and accepted the `evidence` already ON the pin — which is the
+        one the LAST resolve rested on, and after a reopen names exactly what production refuted."""
+        led = make_ledger()
+        pin = led.add_pin(kind="defect", title="double charge", severity="high",
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="replayed on staging; one charge", rung="observed")
+        led.reopen(pin["id"], reason="it came back", fired="incident")
+        self.assertEqual(pin.get("evidence"), "replayed on staging; one charge")
+        with self.assertRaises(LedgerError) as ctx:
+            led.resolve(pin["id"], rung="observed")
+        self.assertIn("observation it rests on", str(ctx.exception))
+
+
+class TestAWriteOntoAPinThisRuntimeCannotReadIsRefused(unittest.TestCase):
+    """v0.26 — the read path was hardened twice and the write doors read the same pins.
+
+    Reproduced over real stdio against the shipped plugin: 42 crash sites across all fourteen
+    per-pin write doors, over shapes the derived corpus already describes. The carrier is
+    `Ledger.writable_pin`; this holds the two declarations it rests on.
+    """
+
+    def test_the_required_set_is_the_writers_own_output(self):
+        """`PIN_REQUIRED` is not a list somebody typed: it is every declared path `add_pin`
+        composes, which is exactly the set a write door may index unconditionally. A field added to
+        the envelope joins it iff the writer writes it."""
+        import ledger as mod
+        from ledger import _at
+        led = make_ledger()
+        # The MINIMAL call, because the rule is "every declared path `add_pin` writes
+        # UNCONDITIONALLY": a path that arrives only when a caller supplies the optional argument
+        # for it is exactly the path a write door may not assume.
+        minimal = led.add_pin(kind="defect", title="t", severity="low", confidence="extracted",
+                              provenance=[{"source": "recon", "detail": "x"}])
+        derived = {p for p in mod.PIN_SHAPES if _at(minimal, p) is not None}
+        self.assertEqual(set(mod.PIN_REQUIRED), derived,
+                         "`PIN_REQUIRED` and what `add_pin` actually writes have diverged — one of "
+                         "them is a claim about the other")
+        for pin in (minimal, add_simple_pin(led)):
+            self.assertEqual(mod.pin_violations(pin), [],
+                             "add_pin composed a pin its own rules refuse")
+
+    def test_reading_still_substitutes_where_writing_refuses(self):
+        """The split, asserted rather than argued: the same record is readable and unwritable.
+
+        Materialising on the write path is not available and the reason is concrete — `question`
+        and `decision` are `PIN_GUARANTEED` and `add_pin` writes both as an explicit `None`, so a
+        fill would put `{}` on every pin in the file, and `{}` is falsy in Python and TRUTHY in
+        JavaScript."""
+        import ledger as mod
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        pin.pop("depends_on")
+        led.save()
+        self.assertEqual(mod.pin_read(pin)["depends_on"], [])
+        with self.assertRaises(LedgerError) as ctx:
+            led.writable_pin(pin["id"])
+        self.assertIn("pin_depends_on", str(ctx.exception))
+        self.assertIn("pre_rule_events", str(ctx.exception),
+                      "a refusal an agent cannot act on is a wall")
+
+    def test_every_shape_the_corpus_describes_is_refused_and_never_crashed(self):
+        """Over the DERIVED corpus, at the one carrier. A shape the schema can describe is a
+        refusal with a sentence, never an `AttributeError` naming a line of ours."""
+        import ledger as mod
+        from shape_corpus import broken_pins
+        cases = broken_pins()
+        self.assertGreaterEqual(len(cases), 100, "the derivation went vacuous")
+        for label, broken in cases:
+            with self.subTest(shape=label):
+                tmp = tempfile.mkdtemp()
+                path = os.path.join(tmp, "ledger.json")
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump({"version": SCHEMA_VERSION, "pins": [broken],
+                               "decision_log": [], "policies": []}, fh)
+                led = Ledger(path)
+                pin_id = mod.pin_read(broken)["id"]
+                try:
+                    led.writable_pin(pin_id)
+                except LedgerError as exc:
+                    self.assertIn("cannot be written to", str(exc))
+                    continue
+                except Exception as exc:                      # noqa: BLE001 — that IS the finding
+                    self.fail(f"the write lookup crashed on {label!r}: "
+                              f"{type(exc).__name__}: {exc}")
+                self.fail(f"{label!r} passed the write lookup, so every door indexes it raw")
 
 
 class TestFinishedWorkIsRefusedAtEveryDoorThatWritesToAPin(unittest.TestCase):

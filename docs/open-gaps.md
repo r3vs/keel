@@ -11,7 +11,7 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06 (ninth pass).** **§1–§17 and §19–§23 are all closed.** Nothing on this list
+> **STATUS 2026-08-07 (tenth pass).** **§1–§17 and §19–§25 are all closed.** Nothing on this list
 > is open. **§18** is not a defect but the standing answer to the question this register exists to
 > ask: *after twelve adversarial rounds, which recurring class still has no gate?* **§19** was the
 > ninth round's answer — §5 built a new surface and left four rules its siblings enforce — and
@@ -35,8 +35,14 @@ wrong* is the part that stops it coming back.
 > round whose subject is the GATE rather than the rule: *when the gate is a corpus, the corpus is
 > the weak link.* The read path's three parts were held to each other by construction and all three
 > ran against a hand-written list of seven broken pins; extending that list with eleven shapes the
-> schema already declares made the unchanged gates fail. **A closed section is a claim about a
-> class, and the class is where the next instance lives.**
+> schema already declares made the unchanged gates fail. **§25** is the fifteenth's, and it is §22,
+> §23 and §24 all arriving at the one surface nobody had asked: *a rule proved of the READERS is
+> unproved for the WRITERS, and a write door is a reader first.* Every per-pin write door reads the
+> pin already in the file before it writes anything — 42 crash sites across all fourteen, the
+> election door included — while the door whose whole meaning is *correctness could not be
+> established* could write the claim that the behaviour WAS observed onto the one carrier the
+> `resolve` gate opens on. **A closed section is a claim about a class, and the class is where the
+> next instance lives.**
 >
 > | # | Gap | One line |
 > |---|---|---|
@@ -60,6 +66,7 @@ wrong* is the part that stops it coming back.
 > | ~~22~~ | ~~the two projections read a ledger nobody had guarded~~ | **CLOSED** — `readable_ledger` is the one door for a caller holding ledger data; `nonconforming` reaches the page; `mount` is the page's one failure boundary; six new gates |
 > | ~~23~~ | ~~six rules paid at a set's members~~ | **CLOSED** — `cross_derive` is the third arc; a re-derivation may not launder a refutation; `PIN_WRITE_DOORS`; `brief_quote`; one commit point; one quote refusal |
 > | ~~24~~ | ~~the gate was a corpus, and the corpus was hand-written~~ | **CLOSED** — `PIN_SHAPES` is the one carrier the rules, the read and the corpus all derive from; the derived corpus then found three readers nobody had reported |
+> | ~~25~~ | ~~a write door reads the pin already in the file~~ | **CLOSED** — `writable_pin` is the write path's lookup and refuses what the read path substitutes; `RUNG_WRITER_RUNGS` makes the rung table's third column a rule; the derived corpus now runs at the derived write doors |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -82,9 +89,10 @@ wrong* is the part that stops it coming back.
 > | 21. the reopen leaves the settlement doors' carriers standing | ledger v0.22 | `ledger.SETTLEMENT_CARRIERS` + `REOPEN_DISPOSITIONS`, paid by `_reopen_minimal` -> `Ledger._invalidate_settlement_claims`; the `substate` clear moved into `_settle`; `unasked_verdict` · `question_offers` · `policy_preview` through `pin_read`/`readable_pins`, and `buildloop.py` · `agentready.py` · `challenger.py` with them; `add_proposals`'s fork requirement; gates `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheirCarriers` and `tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape` (roster derived from `readOnlyHint`) |
 > | 7. + 17g. two closures that held for one half | ledger v0.21 | `ledger.INTERVIEW_STATES`, read by `interview_view` and inlined as the map's `__ASKABLE__`; `map.py`'s `outOfReach` / `forkOptions` around `modeLine`; `Ledger.readable` + `ledger.pin_read` + `severity_rank` + `ledger.PIN_RULES` (with `collection_shape` / `entry_shape` in `nonconforming`); `ledger._MAY_BE_SILENT`; gates `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails` and `tests/test_map.py::code_only` with its two plants |
 > | 23. six rules paid at a set's members, unpaid for what satisfies the set | ledger v0.24 | `ledger.REOPEN_ARCS`'s third member with `ARC_MOVES` / `ARC_CASCADES` (and `REOPENED_SUBSTATES` composed from the arc table alone); `ledger.refuted_claim` + `VERIFICATION_RUNG_WRITERS` + the `xdr_` event's `rung_raised`; `ledger.PIN_WRITE_DOORS` + `Ledger._gate_closed`; `EVENT_RULES`' `brief_quote` with `interview._brief_entry` and the map's decision card; `tools._saved`; `tools._require_quote` + `ledger.QUOTED_RUNGS`; gates `tests/test_ledger.py::TestTheThirdArcPaysWhatTheOtherTwoPay` · `TestOnlyAFreshObservationRaisesARefutedClaim` · `TestFinishedWorkIsRefusedAtEveryDoorThatWritesToAPin` · `TestTheBriefOwesTheBrief`, `tests/test_mcp_tools.py::TestOneCommitPointForEveryLedgerWrite` · `TestOneRefusalForTheQuoteRule` · `TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach` |
+> | 25. a write door reads the pin already in the file | ledger v0.26 | `Ledger.writable_pin` + `ledger.PIN_REQUIRED` (and `_rules_from`'s `required`), reached by all 14 per-pin write doors and by the tool layer's own lookups; `ledger.RUNG_WRITER_RUNGS` + `_writable_rung`, paid by all four rung writers; `_validate_question` through `_require_objects`; `resolve`'s observation read off the CALL; `PIN_SHAPES["kind"]` + `PIN_STRONGER["kind"]`; gates `tests/test_mcp_tools.py::TestNoWriteDoorDiesOnThePinAlreadyInTheFile` · `TestNoWriteDoorDiesOnAMemberOfAListArgument._lists_under`, `tests/test_ledger.py::TestAWriteOntoAPinThisRuntimeCannotReadIsRefused` · `TestOnlyAFreshObservationRaisesARefutedClaim`'s four new cases · `TestTheWayBackOwesTheDoorsTheirCarriers._carriers_the_doors_gate_on` · `TestTheShapeTableIsTheWritersOwnShapes::test_every_scalar_a_settlement_door_decides_on_has_a_membership_rule` |
 > | 22. the two projections read a ledger nobody had guarded | ledger v0.23 | `ledger.read_collection` + `readable_ledger` (with `Ledger.readable` delegating to them), read by `map.render` · `instructions.render` · `graph` · `readiness` · `learning` · `agentready` · `mcp/tools`; `pin_read`'s `title`/`decision` and `ledger.POLICY_RULES` + `policy_read`; `severity_rank` as the package's ONE ordering; the map's `NONCONF_WHY` banner, its honest traffic light and `mount`'s thunk boundary; `build.py::_debris` + `shipped_files`; gates `tests/test_ledger.py::TestEveryReaderOfACollectionGoesThroughTheCarrier` · `TestOneSeverityOrderingForTheWholePackage` · `TestReadingAPolicyIsNeverTheOperationThatFails`, `tests/test_map.py::TestThePageIsRenderedFromWhatAReaderCanIndex` and the thunk row in `TestTheSafePathIsTheOnlyPath` |
 >
-> **Closed does not mean nothing remains.** Eight residuals are recorded inside closed sections
+> **Closed does not mean nothing remains.** Eleven residuals are recorded inside closed sections
 > rather than fixed, each with the argument for leaving it — read the section before re-finding one:
 >
 > - **§5** — `_reopen_minimal` cascades over `("decided", "resolved", "accepted")`, three states where
@@ -116,6 +124,20 @@ wrong* is the part that stops it coming back.
 >   event directly. Left as it is, with the same argument `_pin_line` makes about `kind`: a field
 >   that is only interpolated is not a field that is indexed, and substituting one with no failing
 >   case is a change with no carrier.
+> - **§25** — a scalar nested inside a declared object is still outside `PIN_SHAPES`, by that
+>   table's own membership rule (*nothing indexes into a string*) — which is about what a reader
+>   indexes INTO and says nothing about a missing KEY. `resolve`'s `i["status"]` and
+>   `set_remediation_status`'s `item["id"]` are `.get` now, under the read path's own v0.18 rule,
+>   and **no derived corpus can produce those cases**: the deliverable for gating that class is a
+>   schema for the item, not a wider corpus.
+> - **§25** — `apply_policy` writes to pins and takes no `pin_id`, so it is outside the derived
+>   write-door roster by construction. It reaches `decide`, which now refuses an unreadable pin, so
+>   the failure mode is a refusal rather than a crash — but the refusal aborts a cascade partway,
+>   and what a half-applied policy owes its radius is a question nothing here settles.
+> - **§25** — `confidence` and `resolution_mode` are closed vocabularies a pin carries and neither
+>   joined the shape table, because the derivation used is *a carrier a settlement door decides
+>   from* and no door branches a pin's fate on either. Widening it to every closed vocabulary is a
+>   different rule and needs its own argument.
 > - **§3** — the two below.
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
@@ -2851,3 +2873,123 @@ Settled with evidence; re-opening these costs a session and lands where it start
 - **No CLI floor.** MCP is the one runtime channel on all four hosts; `uv` is a hard prerequisite.
 - **Vendoring stays** — the reason is distribution atomicity, not path resolution. The old
   `relative_escape` / `external_directory` argument was refuted at the consuming functions.
+
+---
+## 25. A write door reads the pin already in the file — **CLOSED 2026-08-07** (ledger v0.26)
+
+The fifteenth round, and it is the previous three rounds' lesson landing on the one surface nobody
+had asked. §22 hardened the readers that hold a `Ledger`, §23 hardened the readers that hold ledger
+DATA, §24 replaced the corpus all of them run on with one derived from `PIN_SHAPES` — and none of it
+reached a **write** door. A per-pin write door READS the record before it writes anything, so every
+guarantee built for the readers applies to it, and none of it was applied. It is worse than a
+reader's crash, not better: the caller is mid-transaction, so the honest report is *your write may
+or may not have happened*.
+
+Every finding was **reproduced over real `uv run --script plugins/keel-core/mcp/server.py` stdio
+from a foreign cwd** before it was a test, and every one of them passed 876 tests and nine green
+gates.
+
+### Verified
+
+1. **[BLOCKER] `mark_correctness_unknown` accepted `rung="observed"|"cross_derived"`** and wrote it
+   into the pin's `verification` envelope — the single carrier `settlement_verdict` opens the
+   `resolve` gate on. So the door whose entire meaning is *correctness could not be established*
+   handed the pin the claim that its behaviour WAS observed. Five calls with no human in the loop:
+   `resolve(rung="observed")` closed the pin, `reopen(fired="incident")` demoted the envelope,
+   `ledger_resolve` correctly refused as `unverified` — then
+   `ledger_mark_correctness_unknown(blocked_by="no oracle exists for this", rung="observed")` wrote
+   the closing rung straight back, and `ledger_resolve(evidence="I looked")` closed it green. This
+   is v0.24's laundering finding one door over, and it is exactly what the reviewer of that round
+   warned about when the check moved: `cross_derive` was gated on `refuted_claim`, and the door
+   beside it could still simply assert the observation. `VERIFICATION_RUNG_WRITERS` even *said* it
+   could not — `records_absence` reads *"writes a rung BELOW the closing ones… so it is asked
+   nothing"* — which is the register's second recurring shape (a sentence printed on the object it
+   is false of) sitting inside the table written to close the first.
+2. **[HIGH] Every per-pin write door died on the shape of the pin already in the file** — 42
+   distinct crash sites across all 14 doors, the election door `ledger_record_decision` among them.
+   `KeyError: 'state'` at every door, from `_gate_closed`; `'str' object has no attribute 'get'` at
+   `add_remediation`, `challenge`, `reopen` and `cross_derive` on a `remediation` or `verification`
+   this runtime did not write; `KeyError: 'title'` at `record_decision`, three lines before `decide`
+   was reached; `KeyError: 'depends_on'` at `set_readiness`; `TypeError: string indices must be
+   integers` at `resolve` and `set_remediation_status`.
+3. **[HIGH] v0.25's list-member rule was paid only at TOP-LEVEL list arguments.**
+   `ledger_add_pin(question={"options": ["a bare string"]})` and `ledger_set_question` with the
+   byte-identical dict both returned `'str' object has no attribute 'get'` — the exact finding
+   `_require_objects` was written to close, one nesting level down, at the two doors that compose
+   the fork the whole funnel runs on.
+4. **[MEDIUM] `SETTLEMENT_CARRIERS` said DOOR and its gate asked one FUNCTION.** The structural half
+   derived the carrier set from the AST of `settlement_verdict` alone, while `resolve` gated on a
+   fifth: `_require(pin.get("evidence") or evidence)` — the pin's own field, which is the
+   observation the LAST resolve rested on. After a reopen it names precisely what production
+   refuted.
+5. **[MEDIUM] `kind` was the third closed vocabulary a pin carries and the only one with no rule**
+   in `PIN_SHAPES`/`PIN_STRONGER`, so a wrong-typed or out-of-set `kind` was invisible to
+   `nonconforming` on every surface while `state` and `severity` were reported on all of them — and
+   `settlement_verdict` sends a `defect` and a `design_concern` down different branches on it.
+
+### The answer now lives in
+
+| | |
+|---|---|
+| **`Ledger.writable_pin`** | the WRITE path's lookup: `pin()` plus a refusal naming every rule the record breaks. The split is the file's standing rule applied to a record — *reading a ledger is never the operation that fails on it, and a write onto something this runtime cannot read is exactly the operation that must fail*, which is what `Ledger.__init__` already says about the whole file. Substituting here is not open to us: the door writes the pin back, so a guarded read on the write path is a silent repair of somebody's file. |
+| **`PIN_REQUIRED`** | what a write door may assume is present, with the membership rule being the writer's own output — every declared path `add_pin` composes — and the gate derives the set from a pin `add_pin` actually writes. `_rules_from` gained `required`, so absence and wrong-type are one rule, one name, one `pre_rule_events` entry. |
+| **`RUNG_WRITER_RUNGS` + `_writable_rung`** | the third column of `VERIFICATION_RUNG_WRITERS`, which was prose. One refusal, paid by all four writers under their own names, asserted from the AST. |
+| **`_validate_question`** | through `_require_objects`, so the one carrier is paid at the nesting level the finding was at. |
+| **`resolve`** | demands the observation THIS call rests on. The carrier was removed rather than declared: an arc cannot owe anything to a claim no door reads. |
+| **`PIN_SHAPES["kind"]` + `PIN_STRONGER["kind"]`** | `isinstance` first, because `KINDS` is the one closed vocabulary held as a `set` and `v in KINDS` on an unhashable value RAISES — found by the derived corpus on its own first run, inside `nonconforming`, inside `Ledger.__init__`. |
+
+### The gates, and each one was proved by planting its reversal
+
+- `tests/test_mcp_tools.py::TestNoWriteDoorDiesOnThePinAlreadyInTheFile` — the roster is derived
+  (*any tool taking a `pin_id` that reaches the commit point*) and the corpus is derived
+  (`shape_corpus.broken_pins()`). Three assertions: no write door looks a pin up any other way (the
+  one that catches `record_decision`, which reached the guarded `decide` and died three lines
+  earlier on its own `led.pin`), every `PIN_WRITE_DOORS` method reaches the carrier, and no door
+  crashes on any shape the schema can describe.
+- `TestNoWriteDoorDiesOnAMemberOfAListArgument._lists_under` — recursive, so a third nesting level
+  arrives under the gate rather than under the next reviewer.
+- `TestTheWayBackOwesTheDoorsTheirCarriers._carriers_the_doors_gate_on` — the predicate's whole body
+  plus every `_require` CONDITION in the five doors. A `_require` is this runtime's one refusal, so
+  a pin field read inside one is a field the settlement is decided by.
+- `TestOnlyAFreshObservationRaisesARefutedClaim` — four new cases: every rung writer pays the
+  carrier under its own name (AST), the `records_absence` writer refuses every closing rung and
+  still records the ones it may (behavioural, both derived from the table), and the five-call
+  laundering route is walked and blocked.
+- `TestAWriteOntoAPinThisRuntimeCannotReadIsRefused` — `PIN_REQUIRED` held to `add_pin`'s minimal
+  output, the read/write split asserted on one record, and the whole derived corpus at the carrier.
+- `TestTheShapeTableIsTheWritersOwnShapes::test_every_scalar_a_settlement_door_decides_on_has_a_membership_rule`
+  — derived from `SETTLEMENT_CARRIERS`: a carrier a door decides from, whose value is a scalar,
+  picks a branch, so it needs a membership rule.
+
+**Re-run after the fix, verbatim:** 2170 stdio calls (155 derived shapes x 14 derived doors) against
+the shipped plugin from a foreign cwd, **zero crashes**; the `mark_correctness_unknown` route
+refused with the `records_absence` sentence and the pin stayed `needs_input`; both
+`question.options` doors refused naming the argument and the index; the door-derived carrier set
+equals the declared table.
+
+### Residuals, recorded rather than fixed
+
+- **A scalar nested inside a declared object is still outside `PIN_SHAPES`**, by that table's own
+  membership rule (*nothing indexes into a string*). That rule is about what a reader indexes INTO
+  and says nothing about a missing KEY, which is a `KeyError` all the same: `resolve` did
+  `i["status"]` and `set_remediation_status` did `item["id"]`. Both are `.get` now, under the read
+  path's own v0.18 rule, and **no derived corpus can produce those cases** — extending the corpus
+  inside a `list[object]` would need a schema for the item, which does not exist. If a future round
+  wants that class gated, the deliverable is the item schema, not a wider corpus.
+- **`apply_policy` writes to pins and takes no `pin_id`**, so it is outside the derived roster by
+  construction. It reaches `decide`, which now refuses an unreadable pin, so the failure mode is a
+  refusal rather than a crash — but the refusal aborts a cascade partway. Left as it is: what a
+  half-applied policy owes its radius is a real question and nothing here settles it.
+- **`kind` is the only closed vocabulary added.** `confidence` and `resolution_mode` are closed too
+  and neither is in the table, because the derivation used is *a carrier a settlement door decides
+  from*, and no door branches a pin's fate on either. Widening it to "every closed vocabulary a pin
+  field carries" is a different rule and needs its own argument.
+
+### The general shape
+
+§23: *a rule paid at a class's methods is unpaid for every caller that holds the class's data.*
+§24: *a gate is only as good as the corpus it runs on.* This one is both, aimed at the half of the
+surface nobody had asked: **a rule proved of the readers is unproved for the writers, and a write
+door is a reader first.** The question to ask of any read-path hardening is not *which readers are
+covered* but **name every door that READS this record before it writes it, and run the same corpus
+at that door.**
