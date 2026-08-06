@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.20
+# Decisions Ledger — Spec v0.21
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1007,3 +1007,39 @@ The cost is stated rather than hidden: `allow_freeform: false` is no longer writ
 ### The general shape
 
 v0.19's was *"name the surface a human reads this field on."* This one is about pairs: **for every rule, record, refusal or return key on a door, name the sibling door that does the same kind of thing and check that it agrees.** Where two doors are two halves of one mechanism — settle/reopen, upstream/downstream, the fork and its options — anything true of one must be true of the other, or the difference must be stated with its reason. All four failures above passed every gate this repo has, because each gate asks whether a rule is enforced *somewhere* and none asks whether it is enforced *at both ends of the thing it is about*.
+
+---
+
+## v0.21 — The other collection, and a sentence about a mechanism that cannot run
+
+v0.20 asked, of a door, what its sibling does. This one asks it of two things a round had already fixed **once**: a principle applied to one collection and not the other, and a reader's condition re-derived on a surface instead of read off the schema.
+
+### `pin_read` + `Ledger.readable` — reading a ledger is never the operation that fails on it, on the PINS too
+
+v0.18 made every read in `summary`'s log loop a `.get`, the dispatch key included, and stated the principle with no qualifier. It was applied to one of the two collections. `summary` and `interview_view` went on indexing `pin["state"]`, `pin["severity"]` and `pin["id"]` directly and died with a bare `KeyError` on **six** pin shapes — a severity outside `SEVERITIES`, a severity missing, a severity `null`, a state missing, an id missing, and an absent `pins` key — on files `map.render` and `instructions.render` read start to finish without complaint. `summary` is what an agent calls *before* acting on a file it did not write.
+
+One guarded path and not six guards, split by the two things that can be wrong:
+
+```
+Ledger.readable(name)   # the CONTAINER — the entries of one of LEDGER_COLLECTIONS a reader may index
+pin_read(pin)           # the FIELDS — id · state · severity · depends_on · question, never raising
+severity_rank(sev)      # SEVERITIES' own order; a value it does not carry sorts LAST
+```
+
+The substitutions have declared directions, because a substitution nobody can name is a heuristic: an unrankable severity sorts last (not `low`, which reads a claim the file does not make; not `blocker`, which invents urgency out of a broken field) and the pin **stays in the interview view**, since dropping it would hide a question. `assign_resolution_modes` gives such a pin `asked` for the same reason, over `_MAY_BE_SILENT` — the complement of the threshold rule's own tuple, derived rather than listed.
+
+**Nothing is substituted in silence.** `PIN_RULES` is to a pin what `EVENT_RULES` is to a DecisionEvent: `nonconforming` replays it, and `pre_rule_events` reports it in the same call as the counts it is missing from. Two rules are reported there without being in a table, both about the shape of the file rather than the content of a record — `collection_shape` (one of the three lists is not a list) and `entry_shape` (an entry is not an object) — which is `log_entry_kind`'s membership argument one level up. The membership question here differs from `EVENT_RULES`' and is stated rather than copied: those rules arrived after the events they judge, while every rule in `PIN_RULES` has been enforced by `add_pin` since v0.3, so a file that breaks one is hand-edited rather than legacy. The consequence is the same either way — a file with an unreadable pin does not get its `version` raised, because the stamp is a claim of conformance.
+
+### `INTERVIEW_STATES` — a sentence about the interview is false of a pin the interview cannot reach
+
+`interview_view` selects `needs_input | brainstorming | correctness_unknown`, held as a literal, so every other surface that says what the interview will do with a pin had to re-derive it — and the visual map re-derived it wrongly. Its `resolution_mode` line was guarded on `SETTLED_STATES` alone, so a `detected` pin carrying `proposed_default` was told, in the page's most urgent voice, *"if you say nothing, the interview settles this with the proposed answer."* Observed in a browser on six pins of the preview fixture at once. No host can ask a pin that poses no fork, and no policy may take one — `unasked_verdict` refuses an outcome the pin's own question does not offer — so the page stated a mechanism that cannot run, on the surface added to make that mode honest.
+
+```
+INTERVIEW_STATES = ("needs_input", "brainstorming", "correctness_unknown")   # OPEN_STATES minus `detected`
+```
+
+`detected` is out of it because a pin with no fork is what `detected` MEANS: `add_pin` writes `needs_input` iff a question came with it, and `set_question` moves it the moment one arrives. The map reads the tuple (`__ASKABLE__`) exactly as it reads `SETTLED_STATES`, and reach has a second carrier beside it — the pin's own `question.options`, since an election writes an outcome the question offered. A pin failing either half is told **that**, rather than being told a countdown: silence where a countdown used to be is its own claim, and `mcp:ledger_set_question` is the door that answers it.
+
+### The general shape
+
+v0.20's was *"name the sibling door and check that it agrees."* This one is the same question asked backwards, of work already done: **when a round states a principle, name every place the principle applies and check the ones the round did not touch.** Both defects here sit one collection or one surface away from a fix that landed, was correct, and was written down as closed — the log's dispatch key, and the mode line's three sentences. A closed section is a claim about a class, and the class is where the next instance lives.

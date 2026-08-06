@@ -102,6 +102,16 @@ Summary of what matters here:
   already did. And `allow_freeform` is required at **every** door that composes a fork, not only at
   the one where the rule was written: a menu an agent composed may not bound what the human may
   answer, and `add_pin` composes the identical object.
+- v0.21 applies two of those fixes where the round that made them did not look. *Reading a ledger is
+  never the operation that fails on it* was true of the log and false of the **pins**: `summary` and
+  `interview_view` died with a bare `KeyError` on six pin shapes, on files the map and the
+  `AGENTS.md` projection read without complaint. One guarded read (`Ledger.readable` for the
+  container, `pin_read` for the fields) replaces them, and every value it substitutes is reported
+  under `pre_rule_events` by a `PIN_RULES` entry — the same table shape, and the same refusal to
+  skip in silence, that the log half already had. And the states the interview reads are now
+  **`INTERVIEW_STATES`** rather than a literal, because the map re-derived them and printed the
+  funnel's countdown — *if you say nothing, the interview settles this* — on `detected` pins, which
+  pose no fork and reach the interview on no host.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.

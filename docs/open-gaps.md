@@ -11,17 +11,22 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06 (fifth pass).** **§1–§17 and §19 are all closed.** Nothing on this list is
-> open. **§18** is not a defect but the standing answer to the question this register exists to ask:
-> *after nine adversarial rounds, which recurring class still has no gate?* **§19** is the ninth
-> round's answer to it, and it is the same class arriving through a different door: §5 built a new
-> surface and left four rules that its siblings enforce.
+> **STATUS 2026-08-06 (sixth pass).** **§1–§17, §19 and §20 are all closed.** Nothing on this list
+> is open. **§18** is not a defect but the standing answer to the question this register exists to
+> ask: *after ten adversarial rounds, which recurring class still has no gate?* **§19** was the
+> ninth round's answer — §5 built a new surface and left four rules its siblings enforce — and
+> **§20** is the tenth's, which is that question asked **backwards**: two sections were closed
+> correctly and each left the other half of its own claim standing. §7 guarded a true sentence with
+> a condition the interview does not use, so the funnel's countdown printed on six pins the funnel
+> never carries; §17g fixed *reading a ledger never fails* for the log and left the pins to die on
+> six shapes. **A closed section is a claim about a class, and the class is where the next instance
+> lives.**
 >
 > | # | Gap | One line |
 > |---|---|---|
 > | ~~5~~ | ~~reopen arcs unreachable~~ | **CLOSED** — both arcs, `set_question` and `add_proposals` now have doors |
 > | ~~6~~ | ~~map palette contrast~~ | **CLOSED** — measured before/after in a browser; three hues needed a paired foreground, not one darker hue |
-> | ~~7~~ | ~~`resolution_mode` has no reader on the map~~ | **CLOSED** — one line under the sub-line, and only `proposed_default` is a countdown |
+> | ~~7~~ | ~~`resolution_mode` has no reader on the map~~ | **CLOSED** — one line under the sub-line, and only `proposed_default` is a countdown; **re-closed by §20**, which fixed the condition around it |
 > | ~~8~~ | ~~the `verification` envelope has no reader~~ | **CLOSED** — a verification card says *this pin cannot close: …*; the funnel carries `blocked_by` |
 > | ~~9~~ | ~~a null-valued scope key is a universal selector~~ | **CLOSED** — `scope_note` says what the matcher matched, on the elicited message |
 > | ~~10~~ | ~~no door gives an existing pin a question~~ | **CLOSED** — `mcp:ledger_set_question`, write-if-absent, freeform required |
@@ -34,6 +39,7 @@ wrong* is the part that stops it coming back.
 > | ~~17~~ | ~~seven residuals of the final review~~ | **CLOSED** — 17c was the last, and it was eight prose sites rather than three |
 > | **18** | **which class still has no gate** | not a defect: the standing answer — two classes gated, one newly gated, two argued as not mechanizable |
 > | ~~19~~ | ~~four rules true on one side of a pairing, absent on the other~~ | **CLOSED** — the reopen half held to the settlement half's own rules; one residual registered, not built |
+> | ~~20~~ | ~~two closures that held for one half of what they claimed~~ | **CLOSED** — §7's guard reads the interview's own states; §17g's principle reaches the pins; the envelope gate stopped being a word search |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -53,9 +59,10 @@ wrong* is the part that stops it coming back.
 > | 15. + 17c. two gates that overstated themselves, and the prose one door behind | 2026-08-06 (no spec bump — nothing here is a schema rule) | `tests/test_ledger.py::TestOneWriterForTheSettledStates` — inverted to `STATE_WRITERS`, set equality over the assignment TARGET across `src/runtime` + `src/mcp`; `scripts/check_schema_fields.py::mask_writes` — Python write-positions blanked before the search, which found **six** write-only fields the same day; `map.py::detRow` + the readiness evidence rows; the three-requirement `resolved` sentence in eight playbooks and `src/core/agents.md` |
 > | 18. a number in prose answered to nobody | 2026-08-06 | `scripts/check_stated_facts.py`, wired into `.github/workflows/ci.yml` and `CLAUDE.md`'s Commands block |
 > | 19. four rules true on one side of a pairing | ledger v0.20 | `ledger.LOG_ENTRY_PREFIXES`'s `cas_` + `_reopen_minimal`'s per-pin `CascadeEvent`; `Ledger.cascaded_by`, called by both arcs' tools; `ledger._CHALLENGE_SOURCES` on `challenge` **and** `premortem`; `add_proposals`'s `CLOSED_STATES` refusal; `allow_freeform` inside `_validate_question`; gates `tests/test_ledger.py::TestEveryForkThisRuntimeComposes` and the seven new cases in `TestComingBackIntoTheOpenSetIsGovernedToo` |
+> | 7. + 17g. two closures that held for one half | ledger v0.21 | `ledger.INTERVIEW_STATES`, read by `interview_view` and inlined as the map's `__ASKABLE__`; `map.py`'s `outOfReach` / `forkOptions` around `modeLine`; `Ledger.readable` + `ledger.pin_read` + `severity_rank` + `ledger.PIN_RULES` (with `collection_shape` / `entry_shape` in `nonconforming`); `ledger._MAY_BE_SILENT`; gates `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails` and `tests/test_map.py::code_only` with its two plants |
 >
-> **Closed does not mean nothing remains.** Five residuals are recorded inside closed sections rather
-> than fixed, each with the argument for leaving it — read the section before re-finding one:
+> **Closed does not mean nothing remains.** Seven residuals are recorded inside closed sections
+> rather than fixed, each with the argument for leaving it — read the section before re-finding one:
 >
 > - **§5** — `_reopen_minimal` cascades over `("decided", "resolved", "accepted")`, three states where
 >   `SETTLED_STATES` has four (`deferred` excluded). Whether a `deferred` dependent rested on the
@@ -73,6 +80,12 @@ wrong* is the part that stops it coming back.
 >   already sets the flag and already got a closed enum), and closing it is a protocol design
 >   question rather than a symmetry fix — a "something else" row needs a second `ctx.elicit` for the
 >   words, with its own decline path. The relay rung honours the flag today.
+> - **§20** — `proposal_ref` is declared by the spec and read by no code; its only corpus mention is
+>   prose in `ledger.py`, which is `check_schema_fields.py`'s declared limit #2 doing what the limit
+>   says. Giving it a reader is a behaviour change in `learning.divergences`, not a correction.
+> - **§20** — `challenger.scan`, `buildloop.waves`, `learning.divergences` and `agentready.card`
+>   still index pin fields directly. They are not among the four reading surfaces and they run over
+>   a ledger the agent has just built, but it is the same class.
 > - **§3** — the two below.
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
@@ -148,6 +161,13 @@ and earlier.
 **What replaces "what is left".** Nothing on this list is open, so the standing question is no
 longer *which gap next* but *which class is still ungated* — that is §18, and it is written to be
 the entry a cold session reads first.
+
+**And the second standing question, which §20 added: which CLOSED section is closed for only half of
+what it claims.** Two were, and both were closed by rounds that did the work well — §7 wrote the
+right sentence and guarded it with the wrong condition, §17g stated a principle with no qualifier
+and applied it to one of two collections. Neither is visible from inside the section; both were
+visible the moment somebody re-ran the section's own method (open the page; break one field at a
+time) against the tree as it now stands.
 
 ---
 
@@ -596,7 +616,10 @@ planting `_warm_grammars_async` and `nonconforming`, both of which it fails on.
 - **`add_proposals` auto-id'd every proposal identically** — `f"prop_{len(proposals)}"` is the
   list's length, constant across the loop, so two proposals both came back `prop_2`. Fixed here
   rather than registered, because this commit is what made the method callable at all and the id is
-  a carrier (`DecisionEvent.proposal_ref` points at it, and the funnel entry now lists it). Found by
+  a carrier (`DecisionEvent.proposal_ref` points at it, and the funnel entry now lists it) —
+  **[corrected by §20.4: there is no `proposal_ref` on a DecisionEvent. The election records the
+  option id in `outcome`, and `learning.divergences` matches that against `proposals[].id`. The
+  runtime carried the same false claim in a comment and in a shipped refusal message.]** Found by
   running the tool over stdio, not by reading it — unreachable code cannot be wrong in a way anybody
   notices, which is the whole subject of this section.
 
@@ -786,7 +809,14 @@ warning must read as a warning at a glance, next to the green `role enum drift` 
 
 ---
 
-## 7. The map renders no `resolution_mode` — **CLOSED 2026-08-06** (ledger v0.19)
+## 7. The map renders no `resolution_mode` — **REOPENED, then CLOSED again 2026-08-06** (ledger v0.21)
+
+> **This section was closed with the wrong guard, and the guard is the whole of §20.1.** The three
+> sentences below are right. The condition around them was `SETTLED_STATES` alone, so the countdown
+> printed on **six `detected` pins of this repo's own preview fixture** — pins that pose no fork and
+> that `interview_view` does not return, i.e. a mechanism that cannot run, stated on the surface this
+> section added to make the mode honest. Reach is now read off `ledger.INTERVIEW_STATES` and the
+> pin's own options; a pin failing either half is told so. See **§20**.
 
 **The answer lives in `map.py`'s `MODE` table and `modeLine`, and in the preview fixture's closing
 `assign_resolution_modes()` call.** One line, directly under the sub-line, in the page's existing
@@ -1861,6 +1891,13 @@ library layer still accepts one for a path that has no elicitation. Unreachable 
 — `tools.ledger_defer` is the only caller and hardcodes the value — so this is about the next caller,
 not this one. Compare `decide`, where the same parameter is legitimate because two paths exist.
 
+> **17g was closed for ONE of the two collections, and the principle it quotes has no such
+> qualifier.** `summary` and `interview_view` went on indexing `pin["state"]`, `pin["severity"]` and
+> `pin["id"]` directly and died with a bare `KeyError` on six pin shapes — on files `map.render` and
+> `instructions.render` read start to finish. Reproduced against this tree at `HEAD`, all six, and
+> fixed as one guarded read (`Ledger.readable` + `pin_read`) with every substitution reported by a
+> `PIN_RULES` entry. See **§20.2**.
+
 **17g — CLOSED 2026-08-06 (ledger v0.18).** Every read in that loop is a `.get`, the dispatch key
 included. Skipping in silence was not an option, because the branch directly below it already states
 why (*"nothing is hidden by skipping: the same event is already reported by `pre_rule_events`"*), so
@@ -1912,6 +1949,12 @@ record, refusal or return key on this door, which door does the same kind of thi
 agree?* One row was added to the table for it; the rest of §19 is procedure, for the reason the
 residual paragraph below already gives.
 
+**§20 is the tenth's, and it splits across two classes below.** Its first two findings are the
+sibling question asked of a **closed section** rather than of a door — *this round stated a
+principle; name every place it applies and check the ones the round did not touch* — which is
+procedure again, and one more row in the table. Its third finding is an instance of the ungated
+class at the bottom of this section, and the count there is now five.
+
 ### Gated
 
 **A new surface arrives without the invariant that governs the old one.** The register's most
@@ -1932,6 +1975,7 @@ added rather than on the day someone reads for it:
 | every write tool, named by a shipped playbook | `scripts/check_tool_carriers.py` |
 | every served tool, over the wire | `tests/test_mcp_server.py::EXPECTED_TOOLS` / `WRITE_TOOLS` |
 | every closed table the map reads | `tests/test_map.py::TestEveryClosedTableThePageReadsIsTheSchemas` |
+| every field the read path substitutes, reported by a rule | `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails::test_every_field_the_read_path_substitutes_has_a_rule_that_reports_it` (2026-08-06 — §20) |
 
 **The residual, and it is not closable.** Each row gates *one* invariant. The class is *"the
 invariant nobody thought to check at the new door"*, and no gate can enumerate invariants that do
@@ -1993,9 +2037,13 @@ that line first.
 ### Not gated, with the argument
 
 **A test named for an invariant it does not check** (and its consequence, *a gate that has been
-asked and answered so nobody asks again*). Four instances are on record: §2's roster test filtering
-its own input, §15's two, and the near-miss the reader-cluster round caught in a DOM rather than in
-CI. It is the worst class in this repo and it is the one with no gate.
+asked and answered so nobody asks again*). Five instances are on record: §2's roster test filtering
+its own input, §15's two, the near-miss the reader-cluster round caught in a DOM rather than in CI,
+and **§20's** — `TestTheWholeEnvelopeHasAReader`, whose docstring said *"not a word search"* over a
+body that was one, so a comment naming the field satisfied it. That fifth is the first found in a
+gate this register itself built, which is the sharpest form of the class: the round that writes the
+gate is the round least likely to plant against it. It is the worst class in this repo and it is the
+one with no gate.
 
 The obvious mechanization was measured and refused. *"Every test method must contain at least one
 assertion"* is an AST walk of about fifteen lines; run over `tests/`, it reports **0** today. It is
@@ -2010,7 +2058,7 @@ What actually catches it is written into every closing note above and is a proce
 **plant the violation and watch it fail, before and after.** Every gate this register has fixed or
 built was verified that way — §2's roster row, §4's interpreter branches, §12's eighth writer and
 its clearing door, §6's old palette, §15's three state-write plants and two schema-field plants,
-§18's three stale-number plants. The one rule that generalises: a gate whose failure you have never
+§18's three stale-number plants, §20's two (break the reader; then add a comment naming it). The one rule that generalises: a gate whose failure you have never
 seen is a gate you have not tested, and a green run is not evidence about it.
 
 **A claim about a HOST.** Named here for completeness because it is the class `MEMORY.md` keeps its
@@ -2123,6 +2171,120 @@ boundary the reproductions used.
   closed enum — and closing it is a protocol design question (a "something else" row needs a second
   `ctx.elicit` for the words, with its own decline path), not a symmetry fix. **Registered here,
   not built.** The relay rung honours the flag today; the elicited rung does not.
+
+---
+
+## 20. Two closures that held for one half of what they claimed — **CLOSED 2026-08-06** (ledger v0.21)
+
+§19 asked, of a door, what its sibling does. This section is that question asked **backwards, of
+work already finished**: §7 and §17g were closed, correctly, and each left the other half of its own
+claim standing. Both were found the way they were found the first time — by opening the page in a
+browser, and by sweeping the four reading surfaces one mutation at a time.
+
+### Verified — the four, and what each did
+
+1. **§7's countdown printed on pins no interview reads.** `modeLine` was guarded on `SETTLED_STATES`
+   alone. Observed in Chromium on `.preview/map.html`: `pin_0003` *"Two auth flows coexist"* is
+   `detected`, carries **no `question` at all**, and rendered *"if you say nothing, the interview
+   settles this with the proposed answer — here, silence IS the answer"* verbatim. Six of the
+   fixture's pins did. `interview_view` selects three states and `detected` is not one of them, and
+   `unasked_verdict` refuses a pin whose own question does not offer the outcome (`not_offered`) —
+   so no host can ask such a pin and no policy may take it. The page stated a mechanism that cannot
+   run, on the surface §7 added to make the mode honest.
+2. **§17g's principle was applied to the log and not to the pins.** Six shapes, each reproduced
+   against `HEAD` before the fix: a severity outside `SEVERITIES` (`KeyError: 'critical'`), a
+   severity missing, a severity `null` (`KeyError: None`), a state missing, an id missing, and an
+   absent `pins` key. Every one killed **both** `Ledger.summary()` and `Ledger.interview_view()`, on
+   files `map.render` and `instructions.render` read start to finish without complaint. `summary` is
+   what an agent calls BEFORE acting, on a file it did not write.
+3. **`TestTheWholeEnvelopeHasAReader` was a word search calling itself otherwise.** Its docstring
+   says the template must REFERENCE the field, *"not a word search"*; its body was
+   `assertIn(f"p.{field}", _TEMPLATE)`. Proved by planting: replacing the only reader
+   (`p.premortem` → `p['premortem']`) is caught, and then **adding a comment naming the field makes
+   it pass again** with no reader on the page at all.
+4. **A shipped refusal message named a field that does not exist.** `add_proposals` asserted, in a
+   comment and in the `LedgerError` an agent reads, that `DecisionEvent.proposal_ref` points at a
+   proposal id. Read at the writer (`decide` composes ten keys and that is not one of them) and at
+   the reader (`learning.divergences` matches `pin.decision.outcome` against `proposals[].id`
+   directly): the spec puts `proposal_ref` on `question.options[]`, where an option points back at
+   the proposal it was fed by. The runtime was wrong, not the spec.
+
+### Why it matters
+
+1 and 2 are one failure in two directions, and it is the one this register keeps naming: a closed
+section is a **claim about a class**, and the class is where the next instance lives. §17g's own
+closing note quotes its principle with no qualifier — *reading a ledger is never the operation that
+fails on it* — one collection away from where it was applied. §7 built the sentence a reader acts on
+and guarded it with the condition already in the file rather than the one the interview uses. 3 is
+§18's ungated class, fifth instance, and the first found in a gate this register itself built. 4 is
+small and is corrected anyway, because a refusal message is the one sentence an agent reads at the
+moment it is confused.
+
+### Done looks like
+
+- **`ledger.INTERVIEW_STATES`** — `OPEN_STATES` minus `detected`, read by `interview_view` (whose
+  literal it replaces) and inlined into the page as `__ASKABLE__`, exactly as `SETTLED_STATES` is.
+  `modeLine` asks it plus the pin's own `question.options`, and a pin failing either half gets
+  *"nothing will settle this one: … so no interview can ask it and no standing rule may take it"* —
+  because silence where a countdown used to be is its own claim, and `mcp:ledger_set_question` is
+  the door that answers it.
+- **One guarded reading path, not six guards**: `Ledger.readable(name)` for the container (all three
+  of `LEDGER_COLLECTIONS`, because `summary` read each as `self.data[…]` and died the same way on
+  each), `pin_read(pin)` for the five fields the readers index, `severity_rank` for the ordering.
+  Every substitution has a declared direction — an unrankable severity sorts **last** and the pin
+  stays in the view, and `assign_resolution_modes` gives it `asked` over `_MAY_BE_SILENT`, the
+  threshold rule's own complement.
+- **`PIN_RULES`**, which is to a pin what `EVENT_RULES` is to a DecisionEvent: replayed by
+  `nonconforming`, reported in `pre_rule_events` — plus `collection_shape` and `entry_shape`,
+  reported there without being in a table for `log_entry_kind`'s own reason. Nothing is substituted
+  in silence, and a file with an unreadable pin does not get its `version` raised.
+- **`tests/test_map.py::code_only`** — the template with its comments blanked, so a reference can be
+  told from a mention. A scanner and not a `re.sub`, because this template carries regex literals
+  holding both quote characters, CSS block comments, division, and **nested** tagged templates:
+  matching backticks pairwise reads three of the file's own comment blocks as string content, which
+  the first draft did, leaving 30 markers standing.
+- `add_proposals`' comment and refusal now name a carrier that exists.
+
+### Prove it
+
+`tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails` — every shape above against all
+four reading surfaces plus `interview.funnel`, the rule each substitution is reported under, the
+version floor, the sort position of an unrankable severity, and two inverted checks: every field
+`pin_read` substitutes must have a `PIN_RULES` entry (a silent substitution fails there), and
+`interview_view` must select from `INTERVIEW_STATES` by AST rather than from a literal.
+`tests/test_map.py::…::test_the_reference_check_is_not_satisfied_by_a_comment` plants both variants;
+`test_the_strip_leaves_no_comment_marker_and_no_landmark_behind` checks the scanner's own premise in
+both directions; `test_the_pages_askable_states_are_the_interviews_own` holds the inlined set to the
+schema; `test_the_fixture_carries_a_pin_the_interview_cannot_reach` keeps the new sentence lookable
+at in a browser.
+
+Observed, not assumed: the six `KeyError`s were reproduced against `git show HEAD:src/runtime/ledger.py`
+and all six now answer; `ledger_summary` was run over real `uv run --script` stdio from a foreign cwd
+against the shipped `plugins/keel-core/mcp/server.py` on a file broken four ways and returned
+`pre_rule_events: {entry_shape: 1, collection_shape: 1, pin_severity: 1, pin_state: 1}` beside
+`by_state: {"needs_input": 1, "": 1}`; and the map was re-opened in Chromium, where the countdown now
+renders on exactly one pin (`pin_0017`, `needs_input`, two options) and the six `detected` pins carry
+the honest sentence instead.
+
+### Traps
+
+- **`proposal_ref` is declared by the spec and read by no code.** Its only occurrence in
+  `check_schema_fields.py`'s corpus is the now-corrected prose in `ledger.py` — that gate's declared
+  limit #2 doing exactly what the limit says, on a field the module does not even write. Registered
+  rather than fixed: giving it a reader means making `learning.divergences` follow an option's
+  `proposal_ref` where the option id differs from the proposal id, which is a behaviour change
+  nobody asked for and needs its own doctrine. Do not delete the mention without either giving the
+  field a reader or removing it from the spec.
+- **The other consumers of a pin still index its fields directly** — `challenger.scan`,
+  `buildloop.waves`, `learning.divergences`, `agentready.card`. They are not among the four reading
+  surfaces and they run over a ledger the agent has just built, but the class is the same one, and
+  the next round should either extend the guarded read to them or write down why not.
+- **Do not "simplify" `modeLine`'s two guards into one.** `SETTLED` and `ASKABLE` answer different
+  questions — *is the mode history* and *can the interview reach this at all* — and the right output
+  differs: silence for the first, an explanation for the second.
+- **`assign_resolution_modes` still writes a mode onto `detected` pins**, deliberately. The mark is
+  anticipatory: `set_question` moves such a pin to `needs_input`, and the mode is already there when
+  it arrives. What was wrong was the reader, not the write.
 
 ---
 

@@ -50,6 +50,13 @@ to one pane is how a surface acquires five vocabularies. The order and the reaso
 at the cards themselves. Nothing is dumped: `sideCard`'s `raw` already exists for the free-form
 payloads, and everything else is projected because a projection is a claim about what matters.
 
+**A sentence about the interview is false of a pin the interview cannot reach** (v0.21). The
+`resolution_mode` line above shipped guarded on `SETTLED` alone, so the funnel's countdown —
+*"if you say nothing, the interview settles this with the proposed answer"* — was printed on six
+`detected` pins of the preview fixture, none of which poses a fork and none of which
+`interview_view` returns. Reach is now read off `ledger.INTERVIEW_STATES` (`__ASKABLE__`) plus the
+pin's own options, and a pin failing either half is told so instead of being told a countdown.
+
 Rendered by the `render_map` MCP tool (the runtime has no CLI — MCP is the one runtime channel).
 Pass ``live=True`` for a dev-time monitor: the page self-reloads and re-projects the ledger as
 pins land, preserving selection / view / scroll across reloads and flashing pins whose state
@@ -212,6 +219,11 @@ const SETTLED = new Set(__SETTLED__);
 // `ledger.REOPENED_SUBSTATES` for the same reason `SETTLED` is from `SETTLED_STATES`: a fourth arc
 // leaving a fourth mark must arrive here rather than be silently unrecognised.
 const REOPENED = new Set(__REOPENED__);
+// The states the INTERVIEW reads, from `ledger.INTERVIEW_STATES` — `interview_view`'s own selection
+// and not a second list beside it. This page had no such set and re-derived reach from `SETTLED`
+// alone, which is how the funnel's countdown came to be printed on `detected` pins the funnel does
+// not carry. See `modeLine`.
+const ASKABLE = new Set(__ASKABLE__);
 let view='as_is', sel=null, selPol=null;
 const ENT={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>ENT[c]);
@@ -713,15 +725,12 @@ function brainstormCard(p){
 // pin was a row reading `needs_input`, identical to one nobody will settle without asking.
 // Only the countdown is coloured: badging all three would turn the signal into decoration, and
 // `policy_default` is already the decision card's story one card down.
-// Rendered only while the pin is open — on a settled pin the mode is history, and printing "a rule
-// may settle this without you" over an answered question is the rule-printed-on-the-wrong-object
-// bug this register spent a round removing.
-// One honest consequence of that gate, stated rather than left to be discovered: on a ledger THIS
-// runtime wrote, `policy_default` only ever sits on a settled pin (`apply_policy` writes the mode
-// in the same breath as the decision), so that clause fires only on a file we did not write. It is
-// here because `RESOLUTION_MODES` is closed and a value with no sentence would fall through to
-// "a mode this map does not know" — which would be false, and the preview fixture carries such a
-// pin so the clause is looked at rather than assumed.
+// One honest consequence of the reach gate below, stated rather than left to be discovered: on a
+// ledger THIS runtime wrote, `policy_default` only ever sits on a settled pin (`apply_policy` writes
+// the mode in the same breath as the decision), so that clause fires only on a file we did not
+// write. It is here because `RESOLUTION_MODES` is closed and a value with no sentence would fall
+// through to "a mode this map does not know" — which would be false, and the preview fixture carries
+// such a pin so the clause is looked at rather than assumed.
 const MODE={
   asked:{cd:false,
     why:'this one must be ASKED: no standing rule and no proposed default may settle it for you'},
@@ -729,9 +738,42 @@ const MODE={
     why:'a standing rule may settle this one on your behalf — the rule, and how you elected it, are on its own card'},
   proposed_default:{cd:true,
     why:'if you say nothing, the interview settles this with the proposed answer — here, silence IS the answer'}};
+
+// **All three sentences are claims about what the INTERVIEW will do with this pin, so all three are
+// false of a pin the interview cannot reach** — and that is what the guard used to miss. It excluded
+// settled pins only, so a `detected` pin carrying `proposed_default` was told, in the page's most
+// urgent voice, *"if you say nothing, the interview settles this with the proposed answer"*.
+// Observed in a browser on six pins of the preview fixture at once. No host can ask a pin that poses
+// no fork and no policy may take one (`unasked_verdict` refuses an outcome the pin's own question
+// does not offer), so the page was stating a mechanism that cannot run — on the surface §7 added to
+// make the mode honest.
+//
+// Reach has two carriers and neither is a judgement. `ASKABLE` is `ledger.INTERVIEW_STATES`, which
+// is `interview_view`'s own selection rather than a second list beside it — the settled-pin gate is
+// subsumed by it (no settled state is in it) and the reason that gate existed still holds: there the
+// mode is history. The fork is the other half: an election writes an outcome the question offered,
+// so a pin with no options has nothing for a proposed answer to BE.
+//
+// A pin that fails either half gets a sentence rather than silence, because silence where a
+// countdown used to be is its own claim. It is the one thing a reader can act on: `set_question`
+// (`mcp:ledger_set_question`) is the door that gives such a pin a fork.
+function forkOptions(p){
+  const q=p.question; const o=q&&q.options;
+  return Array.isArray(o)?o:[];
+}
+function outOfReach(p){
+  if(!ASKABLE.has(p.state))
+    return 'no interview reads a pin in this state';
+  if(!forkOptions(p).length)
+    return 'it poses no question, so there is nothing to answer';
+  return '';
+}
 function modeLine(p){
-  if(SETTLED.has(p.state))return '';
+  if(SETTLED.has(p.state))return '';        // the mode is history once the pin is settled
   const m=p.resolution_mode; if(m==null||m==='')return '';
+  const stuck=outOfReach(p);
+  if(stuck)
+    return h`<div class="mode cd">⚠ nothing will settle this one: ${stuck}, so no interview can ask it and no standing rule may take it — whatever mode it carries</div>`;
   const s=String(m);
   if(!has(MODE,s))
     return h`<div class="mode cd">⚠ ${unknownNote('resolution mode',s,
@@ -1065,7 +1107,8 @@ def _inline(value) -> str:
 #: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
 #: so no substitution can ever run over content a previous one inlined.
 _PLACEHOLDER_RE = re.compile(
-    r"__(?:DATA|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|TITLE|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
+    r"__(?:DATA|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|ASKABLE|TITLE"
+    r"|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
 
 
 def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
@@ -1087,7 +1130,7 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
     the order of the lines around it. An unknown placeholder raises `KeyError` here rather than
     surviving into the page as literal text.
     """
-    from ledger import REOPENED_SUBSTATES, SETTLED_STATES
+    from ledger import INTERVIEW_STATES, REOPENED_SUBSTATES, SETTLED_STATES
     values = {
         # script-safe: no `<` from the data reaches the page's script text at all (`_inline`)
         "__DATA__": _inline(ledger_data),
@@ -1098,6 +1141,9 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
         # the marks the two reopen arcs and `cross_derive` leave, so a disputed answer cannot read
         # as an elected one on the card that prints it (v0.19)
         "__REOPENED__": _inline(list(REOPENED_SUBSTATES)),
+        # the states `interview_view` selects, so the page cannot say what the interview will do
+        # with a pin the interview never sees (v0.21)
+        "__ASKABLE__": _inline(list(INTERVIEW_STATES)),
         "__TITLE__": html.escape(title or "ledger"),
         "__LIVE_STYLE__": _LIVE_STYLE if live else "",
         "__LIVE_BADGE__": _LIVE_BADGE if live else "",

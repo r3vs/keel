@@ -2217,5 +2217,156 @@ class TestEveryForkThisRuntimeComposes(unittest.TestCase):
                          "`set_question`")
 
 
+class TestReadingAPinIsNeverTheOperationThatFails(unittest.TestCase):
+    """v0.18 made every read in `summary`'s LOG loop a `.get`, under a principle stated with no
+    qualifier. It was applied to one of the two collections: `summary` and `interview_view` went on
+    indexing `pin["state"]`, `pin["severity"]` and `pin["id"]`, and six pin shapes made both die
+    with a bare `KeyError` — on files `map.render` and `instructions.render` read start to finish
+    without complaint.
+
+    Every shape below was reproduced against the shipped tree before it was a test. They are fixed
+    as ONE guarded path — `Ledger.readable` for the container, `pin_read` for the fields — and not
+    as six guards, because six sites that agree today are what the rounds before this one have
+    spent themselves untangling.
+    """
+
+    #: Each shape, as a mutation of a written ledger's first pin. The last three are the container
+    #: and the entry, which are the same failure one level up.
+    SHAPES = {
+        "severity outside the set": lambda d: d["pins"][0].update(severity="critical"),
+        "severity missing": lambda d: d["pins"][0].pop("severity"),
+        "severity null": lambda d: d["pins"][0].update(severity=None),
+        "state missing": lambda d: d["pins"][0].pop("state"),
+        "id missing": lambda d: d["pins"][0].pop("id"),
+        "depends_on is a bare string": lambda d: d["pins"][0].update(depends_on="pin_0002"),
+        "question is not an object": lambda d: d["pins"][0].update(question="which?"),
+        "a pin is not an object": lambda d: d["pins"].__setitem__(0, "pin_0001"),
+        "pins is absent": lambda d: d.pop("pins"),
+        "decision_log is absent": lambda d: d.pop("decision_log"),
+        "policies is absent": lambda d: d.pop("policies"),
+    }
+
+    def _broken(self, mutate) -> tuple:
+        led = make_ledger()
+        add_simple_pin(led, severity="medium")
+        add_simple_pin(led, severity="low", title="second")
+        led.save()
+        with open(led.path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        mutate(raw)
+        with open(led.path, "w", encoding="utf-8") as fh:
+            json.dump(raw, fh)
+        return Ledger(led.path), raw
+
+    def test_no_reading_surface_dies_on_any_of_them(self):
+        """All four surfaces the reviewer swept, on every shape — because the finding was that two
+        of the four answered and two did not, on the same file."""
+        import instructions
+        import map as mapmod
+        from interview import funnel
+        for name, mutate in self.SHAPES.items():
+            with self.subTest(shape=name):
+                led, raw = self._broken(mutate)
+                led.summary()
+                led.interview_view()
+                funnel(led)
+                mapmod.render(raw, title="t")
+                instructions.render(raw)
+
+    def test_what_the_read_substitutes_is_reported_by_name(self):
+        """Nothing is skipped in silence: the same answer the log half gives one collection over.
+        `pre_rule_events` is returned by `summary()` itself, so the agent that reads the counts
+        reads why they are short in the same call."""
+        expected = {
+            "severity outside the set": "pin_severity",
+            "state missing": "pin_state",
+            "id missing": "pin_id",
+            "depends_on is a bare string": "pin_depends_on",
+            "question is not an object": "pin_question",
+            "a pin is not an object": "entry_shape",
+            "pins is absent": "collection_shape",
+            "decision_log is absent": "collection_shape",
+        }
+        for name, rule in expected.items():
+            with self.subTest(shape=name):
+                led, _raw = self._broken(self.SHAPES[name])
+                self.assertIn(rule, led.summary()["pre_rule_events"],
+                              f"{name!r} is substituted by the read path and reported by nobody")
+
+    def test_a_file_with_an_unreadable_pin_does_not_get_its_version_raised(self):
+        """The stamp is a claim of conformance — the rule `nonconforming` has always enforced for
+        the log, now true of the pins for the same reason."""
+        def older_and_broken(raw):
+            raw["version"] = "0.19"
+            self.SHAPES["state missing"](raw)
+
+        led, _raw = self._broken(older_and_broken)
+        self.assertIn("pin_state", led.pre_rule)
+        self.assertEqual(led.summary()["version"], "0.19",
+                         "the floor rose on a file this runtime cannot read start to finish")
+        conforming, _ = self._broken(lambda raw: raw.__setitem__("version", "0.19"))
+        self.assertEqual(conforming.summary()["version"], SCHEMA_VERSION,
+                         "the control: the same file with readable pins does rise")
+
+    def test_an_unrankable_severity_sorts_last_and_the_pin_stays_in_the_view(self):
+        """The substitution has a direction and it is declared: not `low` (reading a claim the file
+        does not make) and not `blocker` (inventing urgency out of a broken field). The pin is
+        still in the interview, because dropping it would hide a question."""
+        led, _raw = self._broken(self.SHAPES["severity outside the set"])
+        view = [p.get("id") for p in led.interview_view()]
+        self.assertIn("pin_0001", view, "the unreadable pin was dropped from the interview")
+        self.assertEqual(view[-1], "pin_0001", "an unrankable severity must sort last")
+
+    def test_every_field_the_read_path_substitutes_has_a_rule_that_reports_it(self):
+        """The inverted half, and the one that keeps this honest: a field added to `pin_read` with
+        no `PIN_RULES` entry is a silent substitution, which is the failure this class fixed."""
+        from ledger import PIN_RULES, pin_read
+        self.assertEqual({name.removeprefix("pin_") for name, _h, _m in PIN_RULES},
+                         set(pin_read({})),
+                         "a guarded read and a reported rule are two halves of one mechanism")
+
+    def test_no_pin_this_runtime_writes_can_break_one_of_these_rules(self):
+        """`PIN_RULES` has one caller where `EVENT_RULES` has two, and this is the claim that
+        difference rests on: the write path already settles every one of them, so a writer half
+        would be a second refusal for one fact. Asserted over every kind and every severity rather
+        than argued — if `add_pin` ever composes a pin this table refuses, the membership argument
+        above is wrong and the table needs `_check_event`'s twin."""
+        from ledger import KINDS, SEVERITIES, pin_violations
+        led = make_ledger()
+        for kind in sorted(KINDS):
+            for severity in SEVERITIES:
+                for fork in ({"prompt": "which?",
+                              "options": [{"id": "a", "label": "A"}],
+                              "allow_freeform": True}, None):
+                    pin = add_simple_pin(
+                        led, kind=kind, severity=severity, question=fork,
+                        kind_detail="an escape hatch" if kind == "other" else None)
+                    self.assertEqual(pin_violations(pin), [],
+                                     f"add_pin composed a {kind}/{severity} pin (fork="
+                                     f"{fork is not None}) that the read path cannot index")
+        # ...and one carrying the DAG, since `depends_on` is the fifth rule
+        dependent = add_simple_pin(led, depends_on=[led.data["pins"][0]["id"]])
+        self.assertEqual(pin_violations(dependent), [])
+
+    def test_the_interviews_states_are_the_ones_its_own_view_selects(self):
+        """`INTERVIEW_STATES` exists because the map re-derived this set and got it wrong. A
+        constant nothing is held to would let the two drift apart again, so the tuple is read out of
+        `interview_view`'s own AST rather than trusted."""
+        import ast
+        import ledger as ledger_mod
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == "interview_view")
+        names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+        self.assertIn("INTERVIEW_STATES", names,
+                      "interview_view selects its states from a literal again — the map reads the "
+                      "constant, so the two would answer differently")
+        self.assertEqual(set(ledger_mod.INTERVIEW_STATES),
+                         set(ledger_mod.OPEN_STATES) - {"detected"},
+                         "the interview reads every open state but the one that poses no fork")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -282,8 +282,9 @@ def _evidence_note(data: dict) -> list:
     rules those are is `ledger.policy_weakness`'s answer and not this module's (v0.16) — the two
     surfaces that report it must not be able to disagree about the count.
     """
-    events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
-    policies = list(data.get("policies") or [])
+    events = [e for e in (data.get("decision_log") or [])
+              if isinstance(e, dict) and str(e.get("id", "")).startswith("ev_")]
+    policies = [p for p in (data.get("policies") or []) if isinstance(p, dict)]
     sentences = []
     if events:
         # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`,
@@ -384,8 +385,12 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
             f"file. Minimum {_MIN_LINES}. Refusing rather than silently overrunning the budget — an "
             f"exceeded cap that reports success is the failure this budget exists to prevent."
         )
-    pins = list(data.get("pins") or [])
-    policies = list(data.get("policies") or [])
+    # v0.21: only the entries a reader can index. Every read below is already a `.get`, so the six
+    # pin shapes that took `summary` down never reached here — but a `pins` entry that is not an
+    # object has no `.get` at all, and this is the projection every host loads unprompted. The
+    # dropped entry is reported by `nonconforming` under `entry_shape`, on the same file.
+    pins = [p for p in (data.get("pins") or []) if isinstance(p, dict)]
+    policies = [p for p in (data.get("policies") or []) if isinstance(p, dict)]
 
     head = ([line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
             + _evidence_note(data))

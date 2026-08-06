@@ -32,6 +32,93 @@ import map as mapmod  # noqa: E402
 from ledger import Ledger  # noqa: E402
 
 
+#: Where a JS `/` may begin a regex literal rather than a division — the lexical rule an engine
+#: uses, not a guess about the text: a regex may only start where a VALUE may start.
+_REGEX_MAY_FOLLOW = set("(=,:[!&|?{};+-*<>~^%")
+
+
+def code_only(template: str) -> str:
+    """The template with every comment blanked, so a REFERENCE can be told from a mention.
+
+    `TestTheWholeEnvelopeHasAReader` asserted `p.<field>` against the raw template and called it
+    "not a word search" — but a comment naming the field satisfied it exactly as a word does.
+    Proved by planting, both ways, in `test_the_reference_check_is_not_satisfied_by_a_comment`.
+
+    It is a scanner and not a `re.sub`, because this template carries every construct a naive strip
+    gets wrong: three regex literals (one holding both quote characters), CSS block comments,
+    division (`100*done/pins.length`), and — the one that decided the shape — **nested** tagged
+    templates, `h`…${…h`…`…}`…``. Matching backticks pairwise gets that exactly backwards on every
+    odd nesting, and the first draft did: it read three of this file's own comment blocks as string
+    content and left 30 `//` markers standing. So the state is a STACK of frames, `code` and `tmpl`,
+    and `${` pushes a code frame that `}` pops.
+
+    Comments are replaced by spaces rather than deleted, so every offset in the result still names
+    the same place in the template.
+
+    Its limit, stated: a `//` inside a string it failed to enter would eat the rest of that line.
+    That is what `test_the_strip_leaves_no_comment_marker_and_no_landmark_behind` is for — a
+    mis-tracked string leaves a marker standing, which is how the nesting bug above was found.
+    """
+    out = list(template)
+    frames = [["code", 0]]          # [kind, brace depth] — `${` pushes, its `}` pops
+    i, n = 0, len(template)
+    prev = ""                       # last non-space character seen in code
+    while i < n:
+        ch = template[i]
+        if frames[-1][0] == "tmpl":
+            if ch == "\\":
+                i += 2
+            elif ch == "`":
+                frames.pop()
+                prev, i = "`", i + 1
+            elif ch == "$" and template[i + 1:i + 2] == "{":
+                frames.append(["code", 0])
+                prev, i = "{", i + 2
+            else:
+                i += 1
+            continue
+        if ch == "`":
+            frames.append(["tmpl", 0])
+            i += 1
+            continue
+        if ch in "'\"":             # a plain string: skip to its unescaped close
+            j = i + 1
+            while j < n and template[j] != ch:
+                j += 2 if template[j] == "\\" else 1
+            i, prev = j + 1, ch
+            continue
+        if ch == "/" and template[i + 1:i + 2] == "/":
+            j = template.find("\n", i)
+            j = n if j < 0 else j
+            out[i:j] = " " * (j - i)
+            i = j
+            continue
+        if ch == "/" and template[i + 1:i + 2] == "*":
+            j = template.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out[i:j] = [" " if c != "\n" else "\n" for c in template[i:j]]
+            i = j
+            continue
+        if ch == "/" and (prev in _REGEX_MAY_FOLLOW or prev == ""):
+            j = i + 1               # a regex literal — it cannot span a line
+            while j < n and template[j] not in "/\n":
+                j += 2 if template[j] == "\\" else 1
+            i, prev = j + 1, "/"
+            continue
+        if ch == "{":
+            frames[-1][1] += 1
+        elif ch == "}":
+            if frames[-1][1] == 0 and len(frames) > 1:
+                frames.pop()        # closes a `${…}` hole; the template literal resumes
+                prev, i = "}", i + 1
+                continue
+            frames[-1][1] -= 1
+        if not ch.isspace():
+            prev = ch
+        i += 1
+    return "".join(out)
+
+
 def demo_ledger() -> Ledger:
     led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
     led.add_pin(
@@ -377,6 +464,16 @@ class TestTheSurfacesAgreeAboutOneLedger(unittest.TestCase):
         inlined = json.loads(html.split("const SETTLED = new Set(", 1)[1].split(");", 1)[0])
         self.assertEqual(inlined, list(SETTLED_STATES))
 
+    def test_the_pages_askable_states_are_the_interviews_own(self):
+        """Same rule, one set over, and this one arrived because the page did NOT have it: reach
+        was re-derived from `SETTLED` alone, so the funnel's countdown printed on `detected` pins
+        the funnel never carries. The set the page reads must be the set `interview_view` selects,
+        so both halves of the same statement cannot be answered differently."""
+        from ledger import INTERVIEW_STATES
+        html = mapmod.render(demo_ledger().data)
+        inlined = json.loads(html.split("const ASKABLE = new Set(", 1)[1].split(");", 1)[0])
+        self.assertEqual(inlined, list(INTERVIEW_STATES))
+
 
 class TestACrossDerivationHasAReader(unittest.TestCase):
     """`cross_derivations` had ONE writer — `Ledger.cross_derive` — and zero readers: not this page,
@@ -696,20 +793,23 @@ class TestEveryClosedTableThePageReadsIsTheSchemas(unittest.TestCase):
 
         Depth, because two of these tables hold objects and two hold strings, and a pattern tuned to
         one shape reads the other's inner keys as if they were entries — which is a guard that
-        passes on the wrong set, i.e. the thing this file exists not to do."""
-        start = mapmod._TEMPLATE.index(f"const {name}={{") + len(f"const {name}=")
+        passes on the wrong set, i.e. the thing this file exists not to do.
+
+        Comments are removed by `code_only` rather than by a branch here (2026-08-06): this walk
+        carried its own `//`-skip, so two scanners in one file answered *is this a comment* their
+        own way — and when the weaker of the two turned out to be wrong about nested tagged
+        templates, only one of them would have been fixed. `code_only` blanks rather than deletes,
+        so every offset below still names the same place in the template."""
+        source = code_only(mapmod._TEMPLATE)
+        start = source.index(f"const {name}={{") + len(f"const {name}=")
         depth, keys, at_key = 0, set(), False
         i = start
-        while i < len(mapmod._TEMPLATE):
-            ch = mapmod._TEMPLATE[i]
-            if ch == "/" and mapmod._TEMPLATE[i + 1:i + 2] == "/":
-                # a comment is not structure either, and the tables carry them inline
-                i = mapmod._TEMPLATE.index("\n", i) + 1
-                continue
+        while i < len(source):
+            ch = source[i]
             if ch in "'\"`":
                 # a string literal is not structure: a value reading "…on the path, not a
                 # computation" put `not` in the key set, which is a guard passing on the wrong set
-                end = mapmod._TEMPLATE.index(ch, i + 1)
+                end = source.index(ch, i + 1)
                 i = end + 1
                 continue
             if ch in "{[":
@@ -722,7 +822,7 @@ class TestEveryClosedTableThePageReadsIsTheSchemas(unittest.TestCase):
             elif depth == 1 and ch == ",":
                 at_key = True
             elif depth == 1 and at_key and (ch.isalpha() or ch == "_"):
-                match = re.match(r"\w+", mapmod._TEMPLATE[i:])
+                match = re.match(r"\w+", source[i:])
                 keys.add(match.group(0))
                 at_key = False
                 i += match.end() - 1
@@ -791,7 +891,13 @@ class TestTheWholeEnvelopeHasAReader(unittest.TestCase):
 
     Two halves, because either alone is vacuous: the template must REFERENCE the field (§14's own
     method — `p.<field>`, not a word search), and the preview fixture must CARRY it, or the browser
-    walk that verifies the rendering has nothing to look at."""
+    walk that verifies the rendering has nothing to look at.
+
+    **The reference half was itself a word search until 2026-08-06**, which is the third instance of
+    §18's own class — a gate whose name quantifies over more than its body does. It asserted
+    `p.<field>` against the RAW template, and a comment naming the field satisfies that exactly as
+    a reader does: the check passed on a page with no reader at all. It now runs over `code_only`,
+    and both halves of that claim are planted below rather than argued."""
 
     FIELDS = ("verification", "resolution_mode", "brainstorm", "remediation", "premortem",
               "readiness", "evidence", "cross_derivations")
@@ -803,10 +909,45 @@ class TestTheWholeEnvelopeHasAReader(unittest.TestCase):
         return preview_map.build().data
 
     def test_every_envelope_field_is_read_by_the_page(self):
+        code = code_only(mapmod._TEMPLATE)
         for field in self.FIELDS:
             with self.subTest(field=field):
-                self.assertIn(f"p.{field}", mapmod._TEMPLATE,
+                self.assertIn(f"p.{field}", code,
                               f"`{field}` is stored, gated on, and on this page nowhere")
+
+    def test_the_strip_leaves_no_comment_marker_and_no_landmark_behind(self):
+        """The scanner's own premise, checked rather than trusted — the house rule for a guard that
+        parses something. A mis-tracked string swallows a comment and leaves its `//` standing (the
+        nested-template bug did exactly that, 30 times), and an over-eager strip eats code, so both
+        directions are asserted: no marker survives, and the landmarks that must do, do."""
+        code = code_only(mapmod._TEMPLATE)
+        for marker in ("//", "/*", "*/"):
+            self.assertNotIn(marker, code,
+                             f"`{marker}` survived the strip — a string was mis-tracked, so some "
+                             f"comment is still being read as code by every check below")
+        for landmark in ("function modeLine(p){", "const MODE={", "const ASKABLE = new Set(",
+                         "function detail(p){"):
+            self.assertIn(landmark, code, f"the strip ate {landmark!r} — it is removing code")
+        self.assertEqual(len(code.splitlines()), len(mapmod._TEMPLATE.splitlines()),
+                         "comments are blanked, never deleted: every offset must still name the "
+                         "same place in the template")
+
+    def test_the_reference_check_is_not_satisfied_by_a_comment(self):
+        """Planted both ways, because either alone proves nothing.
+
+        1. Break the only reader (`p.premortem` -> `p['premortem']`) — the check must catch it.
+        2. Then add a COMMENT naming the field — the raw-template check goes green again on a page
+           that still has no reader, and this one must not.
+        """
+        broken = mapmod._TEMPLATE.replace("p.premortem", "p['premortem']")
+        self.assertNotIn("p.premortem", code_only(broken),
+                         "the planted break was not caught — this gate is vacuous")
+        commented = broken.replace("function premortemCard(p){",
+                                   "// p.premortem is read below\nfunction premortemCard(p){")
+        self.assertIn("p.premortem", commented,
+                      "the plant did not reproduce the old body's failure mode")
+        self.assertNotIn("p.premortem", code_only(commented),
+                         "a comment naming the field satisfied the check — which is the finding")
 
     #: 2026-08-06 — the six the schema gate found write-only on the day it learned to tell a reader from
     #: a writer (§15). Nested rather than pin-level, so the template reference is `<obj>.<field>`
@@ -844,10 +985,11 @@ class TestTheWholeEnvelopeHasAReader(unittest.TestCase):
 
     def test_every_nested_field_the_gate_found_is_read_and_carried(self):
         pins = self._fixture()["pins"]
+        code = code_only(mapmod._TEMPLATE)
         carried = set().union(*(self._keys(p) for p in pins)) if pins else set()
         for field, reference in sorted(self.NESTED.items()):
             with self.subTest(field=field):
-                self.assertIn(reference, mapmod._TEMPLATE,
+                self.assertIn(reference, code,
                               f"`{field}` is written by the runtime and read by this page nowhere")
                 self.assertIn(field, carried,
                               f"no fixture pin carries `{field}` — the row is verified by nobody")
@@ -862,17 +1004,34 @@ class TestTheWholeEnvelopeHasAReader(unittest.TestCase):
     def test_the_fixture_carries_all_three_resolution_modes(self):
         """`proposed_default` is the one that changes what a reader must do NOW, and until this
         fixture called `assign_resolution_modes` nothing in it carried that mode at all — which is
-        why the state could not be seen in a browser and the gap went unfound for a version."""
-        from ledger import RESOLUTION_MODES, SETTLED_STATES
+        why the state could not be seen in a browser and the gap went unfound for a version.
+
+        The second assertion used to say *on an OPEN pin*, which was the page's old condition and
+        the page's old condition was wrong: it printed the funnel's countdown on six `detected`
+        pins, none of which the interview reads and none of which poses a fork. So the fixture is
+        held to the condition the page now uses — `ledger.INTERVIEW_STATES` plus a fork — because a
+        fixture that satisfies a weaker predicate than the surface proves nothing about it."""
+        from ledger import INTERVIEW_STATES, RESOLUTION_MODES
         pins = self._fixture()["pins"]
         self.assertLessEqual(set(RESOLUTION_MODES), {p.get("resolution_mode") for p in pins})
-        # ...and each of the three on an OPEN pin, because the line is suppressed on settled ones:
-        # `policy_default` sat only on cascaded (therefore settled) pins, so its clause rendered
-        # nowhere and the fixture proved nothing about it.
-        open_modes = {p.get("resolution_mode") for p in pins
-                      if p.get("state") not in SETTLED_STATES}
-        self.assertLessEqual(set(RESOLUTION_MODES), open_modes,
+        reachable = {p.get("resolution_mode") for p in pins
+                     if p.get("state") in INTERVIEW_STATES
+                     and ((p.get("question") or {}).get("options") or [])}
+        self.assertLessEqual(set(RESOLUTION_MODES), reachable,
                              "a resolution mode whose sentence the browser walk cannot reach")
+
+    def test_the_fixture_carries_a_pin_the_interview_cannot_reach(self):
+        """The other half of the same line, and the one that was being lied to: a pin carrying a
+        mode that no interview will ever act on. It must be in the fixture, or the sentence that
+        replaced the countdown is verified by nobody."""
+        from ledger import INTERVIEW_STATES, SETTLED_STATES
+        stuck = [p for p in self._fixture()["pins"]
+                 if p.get("resolution_mode")
+                 and p.get("state") not in SETTLED_STATES
+                 and (p.get("state") not in INTERVIEW_STATES
+                      or not ((p.get("question") or {}).get("options") or []))]
+        self.assertTrue(stuck, "no fixture pin carries a mode the interview cannot act on — the "
+                               "browser walk cannot see the sentence that says so")
 
     def test_the_fixture_carries_a_settled_state_the_page_cannot_describe(self):
         """§16's worked example, the same shape as the `oracle` rung one field over."""

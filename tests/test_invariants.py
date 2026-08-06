@@ -141,7 +141,13 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                     # pin ids. It is on this list rather than in INTERNAL because it writes nothing
                     # — the whole reason it exists is that the tool layer was deriving that radius
                     # from a substate instead of reading the records.
-                    "cascaded_by"}
+                    "cascaded_by",
+                    # v0.21: the container half of the guarded read path. Both return a NEW list of
+                    # the entries a reader may index; neither touches `self.data`. They are here
+                    # and not in INTERNAL for `cascaded_by`'s reason — INTERNAL is for writers
+                    # reached through another door, and a reader reached through no door at all is
+                    # not a write path anybody needs to govern.
+                    "readable", "readable_pins"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -582,7 +588,11 @@ class TestEveryWriteTimeRuleGainsItsReader(unittest.TestCase):
             ledgermod.EVENT_RULES = original + (
                 ("a_rule_added_later", lambda e: e.get("outcome") != "planted",
                  lambda e: "planted"),)
-            out = ledgermod.nonconforming({"decision_log": [{"id": "ev_0001", "outcome": "planted",
+            # A WHOLE ledger, not just the log: since v0.21 the floor also reports a collection
+            # that is not there (`collection_shape`), so a fixture missing two of the three would
+            # be testing this rule against a file that breaks a different one.
+            out = ledgermod.nonconforming({"pins": [], "policies": [],
+                                           "decision_log": [{"id": "ev_0001", "outcome": "planted",
                                                              "source": "interview",
                                                              "evidence": "brief",
                                                              "flip_criteria": "x"}]})

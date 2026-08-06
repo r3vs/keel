@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.18). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.21). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -77,6 +77,12 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   the same commit, for the other half of the same funnel — already did. And `allow_freeform` moves
   into `_validate_question`: the rule was enforced at `set_question` and absent at `add_pin`, which
   is the older and busier door onto the identical object.
+- v0.21 the same rule as v0.18's dispatch key, applied to the OTHER collection. `summary` and
+  `interview_view` indexed `pin["state"]`, `pin["severity"]` and `pin["id"]` directly and died with a
+  bare `KeyError` on six pin shapes — on files the map and the `AGENTS.md` projection read without
+  complaint. So the READ path has one guarded entry (`Ledger.readable` + `pin_read`), what it
+  substitutes is reported by `nonconforming` through `PIN_RULES` exactly as `log_entry_kind` reports
+  an unnamed log entry, and nothing is skipped in silence.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -89,7 +95,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.20"
+SCHEMA_VERSION = "0.21"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -102,7 +108,7 @@ SCHEMA_VERSION = "0.20"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21")
 
 KINDS = {
     "contract_mismatch",
@@ -170,6 +176,13 @@ POLICY_WEAKNESS = ("no_rung", "unknown_rung", "unquoted_relay")
 # severities that must never be silently defaulted (the threshold rule, v0.3)
 _NEVER_SILENT = ("blocker", "high")
 
+# Its complement over `SEVERITIES`, DERIVED rather than listed (v0.21). `assign_resolution_modes`
+# wrote `proposed_default` for anything that is not `blocker|high`, which is the right rule for the
+# four severities the schema has and the wrong one for a value it does not: a severity this runtime
+# cannot rank was being told that silence may settle it. Membership is the question, so the negation
+# is asked of the closed set rather than of the two names inside it.
+_MAY_BE_SILENT = tuple(s for s in SEVERITIES if s not in _NEVER_SILENT)
+
 # A pin these states describe is not open to being settled again by anyone.
 SETTLED_STATES = ("decided", "resolved", "accepted", "deferred")
 
@@ -198,6 +211,21 @@ LEAVE_AS_IS_STATES = ("accepted", "deferred")
 # Pins awaiting something. The complement of `SETTLED_STATES`, named rather than derived because
 # `correctness_unknown` belongs here on purpose: it blocks closure and joins the interview view.
 OPEN_STATES = ("detected", "needs_input", "brainstorming", "correctness_unknown")
+
+# The states the INTERVIEW reads — `OPEN_STATES` minus `detected`, and a fourth reading of the same
+# axis for the reason the other three are named: a surface was answering this question with its own
+# condition. `interview_view` held the tuple as a literal, so every other surface that says what the
+# interview will do with a pin had to re-derive it, and the map's `modeLine` re-derived it wrongly:
+# it printed the funnel's countdown — *"if you say nothing, the interview settles this with the
+# proposed answer"* — on six `detected` pins, which reach the interview on no host and pose no fork
+# for a proposed answer to be an answer to. That is §10's finding stated on the page that exists to
+# make the mode honest.
+#
+# `detected` is out of it because a pin with no fork is what `detected` MEANS (`add_pin` writes
+# `needs_input` iff a question came with it, and `set_question` moves it the moment one arrives).
+# `correctness_unknown` is in it for the reason `OPEN_STATES` names: it is a pin awaiting a
+# next-move answer, not a re-election.
+INTERVIEW_STATES = ("needs_input", "brainstorming", "correctness_unknown")
 
 # The rungs at which a claim may CLOSE. `resolved` means observed — the verification skill's rule
 # restated as data (v0.7) — and this is the tuple that says so, read by `settlement_verdict`.
@@ -504,6 +532,119 @@ def _check_event(event: dict) -> None:
         _require(holds(event), message(event))
 
 
+# -- THE READ PATH: what a reader may index on a pin (v0.21) -----------------------------------
+#
+# v0.18 made every read in `summary`'s log loop a `.get`, the dispatch key included, under a
+# principle stated with no qualifier: **reading a ledger is never the operation that fails on it.**
+# It was applied to one of the two collections. `summary` and `interview_view` went on indexing
+# `pin["state"]`, `pin["severity"]` and `pin["id"]` directly, and a reviewer reproduced six pin
+# shapes that made both die with a bare `KeyError` — a severity outside `SEVERITIES`, a severity
+# missing, a severity `null`, a state missing, an id missing, and an absent `pins` key — on files
+# `map.render` and `instructions.render` read start to finish without complaint. `summary` is what
+# an agent calls BEFORE acting on a file it did not write, so a file it cannot read is a file it
+# acts on blind.
+#
+# ONE guarded path, not six guards, and the split is the two things that can be wrong: the
+# CONTAINER (`Ledger.readable`) and the FIELDS (`pin_read`). Six sites that agree today are what
+# the sibling rounds have spent themselves untangling.
+#
+# **Nothing is substituted in silence**, which is the same answer the log half already gives:
+# `PIN_RULES` is to a pin what `EVENT_RULES` is to a DecisionEvent, `nonconforming` replays it, and
+# what it finds is visible in `summary()`'s `pre_rule_events` beside the counts the pin is missing
+# from. Its membership question differs from `EVENT_RULES`' and is worth stating rather than
+# copying: `EVENT_RULES` asks *is the violation decidable from the stored event alone*, because its
+# rules arrived after the events they judge. Every rule here has been enforced by `add_pin` since
+# the first version, so no file this package wrote can break one — like `log_entry_kind`, these are
+# hand-editing rather than a legacy shape, and what the table buys is the reader.
+#
+# **The difference that follows, stated because its sibling makes the opposite choice loudly.**
+# `EVENT_RULES` has TWO callers — `_check_event` at the write and `nonconforming` at the read — and
+# that is its whole argument: a rule added to it gains its reader by construction. This table has
+# ONE, and adding a writer half would be a second refusal for a fact `add_pin` already settles.
+# Three of the five cannot fail there at all, because `add_pin` composes the value itself (`id` from
+# `_next_id`, `state` from whether a question came with it, `depends_on` filtered by `self.pin(dep)`
+# refusing anything that names no pin); the other two have their own `_require`s reading the SAME
+# closed sets this table reads, so the two can differ in wording and never in verdict.
+# `tests/test_ledger.py::…::test_no_pin_this_runtime_writes_can_break_one_of_these_rules` asserts
+# that rather than leaving it as a claim.
+#
+# Each entry is `(name, holds(pin) -> bool, message(pin) -> str)`, and every one of them takes a
+# pin that IS an object: an entry that is not one is reported once, by `entry_shape`, rather than
+# four times by four rules that could not be asked of it.
+#
+# The three lists a ledger is made of, named because the guarded read is about all three and so are
+# both shape rules. `summary` read each one as `self.data[…]` and died the same way on each; fixing
+# the one that was reported would have left the file's other two halves for the next reviewer.
+LEDGER_COLLECTIONS = ("pins", "decision_log", "policies")
+PIN_RULES = (
+    ("pin_id",
+     lambda p: bool(str(p.get("id") or "")),
+     lambda p: "a pin carries no `id`, so nothing can depend on it, name it or link to it"),
+    ("pin_state",
+     lambda p: p.get("state") in STATES,
+     lambda p: f"state must be one of {STATES}; got {p.get('state')!r} — every surface that sorts, "
+               f"counts or gates on a pin reads this field"),
+    ("pin_severity",
+     lambda p: p.get("severity") in SEVERITIES,
+     lambda p: f"severity must be one of {SEVERITIES}; got {p.get('severity')!r} — the threshold "
+               f"rule and the interview's ordering both read it"),
+    ("pin_depends_on",
+     lambda p: isinstance(p.get("depends_on", []), list)
+     and all(isinstance(d, str) for d in p.get("depends_on", [])),
+     lambda p: f"depends_on must be a list of pin ids; got {p.get('depends_on')!r} — the DAG every "
+               f"wave is levelled by is read off it"),
+    ("pin_question",
+     lambda p: p.get("question") is None or isinstance(p.get("question"), dict),
+     lambda p: f"question must be an object or absent; got {type(p.get('question')).__name__} — "
+               f"`interview.funnel` reads `question.prompt` off it, so a fork that is not an object "
+               f"takes the whole funnel down rather than one entry"),
+)
+
+
+def pin_violations(pin: dict) -> list:
+    """The names of the `PIN_RULES` this pin does not satisfy, in table order.
+
+    The mirror of `event_violations`, and it takes an object for the same reason that one does: a
+    `pins` entry that is not an object is `entry_shape`'s answer, not four rules' worth of it."""
+    return [name for name, holds, _ in PIN_RULES if not holds(pin)]
+
+
+def pin_read(pin: Any) -> dict:
+    """The five fields the read path INDEXES, as a reader may use them. Never raises.
+
+    What each absence becomes, and why — a substitution nobody can name is a heuristic:
+
+      * `id`, `state` — `""`. Neither is in any closed vocabulary, so a pin with no state is in no
+        state's bucket and one with no id is depended on by nothing. It is still counted, still
+        rendered, and reported under `pre_rule_events`.
+      * `severity` — `""`, which `severity_rank` sorts LAST. Not `low`, which would be reading a
+        claim the file does not make; not `blocker`, which would be inventing urgency out of a
+        broken field. The pin stays IN the view either way — the ordering is by information gain
+        among severities this runtime can rank, and an unrankable one is not evidence of anything.
+      * `depends_on` — `[]` unless it is a list of strings. A bare string here is iterable, so the
+        old readers walked it character by character and built a DAG out of letters.
+      * `question` — `{}` unless it is an object, which is falsy exactly where `pin["question"]`
+        already was. It is here because `interview.funnel` indexes `question.prompt`, and it is the
+        only one of the five whose value is returned by reference: a reader may look at the fork,
+        never rewrite it (`set_question` is the door, and it is write-if-absent).
+    """
+    src = pin if isinstance(pin, dict) else {}
+    deps = src.get("depends_on")
+    question = src.get("question")
+    return {
+        "id": str(src.get("id") or ""),
+        "state": str(src.get("state") or ""),
+        "severity": str(src.get("severity") or ""),
+        "depends_on": [d for d in deps if isinstance(d, str)] if isinstance(deps, list) else [],
+        "question": question if isinstance(question, dict) else {},
+    }
+
+
+def severity_rank(severity: str) -> int:
+    """Where a severity sorts — `SEVERITIES`' own order, and a value it does not carry sorts last."""
+    return SEVERITIES.index(severity) if severity in SEVERITIES else len(SEVERITIES)
+
+
 def nonconforming(data: dict) -> dict:
     """`rule -> [event ids]` for events a rule added AFTER they were written would refuse. `{}` for
     a file this runtime could have produced.
@@ -531,9 +672,37 @@ def nonconforming(data: dict) -> dict:
     whose id names no kind is dispatched by nothing, and `summary()` used to die on it with a bare
     `KeyError`. Reporting it here means the one surface that already says *"this file predates or
     breaks a rule"* says this too, instead of the count quietly being short by one.
+
+    **`PIN_RULES` joins it in v0.21, for the same reason one collection over.** The pin half of the
+    read path substitutes a value where the file carries none (`pin_read`), and a substitution
+    nobody can see is worse than the crash it replaced — so every substitution has a rule name here.
+    These rules are not `EVENT_RULES`' membership question restated: `add_pin` has enforced all five
+    since v0.3, so no file this package wrote can break one, which puts them in `log_entry_kind`'s
+    class rather than in the floor-of-a-legacy-file class. The consequence is deliberate and is the
+    same one every other entry carries: a file with an unreadable pin does not get its `version`
+    raised, because the stamp is a claim of conformance and that file does not conform.
     """
+    def entries(name: str) -> list:
+        value = data.get(name)
+        return value if isinstance(value, list) else []
+
     out: dict = {}
-    for index, event in enumerate(data.get("decision_log") or []):
+    # The two rules about the SHAPE of the file rather than about the content of a record, checked
+    # first because every rule below assumes them. A reader walks a missing collection as an empty
+    # one, so the file says "no findings" — the worst thing a ledger can say — and until v0.21
+    # nothing said otherwise; a non-object entry made this function itself raise `AttributeError`
+    # before it could report anything at all.
+    for name in LEDGER_COLLECTIONS:
+        value = data.get(name)
+        if not isinstance(value, list):
+            out.setdefault("collection_shape", []).append(f"{name}: {type(value).__name__}")
+            continue
+        for index, entry in enumerate(value):
+            if not isinstance(entry, dict):
+                out.setdefault("entry_shape", []).append(f"{name}[{index}]")
+    for index, event in enumerate(entries("decision_log")):
+        if not isinstance(event, dict):
+            continue                                    # already reported as `entry_shape`
         eid = str(event.get("id") or "")
         if not eid.startswith(LOG_ENTRY_PREFIXES):
             # Named by position, because the thing that is wrong with it is that it has no name.
@@ -543,6 +712,14 @@ def nonconforming(data: dict) -> dict:
             continue
         for rule in event_violations(event):
             out.setdefault(rule, []).append(eid)
+    for index, pin in enumerate(entries("pins")):
+        if not isinstance(pin, dict):
+            continue                                    # already reported as `entry_shape`
+        # By id where there is one, by position where there is not — the same rule `log_entry_kind`
+        # follows, for the same reason: a thing with no name is named by where it sits.
+        label = str(pin.get("id") or "")
+        for rule in pin_violations(pin):
+            out.setdefault(rule, []).append(label or f"pins[{index}]")
     return out
 
 
@@ -637,9 +814,36 @@ class Ledger:
 
     # -- lookups -----------------------------------------------------------
 
+    def readable(self, name: str) -> list[dict]:
+        """The entries of one of `LEDGER_COLLECTIONS` a reader can index — the CONTAINER half of the
+        guarded read path.
+
+        Two things it refuses to do, both of which every reader here did until v0.21: die because
+        the collection is absent (`summary` and `interview_view` both raised `KeyError: 'pins'`), and
+        hand a caller an entry that is not an object. All three collections and not only the one that
+        was reported — `summary` read each as `self.data[…]` and died the same way on each, and
+        `nonconforming` already tolerated a missing `decision_log` while `summary` did not, which is
+        one function's own two halves disagreeing about one file.
+
+        A dropped entry is not hidden: `nonconforming` reports it under `entry_shape` and a missing
+        collection under `collection_shape`, both visible in `summary()`'s `pre_rule_events` beside
+        the counts they are missing from.
+
+        The WRITE path deliberately keeps `self.data[…]`: a write onto a file this runtime cannot
+        read is a different question from a read of it, and the answer there is to refuse.
+        """
+        value = self.data.get(name)
+        return [e for e in value if isinstance(e, dict)] if isinstance(value, list) else []
+
+    def readable_pins(self) -> list[dict]:
+        """`readable("pins")` — named because it is the one nearly every reader wants."""
+        return self.readable("pins")
+
     def pin(self, pin_id: str) -> dict:
-        for p in self.data["pins"]:
-            if p["id"] == pin_id:
+        # Through the guarded read for the same reason every other lookup is: `p["id"]` raised on a
+        # pin that carries none, and this is the one function every tool on every host calls first.
+        for p in self.readable_pins():
+            if pin_read(p)["id"] == pin_id:
                 return p
         raise LedgerError(f"no such pin: {pin_id}")
 
@@ -852,16 +1056,28 @@ class Ledger:
             # `f"prop_{len(proposals)}"` — the LIST's length, constant across the loop, so every
             # auto-id'd proposal on a pin got the same id: two proposals, both `prop_2`. Invisible
             # for as long as no host could call this at all, and reproduced on the first real
-            # `mcp:ledger_add_proposals` call. The id is a carrier — `DecisionEvent.proposal_ref`
-            # points at it and the funnel entry lists it — so duplicates make "which option did the
+            # `mcp:ledger_add_proposals` call. The id is a carrier — `learning.divergences` decides
+            # whether the human took the recommendation by matching `pin.decision.outcome` against
+            # these ids, and the funnel entry lists them — so duplicates make "which option did the
             # human take" unanswerable, which is the one question the mark exists to answer.
+            #
+            # The DecisionEvent carries no `proposal_ref` and never has: this comment and the
+            # refusal below both said it did, and the spec puts that field on
+            # `question.options[]` — an OPTION pointing back at the proposal it was fed by
+            # (`{"id": "prop_1", "label": …, "proposal_ref": "prop_1"}`). Checked at the writer
+            # (`decide` composes `id/pin_id/timestamp/outcome/rationale/flip_criteria/source/
+            # evidence/settles_as/policy_hash`, and nothing else) and at the reader
+            # (`learning.divergences`, which compares the outcome to `proposals[].id` directly).
+            # The claim was wrong in the direction that matters least and is corrected anyway,
+            # because a refusal message is the one sentence an agent reads at the moment it is
+            # confused.
             prop.setdefault("id", f"prop_{index}")
             prop.setdefault("tradeoffs", {"pros": [], "cons": []})
         ids = [p["id"] for p in proposals]
         _require(len(set(ids)) == len(ids),
-                 f"two proposals share an id ({sorted(ids)}) — `proposal_ref` on the DecisionEvent "
-                 f"points at it, so a repeated id makes 'which option did the human take' "
-                 f"unanswerable from the ledger")
+                 f"two proposals share an id ({sorted(ids)}) — the election names an option and "
+                 f"`learning.divergences` matches that outcome against these ids, so a repeated id "
+                 f"makes 'which option did the human take' unanswerable from the ledger")
         pin["brainstorm"] = {"proposals": proposals, "notes": notes}
         if pin["state"] == "needs_input":
             pin["state"] = "brainstorming"
@@ -1510,11 +1726,20 @@ class Ledger:
         return radius
 
     def assign_resolution_modes(self) -> None:
-        """v0.3 funnel: blocker|high → asked; the medium|low long tail may batch."""
-        for pin in self.data["pins"]:
-            if pin["state"] in ("needs_input", "detected") and "resolution_mode" not in pin:
+        """v0.3 funnel: blocker|high → asked; the medium|low long tail may batch.
+
+        Reads through `pin_read` (v0.21) because `interview.funnel` calls this FIRST and
+        `interview_view` second: guarding the second and not the first would have left the funnel
+        dying one line earlier on the same file, which is the shape this round is about. A pin whose
+        severity this runtime cannot rank gets `asked` — the only safe direction, since the whole
+        point of the mark is that `blocker|high` are never silently defaulted, and a severity nobody
+        can read is not evidence that silence is safe.
+        """
+        for pin in self.readable_pins():
+            read = pin_read(pin)
+            if read["state"] in ("needs_input", "detected") and "resolution_mode" not in pin:
                 pin["resolution_mode"] = (
-                    "asked" if pin["severity"] in _NEVER_SILENT else "proposed_default"
+                    "proposed_default" if read["severity"] in _MAY_BE_SILENT else "asked"
                 )
 
     # -- the two reopen arcs (both reopen, neither decides) -------------------
@@ -2183,39 +2408,45 @@ class Ledger:
         All three belong here for one reason: a state that awaits a human and appears on no surface
         is a black hole, and the pins most likely to be forgotten are exactly the one nobody could
         verify and the one that was hard enough to need help.
+
+        The three states are `INTERVIEW_STATES` rather than a literal (v0.21). They were a literal
+        here and re-derived on the map, which re-derived them wrongly — see that constant. Every
+        field this sorts on is read through `pin_read`, because this and `summary` (which calls it)
+        are what an agent runs first on a file it did not write.
         """
-        dependents: dict[str, int] = {}
-        for p in self.data["pins"]:
-            for dep in p.get("depends_on", []):
-                dependents[dep] = dependents.get(dep, 0) + 1
+        reads = [(p, pin_read(p)) for p in self.readable_pins()]
 
         def transitive(pin_id: str, seen: frozenset = frozenset()) -> int:
             total = 0
-            for p in self.data["pins"]:
-                if pin_id in p.get("depends_on", []) and p["id"] not in seen:
-                    total += 1 + transitive(p["id"], seen | {p["id"]})
+            for _, r in reads:
+                if pin_id in r["depends_on"] and r["id"] not in seen:
+                    total += 1 + transitive(r["id"], seen | {r["id"]})
             return total
 
-        pending = [p for p in self.data["pins"]
-                   if p["state"] in ("needs_input", "brainstorming", "correctness_unknown")]
-        sev_rank = {s: i for i, s in enumerate(SEVERITIES)}
+        pending = [(p, r) for p, r in reads if r["state"] in INTERVIEW_STATES]
         # An unverifiable blocker outranks information gain. Fan-out orders questions that are still
         # open; a `blocker|high` whose correctness could not be established is not a question to
         # sequence well, it is one that must not be skimmed past (the v0.3 threshold rule applied to
         # the verification exit).
-        def unverifiable_first(p: dict) -> int:
-            return 0 if (p["state"] == "correctness_unknown"
-                         and p["severity"] in _NEVER_SILENT) else 1
-        return sorted(
+        def unverifiable_first(r: dict) -> int:
+            return 0 if (r["state"] == "correctness_unknown"
+                         and r["severity"] in _NEVER_SILENT) else 1
+        return [p for p, _ in sorted(
             pending,
-            key=lambda p: (unverifiable_first(p), -transitive(p["id"]),
-                           sev_rank[p["severity"]], p["id"]),
-        )
+            key=lambda pr: (unverifiable_first(pr[1]), -transitive(pr[1]["id"]),
+                            severity_rank(pr[1]["severity"]), pr[1]["id"]),
+        )]
 
     def summary(self) -> dict:
+        # v0.21: through the guarded read, for the reason the log loop below was made `.get`-only in
+        # v0.18 — this is the call an agent makes BEFORE acting, on a file it did not write. A pin
+        # with no state counts under `""` rather than crashing the whole summary, and `pin_state`
+        # in `pre_rule_events` two keys down is what says why that bucket exists.
         by_state: dict[str, int] = {}
-        for p in self.data["pins"]:
-            by_state[p["state"]] = by_state.get(p["state"], 0) + 1
+        pins = self.readable_pins()
+        for p in pins:
+            state = pin_read(p)["state"]
+            by_state[state] = by_state.get(state, 0) + 1
         # v0.9: failures surface here or they surface nowhere. An event class that only exists in
         # the log is the same black hole `correctness_unknown` was before it reached the interview.
         by_failure: dict[str, int] = {}
@@ -2238,7 +2469,8 @@ class Ledger:
         # election that produced it where there is one and by its own event where there is not; a
         # count over one of the two would be exactly the half-blind reading v0.13 was about.
         by_door: dict[str, int] = {}
-        for e in self.data["decision_log"]:
+        log = self.readable("decision_log")
+        for e in log:
             # v0.18: every read here is a `.get`, and the dispatch key most of all. It was
             # `e["id"]`, which made a log entry with no id a bare `KeyError` — `ledger_summary`
             # returned `isError` over the wire and the agent's FIRST call on a file it did not
@@ -2281,24 +2513,29 @@ class Ledger:
         # (a policy is elected, never cascaded from another), so a reader function would be
         # ceremony. `policies` stays a plain count so an existing caller keeps its answer.
         pol_by_evidence: dict[str, int] = {}
-        for p in self.data["policies"]:
+        policies = self.readable("policies")
+        for p in policies:
             rung = str(p.get("evidence") or "") or "unrecorded"
             pol_by_evidence[rung] = pol_by_evidence.get(rung, 0) + 1
         return {
             # The floor, not this runtime's version: it stays where the file's own content puts it
             # while `pre_rule_events` is non-empty, so the two are read together.
-            "version": self.data["version"],
+            "version": self.data.get("version"),
             "pre_rule_events": {rule: len(ids) for rule, ids in self.pre_rule.items()},
-            "pins": len(self.data["pins"]),
+            # Every count below is over what a reader can actually walk, so a file with an
+            # unreadable entry is short by one HERE and says so two lines up under `entry_shape`.
+            # The alternative — counting an entry nothing else in this dict can describe — is a
+            # total that no other number in the summary adds up to.
+            "pins": len(pins),
             "by_state": by_state,
-            "events": len(self.data["decision_log"]),
-            "policies": len(self.data["policies"]),
+            "events": len(log),
+            "policies": len(policies),
             "policies_by_evidence": pol_by_evidence,
             "open_questions": len(self.interview_view()),
             "failures_by_class": by_failure,
             "decisions_by_evidence": by_evidence,
             "settlements_by_door": by_door,
-            "premortems": sum(1 for p in self.data["pins"] if p.get("premortem")),
+            "premortems": sum(1 for p in pins if p.get("premortem")),
         }
 
 

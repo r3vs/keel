@@ -20,6 +20,8 @@ import json
 import pathlib
 from typing import Optional
 
+from ledger import pin_read
+
 _HERE = pathlib.Path(__file__).resolve().parent
 
 #: Where the catalog is, in each of the two trees this module lives in. The authoring path was the
@@ -242,19 +244,26 @@ def funnel(ledger) -> dict:
     inside it, and the fork stays exactly where its author left it."""
     ledger.assign_resolution_modes()
     view = ledger.interview_view()
+    # v0.21: the same guarded read `interview_view` uses. This function walks the pins that view
+    # just returned and indexed three of the same fields directly, so guarding one and not the
+    # other would have moved the crash two lines down rather than removed it — the two are halves
+    # of one funnel and a file either reads or does not.
+    reads = [(p, pin_read(p)) for p in ledger.readable_pins()]
 
     def transitive_downstream(pin_id: str, seen: frozenset = frozenset()) -> int:
         total = 0
-        for p in ledger.data["pins"]:
-            if pin_id in p.get("depends_on", []) and p["id"] not in seen:
-                total += 1 + transitive_downstream(p["id"], seen | {p["id"]})
+        for _, r in reads:
+            if pin_id in r["depends_on"] and r["id"] not in seen:
+                total += 1 + transitive_downstream(r["id"], seen | {r["id"]})
         return total
 
     asked, tail = [], []
     for pin in view:
-        entry = {"pin_id": pin["id"], "title": pin["title"], "severity": pin["severity"],
-                 "prompt": (pin.get("question") or {}).get("prompt", ""),
-                 "downstream": transitive_downstream(pin["id"])}
+        read = pin_read(pin)
+        entry = {"pin_id": read["id"], "title": str(pin.get("title") or ""),
+                 "severity": read["severity"],
+                 "prompt": read["question"].get("prompt", ""),
+                 "downstream": transitive_downstream(read["id"])}
         blocked_by = (pin.get("verification") or {}).get("blocked_by")
         if blocked_by:
             entry["blocked_by"] = blocked_by
