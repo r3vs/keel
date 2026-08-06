@@ -218,7 +218,9 @@ anchors, re-query the graph, confirm the Track-A test kills mutants (Track-B sti
 refactors). Read-only verdict — never guesses, never writes. It runs before the review so judgment
 is never spent on a change that does not close the gap, and it records what it ran against so the
 review reads that record rather than re-deriving it. **Evidence is necessary, not sufficient**:
-`pin.state = resolved` needs this evidence *and* a MERGE. On failure the item returns to Phase 4 (a
+`pin.state = resolved` needs this evidence, *and* a MERGE, *and* a `verification.rung` of
+`observed` or `cross_derived` — three things, and `mcp:ledger_resolve` refuses without the third.
+On failure the item returns to Phase 4 (a
 local retry, not a global restart). See `references/phase-5-validate.md`.
 
 ## Brainstorm (parallel, on-demand)

@@ -556,6 +556,8 @@ The **zone** is the blast radius of the planned change: the pins' anchors plus w
 
 That last one is a second, independent carrier for the thesis the shape engine already serves. Shapes compare **declared structure**; co-change compares **recorded behaviour** — what the team has actually had to edit together. Two carriers agreeing is a strong finding; two disagreeing is itself the finding, which is why they are reported separately and never merged into one score.
 
+**Reported separately by what.** `map.py`'s landing-zone card gives each carrier its own row, and the split dial its own two rows above them — because *"never merged into one score"* is a rule about a surface, and for two versions the only surface it had was `ledger.json`. Three of the four evidence keys and `evidence_determinism` were written by `readiness.assess` and read by nothing at all, and the schema-field gate that exists to say so passed them for two versions, because the writer is in the corpus it searched and it could not tell a write from a read. A rule whose whole content is *do not merge these* is kept by showing them apart, or it is not kept.
+
 ### The verdict is judgment, and says so
 
 `ready` / `harden_first` / `redesign` is a `D2` conclusion over `D0` evidence, and the object records both determinism levels rather than blending them (`core/trust-axes.md`). Inventing a threshold here — *"coupling above 0.6 means harden"* — would be a number with no carrier wearing a green badge, which is precisely what this schema now forbids elsewhere. The runtime computes facts and **refuses to conclude**; the agent concludes; the human elects what to do about it.
@@ -650,6 +652,8 @@ The verification ladder's top rung (v0.7) had no mechanism: anything could claim
   "agreement_determinism": "D2"       // do the answers MEAN the same? judged
 }]
 ```
+
+The two determinism keys are the same split one object over, and are read the same way: the cross-derivation card carries *"were the providers distinct"* (`D0` — the schema checks it) and *"do the answers mean the same"* (`D2` — a model judged it) as two rows, never as one confidence. Merging them would say a judged agreement was computed, which is the exact claim the asymmetry below cannot support.
 
 The reason this works at all is asymmetric: a single-provider hallucination is **stubborn under repetition and fragile under substitution**. Ask the same model twice and it reproduces its own error; ask a different family and it rarely invents the same wrong thing. So the schema enforces the only part that is checkable — at least two derivations from at least two *distinct* providers — and refuses same-provider repetition, which is repetition wearing an independence badge.
 

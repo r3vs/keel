@@ -180,8 +180,9 @@ is green. Validate with kind-specific evidence: re-extract the shapes across the
 and confirm **zero drift** (aligned by construction); the Track-A test kills mutants; the built
 behavior is reachable from an entry point; the paved road actually runs. Read-only verdict — never
 guesses, never writes. It runs before the review so judgment is never spent on a slice that does not
-hold. **Evidence is necessary, not sufficient**: `pin.state = resolved` needs this evidence *and* a
-MERGE. On failure the item returns to Phase 4 (a local retry).
+hold. **Evidence is necessary, not sufficient**: `pin.state = resolved` needs this evidence, *and* a
+MERGE, *and* a `verification.rung` of `observed` or `cross_derived` — three things, and
+`mcp:ledger_resolve` refuses without the third. On failure the item returns to Phase 4 (a local retry).
 The convergence check is the completeness traffic-light: resolved slices flip ghost→solid and the
 gap shrinks toward zero. See `references/phase-5-validate.md`.
 

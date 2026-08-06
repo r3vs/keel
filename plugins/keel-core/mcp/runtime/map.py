@@ -606,6 +606,8 @@ function crossCard(x){
     <div class="kv"><b>claim</b><span>${x.claim}</span></div>
     ${(x.derivations||[]).map(d=>h`<div class="opt"><b>${d.provider}/${d.model}</b>
       <div class="imp">${d.result}</div></div>`)}
+    ${detRow('were the providers distinct',x.independence_determinism)}
+    ${detRow('do the answers mean the same',x.agreement_determinism)}
     ${x.notes?h`<div class="why">${x.notes}</div>`:''}
     ${a.cls?h`<div class="warn">⚠ two independent providers were asked and did not answer the same
       thing — what you weigh is WHICH derivation holds, not that a check was run</div>`:''}</div>`;
@@ -663,15 +665,24 @@ function vrungInfo(r){
 const DET={D0:'D0 — a carrier computed it; the same input gives the same answer',
            D1:'D1 — reconstructible from a pinned artifact',
            D2:'D2 — model judgment on the path, not a computation'};
+// The dial is SPLIT wherever a judgment sits on top of computed evidence, and the schema's rule is
+// that the halves are "never merged into one score". Three pairs are written that way; until 2026-08-06
+// this page printed the unsplit half of one pair and dropped the other five fields entirely, which
+// is merging them by omission — the one thing the rule forbids — on the surface where the rule was
+// supposed to be cashed. One row, six callers, so the next split arrives with a reader.
+function detRow(label,v){
+  const s=(v==null?'':String(v)); if(!s)return '';
+  return h`<div class="kv"><b>${label}</b><span>${has(DET,s)?DET[s]
+    :h`⚠ ${unknownNote('determinism level',s,'nothing here says whether it reproduces')}`}</span></div>`;
+}
 function verificationCard(p){
   const v=p.verification||null;
   if(!v&&!p.evidence)return '';
   const info=vrungInfo(v?v.rung:null);
-  const det=v&&v.determinism?String(v.determinism):'';
   return h`<div class="card dec ${info.cls}">
     <div class="ch">verification — how hard this was checked</div>
     <div class="kv"><b>rung</b><span class="rung ${info.cls}">${info.label}</span></div>
-    ${det?h`<div class="kv"><b>reproduces</b><span>${has(DET,det)?DET[det]:det}</span></div>`:''}
+    ${detRow('reproduces',v?v.determinism:null)}
     ${p.evidence?h`<div class="kv"><b>observation</b><span>${p.evidence}</span></div>`:''}
     ${v&&(v.attempted||[]).length?h`<div class="kv"><b>attempted</b>
       <span class="chips">${v.attempted.map(scalarHTML)}</span></div>`:''}
@@ -738,11 +749,23 @@ function readinessCard(p){
   const r=p.readiness||null; if(!r)return '';
   const v=String(r.verdict||'');
   const info=has(READY,v)?READY[v]:{label:v||'no verdict recorded', cls:'weak'};
-  const zone=r.zone||{};
+  const zone=r.zone||{}; const ev=r.evidence||{};
+  const pins=ev.open_pins_in_zone||[];
   return h`<div class="card dec ${info.cls}"><div class="ch">landing zone — can the ground bear it</div>
     <div class="kv"><b>verdict</b><span class="rung ${info.cls}">${info.label}</span></div>
+    ${detRow('the verdict',r.determinism)}
+    ${detRow('the evidence under it',r.evidence_determinism)}
     ${(zone.files||[]).length?h`<div class="kv"><b>zone</b>
       <span class="chips">${zone.files.map(scalarHTML)}</span></div>`:''}
+    ${pins.length?h`<div class="kv"><b>open pins in the zone</b><span class="chips">${
+      pins.map(x=>scalarHTML((x&&x.pin?x.pin:x)+(x&&x.severity?' ('+x.severity+')':'')))}</span></div>`:''}
+    ${(ev.untested_files||[]).length?h`<div class="kv"><b>no test reaches</b>
+      <span class="chips">${ev.untested_files.map(scalarHTML)}</span></div>`:''}
+    ${!isBlank(ev.churn)?h`<div class="kv"><b>churn</b><span class="chips">${
+      Object.keys(ev.churn).map(f=>scalarHTML(f+' ×'+ev.churn[f]))}</span></div>`:''}
+    ${(ev.coupled_outside_zone||[]).length?h`<div class="kv"><b>co-changes from outside</b><span class="chips">${
+      ev.coupled_outside_zone.map(x=>scalarHTML((x&&x.file?x.file:x)+(x&&x.co_commits?' ×'+x.co_commits:'')))
+      }</span></div>`:''}
     ${(r.hardens||[]).length?h`<div class="kv"><b>blocked on</b>
       <span class="chips">${r.hardens.map(scalarHTML)}</span></div>`:''}
     ${r.rationale?h`<div class="why">${r.rationale}</div>`:''}

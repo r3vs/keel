@@ -11,10 +11,11 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06 (third pass).** §1–§14 and §16 are **closed**, and §17a, §17b, §17d, §17e,
-> §17f, §17g with them. **Only §15 and §17c are open.**
+> **STATUS 2026-08-06 (fourth pass).** **§1–§17 are all closed.** Nothing on this list is open. What
+> replaces them is **§18**, which is not a defect but the standing answer to the question this
+> register exists to ask: *after eight adversarial rounds, which recurring class still has no gate?*
 >
-> | # | Open gap | One line |
+> | # | Gap | One line |
 > |---|---|---|
 > | ~~5~~ | ~~reopen arcs unreachable~~ | **CLOSED** — both arcs, `set_question` and `add_proposals` now have doors |
 > | ~~6~~ | ~~map palette contrast~~ | **CLOSED** — measured before/after in a browser; three hues needed a paired foreground, not one darker hue |
@@ -26,9 +27,10 @@ wrong* is the part that stops it coming back.
 > | ~~12~~ | ~~`resolution_mode: "asked"` is permanent~~ | **CLOSED** — only a STANDING refusal writes it, at both unasked doors |
 > | ~~13~~ | ~~`ensure_ascii=False` emits raw U+2028/U+2029~~ | **CLOSED** — one table of holes, and `_inline` proved by AST to be the only path |
 > | ~~14~~ | ~~five more pin fields, and four of five log kinds, reach the map nowhere~~ | **CLOSED** — one stack of cards plus a trail, decided once |
-> | 15 | two gates check less than their names claim | an AST gate that only sees constants; a name-match gate |
-> | ~~16~~ | ~~an unknown `settles_as` renders as a bare label~~ | **CLOSED** — one `unknownNote` sentence, six callers, tables kept apart |
-> | 17 | **17c only** — two phase-4 playbooks still say `resolved` needs two things | 17a/b/d/e/f/g closed |
+> | ~~15~~ | ~~two gates check less than their names claim~~ | **CLOSED** — both inverted and re-planted; the schema gate then found **six** write-only fields it had always passed |
+> | ~~16~~ | ~~an unknown `settles_as` renders as a bare label~~ | **CLOSED** — one `unknownNote` sentence, seven callers, tables kept apart |
+> | ~~17~~ | ~~seven residuals of the final review~~ | **CLOSED** — 17c was the last, and it was eight prose sites rather than three |
+> | **18** | **which class still has no gate** | not a defect: the standing answer, one class newly gated and three argued as not mechanizable |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -45,6 +47,23 @@ wrong* is the part that stops it coming back.
 > | 5. + 10. + 17b. five transitions no host could make | ledger v0.17 | `mcp:ledger_reopen` · `ledger_challenge` · `ledger_set_question` · `ledger_add_proposals`; `Ledger.reopen_verdict` + `_reopen_minimal`; `tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo`; `test_invariants.py::…::test_an_INTERNAL_mutator_is_actually_reached` |
 > | 9. + 11. + 12. + 17f. + 17g. five rules false of what they were printed on | ledger v0.18 | `Ledger.policy_preview` → `scope_note` (and `server.py`'s elicited message); `ledger.STANDING_REFUSALS`, read by `apply_policy` and `interview.expand_catalog`; `Ledger._accept_implication`; `Ledger.defer`'s signature; `ledger.LOG_ENTRY_PREFIXES` + `nonconforming`'s `log_entry_kind`; gates `tests/test_ledger.py::TestARuleIsTrueOfTheThingItIsPrintedOn` and `test_invariants.py::TestAMarkWithNoClearingDoorIsWrittenForAStandingReason` |
 > | 6. + 7. + 8. + 13. + 14. + 16. + 17a. + 17d. + 17e. the reading surfaces never grew | ledger v0.19 | `src/runtime/map.py` — the palette block's three foreground pairs, `unknownNote`, and the card stack `verificationCard` · `brainstormCard` · `modeLine` · `readinessCard` · `remediationCard` · `premortemCard` · `trailCard`; `_SCRIPT_UNSAFE` + `_inline`; `interview.funnel`'s `blocked_by`; `instructions._pin_line`'s dispute clause and the two settled sections; `ledger.LEAVE_AS_IS_STATES` + `ledger.REOPENED_SUBSTATES`; gates `tests/test_map.py::TestThePaletteCarriesTheWarningItIsUsedFor` · `TestTheOnlyWayDataEntersThePage` · `TestEveryClosedTableThePageReadsIsTheSchemas` · `TestTheWholeEnvelopeHasAReader`, `tests/test_instructions.py::TestNoStateNameIsKeptInThisFile`, `tests/test_ledger.py::TestTheDistinctionsASurfaceSortsAndTITLESBy` |
+> | 15. + 17c. two gates that overstated themselves, and the prose one door behind | 2026-08-06 (no spec bump — nothing here is a schema rule) | `tests/test_ledger.py::TestOneWriterForTheSettledStates` — inverted to `STATE_WRITERS`, set equality over the assignment TARGET across `src/runtime` + `src/mcp`; `scripts/check_schema_fields.py::mask_writes` — Python write-positions blanked before the search, which found **six** write-only fields the same day; `map.py::detRow` + the readiness evidence rows; the three-requirement `resolved` sentence in eight playbooks and `src/core/agents.md` |
+> | 18. a number in prose answered to nobody | 2026-08-06 | `scripts/check_stated_facts.py`, wired into `.github/workflows/ci.yml` and `CLAUDE.md`'s Commands block |
+>
+> **Closed does not mean nothing remains.** Four residuals are recorded inside closed sections rather
+> than fixed, each with the argument for leaving it — read the section before re-finding one:
+>
+> - **§5** — `_reopen_minimal` cascades over `("decided", "resolved", "accepted")`, three states where
+>   `SETTLED_STATES` has four (`deferred` excluded). Whether a `deferred` dependent rested on the
+>   falsified truth is a real question and nothing has settled it; inventing a rationale for someone
+>   else's tuple is how a hardcoded list acquires the authority of a decision. It is §17e's class one
+>   file over, and `TestNoStateNameIsKeptInThisFile` covers `instructions.py`, not `ledger.py`, where
+>   the states are the schema's own.
+> - **§12** — a ledger written by v0.12–v0.17 may carry `resolution_mode: "asked"` stamped by the old
+>   `not_offered` branch, and nothing can tell it from a standing demand. The stamp recorded no
+>   reason, so no reader can recover one, and reconstructing it from the policies still in the file
+>   would be the heuristic this repo forbids.
+> - **§3** — the two below.
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
 > a Claude Code hook can answer an elicitation *for* the human, so `elicited` means "the agent did
@@ -70,12 +89,28 @@ wrong* is the part that stops it coming back.
 > rule, and what was wrong was the rule's claim about the thing in front of it. The question that
 > catches it: **read the sentence the surface prints and ask what happens if a human believes it,
 > on the object it is printed on.**
+>
+> **The third shape, and it is the one about this file's own tooling — §2's third instance and both
+> of §15's.** *A gate whose NAME quantifies over more than its BODY does.* A roster test that
+> filtered its own input before comparing, so the "and nothing else is" half could not fire; an AST
+> walk that said "no function may" and inspected only literal assignments, so the one line it was
+> named for was invisible; a field-reader gate whose corpus contained the writers. All three passed
+> green for their whole lives and all three were caught by **planting a violation** — never by
+> reading. §18 is the standing entry for this shape: which classes now have a gate, which do not,
+> and the argument for each.
 
 Two of the original four (§1 and §2) were introduced *by the same session that closed four older bugs
 of the identical class*, and the same thing has happened in every round since — §5 and §8 were opened
 by the round that closed §1–§4's successors, §9–§16 by the round after that. That is the point of
 writing them down rather than remembering them: this failure mode is not rare here and it is not
 careless — it is what happens when you add state and stop at the layer that stores it.
+
+The round that closed §15 kept the streak, and it is worth knowing that it did: fixing the
+schema-field gate so it could tell a reader from a writer immediately surfaced **six** fields
+written by the runtime and read by nothing, three of them the evidence a landing-zone verdict rests
+on. They were closed in the same commit rather than filed here, because a gate's first run is the
+one place this register's central rule inverts — *the finding is the gate working*, not a new gap.
+The next session should expect the same from any instrument it sharpens.
 
 **Before starting anything below:** read `CLAUDE.md`, then the playbook for whatever you touch.
 Work on a branch, one scope per commit, and **run every gate — the list is the Commands block in
@@ -89,19 +124,20 @@ The original suggested order was **1 → 2 → 4 → 3**, and it was followed; 3
 outcomes it anticipated — two hosts yes, two no. §1–§4 below are that report, kept verbatim under
 their closing notes. §5 onwards were opened later and each says where it came from.
 
-**Suggested order for what is left.** §5 was done first, then §9, §11, §12, §17f and §17g — the
-rules that mis-fired rather than the surfaces that were missing — then the reader cluster **§6, §7,
-§8, §13, §14, §16, §17a, §17d, §17e** as **one** change to the two reading surfaces, which is what
-§14 asked for and is why they closed together. **What is left is §15 and §17c.**
+**The order that was followed, and what it taught.** §5 first, then §9, §11, §12, §17f and §17g —
+the rules that mis-fired rather than the surfaces that were missing — then the reader cluster **§6,
+§7, §8, §13, §14, §16, §17a, §17d, §17e** as **one** change to the two reading surfaces, which is
+what §14 asked for and is why they closed together. **§15 and §17c went last, and that ordering was
+right for a reason worth keeping: §15 is a gate fix, and a gate fix pays out in findings.** The
+moment `check_schema_fields.py` could tell a reader from a writer it reported six write-only fields
+that had passed it since the day they were written — three of them the evidence a `harden_first`
+verdict rests on. Fixing the instrument last means the instrument immediately measures a tree
+somebody has just finished cleaning, and it still found six. Fixing it first would have found more,
+and earlier.
 
-§17c is prose: two phase-4 playbooks and rescue's `SKILL.md` still say `resolved` requires two
-things when it now requires three, and the refusal text happens to name the fix. §15 is the harder
-one and is the right next scope, because it is the class every round keeps finding: *a gate that has
-been asked and answered stops anyone asking again.* The round that closed the reader cluster nearly
-added a fourth instance and caught it in the DOM rather than in CI — a new test named *"a badge is
-readable against its own foreground"* that listed the two tokens the finding named and would have
-skipped the two more that were failing (see §6). Read that before starting §15: the shape is always
-a gate whose name quantifies over more than its body does.
+**What replaces "what is left".** Nothing on this list is open, so the standing question is no
+longer *which gap next* but *which class is still ungated* — that is §18, and it is written to be
+the entry a cold session reads first.
 
 ---
 
@@ -1474,7 +1510,70 @@ the JSON. Anything you cannot answer from the page is still on this list.
 
 ---
 
-## 15. Two gates check less than their names claim — **OPEN, found 2026-08-06**
+## 15. Two gates check less than their names claim — **CLOSED 2026-08-06**
+
+**Both were inverted, and both were verified by planting first.** The old shapes were reproduced
+before anything was changed, because a gate you narrow without re-testing is worse than the loose
+one — that is this section's own instruction and it decided the whole procedure.
+
+**The AST gate — `tests/test_ledger.py::TestOneWriterForTheSettledStates`.** The question is
+inverted exactly as the section prescribed: not *is this value a settled state*, which needs the
+value to be readable, but **which functions assign `pin["state"]` at all**, which is decidable from
+the assignment TARGET in every shape the value can take. `STATE_WRITERS` declares the five, each
+with the transition it makes, and set equality against the source is the load-bearing half. Three
+things changed beyond the shape:
+
+- **A computed value outside `_settle` is refused outright**, not inspected. A gate that cannot read
+  a value must not pass it, and the alternative — evaluating reachable constants — buys a guess.
+- **The scope is `src/runtime/*.py` + `src/mcp/*.py`**, the same roots `TestEveryPathToDecideIsGated`
+  uses. It used to be `ledger.py` alone, so a state write in `tools.py` was outside the gate named
+  for *every* function.
+- Three plants, each run: `pin["state"] = _STATE_BY_DOOR["resolve"]` in `cross_derive` (the exact
+  blind spot — **passed green** before, fails now), a literal settled state outside `_settle` (the
+  one case the old gate did catch), and a sixth writer added to `tools.py` (fails two of the three).
+
+The irony worth recording: the invisible line was `pin["state"] = _STATE_BY_DOOR[door]`, which is
+the line `_settle` **itself** is made of. The one write the class is named for was the one write it
+could not see.
+
+**The schema gate — `scripts/check_schema_fields.py`.** It now parses every Python source and blanks
+the positions in which a name can only be a WRITE — a `Store`/`Del` subscript slice, a key in a dict
+literal being built, a keyword argument, a parameter name — before the search runs. What survives is
+everything a read can look like, including the JavaScript the map template carries inside a Python
+string, which is a real reader and is not parseable as Python. Both directions were planted: a field
+whose only mention is one dict-literal key in `ledger.py` fails; the same field given a `.get()`
+passes.
+
+**And then it found six.** This is the part that matters more than the fix:
+
+```
+evidence_determinism        readiness — the verdict is D2 over D0 evidence, "never merged"
+independence_determinism    cross_derivations — were the providers distinct (checked)
+agreement_determinism       cross_derivations — do the answers mean the same (judged)
+open_pins_in_zone           readiness.evidence — the ledger's own broken ground
+untested_files              readiness.evidence — no test reaches it
+coupled_outside_zone        readiness.evidence — what historically moves with it
+```
+
+Every one had exactly one occurrence in the whole tree: the dict-literal key that writes it. Three
+of them are the evidence a `harden_first` verdict rests on, and the spec's own rule for that object
+is that the four carriers are *"reported separately and never merged into one score"* — a rule about
+a **surface**, kept by no surface. So they were given readers rather than deleted (deleting would
+re-litigate the determinism dial, which is a settled decision), on the card that already renders
+their unsplit sibling, through **one** shared `detRow` — which incidentally removed a live §16
+instance, since `verificationCard` printed an unrecognised determinism level bare. The preview
+fixture's readiness evidence was hand-composed prose (`{cochange, coverage}`) rather than the four
+keys `readiness.assess` actually writes, so it was corrected too: a fixture that cannot show a field
+cannot check it. Verified in a browser, both themes, worst contrast 4.77:1 (dark) / 4.95:1 (light)
+over the cards touched.
+
+**What the fix does NOT buy, stated so nobody reads it as more.** A field read only by the module
+that writes it still passes — the gate answers *is it read*, not *is it read on a surface a human
+opens*. That second question is §14's, and it has no gate; §18 says why. Masking Python docstrings
+and comments as well was measured and refused: it fails the tree on correct fields whose runtime
+reader is a `**kwargs` spread or a `for k, v in …` loop.
+
+### The original finding, kept verbatim
 
 The instances differ; the class is one, and it is the worst kind of finding in this repo, because a
 gate that has been asked and answered stops anyone asking again. §2's closing note records a third
@@ -1602,12 +1701,12 @@ this map cannot describe, not print it as though it were understood.
 
 ---
 
-## 17. Seven residuals of the final review — **only 17c is OPEN**
+## 17. Seven residuals of the final review — **all CLOSED**
 
 Two adversarial reviewers closed the seventh round. Their findings are here rather than fixed,
 because the round's rule was that only defects it had *introduced* could be fixed in it — and
-because a report dies with its session while this file does not. The four still open are not triaged: each states what
-was verified and why it matters, and stops there.
+because a report dies with its session while this file does not. Each states what was verified and
+why it matters; the closing notes were added as each was taken.
 
 **17a — CLOSED 2026-08-06 (ledger v0.19), and it was three substates rather than one.**
 `instructions._pin_line` now appends `*(<substate> — do not build on this answer)*` to a pin whose
@@ -1659,6 +1758,28 @@ MCP door on the all-states fixture: `interview_next` omits the brainstorming pin
 moves it back — `decide` goes forward, only `cross_derive(disagree)` returns it, and the one method
 that would is §10's unreachable `set_question`. **Why it matters:** asking the brainstorm agent for
 options is how a hard fork gets help, and doing so is what takes the fork off the agenda.
+
+**17c — CLOSED 2026-08-06, and it was eight sites rather than three.** Every one now names the third
+requirement: a `verification.rung` of `observed` or `cross_derived`, which `mcp:ledger_resolve`
+refuses without. The five the finding did not name are the point — rescue's `phase-4-remediation.md`
+said it a **second** time forty lines below the loop (*"`resolved` needs both"*), both
+`phase-5-validate.md` playbooks said it, greenfield's `SKILL.md` said it, and `src/core/agents.md`
+said it in the roster doctrine that gets vendored into **eight** shipped skills. A count taken from
+the three sites a reviewer happened to open is the same shape as the defect it was reporting, and it
+is the third time in this register a section's own enumeration turned out to be the smaller half
+(compare §7's "six writers" and §12's).
+
+The `rung` collision was resolved rather than preserved, and by naming the carriers: step 4 logs the
+**`ladder_rung`** (an integer 1–7 on the `RemediationItem`/`BuildItem` — how small the intervention
+was) and step 7 records **`verification.rung`** on the pin (how hard the result was checked). Both
+names are the schema's own, so the disambiguation is not a gloss invented for the prose. Neither
+constrains the other, which is stated because the collision made it look as though one might.
+
+Not gated, and the reason is §18: *"the prose says a door demands two things and the door demands
+three"* has no carrier a linter can anchor on — the door's requirement is a control-flow property
+and the prose's claim is a sentence. What is gated is the adjacent, decidable half (§18's new
+`check_stated_facts.py`), and the boundary between the two is exactly where mechanization stops.
+The finding is kept verbatim.
 
 **17c. Two phase-4 playbooks and rescue's `SKILL.md` still say `resolved` needs two things.** It now
 needs three. `src/skills/codebase-rescue/references/phase-4-remediation.md:123`,
@@ -1757,6 +1878,120 @@ for it. Treat its measurement as of the day it was filed.
 > 3.32:1, not 2.48:1) while one whole half was missing (the badge failed in dark mode too). The
 > lesson generalises past the palette: **a number nobody re-ran is a claim, and this file's own
 > standard applies to its own contents.**
+
+---
+
+## 18. Which recurring class still has no gate — **the standing answer, 2026-08-06**
+
+Not a defect. This is the question the register exists to answer, written down so the ninth round
+starts from it instead of re-deriving it. Five classes recur in the sections above. Two of them are
+now gated, one is **newly** gated by this round, and two are argued below as not mechanizable — with
+the argument, not the verdict, because a verdict without one is what gets re-litigated.
+
+### Gated
+
+**A new surface arrives without the invariant that governs the old one.** The register's most
+repeated finding, and the only class with a *family* of gates rather than one. All of them share one
+shape — **set equality computed from the source**, so a door added later fails on the day it is
+added rather than on the day someone reads for it:
+
+| The set | Where it is asserted |
+|---|---|
+| every caller of `Ledger.decide` | `tests/test_invariants.py::TestEveryPathToDecideIsGated::test_the_enumeration_is_complete` |
+| every caller of `_settle` | `tests/test_ledger.py::TestOneWriterForTheSettledStates::test_every_door_reaches_the_single_writer` |
+| every function that assigns `pin["state"]` | the same class's `test_the_enumeration_of_state_writers_is_complete` (2026-08-06 — §15) |
+| every caller of `_reopen_minimal` | `TestComingBackIntoTheOpenSetIsGovernedToo` |
+| every public mutator, classified | `TestEveryWritePassesAGovernedChannel::test_no_mutator_is_unclassified` |
+| every `INTERNAL` mutator, reachable | `…::test_an_INTERNAL_mutator_is_actually_reached` |
+| every writer of `resolution_mode: "asked"` | `TestAMarkWithNoClearingDoorIsWrittenForAStandingReason` |
+| every write tool, named by a shipped playbook | `scripts/check_tool_carriers.py` |
+| every served tool, over the wire | `tests/test_mcp_server.py::EXPECTED_TOOLS` / `WRITE_TOOLS` |
+| every closed table the map reads | `tests/test_map.py::TestEveryClosedTableThePageReadsIsTheSchemas` |
+
+**The residual, and it is not closable.** Each row gates *one* invariant. The class is *"the
+invariant nobody thought to check at the new door"*, and no gate can enumerate invariants that do
+not exist yet. What replaces it is the procedure the last four rounds ran and this one ran: before
+finishing, enumerate every invariant the new surface is subject to and check each **at the
+consumer**. That is a discipline, and saying so is more honest than a gate that would only cover the
+invariants already known.
+
+**A rule enforced at the write, with no reader.** Gated by `scripts/check_schema_fields.py` — and
+only since §15, because until then the gate could not tell a reader from a writer and passed every
+instance of the class it was built for. It found six the day it could. Its remaining limit is
+declared in its own docstring and is real: it answers *is this field read*, never *is it read on a
+surface a human opens*. Nothing answers the second question; see the argument under §14's traps for
+why a schema gate is the wrong instrument for it.
+
+### Newly gated by this round — `scripts/check_stated_facts.py`
+
+**A claim in prose with no carrier**, restricted to the subset that is decidable. Three consecutive
+rounds ended their report with the same paragraph — a stale number corrected *by hand*, named "for
+scope honesty", with the sentence *"neither is covered by any gate, and that gap in the gate is not
+fixed."* Three rounds is a class, not bad luck: `README.md`'s "592 → 720 → 738 → 770 tests green in
+CI", `src/readme/keel-core.md`'s "MCP tools | **37**" while the server served 54, `CLAUDE.md`'s
+ledger-spec version at v0.6 against a v0.16 spec. Every one was found by whoever happened to edit
+the adjacent line, which means the ones nobody edited beside were still wrong — and two of them
+were, when the gate first ran.
+
+It checks a number the repo **computes** against the thing that computes it: `unittest`'s own
+discovery for the suite size, the `@mcp.tool` decorations for the roster, `ledger.SCHEMA_VERSION`
+for the schema. It holds no copy of any answer. Its scope excludes **this file**, on purpose and
+structurally: a historical register quotes the numbers of the day they were filed.
+
+Three things it taught, all of them by being run rather than reasoned about:
+
+- It catches what `tests/test_tool_roster.py` cannot. That gate matches `<int> MCP tools` in two
+  files; the table cell `| MCP tools | **58** |` is a different word order, which is precisely the
+  shape the "37" shipped in. Verified by planting: the cell goes stale, the roster test stays green,
+  this one fails.
+- **A version in prose needed a convention, and the first draft found that out the hard way.** A
+  spec version means *this arrived in v0.7* (history, true for ever) or *the spec is at v0.7*
+  (currency, must be bumped). The draft matched `(spec v0.X)` and immediately called
+  `verification-before-completion/SKILL.md`'s `` `correctness_unknown` (spec v0.7) `` stale, which
+  it is not. Deciding which from the surrounding words is the heuristic this repo forbids its own
+  linters, so the phrasing carries it: **a currency claim says `currently v0.X`**.
+- **One check was built, run, and deleted — recorded so nobody rebuilds it.** *"No document may name
+  a spec version higher than the runtime's, because history cannot be in the future"* needs no
+  convention and looked free. Run, it reported `docs/packaging.md`'s
+  `@earendil-works/pi-coding-agent v0.81.1`. The premise was the bug: a `v0.X` belongs to whatever
+  the sentence is about, and this repo legitimately names other projects' versions. There is no
+  lexical carrier for *which project a version token belongs to*.
+
+**Where the class stops being decidable, and this boundary IS the deliverable.** §17c is the other
+half of the same class and got no gate: *"the playbook says a pin closes on two things, the door
+demands three."* The door's requirement is a control-flow property of `settlement_verdict`; the
+prose's claim is a sentence. Joining them means reading the sentence for meaning, which is the one
+thing that is never allowed here. So the line is: **a number the repo computes is gated; a behaviour
+the repo implements is not.** Anything proposed for this class in future should be checked against
+that line first.
+
+### Not gated, with the argument
+
+**A test named for an invariant it does not check** (and its consequence, *a gate that has been
+asked and answered so nobody asks again*). Four instances are on record: §2's roster test filtering
+its own input, §15's two, and the near-miss the reader-cluster round caught in a DOM rather than in
+CI. It is the worst class in this repo and it is the one with no gate.
+
+The obvious mechanization was measured and refused. *"Every test method must contain at least one
+assertion"* is an AST walk of about fifteen lines; run over `tests/`, it reports **0** today. It is
+refused not because it finds nothing but because of what it would claim: every instance on record
+**had** assertions — they quantified over less than the docstring did, filtered their own input, or
+matched only literals. A gate named *a test named for an invariant it does not check* whose body
+checks *a test with no assertion at all* would be a gate whose name quantifies over more than its
+body does, which is **this class**, added to the repo under this class's own name. That is the
+argument; it is not an affordability argument and it does not get cheaper next round.
+
+What actually catches it is written into every closing note above and is a procedure, not a file:
+**plant the violation and watch it fail, before and after.** Every gate this register has fixed or
+built was verified that way — §2's roster row, §4's interpreter branches, §12's eighth writer and
+its clearing door, §6's old palette, §15's three state-write plants and two schema-field plants,
+§18's three stale-number plants. The one rule that generalises: a gate whose failure you have never
+seen is a gate you have not tested, and a green run is not evidence about it.
+
+**A claim about a HOST.** Named here for completeness because it is the class `MEMORY.md` keeps its
+own entry for, and it is ungated by construction: the carrier lives in somebody else's repository.
+The discipline is the one §3 and `docs/packaging.md` already state — cite the function that
+*consumes* the value, never the type that holds it, and mark what was read rather than observed.
 
 ---
 

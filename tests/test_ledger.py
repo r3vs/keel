@@ -1503,44 +1503,121 @@ class TestOneWriterForTheSettledStates(unittest.TestCase):
     """The structural half, and the reason this round is not a fifth one: the rule cannot live in
     the doors, because a door added later will not know it.
 
-    Asserted over the AST of `ledger.py`: no function may assign a settled state to a pin except
-    `_settle`, which is where the gate and the record are. `TestEveryPathToDecideIsGated` does the
-    same for the first predicate; this is the same move for the second.
+    Asserted over the AST of everything that ships and can write: no function may assign a settled
+    state to a pin except `_settle`, which is where the gate and the record are.
+    `TestEveryPathToDecideIsGated` does the same for the first predicate; this is the same move for
+    the second — and since 2026-08-06 it is the same SHAPE, which is what §15 of `docs/open-gaps.md` was
+    about.
+
+    **Why the shape changed.** The old walk collected `pin["state"] = <literal>` and asked whether
+    the literal was a settled state. Everything else was invisible: `pin["state"] = target`,
+    `pin["state"] = _STATE_BY_DOOR[door]` — which is the line `_settle` itself is made of, so the
+    one write the class is named for was the one write it could not see. Verified by planting that
+    exact line into `cross_derive`: the gate passed, green, twice. A gate that quantifies over
+    *every function* in its docstring and over *literal assignments only* in its body is this
+    repo's most-repeated finding turned on its own tooling.
+
+    So the question is inverted, the way `TestEveryPathToDecideIsGated` inverted it: not "is this
+    value a settled state" — which needs the value to be readable — but **"which functions assign
+    `pin["state"]` at all"**, which is decidable from the target alone. That set is small and
+    stable, every member is declared here with the transition it makes, and a computed value
+    outside `_settle` is refused OUTRIGHT rather than inspected, because a gate that cannot read a
+    value must not pass it.
     """
 
-    @staticmethod
-    def _tree():
+    ROOTS = ("runtime", "mcp")
+
+    #: Every function that assigns a pin's `state`, module-qualified, with the transition it makes
+    #: and why that transition needs no settlement gate. Set equality against the source, so a
+    #: sixth writer fails on the day it is added rather than on the day someone reads for it.
+    STATE_WRITERS = {
+        ("ledger.py", "_settle"): "THE writer. Assigns `_STATE_BY_DOOR[door]` after "
+                                  "`settlement_verdict` has answered and after the event is "
+                                  "appended — the gate and the record are both here, which is what "
+                                  "makes every other writer's job to not be this one.",
+        ("ledger.py", "set_question"): "`detected` -> `needs_input` only. Posing a fork decides "
+                                       "nothing; it puts the pin ON the agenda, which is the "
+                                       "opposite direction to a settlement.",
+        ("ledger.py", "add_proposals"): "`needs_input` -> `brainstorming`. Still open, still in "
+                                        "`interview_view` since v0.17 — a pin being thought about "
+                                        "has not been answered.",
+        ("ledger.py", "cross_derive"): "-> `needs_input` on provider disagreement. The upstream "
+                                       "half of the reopen pair; it may not un-close finished work "
+                                       "(v0.16) and is checked at `reopen_verdict`.",
+        ("ledger.py", "_reopen_minimal"): "-> `needs_input` on every dependent of a falsified "
+                                          "truth. The single writer of the reopened state, "
+                                          "`_settle`'s twin, held by "
+                                          "`TestComingBackIntoTheOpenSetIsGovernedToo`.",
+    }
+
+    @classmethod
+    def _modules(cls):
         import ast
-        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
-        with open(path, encoding="utf-8") as fh:
-            return ast.parse(fh.read(), filename=path), ast
+        base = os.path.join(os.path.dirname(__file__), "..", "src")
+        out = {}
+        for root in cls.ROOTS:
+            for name in sorted(os.listdir(os.path.join(base, root))):
+                if name.endswith(".py"):
+                    full = os.path.join(base, root, name)
+                    with open(full, encoding="utf-8") as fh:
+                        out[name] = ast.parse(fh.read(), filename=full)
+        return out, ast
+
+    @classmethod
+    def _state_writes(cls):
+        """(module, function) -> [assigned value node], for every `<x>["state"] = …` that ships.
+
+        Anchored on the assignment TARGET, which is a constant subscript in every shape the value
+        can take — that is the whole point of the inversion.
+        """
+        modules, ast = cls._modules()
+        out = {}
+        for module, tree in modules.items():
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.walk(fn):
+                    if not isinstance(node, ast.Assign):
+                        continue
+                    for target in node.targets:
+                        if (isinstance(target, ast.Subscript)
+                                and isinstance(target.slice, ast.Constant)
+                                and target.slice.value == "state"):
+                            out.setdefault((module, fn.name), []).append(node.value)
+        return out, ast
+
+    def test_the_enumeration_of_state_writers_is_complete(self):
+        """The load-bearing half: these are ALL the functions that move a pin's state."""
+        writes, _ = self._state_writes()
+        self.assertEqual(set(writes), set(self.STATE_WRITERS),
+                         "a function that assigns a pin's state was added or removed. Declare it "
+                         "here with the transition it makes — that is what stops the next one from "
+                         "being a settlement nobody looked at")
 
     def test_only_settle_writes_a_settled_state(self):
+        """And the value half, which now refuses what it cannot read instead of skipping it."""
         import ledger as ledger_mod
-        tree, ast = self._tree()
+        writes, ast = self._state_writes()
         governed = set(ledger_mod.SETTLED_STATES) | {"correctness_unknown"}
-        offenders = []
-        for fn in ast.walk(tree):
-            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for (module, fn), values in sorted(writes.items()):
+            if (module, fn) == ("ledger.py", "_settle"):
                 continue
-            for node in ast.walk(fn):
-                if not isinstance(node, ast.Assign):
-                    continue
-                for target in node.targets:
-                    if not (isinstance(target, ast.Subscript)
-                            and isinstance(target.slice, ast.Constant)
-                            and target.slice.value == "state"):
-                        continue
-                    if (isinstance(node.value, ast.Constant)
-                            and node.value.value in governed):
-                        offenders.append((fn.name, node.value.value))
-        self.assertEqual(offenders, [],
-                         "a settled state written outside `_settle` is a settlement with no gate "
-                         "and no record — which is exactly how `defer` shipped")
+            for value in values:
+                with self.subTest(writer=f"{module}::{fn}"):
+                    self.assertIsInstance(
+                        value, ast.Constant,
+                        f"{fn} assigns a pin's state from a computed value. Only `_settle` may do "
+                        f"that: everywhere else the state must be a literal this gate can read, "
+                        f"because a value it cannot read is a value it cannot clear")
+                    self.assertNotIn(
+                        value.value, governed,
+                        "a settled state written outside `_settle` is a settlement with no gate "
+                        "and no record — which is exactly how `defer` shipped")
 
     def test_every_door_reaches_the_single_writer(self):
         import ledger as ledger_mod
-        tree, ast = self._tree()
+        modules, ast = self._modules()
+        tree = modules["ledger.py"]
         fns = {n.name: n for n in ast.walk(tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
         callers = {name for name, fn in fns.items()

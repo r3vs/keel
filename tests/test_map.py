@@ -775,7 +775,12 @@ class TestEveryClosedTableThePageReadsIsTheSchemas(unittest.TestCase):
         self.assertEqual(body.count("function unknownNote("), 1)
         callers = set(re.findall(r"unknownNote\('([a-z ]+)'", body))
         self.assertLessEqual({"rung", "settled state", "verification rung", "resolution mode",
-                              "readiness verdict", "log entry"}, callers)
+                              "readiness verdict", "log entry",
+                              # 2026-08-06: the verification card printed an unrecognised determinism
+                              # level BARE — §16's exact finding, still live one field over, and it
+                              # went through `detRow` the moment five more determinism rows needed
+                              # the same sentence.
+                              "determinism level"}, callers)
 
 
 class TestTheWholeEnvelopeHasAReader(unittest.TestCase):
@@ -803,12 +808,49 @@ class TestTheWholeEnvelopeHasAReader(unittest.TestCase):
                 self.assertIn(f"p.{field}", mapmod._TEMPLATE,
                               f"`{field}` is stored, gated on, and on this page nowhere")
 
+    #: 2026-08-06 — the six the schema gate found write-only on the day it learned to tell a reader from
+    #: a writer (§15). Nested rather than pin-level, so the template reference is `<obj>.<field>`
+    #: and the fixture probe is the KEY, wherever in the pin it sits. Two of them are one half of a
+    #: determinism pair the spec says is "never merged into one score" — a rule about a surface,
+    #: kept by no surface: this page printed `verification.determinism` and dropped all five others,
+    #: which is merging by omission.
+    NESTED = {"independence_determinism": "x.independence_determinism",
+              "agreement_determinism": "x.agreement_determinism",
+              "evidence_determinism": "r.evidence_determinism",
+              "open_pins_in_zone": "ev.open_pins_in_zone",
+              "untested_files": "ev.untested_files",
+              "coupled_outside_zone": "ev.coupled_outside_zone"}
+
+    @staticmethod
+    def _keys(obj) -> set:
+        """Every key anywhere inside a stored object — the carrier, not a rendering of it."""
+        found = set()
+        stack = [obj]
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, dict):
+                found |= set(cur)
+                stack += list(cur.values())
+            elif isinstance(cur, list):
+                stack += cur
+        return found
+
     def test_the_preview_fixture_carries_each_of_them(self):
         pins = self._fixture()["pins"]
         for field in self.FIELDS:
             with self.subTest(field=field):
                 self.assertTrue(any(not _is_blank(p.get(field)) for p in pins),
                                 f"no fixture pin carries `{field}` — the browser walk cannot see it")
+
+    def test_every_nested_field_the_gate_found_is_read_and_carried(self):
+        pins = self._fixture()["pins"]
+        carried = set().union(*(self._keys(p) for p in pins)) if pins else set()
+        for field, reference in sorted(self.NESTED.items()):
+            with self.subTest(field=field):
+                self.assertIn(reference, mapmod._TEMPLATE,
+                              f"`{field}` is written by the runtime and read by this page nowhere")
+                self.assertIn(field, carried,
+                              f"no fixture pin carries `{field}` — the row is verified by nobody")
 
     def test_the_preview_fixture_carries_every_kind_of_log_entry(self):
         from ledger import LOG_ENTRY_PREFIXES

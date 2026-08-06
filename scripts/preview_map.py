@@ -483,10 +483,19 @@ def build() -> Ledger:
                         canonical_target="tests/test_export.py")
     led.set_remediation_status(open_plan["id"], open_plan["remediation"][0]["id"], "in_progress")
     # ...carrying the terrain verdict and the premortem, the two cards addressed to a builder.
+    # The evidence carries the four keys `readiness.assess` actually writes, not a hand-composed
+    # pair. It used to carry `{cochange, coverage}` — readable prose, and names the schema does not
+    # declare — so the three declared carriers reached this fixture nowhere and the page could not
+    # be checked against them in a browser. The spec's own rule for this object is that the four
+    # are *reported separately and never merged into one score*, which is a rule about a surface.
     led.set_readiness(open_plan["id"], verdict="harden_first",
                       zone={"files": ["api/export.py", "api/limits.py"], "nodes": [1, 2, 3]},
-                      evidence={"cochange": "export.py and limits.py move together in 7 of 9 PRs",
-                                "coverage": "no test names export.py"},
+                      evidence={"open_pins_in_zone": [{"pin": fixed["id"], "severity": "high",
+                                                       "kind": "defect", "state": "needs_input"}],
+                                "untested_files": ["api/export.py"],
+                                "churn": {"api/export.py": 41, "api/limits.py": 9},
+                                "coupled_outside_zone": [{"file": "billing/invoice.py",
+                                                          "co_commits": 7}]},
                       hardens=[fixed["id"]],
                       rationale="the zone has no test naming it, so the refactor lands blind")
     led.premortem(open_plan["id"],

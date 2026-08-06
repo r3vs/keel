@@ -179,7 +179,9 @@ code, the challenger owns the oracle. The cheap deterministic gate runs first, s
 never spent on a change that doesn't close the gap — the package's own static-first doctrine applied
 to its own roster. The reviewer reads the measurer's record instead of re-running it (a
 deterministic check cannot disagree with itself on a second run) and adds what evidence structurally
-cannot see: a criterion can be green and still met for the wrong reason. `resolved` needs both.
+cannot see: a criterion can be green and still met for the wrong reason. `resolved` needs both — and
+a `verification.rung` of `observed` or `cross_derived`, which is neither role's verdict but the
+record that the behaviour was watched.
 
 A reviewer that suspects the *decision* rather than the change does not reopen it — refuting an
 oracle is the T3 job, and it must leave a `ChallengeEvent` carrying the argument. An append-only
