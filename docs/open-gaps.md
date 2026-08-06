@@ -11,16 +11,19 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06 (sixth pass).** **§1–§17, §19 and §20 are all closed.** Nothing on this list
+> **STATUS 2026-08-06 (seventh pass).** **§1–§17 and §19–§21 are all closed.** Nothing on this list
 > is open. **§18** is not a defect but the standing answer to the question this register exists to
-> ask: *after ten adversarial rounds, which recurring class still has no gate?* **§19** was the
+> ask: *after eleven adversarial rounds, which recurring class still has no gate?* **§19** was the
 > ninth round's answer — §5 built a new surface and left four rules its siblings enforce — and
 > **§20** is the tenth's, which is that question asked **backwards**: two sections were closed
 > correctly and each left the other half of its own claim standing. §7 guarded a true sentence with
 > a condition the interview does not use, so the funnel's countdown printed on six pins the funnel
 > never carries; §17g fixed *reading a ledger never fails* for the log and left the pins to die on
-> six shapes. **A closed section is a claim about a class, and the class is where the next instance
-> lives.**
+> six shapes. **§21** is the eleventh's, and it is the same question asked of the CARRIERS a
+> predicate decides from: the way back into the open set rewrote the state and left standing every
+> other carrier a settlement door reads, so a pin reopened **by an incident** re-closed on the
+> evidence the incident had refuted. **A closed section is a claim about a class, and the class is
+> where the next instance lives.**
 >
 > | # | Gap | One line |
 > |---|---|---|
@@ -40,6 +43,7 @@ wrong* is the part that stops it coming back.
 > | **18** | **which class still has no gate** | not a defect: the standing answer — two classes gated, one newly gated, two argued as not mechanizable |
 > | ~~19~~ | ~~four rules true on one side of a pairing, absent on the other~~ | **CLOSED** — the reopen half held to the settlement half's own rules; one residual registered, not built |
 > | ~~20~~ | ~~two closures that held for one half of what they claimed~~ | **CLOSED** — §7's guard reads the interview's own states; §17g's principle reaches the pins; the envelope gate stopped being a word search |
+> | ~~21~~ | ~~the reopen leaves the carriers the settlement doors gate on~~ | **CLOSED** — one declared table of carriers, held to the predicate's own AST; the derived read-tool gate then found three more readers |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -59,6 +63,7 @@ wrong* is the part that stops it coming back.
 > | 15. + 17c. two gates that overstated themselves, and the prose one door behind | 2026-08-06 (no spec bump — nothing here is a schema rule) | `tests/test_ledger.py::TestOneWriterForTheSettledStates` — inverted to `STATE_WRITERS`, set equality over the assignment TARGET across `src/runtime` + `src/mcp`; `scripts/check_schema_fields.py::mask_writes` — Python write-positions blanked before the search, which found **six** write-only fields the same day; `map.py::detRow` + the readiness evidence rows; the three-requirement `resolved` sentence in eight playbooks and `src/core/agents.md` |
 > | 18. a number in prose answered to nobody | 2026-08-06 | `scripts/check_stated_facts.py`, wired into `.github/workflows/ci.yml` and `CLAUDE.md`'s Commands block |
 > | 19. four rules true on one side of a pairing | ledger v0.20 | `ledger.LOG_ENTRY_PREFIXES`'s `cas_` + `_reopen_minimal`'s per-pin `CascadeEvent`; `Ledger.cascaded_by`, called by both arcs' tools; `ledger._CHALLENGE_SOURCES` on `challenge` **and** `premortem`; `add_proposals`'s `CLOSED_STATES` refusal; `allow_freeform` inside `_validate_question`; gates `tests/test_ledger.py::TestEveryForkThisRuntimeComposes` and the seven new cases in `TestComingBackIntoTheOpenSetIsGovernedToo` |
+> | 21. the reopen leaves the settlement doors' carriers standing | ledger v0.22 | `ledger.SETTLEMENT_CARRIERS` + `REOPEN_DISPOSITIONS`, paid by `_reopen_minimal` -> `Ledger._invalidate_settlement_claims`; the `substate` clear moved into `_settle`; `unasked_verdict` · `question_offers` · `policy_preview` through `pin_read`/`readable_pins`, and `buildloop.py` · `agentready.py` · `challenger.py` with them; `add_proposals`'s fork requirement; gates `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheirCarriers` and `tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape` (roster derived from `readOnlyHint`) |
 > | 7. + 17g. two closures that held for one half | ledger v0.21 | `ledger.INTERVIEW_STATES`, read by `interview_view` and inlined as the map's `__ASKABLE__`; `map.py`'s `outOfReach` / `forkOptions` around `modeLine`; `Ledger.readable` + `ledger.pin_read` + `severity_rank` + `ledger.PIN_RULES` (with `collection_shape` / `entry_shape` in `nonconforming`); `ledger._MAY_BE_SILENT`; gates `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails` and `tests/test_map.py::code_only` with its two plants |
 >
 > **Closed does not mean nothing remains.** Seven residuals are recorded inside closed sections
@@ -83,9 +88,11 @@ wrong* is the part that stops it coming back.
 > - **§20** — `proposal_ref` is declared by the spec and read by no code; its only corpus mention is
 >   prose in `ledger.py`, which is `check_schema_fields.py`'s declared limit #2 doing what the limit
 >   says. Giving it a reader is a behaviour change in `learning.divergences`, not a correction.
-> - **§20** — `challenger.scan`, `buildloop.waves`, `learning.divergences` and `agentready.card`
->   still index pin fields directly. They are not among the four reading surfaces and they run over
->   a ledger the agent has just built, but it is the same class.
+> - **§20** — ~~`challenger.scan`, `buildloop.waves`, `learning.divergences` and `agentready.card`
+>   still index pin fields directly.~~ **CLOSED by §21**, and not by reading: the derived read-tool
+>   gate reported three of the four on its first run, because `build_waves` / `agent_ready` /
+>   `challenge_oracle` are read-only MCP tools taking nothing but a ledger path — which is the same
+>   class *and* the same exposure. `learning.divergences` passed the gate and is left as it was.
 > - **§3** — the two below.
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
@@ -1955,6 +1962,14 @@ principle; name every place it applies and check the ones the round did not touc
 procedure again, and one more row in the table. Its third finding is an instance of the ungated
 class at the bottom of this section, and the count there is now five.
 
+**§21 is the eleventh's, and it adds two rows rather than procedure — which is the first time in
+four rounds that the answer was mechanizable.** Its question is narrower than the sibling one and
+therefore decidable: *for every predicate that decides, enumerate the carriers it reads, and make
+the enumeration a table the opposite arc is held to.* `SETTLEMENT_CARRIERS` is that table and its
+gate reads the predicate's own AST. The second row is the one worth copying: a read-tool roster
+**derived from the server's own `readOnlyHint`**, exercised against broken pin shapes — and its
+first run reported three readers nobody had read for, which is the §20 residual closing itself.
+
 ### Gated
 
 **A new surface arrives without the invariant that governs the old one.** The register's most
@@ -1976,6 +1991,8 @@ added rather than on the day someone reads for it:
 | every served tool, over the wire | `tests/test_mcp_server.py::EXPECTED_TOOLS` / `WRITE_TOOLS` |
 | every closed table the map reads | `tests/test_map.py::TestEveryClosedTableThePageReadsIsTheSchemas` |
 | every field the read path substitutes, reported by a rule | `tests/test_ledger.py::TestReadingAPinIsNeverTheOperationThatFails::test_every_field_the_read_path_substitutes_has_a_rule_that_reports_it` (2026-08-06 — §20) |
+| every carrier a settlement door reads, with what the reopen owes it | `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheirCarriers::test_every_carrier_a_settlement_door_reads_has_a_declared_disposition` (2026-08-06 — §21) |
+| every read-only ledger tool, against a broken pin | `tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape` — roster derived from `readOnlyHint` (2026-08-06 — §21) |
 
 **The residual, and it is not closable.** Each row gates *one* invariant. The class is *"the
 invariant nobody thought to check at the new door"*, and no gate can enumerate invariants that do
@@ -2279,12 +2296,140 @@ the honest sentence instead.
   `buildloop.waves`, `learning.divergences`, `agentready.card`. They are not among the four reading
   surfaces and they run over a ledger the agent has just built, but the class is the same one, and
   the next round should either extend the guarded read to them or write down why not.
+  **§21 closed three of the four**, and the way it happened is the point: the derived read-tool gate
+  reported them without anybody reading for them, because `build_waves` / `agent_ready` /
+  `challenge_oracle` are read-only MCP tools taking nothing but a ledger path. The residual was
+  right about the class and wrong that these run only over a ledger the agent just built.
+  `learning.divergences` passed the gate and stays as it was.
 - **Do not "simplify" `modeLine`'s two guards into one.** `SETTLED` and `ASKABLE` answer different
   questions — *is the mode history* and *can the interview reach this at all* — and the right output
   differs: silence for the first, an explanation for the second.
 - **`assign_resolution_modes` still writes a mode onto `detected` pins**, deliberately. The mark is
   anticipatory: `set_question` moves such a pin to `needs_input`, and the mode is already there when
   it arrives. What was wrong was the reader, not the write.
+
+---
+
+## 21. The reopen leaves the carriers the settlement doors gate on — **CLOSED 2026-08-06** (ledger v0.22)
+
+Four findings from an adversarial review that ran every one over real
+`uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd. Same class as §19 and
+§20, one layer further in: **a rule established at the doors it was written for, on an object whose
+other doors kept the old behaviour.**
+
+### Verified
+
+**a. [HIGH] `_reopen_minimal` writes `state`, `substate` and `resolution_mode` and leaves the pin's
+own claims exactly as the closed pin had them.** Observed:
+
+```
+add_pin(defect) -> add_remediation -> done -> resolve(evidence=…, rung="observed")
+   -> ledger_reopen(fired="incident", reason="p95 blew the threshold")
+{"reopened": true, "state": "needs_input", "substate": "reopened"}
+   pin.verification == {"rung": "observed"}          # the claim the incident just refuted
+   -> ledger_resolve(evidence="no new observation — the same staging run")
+{"isError": false, "state": "resolved", "verification": {"rung": "observed"}}
+```
+
+`settlement_verdict` reads that envelope to decide whether the pin may close, and the envelope is
+the **single** carrier of *how hard was this checked* by design (v0.16's "one carrier, read on both
+sides"). So the gate whose entire purpose is *`resolved` means OBSERVED* was opened by the evidence
+the reopen exists to invalidate.
+
+**b. [MEDIUM] `decide` clears `substate`; `_settle` — documented as "THE only writer of a settled
+state … so the gate cannot be a rule each door remembers" — does not.** Observed on the fully honest
+path (reopen, fresh remediation, fresh evidence, an explicit `rung="observed"`): the pin ends
+`state=resolved substate=reopened`, and `REOPENED_SUBSTATES` defines that mark as *disputed and not
+re-answered*. Two consumers then contradict each other about one object.
+
+**c. [MEDIUM] `Ledger.policy_preview` — *"Read-only"* in its own first line, served as the read-only
+MCP tool `policy_preview` — indexes `pin["id"]` and, through `unasked_verdict`, `pin["state"]` and
+`pin["severity"]`.** Observed on a two-pin ledger whose second pin carries no `severity`:
+`ledger_summary` and `interview_next` both answered (v0.21 hardened exactly those two) and
+`policy_preview` returned `isError: true` with the body `'severity'`. The principle has no
+qualifier, and it had been applied to two readers of three.
+
+**d. [LOW] `add_proposals` refuses `CLOSED_STATES` in `set_question`'s words (v0.20) and silently
+accepts a `detected` pin**, where its own output is unreachable by construction: it moves
+`needs_input -> brainstorming`, so a `detected` pin keeps the state it has — outside
+`INTERVIEW_STATES` — and the proposals reach no surface on any host. Observed: `isError: false`,
+`{"state": "detected", "proposals": ["prop_1", "prop_2"]}`, `interview_next` then `total_open: 0`.
+
+### Why it matters
+
+(a) is the settlement table's own invariant falsified from the one direction it does not govern. The
+whole v0.16/v0.17 design rests on *`resolved` means observed*, and an incident is the strongest
+possible statement that the observation was wrong — so a reopen that leaves the claim standing makes
+the incident the one event that changes nothing a gate reads. (b) and (d) are rules living in a door
+instead of in a carrier, which is this repo's most-repeated finding. (c) is a read tool that can be
+the operation that fails on the file it was asked about, at the moment a human is being shown a
+blast radius they are about to elect.
+
+### Done looks like
+
+- `ledger.SETTLEMENT_CARRIERS` — every carrier `settlement_verdict` reads, with what the way back
+  owes it (`rewritten` / `invalidated` / `not_a_claim`), and `_reopen_minimal` →
+  `_invalidate_settlement_claims` as the one place that pays. `verification` is **demoted, never
+  deleted**: the rung comes off, `blocked_by` says what refuted it, and the log keeps both events.
+- `_settle` clears the dispute mark on every door whose destination is in `SETTLED_STATES` —
+  derived from `_STATE_BY_DOOR`, so `correctness_unknown` keeps it on purpose.
+- `unasked_verdict`, `question_offers` and `policy_preview` read through `pin_read` /
+  `readable_pins`, and the threshold is asked of `_MAY_BE_SILENT` so an unrankable severity is
+  **held back** rather than defaulted.
+- `add_proposals` requires the pin to pose a fork, after the closed-state check.
+
+### The gates, and what the first run of one of them found
+
+- `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheirCarriers` — the structural half reads every
+  `pin[…]` / `pin.get(…)` key off `settlement_verdict`'s **own AST** and demands set equality with
+  `SETTLEMENT_CARRIERS`, so a door gating on a fifth carrier fails until the arcs are told what it
+  is owed. Plus the behavioural half, the reproduction verbatim, the cascade, the dispute mark over
+  all five doors, and `add_proposals` over the whole `STATES` vocabulary.
+- `tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape` — the roster is **derived from
+  the server's own `readOnlyHint`** (a hand-kept list would have contained exactly the two readers
+  already fixed), and the assertion distinguishes a refusal about the CALL from death on the FILE:
+  an indexing error escaping to the caller. **Its first run reported three more:** `build_waves`,
+  `agent_ready` and `challenge_oracle`, i.e. `buildloop.py`, `agentready.py` and `challenger.py` —
+  which is precisely the residual §20 registered (*"not among the four reading surfaces … but it is
+  the same class"*). All three were fixed in the same commit, on §15's rule: **a gate's first run is
+  the one place this register's rule inverts — the finding is the gate working.**
+- **And the first draft of that gate passed a plant, which is §18's third shape happening inside
+  the round that was closing its first.** Called with its required argument alone, `policy_preview`
+  refuses on *its own* arguments — a policy needs a rule, a scope and an outcome — and never opens a
+  pin: so the roster listed the very tool the finding was reproduced on, reverting the fix left the
+  gate green, and the gate quantified over more than its body exercised. Caught by planting
+  `pin["id"]` back, never by reading. `MINIMAL_CALL` declares the legitimate call per tool, set
+  equality holds it to the derived roster, and `test_every_minimal_call_reaches_the_file` asserts
+  each call simply answers on a well-formed ledger — which is what makes the broken-ledger run an
+  exercise of the body. Every gate this round added was then re-planted: a new `pin.get(…)` inside
+  `settlement_verdict`, `_reopen_minimal` no longer paying, the raw `pin["id"]`, and
+  `_NEVER_SILENT` back in place of `_MAY_BE_SILENT`. All four fire.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_ledger tests.test_mcp_tools     # and the full suite
+python scripts/build.py --check && python scripts/check_schema_fields.py
+```
+Then over real stdio, from a directory that is not this repo: walk a defect to `resolved` at the
+`observed` rung, `ledger_reopen(fired="incident")`, and try to close it again with no new rung —
+`unverified`. Hand-edit a `severity` out of one pin and call `policy_preview` — it answers.
+`ledger_add_proposals` on a `detected` pin — refused, naming `set_question`.
+
+### Traps
+
+- **`verification` is demoted, not deleted.** An envelope that is absent says *less* than one at a
+  weak rung (v0.16's own words), so removing it would be the stronger claim in the wrong direction —
+  and the pin would stop telling a human why it cannot close.
+- **A pin that claimed nothing has nothing taken back.** Writing an envelope onto a pin that carries
+  none manufactures a statement the file never made — the overwrite v0.16 removed twice.
+- **`remediation` is deliberately `not_a_claim`.** The items record that actions were *taken*, which
+  stayed true; what did not survive is the claim they *worked*, and that is `verification`. Marking
+  them `todo` again would be a different falsehood.
+- **`add_proposals` also moves `detected -> brainstorming` now**, for a hand-edited pin that has a
+  fork and says `detected`. The refusal is anchored on the fork, so that shape reaches the state
+  move, and leaving it `detected` would be the same unreachable write one shape over.
+
 
 ---
 

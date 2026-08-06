@@ -684,5 +684,140 @@ class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
         self.assertEqual(Ledger(self.ledger).data["decision_log"][-1]["evidence"], "transcribed")
 
 
+class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
+    """v0.22 — *reading a ledger is never the operation that fails on it*, quantified over the read
+    tools instead of over the two somebody remembered.
+
+    v0.21 stated that principle with no qualifier and hardened `summary` and `interview_view` for
+    it. `policy_preview` — *"Read-only"* in its own first line, served as the read-only MCP tool
+    `policy_preview`, and the thing a human is shown before electing a rule over a whole cluster —
+    reached `pin["id"]`, `pin["state"]` and `pin["severity"]` raw. Reproduced over real stdio: on a
+    two-pin ledger whose second pin carries no `severity`, `ledger_summary` and `interview_next`
+    both answered and `policy_preview` returned `isError: true` with the body `'severity'`.
+
+    So the roster is DERIVED from the server's own `readOnlyHint`, the way
+    `scripts/check_tool_carriers.py` derives the write roster from the same decoration — a hand-kept
+    list here would have contained exactly the two readers that were already fixed.
+
+    **What it asserts, precisely.** A read tool may REFUSE (a policy with no rule is not a policy),
+    and refusing is a `ValueError`/`LedgerError` about the call. What it may not do is die on the
+    file's SHAPE, and that has one signature: an indexing error escaping to the caller. The tool
+    layer turns whatever escapes into `isError` over the wire, so the distinction the wire cannot
+    make is the one that has to be made here.
+
+    **The first draft of this gate quantified over more than it exercised, and was caught by
+    planting.** Called with its required argument alone, `policy_preview` refuses on *its own
+    arguments* — a policy needs a rule, a scope and an outcome — and never opens a pin. So the
+    roster listed the tool the whole finding was reproduced on, and reverting the fix left the gate
+    green. That is the repo's third recurring shape (`docs/open-gaps.md` §18) turned on a gate
+    written to close its first. Hence `MINIMAL_CALL`: the roster is still derived, the *call* is
+    declared, the two are held together by set equality, and
+    `test_every_minimal_call_reaches_the_file` proves each call runs on a well-formed ledger — which
+    is what makes the broken-ledger run an exercise of the body rather than of a refusal.
+    """
+
+    #: Dying on a shape looks like exactly this. A deliberate refusal never does.
+    SHAPE_DEATHS = (KeyError, AttributeError, IndexError, TypeError)
+
+    #: The minimal LEGITIMATE call per tool: the arguments without which it refuses before reading
+    #: anything. Held to the derived roster by set equality, so a read-only ledger tool added to the
+    #: server has to be given its call here before this gate will pass — the membership question
+    #: stays with the server, and only the payload is declared.
+    MINIMAL_CALL = {
+        "ledger_summary": {},
+        "interview_next": {},
+        "interview_seed_policies": {},
+        "policy_preview": {"rule": "the DB wins on nullability",
+                           "applies_to": {"kind": "contract_mismatch"},
+                           "default_outcome": "opt_a"},
+        "learning_report": {},
+        "agent_ready": {},
+        "build_waves": {},
+        "challenge_oracle": {},
+        "instructions_diff": {},
+    }
+
+    #: The pin shapes, identical to `tests/test_ledger.py`'s list, because the principle is one.
+    BROKEN_PINS = (
+        {"id": "pin_0003", "kind": "contract_mismatch", "state": "needs_input"},   # no severity
+        {"id": "pin_0004", "kind": "contract_mismatch", "state": "needs_input", "severity": None},
+        {"id": "pin_0005", "kind": "contract_mismatch", "state": "needs_input", "severity": "huge"},
+        {"id": "pin_0006", "kind": "contract_mismatch", "severity": "medium"},     # no state
+        {"kind": "contract_mismatch", "state": "needs_input", "severity": "medium"},  # no id
+        {"id": "pin_0008", "kind": "contract_mismatch", "state": "needs_input",
+         "severity": "medium", "question": "which side wins?"},                   # fork not an object
+        {"id": "pin_0009", "kind": "contract_mismatch", "state": "needs_input",
+         "severity": "medium", "depends_on": "pin_0001"},                         # DAG edge as a str
+    )
+
+    @staticmethod
+    def _read_only_ledger_tools():
+        """`(server tool name, tools.py callable)` for every read-only tool whose only required
+        argument is the ledger path — read off the `@mcp.tool` decoration, never listed here."""
+        import ast
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        out = []
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            annotations = [kw.value for dec in node.decorator_list if isinstance(dec, ast.Call)
+                           for kw in dec.keywords if kw.arg == "annotations"]
+            if not any("_RO" in ast.dump(a) for a in annotations):
+                continue
+            names = [a.arg for a in node.args.args]
+            required = names[:len(names) - len(node.args.defaults)]
+            if required != ["ledger"]:
+                continue
+            # The body is one `return tools.<fn>(...)`; the tool layer is what this exercises.
+            called = next((c.func.attr for c in ast.walk(node)
+                           if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                           and isinstance(c.func.value, ast.Name) and c.func.value.id == "tools"),
+                          None)
+            if called:
+                out.append((node.name, getattr(tools, called)))
+        return out
+
+    def test_the_roster_is_derived_and_every_member_has_a_call(self):
+        roster = self._read_only_ledger_tools()
+        self.assertIn("policy_preview", [name for name, _ in roster],
+                      "the tool the finding was reproduced on must be in the derived roster, or "
+                      "the derivation is checking something else")
+        self.assertGreaterEqual(len(roster), 5, "the derivation went vacuous")
+        self.assertEqual({name for name, _ in roster}, set(self.MINIMAL_CALL),
+                         "a read-only ledger tool with no declared call would be listed and never "
+                         "exercised — which is exactly how the first draft of this gate passed a "
+                         "plant")
+
+    def test_every_minimal_call_reaches_the_file(self):
+        """The half that makes the other half an exercise: on a WELL-FORMED ledger every declared
+        call must simply answer. A call that refuses here is refusing on its arguments, so its run
+        against a broken ledger proves nothing about the body."""
+        path = _ledger_with_pins(tempfile.mkdtemp())
+        for name, fn in self._read_only_ledger_tools():
+            with self.subTest(tool=name):
+                fn(path, **self.MINIMAL_CALL[name])
+
+    def test_no_read_only_ledger_tool_dies_on_a_pin_shape(self):
+        for broken in self.BROKEN_PINS:
+            tmp = tempfile.mkdtemp()
+            path = _ledger_with_pins(tmp)
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            data["pins"].append(dict(broken))
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            for name, fn in self._read_only_ledger_tools():
+                with self.subTest(tool=name, pin=broken):
+                    try:
+                        fn(path, **self.MINIMAL_CALL[name])
+                    except self.SHAPE_DEATHS as exc:
+                        self.fail(f"{name} died on the file rather than answering about it: "
+                                  f"{type(exc).__name__}: {exc}")
+                    except Exception:
+                        pass          # a refusal about the CALL is a legitimate answer
+
+
 if __name__ == "__main__":
     unittest.main()

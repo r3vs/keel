@@ -18,25 +18,36 @@ from __future__ import annotations
 
 from typing import Iterator, Optional
 
+from ledger import pin_read
+
 _DONE_STATES = ("resolved", "accepted")
 
 
 def _actionable(pin: dict) -> bool:
-    """A pin carries Phase-4 work if it is decided (or a defect) and not yet resolved."""
-    if pin["state"] in _DONE_STATES:
+    """A pin carries Phase-4 work if it is decided (or a defect) and not yet resolved.
+
+    Through `pin_read` (v0.22): `mcp:build_waves` is a READ-ONLY tool taking nothing but a ledger
+    path, so it is under the same rule `summary` and `policy_preview` are — reading a ledger is
+    never the operation that fails on it. It was one of three the derived gate caught
+    (`tests/test_mcp_tools.py::TestNoReadOnlyLedgerToolDiesOnAPinShape`), and it was the registered
+    §20 residual: *these are not among the four reading surfaces, but it is the same class*.
+    """
+    read = pin_read(pin)
+    if read["state"] in _DONE_STATES:
         return False
-    return pin["state"] == "decided" or pin["kind"] == "defect"
+    return read["state"] == "decided" or pin.get("kind") == "defect"
 
 
 def _items_done(pin: dict) -> bool:
-    items = pin.get("remediation", [])
-    return bool(items) and all(i["status"] == "done" for i in items)
+    items = pin.get("remediation")
+    items = [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
+    return bool(items) and all(i.get("status") == "done" for i in items)
 
 
 def waves(ledger) -> list[list[str]]:
     """Topologically level every pin by `depends_on`: wave 0 has no unmet deps, wave N depends only
     on ≤N-1. Raises ValueError on a dependency cycle (the DAG invariant the roadmap rests on)."""
-    pins = {p["id"]: p for p in ledger.data["pins"]}
+    pins = {pin_read(p)["id"]: p for p in ledger.readable_pins()}
     level: dict[str, int] = {}
 
     def depth(pid: str, stack: frozenset) -> int:
@@ -44,7 +55,7 @@ def waves(ledger) -> list[list[str]]:
             return level[pid]
         if pid in stack:
             raise ValueError(f"dependency cycle through {pid}")
-        deps = [d for d in pins[pid].get("depends_on", []) if d in pins]
+        deps = [d for d in pin_read(pins[pid])["depends_on"] if d in pins]
         d = 0 if not deps else 1 + max(depth(x, stack | {pid}) for x in deps)
         level[pid] = d
         return d
@@ -58,9 +69,9 @@ def waves(ledger) -> list[list[str]]:
 
 
 def _deps_closed(ledger, pin: dict) -> bool:
-    by_id = {p["id"]: p for p in ledger.data["pins"]}
-    return all(by_id[d]["state"] in _DONE_STATES
-               for d in pin.get("depends_on", []) if d in by_id)
+    by_id = {pin_read(p)["id"]: p for p in ledger.readable_pins()}
+    return all(pin_read(by_id[d])["state"] in _DONE_STATES
+               for d in pin_read(pin)["depends_on"] if d in by_id)
 
 
 def ready(ledger) -> list[dict]:
@@ -79,8 +90,8 @@ def next_item(ledger) -> Optional[tuple]:
     """The single next (pin, remediation_item) to work — the first todo item on the first ready
     pin. Returns None when nothing is ready (loop done, or blocked on upstream waves)."""
     for pin in ready(ledger):
-        for item in pin.get("remediation", []):
-            if item["status"] != "done":
+        for item in (pin.get("remediation") or []):
+            if not isinstance(item, dict) or item.get("status") != "done":
                 return pin, item
         # a ready pin with no items yet is itself the next unit of work (needs items planned)
         return pin, None
@@ -99,14 +110,14 @@ def iter_ready(ledger) -> Iterator[dict]:
         yield r[0]
         if _open_count(ledger) == before:
             seen_blocked += 1
-            if seen_blocked > len(ledger.data["pins"]):
+            if seen_blocked > len(ledger.readable_pins()):
                 return   # caller isn't closing anything — stop rather than spin
         else:
             seen_blocked = 0
 
 
 def _open_count(ledger) -> int:
-    return sum(1 for p in ledger.data["pins"] if _actionable(p))
+    return sum(1 for p in ledger.readable_pins() if _actionable(p))
 
 
 def checkpoint(ledger, wave_index: int) -> dict:
@@ -121,10 +132,16 @@ def checkpoint(ledger, wave_index: int) -> dict:
             "pending": pending, "size": len(wv[wave_index])}
 
 
+def _label(pin: dict) -> str:
+    return str(pin.get("title") or pin_read(pin)["id"])
+
+
 def plan(ledger) -> dict:
     """A renderable summary of the Phase-4 plan: the waves, and what is ready right now."""
     wv = waves(ledger)
-    return {"waves": [[ledger.pin(pid)["title"] for pid in w] for w in wv],
+    # `title` is prose for a human and is not one of `pin_read`'s five, so absence falls back to
+    # the id: a wave listing with a blank row names nothing, which is worse than naming the pin.
+    return {"waves": [[_label(ledger.pin(pid)) for pid in w] for w in wv],
             "wave_count": len(wv),
-            "ready_now": [p["title"] for p in ready(ledger)],
+            "ready_now": [_label(p) for p in ready(ledger)],
             "open": _open_count(ledger)}

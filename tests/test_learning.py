@@ -19,9 +19,17 @@ def make_ledger() -> Ledger:
 
 
 def pin_with_proposals(led: Ledger, recommended_id: str = "p1") -> dict:
+    # The fork comes with the pin (v0.22): `add_proposals` refuses a pin that poses none, because a
+    # proposal is an option FOR a question and a `detected` pin's brainstorm reaches no surface. The
+    # option ids are the proposal ids, which is the shape the spec's `proposal_ref` describes and the
+    # one `learning.divergences` matches the election against.
     pin = led.add_pin(kind="open_decision", title="which cache?", severity="medium",
                       confidence="inferred", provenance=[{"source": "x", "detail": "y"}],
-                      as_is={"built": None})
+                      as_is={"built": None},
+                      question={"prompt": "Which cache?",
+                                "options": [{"id": "p1", "label": "redis"},
+                                            {"id": "p2", "label": "in-process"}],
+                                "allow_freeform": True})
     led.add_proposals(pin["id"], [
         {"id": "p1", "summary": "redis", "recommended": recommended_id == "p1"},
         {"id": "p2", "summary": "in-process", "recommended": recommended_id == "p2"},

@@ -1276,8 +1276,16 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         # `resolved` (the way back from finished work is `reopen`), and the disagreement that writes
         # `substate` may only touch a pin that is not closed — so: decided -> unknown -> contested
         # -> resolved on a later observation.
+        #
+        # The keys are ACCUMULATED across the walk rather than read off the final pin (v0.22):
+        # `_settle` now clears `substate` on every door that lands the pin in `SETTLED_STATES`, so
+        # the field is written, read and then correctly gone by the time `resolve` returns. "A
+        # scopeable field no writer writes" is a question about the writers, and a snapshot of the
+        # last state answers a different one — which is what a policy scoping on `substate` would
+        # match mid-walk, exactly where a disputed pin lives.
         pin = add_simple_pin(led, kind="defect", severity="medium", cluster_id="cl_x",
                              depends_on=[], anchors=[{"node_id": "n_1", "loc": "a.py:1"}])
+        written: set = set(pin)
         led.add_proposals(pin["id"], [{"summary": "s"}])
         led.set_readiness(pin["id"], "ready", zone={"files": ["a.py"]}, evidence={})
         led.premortem(pin["id"], [{"class": "environment", "description": "d"}], guardrails=["g"])
@@ -1291,11 +1299,15 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
         led.cross_derive(pin["id"], claim="c2", agreement="disagree", derivations=[
             {"provider": "anthropic", "model": "m", "result": "a"},
             {"provider": "openai", "model": "n", "result": "b"}])       # writes `substate`
+        written |= set(pin)
+        self.assertIn("substate", written, "the disagreement is what writes it")
         led.resolve(pin["id"], evidence="observed it on staging", rung="observed")
+        written |= set(pin)
         led.data["pins"][0]["kind_detail"] = "x"      # only `other` writes it, and it is scopeable
-        self.assertEqual(sorted(set(pin) - set(ledger_mod.PIN_FIELDS)), [],
+        written |= set(led.data["pins"][0])
+        self.assertEqual(sorted(written - set(ledger_mod.PIN_FIELDS)), [],
                          "a Pin field no policy scope can name")
-        self.assertEqual(sorted(set(ledger_mod.PIN_FIELDS) - set(pin)), [],
+        self.assertEqual(sorted(set(ledger_mod.PIN_FIELDS) - written), [],
                          "a scopeable field no writer writes")
 
 
@@ -1645,6 +1657,296 @@ class TestComingBackIntoTheOpenSetIsGovernedToo(unittest.TestCase):
                                                "effort": "M", "recommended": True}])
 
 
+class TestTheWayBackOwesTheDoorsTheirCarriers(unittest.TestCase):
+    """v0.22 — the carriers a settlement door DECIDES on, and what the reopen leaves standing.
+
+    v0.20 gave the arcs the settlement half's events; v0.21 gave the pins the log half's guarded
+    read. This is the same question one layer further in: `settlement_verdict` decides from what the
+    pin says about itself, and `_reopen_minimal` rewrote the state and left every other one of those
+    carriers exactly as the closed pin had it. Reproduced over real stdio before it was fixed here.
+
+    The structural test is the one that generalizes: the carriers are read off the predicate's own
+    AST and compared to the declared table, so a door gating on a fifth one fails until the arcs are
+    told what it is owed. `_validate_question` / `question_offers` are the shape — one function,
+    several callers, asserted by AST — and this is that shape applied to a set of FIELDS rather than
+    to a call.
+    """
+
+    def _closed_defect(self, led, title="double charge on retry"):
+        pin = led.add_pin(kind="defect", title=title, severity="high", confidence="extracted",
+                          provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"})
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="p95 measured at 180ms in staging", rung="observed")
+        return pin
+
+    # -- the structural half ---------------------------------------------------------------------
+
+    @staticmethod
+    def _carriers_settlement_verdict_reads():
+        """Every key `Ledger.settlement_verdict` reads OFF THE PIN, from its own source.
+
+        Anchored on the name `pin`, which is the parameter, and on the two shapes a read can take
+        here — `pin["x"]` in a Load context and `pin.get("x")`. Items inside `pin["remediation"]`
+        are a different object and are deliberately not collected: the question is what the DOOR
+        decides from, and the arc's obligation is to the pin.
+        """
+        import ast
+        path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == "settlement_verdict")
+        keys = set()
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                    and node.value.id == "pin" and isinstance(node.ctx, ast.Load)
+                    and isinstance(node.slice, ast.Constant)
+                    and isinstance(node.slice.value, str)):
+                keys.add(node.slice.value)
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                  and node.func.attr == "get" and isinstance(node.func.value, ast.Name)
+                  and node.func.value.id == "pin" and node.args
+                  and isinstance(node.args[0], ast.Constant)):
+                keys.add(node.args[0].value)
+        return keys
+
+    def test_every_carrier_a_settlement_door_reads_has_a_declared_disposition(self):
+        """The load-bearing half. A door that starts gating on a new carrier fails here until
+        `SETTLEMENT_CARRIERS` says what the way back owes it — which is the only arrangement in
+        which "every carrier" is a claim about the code rather than about two functions remembering
+        each other."""
+        import ledger as ledger_mod
+        self.assertEqual(self._carriers_settlement_verdict_reads(),
+                         set(ledger_mod.SETTLEMENT_CARRIERS),
+                         "a carrier `settlement_verdict` decides from, with nothing said about "
+                         "what a reopen does to it — declare it in `SETTLEMENT_CARRIERS`")
+        self.assertEqual(set(ledger_mod.SETTLEMENT_CARRIERS.values())
+                         - set(ledger_mod.REOPEN_DISPOSITIONS), set())
+
+    def test_the_arc_pays_every_carrier_the_table_calls_invalidated(self):
+        """And the behavioural half of the same table: each `invalidated` carrier must stop reading
+        as permission once the arc has run, on the pin itself."""
+        import ledger as ledger_mod
+        checks = {
+            "verification": lambda p: (p.get("verification") or {}).get("rung")
+            not in ledger_mod._CLOSING_RUNGS,
+        }
+        self.assertEqual(
+            sorted(checks),
+            sorted(k for k, v in ledger_mod.SETTLEMENT_CARRIERS.items() if v == "invalidated"),
+            "an `invalidated` carrier with no assertion here is a promise nothing keeps")
+        for arc in ledger_mod.REOPEN_ARCS:
+            led = make_ledger()
+            pin = self._closed_defect(led)
+            if arc == "reopen":
+                led.reopen(pin["id"], reason="p95 blew the threshold", fired="incident")
+            else:
+                led.challenge(pin["id"], target="to_be", challenge_class="unfalsifiable",
+                              argument="the oracle it closed on cannot fail", severity="high",
+                              upheld=True)
+            for carrier, holds in checks.items():
+                self.assertTrue(holds(pin), f"{arc} left `{carrier}` standing")
+
+    # -- the reproduction, verbatim --------------------------------------------------------------
+
+    def test_a_pin_reopened_by_an_incident_no_longer_claims_it_was_observed(self):
+        """The whole finding in one walk: `add_pin -> add_remediation -> done ->
+        resolve(rung="observed") -> reopen(fired="incident")` came back open still carrying the
+        verification that says its behaviour was OBSERVED — on the evidence the incident had just
+        refuted — so it re-closed through the gate that exists to stop exactly that."""
+        led = make_ledger()
+        pin = self._closed_defect(led)
+        self.assertEqual(pin["verification"]["rung"], "observed")
+        event = led.reopen(pin["id"], reason="p95 blew the threshold", fired="incident")
+
+        self.assertEqual(pin["state"], "needs_input")
+        self.assertIsNone(pin["verification"]["rung"], "the refuted claim is taken back")
+        self.assertIn(event["id"], pin["verification"]["blocked_by"])
+        self.assertEqual(led.settlement_verdict(pin, "resolve"), "unverified",
+                         "the door that means OBSERVED may not reopen on refuted evidence")
+        with self.assertRaises(LedgerError) as ctx:
+            led.resolve(pin["id"], evidence="no new observation — the same staging run")
+        self.assertIn("unverified", str(ctx.exception))
+
+    def test_a_fresh_observation_is_still_the_way_out(self):
+        """A gate with no gate-opening move is a wall, and people route around walls: the pin closes
+        again the moment somebody states a rung they actually reached."""
+        led = make_ledger()
+        pin = self._closed_defect(led)
+        led.reopen(pin["id"], reason="p95 blew the threshold", fired="incident")
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=3)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="re-measured on prod for 24h: p95 190ms", rung="observed")
+        self.assertEqual((pin["state"], pin["verification"]["rung"]), ("resolved", "observed"))
+        self.assertIn("refuted by", pin["verification"]["blocked_by"],
+                      "demoted, never deleted — `it was blocked, then it was observed` is history")
+
+    def test_a_pin_that_claimed_nothing_has_nothing_taken_back(self):
+        """Writing an envelope onto a pin that carries none would manufacture a statement the file
+        never made — the overwrite v0.16 removed from `cross_derive` and `mark_correctness_unknown`
+        twice."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.decide(pin["id"], "opt_a", "r", "f")
+        led.reopen(pin["id"], reason="the elected enum is rejected by 4% of writes")
+        self.assertIsNone(pin.get("verification"))
+
+    def test_the_cascade_pays_the_dependents_too(self):
+        """`_reopen_minimal` is the one place either arc moves anything, so the closure it sweeps up
+        gets the same treatment as the pin the arc names — the v0.20 lesson, on the carriers."""
+        led = make_ledger()
+        root = self._closed_defect(led, title="root")
+        dep = led.add_pin(kind="defect", title="dependent", severity="medium",
+                          confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                          as_is={"description": "d"}, depends_on=[root["id"]])
+        item = led.add_remediation(dep["id"], action="align", ladder_rung=2)
+        led.set_remediation_status(dep["id"], item["id"], "done")
+        led.resolve(dep["id"], evidence="observed on staging", rung="observed")
+        led.reopen(root["id"], reason="both blew the threshold", fired="incident")
+        self.assertIsNone(dep["verification"]["rung"])
+        self.assertEqual(led.settlement_verdict(dep, "resolve"), "unverified")
+
+    # -- the dispute mark: one writer, not one door ----------------------------------------------
+
+    def test_the_dispute_mark_is_cleared_by_the_writer_and_not_by_one_door(self):
+        """`pin.pop("substate", …)` lived in `decide`, so the three election doors cleared it and
+        `resolve` did not: the fully honest path — reopen, fresh remediation, fresh evidence, an
+        explicit `rung="observed"` — ended `state=resolved substate=reopened`, which
+        `REOPENED_SUBSTATES` defines as *disputed and not re-answered*."""
+        led = make_ledger()
+        pin = self._closed_defect(led)
+        led.reopen(pin["id"], reason="loop is back on mobile", fired="incident")
+        self.assertEqual(pin["substate"], "reopened")
+        item = led.add_remediation(pin["id"], action="align", ladder_rung=3)
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.resolve(pin["id"], evidence="re-observed on a real mobile client, 50 refreshes",
+                    rung="observed")
+        self.assertEqual(pin["state"], "resolved")
+        self.assertIsNone(pin.get("substate"),
+                          "finished work may not also be disputed-and-not-re-answered")
+
+    def test_every_door_that_lands_in_a_settled_state_clears_it_and_the_fifth_does_not(self):
+        """Derived from `_STATE_BY_DOOR` rather than listed, so the distinction survives a door
+        being added. `correctness_unknown` keeps the mark on purpose: it hands the pin back to the
+        human still carrying the outcome that was disputed."""
+        import ledger as ledger_mod
+        for door in ledger_mod.SETTLEMENT_DOORS:
+            led = make_ledger()
+            pin = add_simple_pin(led, kind="design_concern", severity="medium")
+            led.decide(pin["id"], "opt_a", "r", "f")
+            pin["substate"] = "contested"          # as `cross_derive` leaves it
+            if door == "decide":
+                led.decide(pin["id"], "opt_b", "r2", "f2")
+            elif door == "accept":
+                led.accept(pin["id"], rationale="r", flip_criteria="f")
+            elif door == "defer":
+                led.defer(pin["id"], rationale="r", flip_criteria="f")
+            elif door == "correctness_unknown":
+                led.mark_correctness_unknown(pin["id"], blocked_by="no oracle",
+                                             attempted=["tests"])
+            else:
+                item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+                led.set_remediation_status(pin["id"], item["id"], "done")
+                led.resolve(pin["id"], evidence="observed on staging", rung="observed")
+            settled = ledger_mod._STATE_BY_DOOR[door] in ledger_mod.SETTLED_STATES
+            self.assertEqual(pin.get("substate") is None, settled, f"{door}: {pin['state']}")
+
+    # -- reading a ledger is never the operation that fails on it, at the THIRD reader -----------
+
+    #: The pin shapes v0.21 hardened `summary` and `interview_view` against. The same list, because
+    #: the principle carries no qualifier and the third reader is under it too.
+    BROKEN_PINS = (
+        {"id": "pin_0002", "kind": "contract_mismatch", "state": "needs_input"},   # no severity
+        {"id": "pin_0003", "kind": "contract_mismatch", "state": "needs_input", "severity": None},
+        {"id": "pin_0004", "kind": "contract_mismatch", "state": "needs_input", "severity": "huge"},
+        {"id": "pin_0005", "kind": "contract_mismatch", "severity": "medium"},     # no state
+        {"kind": "contract_mismatch", "state": "needs_input", "severity": "medium"},  # no id
+        {"id": "pin_0007", "kind": "contract_mismatch", "state": "needs_input",
+         "severity": "medium", "question": "which side wins?"},                   # fork not an object
+    )
+
+    def test_the_read_only_preview_survives_every_pin_shape_its_siblings_do(self):
+        """Reproduced over stdio: on a two-pin ledger whose second pin carries no `severity`,
+        `ledger_summary` and `interview_next` both answered and `policy_preview` — *"Read-only"* in
+        its own first line — came back `isError: true` with the body `'severity'`."""
+        for broken in self.BROKEN_PINS:
+            with self.subTest(pin=broken):
+                led = make_ledger()
+                add_simple_pin(led, severity="medium")
+                led.data["pins"].append(dict(broken))
+                led.summary(), led.interview_view()          # the two v0.21 hardened
+                radius = led.policy_preview({"kind": "contract_mismatch"}, "opt_a")
+                self.assertEqual(radius["would_decide"], ["pin_0001"])
+
+    def test_a_severity_this_runtime_cannot_rank_is_held_back_not_defaulted(self):
+        """The direction the substitution goes, and it is the only safe one: the mark exists because
+        `blocker|high` are never silently defaulted, and a severity nobody can read is not evidence
+        that silence is safe. `_MAY_BE_SILENT`, the same complement `assign_resolution_modes` asks
+        of the closed set."""
+        led = make_ledger()
+        add_simple_pin(led, severity="medium")
+        led.data["pins"].append({"id": "pin_0002", "kind": "contract_mismatch",
+                                 "state": "needs_input", "severity": "catastrophic",
+                                 "question": {"options": [{"id": "opt_a", "label": "A"}]}})
+        radius = led.policy_preview({"kind": "contract_mismatch"}, "opt_a")
+        self.assertEqual((radius["would_decide"], radius["held_back"]),
+                         (["pin_0001"], ["pin_0002"]))
+
+    def test_the_exception_list_still_matches_on_a_pin_that_carries_an_id(self):
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        radius = led.policy_preview({"kind": "contract_mismatch"}, "opt_a",
+                                    exceptions=[pin["id"]])
+        self.assertEqual(radius["excepted"], [pin["id"]])
+
+    # -- the other funnel door's other end ------------------------------------------------------
+
+    def test_proposals_are_refused_on_a_pin_that_poses_no_fork(self):
+        """v0.20 gave this door the `CLOSED_STATES` refusal from one end of the range. At the other
+        end a `detected` pin was accepted in silence, and there the write is unreachable by
+        construction: this moves `needs_input -> brainstorming`, so a `detected` pin keeps the state
+        it has, outside `INTERVIEW_STATES`, and its proposals reach no surface on any host."""
+        import ledger as ledger_mod
+        led = make_ledger()
+        pin = led.add_pin(kind="design_concern", title="no rate limiting anywhere",
+                          severity="medium", confidence="inferred",
+                          provenance=[{"source": "recon", "detail": "route scan"}])
+        self.assertEqual(pin["state"], "detected")
+        with self.assertRaises(LedgerError) as ctx:
+            led.add_proposals(pin["id"], [{"summary": "token bucket at the edge"}])
+        self.assertIn("set_question", str(ctx.exception))
+        self.assertIsNone(pin["brainstorm"])
+        self.assertEqual(pin["state"], "detected")
+        # and the door that answers it makes the write legal
+        led.set_question(pin["id"], {"prompt": "Where do limits live?",
+                                     "options": [{"id": "edge", "label": "at the edge"},
+                                                 {"id": "app", "label": "per route"}],
+                                     "allow_freeform": True})
+        led.add_proposals(pin["id"], [{"summary": "token bucket at the edge"}])
+        self.assertEqual(pin["state"], "brainstorming")
+        self.assertIn(pin["state"], ledger_mod.INTERVIEW_STATES)
+        self.assertEqual([p["id"] for p in led.interview_view()], [pin["id"]])
+
+    def test_no_state_this_door_admits_leaves_the_pin_out_of_reach(self):
+        """The general form, over the closed vocabulary: for every state a pin can be in, either
+        `add_proposals` refuses it, or the pin ends up somewhere the interview actually looks. That
+        is the property `detected` broke, and it is decidable for all of them."""
+        import ledger as ledger_mod
+        for state in ledger_mod.STATES:
+            with self.subTest(state=state):
+                led = make_ledger()
+                pin = add_simple_pin(led, severity="medium")
+                pin["state"] = state
+                try:
+                    led.add_proposals(pin["id"], [{"summary": "an option for the fork"}])
+                except LedgerError:
+                    continue
+                self.assertIn(pin["state"], ledger_mod.INTERVIEW_STATES + ("decided",),
+                              "proposals written where no surface will show them")
+
+
 class TestOneWriterForTheSettledStates(unittest.TestCase):
     """The structural half, and the reason this round is not a fifth one: the rule cannot live in
     the doors, because a door added later will not know it.
@@ -1684,7 +1986,8 @@ class TestOneWriterForTheSettledStates(unittest.TestCase):
         ("ledger.py", "set_question"): "`detected` -> `needs_input` only. Posing a fork decides "
                                        "nothing; it puts the pin ON the agenda, which is the "
                                        "opposite direction to a settlement.",
-        ("ledger.py", "add_proposals"): "`needs_input` -> `brainstorming`. Still open, still in "
+        ("ledger.py", "add_proposals"): "`needs_input`/`detected` -> `brainstorming`. Still open, "
+                                        "still in "
                                         "`interview_view` since v0.17 — a pin being thought about "
                                         "has not been answered.",
         ("ledger.py", "cross_derive"): "-> `needs_input` on provider disagreement. The upstream "

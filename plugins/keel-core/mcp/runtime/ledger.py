@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.21). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.22). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -83,6 +83,22 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   complaint. So the READ path has one guarded entry (`Ledger.readable` + `pin_read`), what it
   substitutes is reported by `nonconforming` through `PIN_RULES` exactly as `log_entry_kind` reports
   an unnamed log entry, and nothing is skipped in silence.
+- v0.22 the CARRIERS, where v0.20 did the events and v0.21 did the reads. A settlement door decides
+  on what the pin says about itself, and the way BACK into the open set rewrote the state and left
+  every other one of those carriers exactly as the closed pin had it. Reproduced over stdio: a
+  defect walked `resolve(rung="observed")` then `reopen(fired="incident")`, and came back open still
+  claiming its behaviour had been OBSERVED — on the evidence the incident had just refuted — so it
+  re-closed through the gate that exists to stop precisely that. `SETTLEMENT_CARRIERS` names every
+  carrier `settlement_verdict` reads and what the arcs owe it, `_reopen_minimal` is the one place
+  that pays, and the table is held to the predicate's own AST, so a door that starts reading a sixth
+  carrier fails until the arcs are told what to do with it. The same rule one field over:
+  `pin.pop("substate", …)` lived in `decide`, so a pin reopened and then honestly re-resolved ended
+  `state=resolved substate=reopened` — it now lives in `_settle`, which is the writer that already
+  says in its own docstring why. And two doors that reached past their own principle: `unasked_verdict`
+  and `policy_preview` — a read-only tool — indexed `pin["id"]`, `pin["state"]` and `pin["severity"]`
+  raw, so v0.21's *reading a ledger is never the operation that fails on it* held for two readers of
+  three; and `add_proposals`, which refuses `CLOSED_STATES`, silently accepted a `detected` pin,
+  whose fork does not exist and whose brainstorm therefore reaches no surface.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -95,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.21"
+SCHEMA_VERSION = "0.22"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -108,7 +124,7 @@ SCHEMA_VERSION = "0.21"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22")
 
 KINDS = {
     "contract_mismatch",
@@ -276,6 +292,48 @@ REOPEN_ARCS = ("reopen", "challenge")
 # fact is a divergence waiting to happen.
 _SUBSTATE_BY_ARC = {"reopen": "reopened", "challenge": "challenged"}
 
+# Every carrier a SETTLEMENT DOOR reads off a pin, and what the way BACK into the open set owes each
+# one (v0.22). The question this table exists to force, asked once here instead of per arc:
+# **which carriers does `settlement_verdict` decide on, and which of them does the reopen leave
+# standing?**
+#
+# v0.20 gave the arcs the settlement half's EVENTS. This is the same asymmetry one layer in, on the
+# thing the doors actually read. `_reopen_minimal` wrote `state`, `substate` and `resolution_mode`
+# and nothing else, so a reopened pin walked back into the open set still carrying the pin's own
+# claim that its behaviour had been OBSERVED. Reproduced over real stdio: a defect closed at the
+# `observed` rung, `reopen(fired="incident", reason="p95 blew the threshold")`, then `resolve` again
+# with no new observation of any kind — `settlement_verdict` read the envelope the incident had just
+# refuted and answered `would_settle`. The gate whose entire purpose is *`resolved` means OBSERVED*
+# was opened by the evidence the reopen exists to invalidate.
+#
+# Three dispositions, and each one is an answer rather than a shrug:
+#
+#   * `rewritten` — the arc writes it. `state` is the arc's whole output.
+#   * `invalidated` — the pin's own CLAIM about the work, which is what a reopen refutes. It is
+#     demoted, never deleted: the rung comes off (absence is read as the weaker rung everywhere in
+#     this file, and `settlement_verdict` reads it that way) and `blocked_by` says what refuted it,
+#     which is the field the map's verification card and `interview.funnel` already read. What was
+#     claimed before is still in the log — the `stl_` event records the rung it closed at, and the
+#     `rev_`/`chl_`/`cas_` event records the reopen — so "it was observed, then production refuted
+#     it" reads as the history it is, which is the standard `resolve` already sets for `blocked_by`.
+#   * `not_a_claim` — a fact the reopen does not touch. `kind` is what the pin IS. `remediation` is
+#     the record that actions were TAKEN, which stayed true: what did not survive is the claim that
+#     they worked, and that claim is `verification`. Clearing item statuses would say the work was
+#     never done, which is a different falsehood, and the pin's re-entry into the open set is what
+#     puts a new item in front of a human.
+#
+# Held to `settlement_verdict`'s own AST by `tests/test_ledger.py::TestTheWayBackOwesTheDoorsTheir
+# Carriers`, so a door that starts gating on a sixth carrier fails until the arcs are told what
+# that carrier is owed — which is the only arrangement in which "every carrier" is a claim about the
+# code rather than about two functions remembering each other.
+REOPEN_DISPOSITIONS = ("rewritten", "invalidated", "not_a_claim")
+SETTLEMENT_CARRIERS = {
+    "state": "rewritten",
+    "kind": "not_a_claim",
+    "remediation": "not_a_claim",
+    "verification": "invalidated",
+}
+
 # Every substate a pin carries because something put it BACK in front of the human (v0.19), composed
 # from the arc table rather than re-listed beside it — `cross_derive` is the third writer and the
 # only one that is not an arc, so it is the only literal here.
@@ -286,8 +344,11 @@ _SUBSTATE_BY_ARC = {"reopen": "reopened", "challenge": "challenged"}
 # reached every host's always-on context formatted identically to an elected decision. The map has
 # distinguished them loudly since v0.16; the one file every host loads unprompted had no reader.
 #
-# `decide` clears it (`pin.pop("substate", None)`), so the mark means *disputed and not re-answered*
-# rather than *was disputed once*.
+# `_settle` clears it on every door that lands the pin in `SETTLED_STATES`, so the mark means
+# *disputed and not re-answered* rather than *was disputed once*. It was `decide`'s own `pop` until
+# v0.22, which held for the three election doors and left `resolve` — the door whose authority is an
+# observation, and therefore the one a downstream reopen is most often followed by — writing
+# `resolved` over a live dispute mark.
 REOPENED_SUBSTATES = ("contested",) + tuple(_SUBSTATE_BY_ARC[a] for a in REOPEN_ARCS)
 
 # What put a settled pin back in front of the human, on the DOWNSTREAM arc. `flip_signal` is the
@@ -1038,12 +1099,39 @@ class Ledger:
         `decided` is re-electable by the human, so exploring the alternatives to a live election is
         exactly what a brainstorm is for. The way back into the other three is `reopen`, which
         records why.
+
+        **And a pin that poses no fork is refused too (v0.22).** The closed-state refusal above was
+        written from one end of the range and left the other open: a `detected` pin was accepted in
+        silence, and the write is unreachable by construction rather than merely unhelpful. This
+        moves `needs_input -> brainstorming`, so a `detected` pin stays `detected` — outside
+        `INTERVIEW_STATES`, which is the tuple every surface that shows a fork selects on — and the
+        proposals land where no host will ever put them in front of anyone. Reproduced over stdio:
+        `isError: false`, `{"state": "detected", "proposals": [...]}`, and `interview_next` then
+        reported `total_open: 0`.
+
+        The refusal reads the `question` and not the state, because the fork is what the proposals
+        are options FOR — `detected` is the state that says a pin has none (`add_pin` writes
+        `needs_input` iff a question came with it, and `set_question` moves it the moment one
+        arrives), so gating on the state would be checking the shadow. `set_question` is the door,
+        and it is named in the refusal: the sibling half of this same funnel, added in the same
+        commit, for exactly this pin.
+
+        The closed check is asked FIRST, on `settlement_verdict`'s own stated rule — *a rule that
+        every door must obey is asked before any door speaks* — so a closed pin that also poses no
+        fork is told the stronger of the two reasons: the work is over, and the answer is `reopen`,
+        not `set_question`.
         """
         pin = self.pin(pin_id)
         _require(pin["state"] not in CLOSED_STATES,
                  f"the work on {pin_id} is finished ({pin['state']}); proposing options for it is "
                  f"un-finishing it, which is the reopen arc and has its own door (`reopen`, which "
                  f"records why).")
+        _require(bool(pin_read(pin)["question"]),
+                 f"{pin_id} poses no fork, and a proposal is an option for one. This door moves a "
+                 f"pin from `needs_input` to `brainstorming`, so a pin with no question keeps the "
+                 f"state it has and its proposals reach no surface — `interview_view` selects "
+                 f"{INTERVIEW_STATES}. Pose the fork first (`set_question`), then propose against "
+                 f"it.")
         _require(sum(1 for p in proposals if p.get("recommended")) <= 1,
                  "at most one proposal may be `recommended` — two make the recommendation "
                  "uncomparable to what the human elects, which is the point of marking it")
@@ -1079,7 +1167,14 @@ class Ledger:
                  f"`learning.divergences` matches that outcome against these ids, so a repeated id "
                  f"makes 'which option did the human take' unanswerable from the ledger")
         pin["brainstorm"] = {"proposals": proposals, "notes": notes}
-        if pin["state"] == "needs_input":
+        # Two states, not one (v0.22). `needs_input` is the only one this runtime can put here —
+        # a pin carrying a fork is never left `detected` by any door it writes — but the refusal
+        # above is anchored on the FORK, so a hand-edited pin that has one and says `detected`
+        # reaches this line, and leaving it there would be the same unreachable write one shape
+        # over. `brainstorming` is in `INTERVIEW_STATES`; `detected` is exactly what is not.
+        # `correctness_unknown` and `decided` are deliberately absent: each says something stronger
+        # than "being thought about", and overwriting it would erase what it is there to say.
+        if pin["state"] in ("needs_input", "detected"):
             pin["state"] = "brainstorming"
         return pin
 
@@ -1198,7 +1293,9 @@ class Ledger:
         # the reader cannot replay. Nothing is appended if this raises.
         _check_event(event)
         self.data["decision_log"].append(event)
-        pin.pop("substate", None)
+        # The dispute mark is cleared by `_settle` (v0.22), not here: it used to be popped on this
+        # line, which gave the rule to the three doors that are elections and to none of the two
+        # that are not — so `resolve` left `substate: "reopened"` standing on finished work.
         pin["decision"] = {"event_id": event["id"], "outcome": outcome}
         self._settle(pin, door, decision_event=event["id"])
         return event
@@ -1382,10 +1479,14 @@ class Ledger:
             whose question happens to carry a freeform escape.
 
         A pin with no question offers nothing, which is the same answer `decision_prompt` already
-        gives: a pin that poses no fork cannot be decided through the fork it does not pose.
+        gives: a pin that poses no fork cannot be decided through the fork it does not pose. A pin
+        whose `question` is not an object offers nothing either, and says so through `pin_read`
+        (v0.22) rather than through an `AttributeError` — `PIN_RULES`' `pin_question` is what reports
+        it, on the same principle its caller one function down now follows.
         """
-        return any(o.get("id") == outcome
-                   for o in ((pin.get("question") or {}).get("options") or []))
+        options = pin_read(pin)["question"].get("options")
+        return any(isinstance(o, dict) and o.get("id") == outcome
+                   for o in (options if isinstance(options, list) else []))
 
     def unasked_verdict(self, pin: dict, outcome: str,
                         excepted: frozenset[str] = frozenset()) -> str:
@@ -1428,12 +1529,26 @@ class Ledger:
         refusals, they are pins outside the radius), then the threshold, then the pin's own demand to
         be asked, then the options. A reader asking "why is this pin still open" gets one reason, and
         the strongest one.
+
+        **Read through `pin_read` (v0.22).** It indexed `pin["state"]`, `pin["severity"]` and
+        `pin["id"]` raw, and its read-only caller is `policy_preview` — served as the read-only MCP
+        tool `policy_preview`, put in front of a human before they elect a rule. Reproduced over
+        stdio on a two-pin ledger whose second pin carries no `severity`: `ledger_summary` and
+        `interview_next` both answered (v0.21 hardened exactly those two) and `policy_preview`
+        returned `isError: true` with the body `'severity'`. The principle carries no qualifier —
+        *reading a ledger is never the operation that fails on it* — and it had been applied to two
+        readers of three.
+        The threshold is asked of `_MAY_BE_SILENT` rather than of `_NEVER_SILENT`, which is
+        `assign_resolution_modes`' own correction and matters for exactly one input: a severity this
+        runtime cannot rank is not evidence that silence may settle the pin, so it is held back.
+        Identical for every severity the schema has.
         """
-        if pin["state"] in SETTLED_STATES:
+        read = pin_read(pin)
+        if read["state"] in SETTLED_STATES:
             return "already_settled"
-        if pin["id"] in excepted:
+        if read["id"] in excepted:
             return "excepted"
-        if pin["severity"] in _NEVER_SILENT:
+        if read["severity"] not in _MAY_BE_SILENT:
             return "held_back"          # threshold rule — never silent
         if pin.get("resolution_mode") == "asked":
             return "must_be_asked"      # the pin's own standing demand — v0.16
@@ -1578,6 +1693,20 @@ class Ledger:
         them: their authority is an observation, or the recorded absence of one, and until v0.16
         neither left anything in the log at all. So the log answers *"how did this pin stop being
         open, and on whose authority"* for all five doors, with exactly one entry each.
+
+        **The dispute mark is cleared here too (v0.22), which is what "the gate cannot be a rule each
+        door remembers" was already claiming.** `pin.pop("substate", None)` lived in `decide`, so
+        `accept` and `defer` got it (they ARE `decide`) and `resolve` did not: a pin reopened by an
+        incident and then re-closed on a fresh observation, at an explicit `rung="observed"` — the
+        fully honest path — ended `state=resolved substate=reopened`, and `REOPENED_SUBSTATES` says
+        in its own words that the mark means *disputed and not re-answered*. Two consumers then read
+        one object and contradicted each other about it.
+
+        Cleared on the DESTINATION rather than per door, so the rule is one line and needs no second
+        list: a door that lands the pin in `SETTLED_STATES` has ended the dispute, and the fifth door
+        — `correctness_unknown` — has not, because it hands the pin back to the human still carrying
+        the outcome that was disputed. Deriving it from the state table is what stops that
+        distinction from being a name someone has to remember to add.
         """
         self._gate_settlement(pin, door)
         event = None
@@ -1593,6 +1722,8 @@ class Ledger:
                 "policy_hash": self._policy_hash(),
             }
             self.data["decision_log"].append(event)
+        if _STATE_BY_DOOR[door] in SETTLED_STATES:
+            pin.pop("substate", None)
         pin["state"] = _STATE_BY_DOOR[door]
         return event
 
@@ -1634,6 +1765,11 @@ class Ledger:
         readable by the human electing it. So the matcher SAYS what it does, in `scope_note`, and it
         says it here — in the one function `apply_policy` calls — so the preview and the cascade
         cannot describe the radius differently.
+
+        v0.22: through the guarded read, because this is a READ — it says so in its own first line
+        and it is served as a read-only tool. It walked `self.data["pins"]` (the write path's
+        accessor) and indexed `pin["id"]`, so one pin missing one field made the call an `isError`
+        on the host, on the same file `ledger_summary` and `interview_next` answered about.
         """
         for key in applies_to or {}:
             _require(key in PIN_FIELDS,
@@ -1642,10 +1778,10 @@ class Ledger:
                      "be the whole ledger wearing a filter's clothes.")
         excepted = frozenset(exceptions or [])
         out: dict = {bucket: [] for bucket in UNASKED_BUCKETS}
-        for pin in self.data["pins"]:
+        for pin in self.readable_pins():
             if not all(pin.get(k) == v for k, v in applies_to.items()):
                 continue
-            out[self.unasked_verdict(pin, default_outcome, excepted)].append(pin["id"])
+            out[self.unasked_verdict(pin, default_outcome, excepted)].append(pin_read(pin)["id"])
         out["scope_note"] = self._absence_note(applies_to)
         return out
 
@@ -2162,6 +2298,14 @@ class Ledger:
         `via` has no default on purpose. A cascade record that points at nothing is a state change
         with no cause, which is the condition this whole method was added to remove — so a third arc
         has to say which event it is cascading from before it can call this at all.
+
+        **And every pin it moves has the claims a settlement door gates on invalidated (v0.22).**
+        That is `SETTLEMENT_CARRIERS`, and it is the same asymmetry v0.20 removed one layer out: this
+        wrote the state and left `verification` exactly as the closed pin had it, so a pin reopened
+        BY an incident still told the next `resolve` that its behaviour had been observed — and
+        `settlement_verdict` believed it, because the envelope is the single carrier of that fact by
+        design. Writing the state without invalidating the claim the state was reached on is a reopen
+        that only the surfaces see.
         """
         if self.reopen_verdict(pin, arc) != "would_reopen":
             return []
@@ -2206,7 +2350,37 @@ class Ledger:
             p["state"] = "needs_input"
             p["substate"] = substate
             p["resolution_mode"] = "asked"   # a reopened truth is never re-defaulted silently
+            self._invalidate_settlement_claims(p, arc, via)
         return cascaded
+
+    def _invalidate_settlement_claims(self, pin: dict, arc: str, via: str) -> None:
+        """Take back, on the pin, every claim a settlement door would read as permission (v0.22).
+
+        One function for `SETTLEMENT_CARRIERS`' `invalidated` entries, called from the one place
+        either arc moves a pin, for `_settle`'s reason: a rule that lives in an arc has to be
+        remembered by the next arc.
+
+        **Demoted, not deleted.** The rung comes off because the observation it named was refuted —
+        and `settlement_verdict` reads a missing rung as the weaker claim, which is how absence is
+        read everywhere in this file. `blocked_by` then says what refuted it, in the field the map's
+        verification card and `interview.funnel` already read, so the pin tells a human why it cannot
+        close instead of going quiet. `attempted` and `determinism` stay exactly where their writer
+        left them: what was tried was still tried.
+
+        **An envelope that claims nothing is left alone.** A pin with no `verification`, or one whose
+        rung is already below `_CLOSING_RUNGS`, has made no claim for this to take back — and writing
+        an envelope onto it would be manufacturing a statement the file never made, which is the
+        `mark_correctness_unknown`/`cross_derive` overwrite v0.16 removed twice.
+        """
+        envelope = pin.get("verification") or {}
+        if envelope.get("rung") not in _CLOSING_RUNGS:
+            return
+        pin["verification"] = {
+            **envelope,
+            "rung": None,
+            "blocked_by": (f"this pin closed at the `{envelope['rung']}` rung; that observation "
+                           f"was refuted by {via} ({arc}), and nothing has been observed since"),
+        }
 
     # -- remediation / build (the bridge to Phase 4) ---------------------------
 

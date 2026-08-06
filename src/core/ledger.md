@@ -110,6 +110,16 @@ Summary of what matters here:
   **`INTERVIEW_STATES`** rather than a literal, because the map re-derived them and printed the
   funnel's countdown — *if you say nothing, the interview settles this* — on `detected` pins, which
   pose no fork and reach the interview on no host.
+- v0.22 asks the same question of the CARRIERS a settlement door decides on. The way back into the
+  open set rewrote the state and left every other one standing, so a pin reopened **by an incident**
+  came back still claiming its behaviour had been observed, and re-closed on the evidence the
+  incident had refuted. `SETTLEMENT_CARRIERS` names each carrier and what the arcs owe it — the
+  `verification` claim is demoted (the rung comes off, `blocked_by` says what refuted it), the
+  remediation record stands, because what did not survive is the claim the work *worked* — and the
+  table is held to the predicate's own AST. The dispute mark moves to `_settle`, so `resolve` stops
+  writing `resolved` over a live `substate: reopened`; `unasked_verdict` and `policy_preview` join
+  the guarded read, since a read-only tool must never be the call that fails on a ledger; and
+  `add_proposals` refuses a pin that poses no fork, where its own output is unreachable.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.

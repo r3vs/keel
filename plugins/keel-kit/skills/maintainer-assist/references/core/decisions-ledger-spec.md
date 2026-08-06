@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.21
+# Decisions Ledger — Spec v0.22
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1043,3 +1043,44 @@ INTERVIEW_STATES = ("needs_input", "brainstorming", "correctness_unknown")   # O
 ### The general shape
 
 v0.20's was *"name the sibling door and check that it agrees."* This one is the same question asked backwards, of work already done: **when a round states a principle, name every place the principle applies and check the ones the round did not touch.** Both defects here sit one collection or one surface away from a fix that landed, was correct, and was written down as closed — the log's dispatch key, and the mode line's three sentences. A closed section is a claim about a class, and the class is where the next instance lives.
+
+---
+
+## v0.22 — The carriers a settlement door decides on, and what the way back owes them
+
+v0.20 gave the reopen arcs the settlement half's **events**. v0.21 gave the pins the log half's **guarded read**. This one is the same question one layer further in, on the thing the doors actually decide from: **which carriers does a settlement door read, and which of them does the way back into the open set leave standing?** All four defects were observed over real `uv run --script plugins/keel-core/mcp/server.py` stdio, from a foreign cwd.
+
+### `SETTLEMENT_CARRIERS` — a reopen that leaves the claim standing is a reopen only the surfaces see
+
+`_reopen_minimal` wrote `state`, `substate` and `resolution_mode`, and left `verification` exactly as the closed pin had it. Observed: a defect walked `add_pin → add_remediation → done → resolve(rung="observed")`, then `reopen(fired="incident", reason="p95 blew the threshold")`. The pin came back open **still claiming its behaviour had been OBSERVED** — on the evidence the incident had just refuted — and `resolve` then closed it again with no new observation of any kind, because `settlement_verdict` reads that envelope and by design it is the *single* carrier of how hard the thing was checked.
+
+```
+SETTLEMENT_CARRIERS = {"state": "rewritten", "kind": "not_a_claim",
+                       "remediation": "not_a_claim", "verification": "invalidated"}
+```
+
+Three dispositions, each an answer rather than a shrug. `rewritten` — the arc writes it. `invalidated` — the pin's own claim about the work, which is what a reopen refutes: the rung comes off (absence is read as the weaker claim everywhere in the runtime) and `blocked_by` says what refuted it, in the field the map's verification card and `interview.funnel` already read. It is **demoted, never deleted**: the `stl_` event records the rung the pin closed at and the `rev_`/`chl_`/`cas_` event records the reopen, so *it was observed, then production refuted it* reads as the history it is — the standard `resolve` already sets for `blocked_by`. `not_a_claim` — `kind` is what the pin IS; `remediation` records that actions were **taken**, which stayed true, while the claim that they *worked* is `verification` and is the one that did not.
+
+The table is held to `settlement_verdict`'s own AST, so a door that starts gating on a fifth carrier fails until the arcs are told what that carrier is owed. That is the only arrangement in which *every carrier* is a claim about the code rather than about two functions remembering each other.
+
+### `_settle` clears the dispute mark, because `_settle` is the writer that says it does
+
+`pin.pop("substate", None)` lived in `decide`, whose docstring one function away already stated the rule this broke: `_settle` is *"THE only writer of a settled state … so the gate cannot be a rule each door remembers"*. The three election doors got the clearing (`accept` and `defer` ARE `decide`); `resolve` and `correctness_unknown` did not. Observed on the fully honest path — fresh remediation, fresh evidence, an explicit `rung="observed"` after a reopen — the pin ended `state=resolved substate=reopened`, and `REOPENED_SUBSTATES` says in its own words that the mark means *disputed and not re-answered*.
+
+Cleared on the **destination** rather than per door: a door that lands the pin in `SETTLED_STATES` has ended the dispute, and `correctness_unknown` has not, because it hands the pin back to the human still carrying the outcome that was disputed. Deriving it from `_STATE_BY_DOOR` is what stops that distinction from being a name someone has to remember to add.
+
+### `unasked_verdict` / `policy_preview` — reading a ledger is never the operation that fails on it, at the third reader too
+
+v0.21 stated that principle with no qualifier and applied it to `summary` and `interview_view`. `policy_preview` — *"Read-only"* in its own first line, served as the read-only MCP tool `policy_preview`, and the thing a human is shown before electing a rule over a whole cluster — walked `self.data["pins"]` and indexed `pin["id"]`, and reached `pin["state"]` and `pin["severity"]` through `unasked_verdict`. Observed on a two-pin ledger whose second pin carries no `severity`: `ledger_summary` and `interview_next` both answered, `policy_preview` returned `isError: true` with the body `'severity'`.
+
+Both now read through `pin_read`, and the threshold is asked of `_MAY_BE_SILENT` rather than of `_NEVER_SILENT` — `assign_resolution_modes`' own v0.21 correction, and it matters for exactly one input: a severity this runtime cannot rank is not evidence that silence may settle the pin, so it is **held back**. `question_offers` reads the fork through the same guard, so a `question` that is not an object offers nothing instead of raising.
+
+### `add_proposals` refuses a pin that poses no fork
+
+v0.20 gave this door the `CLOSED_STATES` refusal its twin already had, written from one end of the range. The other end stayed open: a `detected` pin was accepted in silence, and there the write is unreachable **by construction** — this door moves `needs_input → brainstorming`, so a `detected` pin keeps the state it has, outside `INTERVIEW_STATES`, and its proposals reach no surface on any host. Observed: `isError: false`, `{"state": "detected", "proposals": [...]}`, `interview_next` then reporting `total_open: 0`.
+
+The refusal reads the `question`, not the state, because the fork is what a proposal is an option **for** — `detected` is merely the state that says a pin has none. The closed check is asked first, on `settlement_verdict`'s own ordering rule, so a closed pin gets the stronger reason and is pointed at `reopen` rather than at `set_question`.
+
+### The general shape
+
+v0.21's was *"name every place the principle applies."* This one narrows it to the thing that makes a rule enforceable at all: **for every predicate that decides, enumerate the carriers it reads — and make the enumeration a table the opposite arc is held to.** Each defect above is a rule that was fixed correctly at the doors it was written for, on an object whose other doors kept the old behaviour. Not a lapse: a rule with no single carrier can only be held by every author remembering it, and one never does.

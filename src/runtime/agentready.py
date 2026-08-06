@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import buildloop
 import challenger
+from ledger import pin_read
 
 _DONE_STATES = ("resolved", "accepted")
 
@@ -82,9 +83,11 @@ def _terrain(ledger, pin: dict) -> dict:
         return {"state": "unassessed", "why": "this change lands on existing code and no landing "
                                               "zone was assessed (`readiness_assess`)"}
     verdict = readiness.get("verdict")
-    by_id = {p["id"]: p for p in ledger.data["pins"]}
+    # The guarded read (v0.22): `mcp:agent_ready` is served read-only and takes nothing but a
+    # ledger path, so a pin missing a field must not make the gate the call that fails.
+    by_id = {pin_read(p)["id"]: p for p in ledger.readable_pins()}
     open_prereqs = [h for h in readiness.get("hardens", [])
-                    if h in by_id and by_id[h]["state"] not in _DONE_STATES]
+                    if h in by_id and pin_read(by_id[h])["state"] not in _DONE_STATES]
     return {"state": verdict, "why": readiness.get("rationale", ""),
             "open_prerequisites": open_prereqs,
             "determinism": readiness.get("determinism", "D2")}
@@ -160,7 +163,7 @@ def gate(ledger) -> dict:
     shrank the queue would make an item disappear with no addressee — the same black hole a state
     that appears on no surface creates. It reports, loudly, and names who is owed the work.
     """
-    cards = [card(ledger, p["id"]) for p in buildloop.ready(ledger)]
+    cards = [card(ledger, pin_read(p)["id"]) for p in buildloop.ready(ledger)]
     by_route: dict[str, list] = {}
     for c in cards:
         by_route.setdefault(c["route"], []).append(c["pin"])
