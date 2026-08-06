@@ -21,6 +21,12 @@ The pins are **open decisions**, not code findings. So:
   refused), name the forks the user pulled out in `exceptions`, and the cascade runs in the same
   call. High-fan-out forks stay `asked`: the threshold rule holds them back, which is why a policy
   never quietly settles the domain model.
+
+  The rule above is the sentence the user reads; what gets **written** on each pin is the offer's
+  `default_outcome`, one of that cluster's own option ids (`"relational"`, `"modular_monolith"`).
+  Put both to the user. A pin whose question does not offer it is held back in `not_offered` and
+  stays a question — the same refusal `ledger_record_decision` makes for one pin, applied where a
+  single answer would otherwise carry a whole cluster.
 - **Information-gain order is the catalog order**: domain model and persistence first (they fan
   out to everything downstream), delivery and observability last. Answering "what are the core
   entities and what's in v1" collapses more of the tree than any other question — ask it first.
@@ -34,7 +40,9 @@ The pins are **open decisions**, not code findings. So:
 > - `interview_seed_policies` returns the catalog's per-cluster default policies as the **offers**
 >   you open with, each carrying the pins it would decide. It writes nothing: a `Policy` enters the
 >   ledger only when the user elects one, because a policy then cascades outcomes over the
->   medium/low tail — seeding them unasked would be an agent deciding at scale.
+>   medium/low tail — seeding them unasked would be an agent deciding at scale. Its
+>   `no_default_outcome` list is the clusters that state a default no one option carries; those are
+>   asked, not offered.
 > - `ledger_record_policy` is what writes the one they elect, and runs the cascade. Offer → answer →
 >   this call; skip it and the accepted policy exists only in the conversation, so nothing is
 >   compressed and every fork it covered comes back as its own question. It records, it does not

@@ -33,6 +33,14 @@ in `references/core/interview-funnel.md`. Read it first.** How *rescue* sources 
   `mcp:policy_preview` **first**, with the same arguments: it writes nothing and answers with the
   pins the rule would decide. Put that list to the user, because what they are electing is the blast
   radius, not the sentence.
+
+  **`default_outcome` is an option id those pins already offer** — `"db"`, the id on their
+  `question`, not *"the DB is the source of truth"*. A matching pin whose own question does not
+  offer it comes back in `not_offered`, held back and still `asked`, exactly like a blocker: the
+  single-pin door has always refused an outcome the pin never offered, and a policy decides more
+  pins, so it is not allowed to write what one decision could not. If a cluster's pins carry no
+  question, or carry questions with different option sets, that is the finding: they are not one
+  decision, and no policy will cascade over them.
 - **Exception questions:** pins a policy doesn't cover, plus genuine `ambiguity` and
   `design_concern` pins — the true forks where intent changes what would be built.
 - **Proposed defaults + severity threshold + information-gain order:** exactly as in the shared

@@ -178,14 +178,21 @@ def build() -> Ledger:
     led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
                 title="Validation lives in the handler, not at the boundary",
                 cluster_id="cl_nfrs",
-                as_is={"current_design": "each handler re-checks its own payload"})
-    led.add_policy(applies_to={"cluster_id": "cl_nfrs"},
-                   rule="validate at the contract boundary; structured errors from one taxonomy",
-                   default_outcome="validate at the boundary",
-                   evidence="transcribed",
-                   human_answer="yes — take the boundary rule for all of these, I'll flag the ones "
-                                "I want to argue about")
-    led.apply_policies()
+                as_is={"current_design": "each handler re-checks its own payload"},
+                # v0.12: the cascade may only write an outcome this pin's own question offers, so
+                # the pin has to pose the fork the policy answers. A cluster of pins with no
+                # question is not one decision.
+                question={"prompt": "Where is the payload validated?",
+                          "options": [{"id": "boundary", "label": "at the contract boundary"},
+                                      {"id": "handler", "label": "in each handler"}]})
+    policy = led.add_policy(applies_to={"cluster_id": "cl_nfrs"},
+                            rule="validate at the contract boundary; structured errors from one "
+                                 "taxonomy",
+                            default_outcome="boundary",
+                            evidence="transcribed",
+                            human_answer="yes — take the boundary rule for all of these, I'll flag "
+                                         "the ones I want to argue about")
+    led.apply_policy(policy)
     return led
 
 

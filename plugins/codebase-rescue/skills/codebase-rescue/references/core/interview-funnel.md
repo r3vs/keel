@@ -39,12 +39,20 @@ pins  →  clusters  →  policies  →  real questions (asked)  →  proposed d
 
    **One tool sets a policy and cascades it: `mcp:ledger_record_policy`.** Nothing else creates a
    `Policy`, so a policy you only agreed to in conversation cascades over nothing and the whole
-   compression step silently does not happen. Put the rule to the user *with the pins it would
-   decide*: `mcp:policy_preview` answers that without writing, and greenfield's opening offers
-   arrive with it already attached from `mcp:interview_seed_policies`. It cannot be used to elect: a catalog
+   compression step silently does not happen. Put the rule to the user *with the outcome it writes
+   and the pins it would decide*: `mcp:policy_preview` answers that without writing, and
+   greenfield's opening offers arrive with it already attached from `mcp:interview_seed_policies`.
+   It cannot be used to elect: a catalog
    offer is taken verbatim by `offer_id`, any other policy must state its rule, scope and outcome
    and quote the user, and where the host can elicit, the server asks and writes only on acceptance.
-   `blocker`/`high` pins are held back by the threshold rule below and stay `asked`.
+
+   **Two rules hold a pin back, and both leave it `asked`.** `blocker`/`high` pins by the severity
+   threshold below; and any pin whose own `question` does not offer the policy's outcome
+   (`not_offered`) — a policy decides more pins than a single decision does, so it is not allowed to
+   write what a single decision could not. A `default_outcome` is therefore an **option id**, not a
+   sentence: `"relational"`, not *"one relational datastore until a concrete need proves
+   otherwise"*. The second rule is why a cluster can state a default and still make no offer — if no
+   one of its options carries that default, it is advice, and advice is asked.
 3. **Exception questions** — only what a policy doesn't cover: pins that contradict a policy,
    plus the genuine forks (rescue: `ambiguity` / `design_concern`; greenfield: high-fan-out
    `open_decision`). Few, and the valuable ones.
@@ -78,3 +86,12 @@ Two tools carry that commit and no third one exists: `mcp:ledger_record_decision
 one — the outcome must come from the pin's own question, or from an offer the user was shown. The
 rung each answer travelled on is recorded (`evidence`), so a relay reads as weaker than an
 elicitation and a cascade reads as what it is: one answer, amplified.
+
+That sentence is a rule, not a summary, and it is enforced per pin at the write: every outcome
+written — by either door, on either rung — is an id from the `question.options` of the pin it lands
+on, and a pin that does not offer it is held back rather than decided on a value nobody offered it.
+For one version it was true only of the single-pin door. The policy door showed the user a rule,
+took a two-value accept, and stamped a `default_outcome` the caller had composed onto every pin in
+the cluster — the strong `elicited` rung on a value the human was never shown. What the message
+omits was not elected, whatever rung the write claims; so the elicitation names the outcome, and the
+outcome has to be one the pin offers.

@@ -224,6 +224,12 @@ async def ledger_record_decision(
     evidence = "transcribed"
 
     if ctx is not None and _client_can_elicit(ctx):
+        # Each choice LEADS with the option id, and the option id is exactly what lands in the
+        # DecisionEvent's `outcome` — so what the user reads is what gets written, and the parse
+        # below takes back the token they were shown. Re-checked against the policy door's failure,
+        # where the elicited message named the rule and never the outcome: here the outcome cannot
+        # go missing without the choice itself going missing. Do not reorder to "label — id": that
+        # breaks the display promise and the parse in the same edit.
         choices = [f"{o['id']} — {o['label']}" + (f" (→ {o['implication']})" if o["implication"] else "")
                    for o in prompt["options"]]
         if prompt["can_accept_as_is"]:
@@ -274,10 +280,15 @@ def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict
     whole cluster's low-severity tail. Run it beside `interview_expand` at frame time; kept separate
     because it is a different act, and a tool named "expand" must not quietly do this too.
 
-    Returns `{"offers": [...]}` and WRITES NOTHING. A Policy exists only once the human elects it:
-    accepting one cascades outcomes across its cluster, so seeding them unasked would decide at
-    scale. Put each offer to the user with the pins it would decide (`would_decide`, on the offer),
-    and record what they elect with `ledger_record_policy` — that is the tool that writes one.
+    Returns `{"offers": [...], "no_default_outcome": [...]}` and WRITES NOTHING. A Policy exists only
+    once the human elects it: accepting one cascades outcomes across its cluster, so seeding them
+    unasked would decide at scale. Put each offer to the user with the pins it would decide
+    (`would_decide`, on the offer), and record what they elect with `ledger_record_policy` — that is
+    the tool that writes one.
+
+    `no_default_outcome` lists clusters whose stated default is not carried by any one of their own
+    options (`nfrs` names four at once; `delivery`'s depends on the topology fork). A cascade may
+    only write an outcome the pin's own question offers, so those are not offers — ask them.
 
     Args:
         ledger: Path to ledger.json (must exist — offers for a ledger that isn't there are noise).
@@ -288,15 +299,17 @@ def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict
 
 @mcp.tool(annotations={"title": "Interview — What a Policy Would Decide", **_RO})
 def policy_preview(ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
-                   default_outcome: str | dict = "", exceptions: list[str] | None = None,
+                   default_outcome: str = "", exceptions: list[str] | None = None,
                    project_type: str = "web-saas") -> dict:
     """What setting this policy WOULD decide, without setting it. Reads only.
 
     Put this in front of the user before asking them to accept a rule: `would_decide` is the list of
     pins that get the outcome with no further question, `held_back` the blocker/high ones the
-    threshold rule keeps `asked`, `excepted` the ones you excluded. What a user elects when they
-    accept a policy is that radius, not the sentence — and a rule that turns out to cover 40 pins is
-    a different question from one that covers 3.
+    threshold rule keeps `asked`, `not_offered` the ones whose own question does not offer this
+    outcome (held back too — a cascade may only write an outcome the pin offered), `excepted` the
+    ones you excluded. What a user elects when they accept a policy is that radius, not the
+    sentence — and a rule that turns out to cover 40 pins is a different question from one that
+    covers 3.
 
     Same arguments as `ledger_record_policy`, so a previewed policy and a recorded one cannot differ.
     Greenfield's catalog offers already arrive with this attached (`interview_seed_policies`); this
@@ -307,7 +320,7 @@ def policy_preview(ledger: str, offer_id: str = "", rule: str = "", applies_to: 
         offer_id: The `cluster_id` of a catalog offer, taken verbatim. Alone, or not at all.
         rule: The rule in the user's terms, when this is not a catalog offer.
         applies_to: Pin fields the policy matches, e.g. {"kind": "contract_mismatch"}.
-        default_outcome: The outcome every cascaded pin would get.
+        default_outcome: The outcome every cascaded pin would get — an option id those pins offer.
         exceptions: Pin ids the policy must not touch.
         project_type: Prunes catalog offers the same way interview_expand did.
     """
@@ -324,18 +337,21 @@ _POLICY_DECLINE = "do not set it — keep asking pin by pin"
 @mcp.tool(annotations={"title": "Interview — Ask the Human and Record a Policy Election", **_RW_CREATE})
 async def ledger_record_policy(
     ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
-    default_outcome: str | dict = "", exceptions: list[str] | None = None, human_answer: str = "",
+    default_outcome: str = "", exceptions: list[str] | None = None, human_answer: str = "",
     project_type: str = "web-saas", ctx: Context = None,
 ) -> dict:
     """Record a POLICY the HUMAN elected, and cascade it over its cluster. Never elects.
 
     The funnel's highest-leverage step: one accepted policy settles a whole cluster's medium/low
     tail, so `blocker`/`high` pins are held back and stay `asked`. Because it decides many pins at
-    once, it is held to the same discipline as a single decision, not less.
+    once, it is held to the same discipline as a single decision, not less — including the rule that
+    matters most: the outcome written on a pin must be one that pin's own `question` offered. A pin
+    that does not offer it comes back in `not_offered`, still open, and you ask it.
 
     Two paths, and the tool chooses — you do not:
-      * If the host supports elicitation, THIS SERVER puts the rule AND the pins it would decide to
-        the user, and writes only if they accept. The answer never travels through you.
+      * If the host supports elicitation, THIS SERVER puts the rule, the outcome it will write, and
+        the pins it would decide to the user, and writes only if they accept. The answer never
+        travels through you.
       * Otherwise you must relay, quoting the user verbatim in `human_answer`. Recorded as the
         weaker rung.
 
@@ -348,7 +364,7 @@ async def ledger_record_policy(
         offer_id: The `cluster_id` of an offer from interview_seed_policies. Alone, or not at all.
         rule: The rule in the user's terms, when this is not a catalog offer.
         applies_to: Pin fields the policy matches, e.g. {"kind": "contract_mismatch"} or {"cluster_id": "cl_x"}.
-        default_outcome: The outcome every cascaded pin gets.
+        default_outcome: The outcome every cascaded pin gets — an option id from those pins' own questions.
         exceptions: Pin ids the policy must not touch; they stay `asked`.
         human_answer: The user's answer, verbatim. Required when relaying.
         project_type: Prunes catalog offers the same way interview_expand did.
@@ -358,12 +374,22 @@ async def ledger_record_policy(
     evidence = "transcribed"
 
     if ctx is not None and _client_can_elicit(ctx):
-        would, held = prompt["would_decide"], prompt["held_back"]
-        message = (f"Set this policy?\n\n{prompt['rule']}\n\n"
+        would, held, unoffered = (prompt["would_decide"], prompt["held_back"],
+                                  prompt["not_offered"])
+        # The OUTCOME is on its own line, above the radius. It used to be absent entirely: the user
+        # was shown the rule and a pin count, answered a two-value accept/decline, and the value
+        # actually stamped on every one of those pins — a string the caller composed — was never
+        # put in front of them. What the message omits was not elected, whatever rung the write
+        # then claims, and this write claims the strongest one there is.
+        message = (f"Set this policy?\n\nRule: {prompt['rule']}\n"
+                   f"Outcome written on every pin it decides: {prompt['default_outcome']}\n\n"
                    f"It decides {len(would)} pin(s) without asking again"
                    + (f": {', '.join(would)}" if would else "")
                    + (f"\n{len(held)} blocker/high pin(s) are held back and still asked: "
-                      f"{', '.join(held)}" if held else ""))
+                      f"{', '.join(held)}" if held else "")
+                   + (f"\n{len(unoffered)} pin(s) are held back because their own question does not "
+                      f"offer {prompt['default_outcome']!r}: {', '.join(unoffered)}"
+                      if unoffered else ""))
         result = await ctx.elicit(message, [_POLICY_ACCEPT, _POLICY_DECLINE])
         if not isinstance(result, AcceptedElicitation):
             raise ValueError(

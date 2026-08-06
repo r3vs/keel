@@ -35,7 +35,8 @@ LEDGER = {
     ],
     "decision_log": [],
     "policies": [{"id": "pol_0001", "applies_to": {"kind": "contract_mismatch"},
-                  "rule": "the DB is the canonical layer", "default_outcome": "canonicalize on db",
+                  # v0.12: an option id, since that is the only thing a cascade may write
+                  "rule": "the DB is the canonical layer", "default_outcome": "db",
                   "set_by": "interview", "exceptions": []}],
 }
 

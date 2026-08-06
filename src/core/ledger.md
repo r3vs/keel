@@ -38,6 +38,9 @@ Summary of what matters here:
   (`elicited | transcribed | brief | cascaded`), with `human_answer` quoting a relay verbatim and
   `policy_id` naming the `Policy` behind a cascade. The `Policy` carries its own rung, because a
   policy is where the human actually answered for a whole cluster.
+- v0.12 holds the cascade to the rule a single decision was already held to: an outcome lands on a
+  pin only if that pin's own `question` offers it (so `default_outcome` is an option id), and a
+  policy cascades once, over the radius its elector was shown.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen.
 

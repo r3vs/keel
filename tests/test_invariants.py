@@ -97,8 +97,9 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         "accept": "same channel: record_decision(accept_as_is=True), gated to design_concern",
         "add_policy": "reached only through record_policy, which records a policy the human elected "
                       "— from an offer taken verbatim, or quoted — and cannot set one",
-        "apply_policies": "same channel: the cascade is what electing a policy MEANS, so it runs "
-                          "inside record_policy and never as a step an agent can take alone",
+        "apply_policy": "same channel: the cascade is what electing a policy MEANS, so it runs "
+                        "inside record_policy, once, on the policy just elected — never as a step "
+                        "an agent can take alone or re-run over pins nobody was shown",
     }
     #: Mutators reached through another governed entry point rather than a tool of their own.
     INTERNAL = {
@@ -115,7 +116,8 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     def _mutators(self) -> set:
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
-        readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview"}
+        readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview",
+                    "question_offers"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -188,7 +190,7 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
     def test_an_agent_can_record_a_policy_election_but_never_make_one(self):
         """The same invariant one level up, where the leverage is: a policy decides a whole cluster.
 
-        It had no door at all — `add_policy`/`apply_policies` were reachable by nothing on any host,
+        It had no door at all — `add_policy`/the cascade were reachable by nothing on any host,
         while four shipped passages told an agent the user elects a policy and that it then
         cascades. The door added here must not become the shortcut the absence was protecting
         against, so what it refuses is asserted before what it writes.
@@ -199,9 +201,12 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         self.assertIn("record_policy", exposed, "the human needs a door, or nothing ever cascades")
 
         led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        fork = {"prompt": "Which layer is truth?",
+                "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
         pins = [led.add_pin(kind="contract_mismatch", title=f"drift {i}", severity=sev,
                             confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
-                            cluster_id="cl_shape", as_is={"db": "int", "api": "string"})
+                            cluster_id="cl_shape", as_is={"db": "int", "api": "string"},
+                            question=fork)
                 for i, sev in enumerate(("low", "medium", "blocker"))]
         led.save()
 
@@ -227,6 +232,8 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                          "what the user was shown must be what the cascade did")
         self.assertEqual(out["held_back"], [pins[2]["id"]],
                          "blocker|high is never settled by a policy — the threshold rule")
+        self.assertEqual(out["not_offered"], [],
+                         "these pins all pose the fork this policy answers")
         after = ledgermod.Ledger(led.path)
         event = after.data["decision_log"][-1]
         self.assertEqual((event["evidence"], event["policy_id"]), ("cascaded", out["policy_id"]))

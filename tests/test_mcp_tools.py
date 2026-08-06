@@ -139,10 +139,16 @@ class TestLedgerWrites(unittest.TestCase):
         self.assertFalse(hasattr(tools, "ledger_decide"))
         self.assertFalse(hasattr(tools, "ledger_accept"))
 
+    #: The fork these clustered pins pose. A policy may only write an outcome the pin's own question
+    #: offers (v0.12), so a cluster with no question is a cluster no policy can cascade over.
+    FORK = {"prompt": "Which layer is truth?",
+            "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
+
     def _cluster(self, n=3):
         for i, sev in enumerate(("low", "medium", "high")[:n]):
             tools.ledger_add_pin(self.ledger, kind="contract_mismatch", title=f"drift {i}",
                                  severity=sev, confidence="extracted", cluster_id="cl_shape",
+                                 question=self.FORK,
                                  provenance=[{"source": "recon", "detail": "shape diff"}])
 
     def test_a_catalog_offer_is_taken_verbatim_or_not_at_all(self):
@@ -160,7 +166,75 @@ class TestLedgerWrites(unittest.TestCase):
         policy = Ledger(self.ledger).data["policies"][-1]
         self.assertEqual(policy["rule"], offer["rule"])
         self.assertEqual(policy["applies_to"], offer["applies_to"])
+        self.assertEqual(policy["default_outcome"], offer["default_outcome"])
         self.assertEqual(out["evidence"], "transcribed")
+
+    def test_a_stated_default_that_no_option_carries_is_not_an_offer(self):
+        """v0.12. `nfrs` states a default naming four of its own options at once, so accepting it
+        would write a sentence as the outcome of a pin offering `validation | errors | ... `. It is
+        returned as stated-but-asked, and taking it by offer_id is refused with that reason — not
+        with silence that reads as "no default here"."""
+        self._cluster()
+        seeded = tools.interview_seed_policies(self.ledger)
+        asked = {o["cluster_id"] for o in seeded["no_default_outcome"]}
+        self.assertIn("cl_nfrs", asked)
+        self.assertNotIn("cl_nfrs", {o["cluster_id"] for o in seeded["offers"]})
+        with self.assertRaises(ValueError) as caught:
+            tools.record_policy(self.ledger, offer_id="cl_nfrs", human_answer="sure")
+        self.assertIn("no single one of its options carries it", str(caught.exception))
+
+    def test_a_policy_cannot_write_an_outcome_the_pin_never_offered(self):
+        """The blocker, at the door an agent actually reaches. `record_decision` refuses an
+        option_id the pin does not offer; `record_policy` wrote the caller's own sentence onto every
+        pin in the cluster. Reproduced verbatim from the review: an outcome no pin's question
+        offers, on pins that offer a closed set."""
+        for i in range(2):
+            tools.ledger_add_pin(self.ledger, kind="open_decision", title=f"datastore {i}",
+                                 severity="low", confidence="inferred", cluster_id="cl_data",
+                                 provenance=[{"source": "recon", "detail": "d"}],
+                                 question={"prompt": "Which datastore?",
+                                           "options": [{"id": "postgres", "label": "Postgres"},
+                                                       {"id": "mysql", "label": "MySQL"}]})
+        out = tools.record_policy(
+            self.ledger, rule="the agent's own sentence, never uttered by the user",
+            applies_to={"cluster_id": "cl_data"},
+            default_outcome="mongodb — an outcome no pin's question offers",
+            human_answer="whatever, you decide")
+        self.assertEqual(out["cascaded"], [], "nothing may be decided on an unoffered outcome")
+        self.assertEqual(out["not_offered"], ["pin_0001", "pin_0002"])
+        led = Ledger(self.ledger)
+        self.assertEqual(led.data["decision_log"], [], "no DecisionEvent may exist for it")
+        for pin in led.data["pins"]:
+            self.assertEqual(pin["state"], "needs_input")
+            self.assertEqual(pin["resolution_mode"], "asked")
+
+    def test_a_policy_reports_its_own_cascade_and_not_an_older_ones(self):
+        """The second finding. `record_policy` called `apply_policies()`, which re-ran every policy
+        in the ledger: recording pol_0002 returned pin_0002 — decided by pol_0001, over a pin added
+        after pol_0001 was elected — inside its own `cascaded` list."""
+        args = dict(question={"prompt": "Which layer is truth?",
+                              "options": [{"id": "db", "label": "the DB"},
+                                          {"id": "api", "label": "the API"}]},
+                    kind="contract_mismatch", severity="low", confidence="extracted",
+                    provenance=[{"source": "recon", "detail": "d"}])
+        tools.ledger_add_pin(self.ledger, title="one", cluster_id="cl_one", **args)
+        first = tools.record_policy(self.ledger, rule="A", applies_to={"cluster_id": "cl_one"},
+                                    default_outcome="db", human_answer="A")
+        self.assertEqual(first["cascaded"], ["pin_0001"])
+
+        tools.ledger_add_pin(self.ledger, title="two", cluster_id="cl_one", **args)   # found later
+        tools.ledger_add_pin(self.ledger, title="three", cluster_id="cl_two", **args)
+        second = tools.record_policy(self.ledger, rule="B", applies_to={"cluster_id": "cl_two"},
+                                     default_outcome="api", human_answer="B")
+
+        self.assertEqual(second["cascaded"], ["pin_0003"],
+                         "a policy reports what IT decided; pin_0002 belongs to no election")
+        led = Ledger(self.ledger)
+        self.assertEqual(led.pin("pin_0002")["state"], "needs_input",
+                         "accepting one policy must not cascade an older one over pins added since "
+                         "— nobody was shown them when they accepted it")
+        self.assertEqual([(e["pin_id"], e["policy_id"]) for e in led.data["decision_log"]],
+                         [("pin_0001", first["policy_id"]), ("pin_0003", second["policy_id"])])
 
     def test_the_preview_writes_nothing_and_matches_what_the_cascade_does(self):
         self._cluster()

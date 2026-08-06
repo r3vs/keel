@@ -343,6 +343,12 @@ CLUSTERED = {
     "kind": "contract_mismatch", "title": "role enum drift", "severity": "low",
     "confidence": "extracted", "provenance": [{"source": "recon", "detail": "shape diff"}],
     "cluster_id": "cl_shape", "as_is": {"db": "enum", "api": "string"},
+    # The fork the policy answers. A cascade may only write an outcome the pin's OWN question
+    # offers (v0.12), so these pins have to pose one — a cluster of question-less pins is not one
+    # decision, and no policy cascades over it.
+    "question": {"prompt": "Which layer is truth?",
+                 "options": [{"id": "db", "label": "the DB"},
+                             {"id": "api", "label": "the API"}]},
 }
 
 
@@ -413,6 +419,21 @@ class TestSettingAPolicyByElicitation(_Session):
         with open(path, encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["policies"], [], "a declined policy must not exist")
 
+    def test_the_message_shows_the_outcome_it_would_write(self):
+        """The blocker's other half. The message named the rule and the pin count and NOT the
+        `default_outcome` — the string stamped on every one of those pins — while the user answered
+        a two-value accept/decline and the write claimed the strongest rung there is. What a message
+        omits was not elected, whatever the write then claims."""
+        tmp = tempfile.mkdtemp()
+        path = _clustered_ledger(self, tmp)
+        self._request("tools/call", {"name": "ledger_record_policy", "arguments": {
+            "ledger": path, "rule": "keep the DB as the source of truth", "default_outcome": "db",
+            "applies_to": {"cluster_id": "cl_shape"}}})
+        message = self.elicited[-1]["message"]
+        self.assertIn("keep the DB as the source of truth", message)
+        self.assertIn("db", message.split("Outcome written on every pin it decides:", 1)[1],
+                      "the value that lands on every cascaded pin must be in front of the human")
+
 
 @NEEDS_UV
 class TestAcceptingAPolicyByElicitation(_Session):
@@ -437,6 +458,27 @@ class TestAcceptingAPolicyByElicitation(_Session):
         self.assertNotEqual(policy["human_answer"], "the caller's own words",
                             "the elicited answer must win over what the caller passed — otherwise "
                             "the strong rung is decoration")
+
+    def test_an_accepted_policy_still_cannot_decide_a_pin_that_never_offered_the_outcome(self):
+        """The blocker, over the wire, on the strongest rung — where it was found. The user accepts,
+        so `elicited` is earned; what it does not license is the OUTCOME, which the caller composed
+        and the pins never offered. Held back, not written."""
+        tmp = tempfile.mkdtemp()
+        path = _clustered_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_policy", "arguments": {
+            "ledger": path, "rule": "keep the DB as the source of truth",
+            "default_outcome": "DROP the api layer and regenerate from scratch",
+            "applies_to": {"cluster_id": "cl_shape"}}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["cascaded"], [])
+        self.assertEqual(out["not_offered"], ["pin_0001", "pin_0002"])
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        self.assertEqual(data["decision_log"], [],
+                         "an accepted RULE is not an accepted outcome for a pin that never "
+                         "offered it — the pins stay open and get asked")
+        self.assertEqual([p["state"] for p in data["pins"]], ["needs_input", "needs_input"])
 
 
 @NEEDS_UV

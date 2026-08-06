@@ -234,8 +234,8 @@ def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict
     says it offers the policies.
 
     It READS. That is not an oversight to be fixed later — `interview.default_policies` deliberately
-    writes nothing, and could not: a `Policy` in the ledger carries a `default_outcome` that
-    `apply_policies` then cascades into DecisionEvents over the whole medium/low tail, so writing one
+    writes nothing, and could not: a `Policy` in the ledger carries a `default_outcome` that the
+    cascade then writes into DecisionEvents over the whole medium/low tail, so writing one
     the human never elected would be an agent deciding at scale, through the one door this package
     holds shut. It seeds the *interview*, never the ledger. What the user elects is written by
     `record_policy`, and that door does exist — for one version it did not, and this docstring told
@@ -245,17 +245,25 @@ def interview_seed_policies(ledger: str, project_type: str = "web-saas") -> dict
     matcher the cascade itself runs. That is what the `ledger` argument is for: an offer put to a
     user without its blast radius is a rule with the interesting part missing, and a policy decides
     more pins than any single question does.
+
+    The second key, `no_default_outcome`, is the honest half (v0.12). A cascade may only write an
+    outcome the pin's own question offers, so a cluster whose stated default is not carried by any
+    of its own options cannot be offered as a policy — `nfrs` names four options at once, and
+    `delivery`'s default is conditional on the topology fork. Those clusters are returned here
+    rather than dropped: the catalog still states a default for them, and an agent that saw only
+    `offers` would read the silence as "this cluster has no default" instead of "this default has
+    to be asked".
     """
     import interview
     led = _open_existing(ledger)
-    offers = []
-    for offer in interview.default_policies(interview.load_catalog(), led, project_type=project_type):
-        offers.append({**offer, **led.policy_preview(offer["applies_to"])})
-    return {"offers": offers}
+    seeded = interview.default_policies(interview.load_catalog(), led, project_type=project_type)
+    offers = [{**offer, **led.policy_preview(offer["applies_to"], offer["default_outcome"])}
+              for offer in seeded["offers"]]
+    return {"offers": offers, "no_default_outcome": seeded["no_default_outcome"]}
 
 
 def policy_prompt(ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
-                  default_outcome=None, exceptions: list | None = None,
+                  default_outcome: str = "", exceptions: list | None = None,
                   project_type: str = "web-saas") -> dict:
     """The policy exactly as it would be set, and exactly what it would decide. Read-only.
 
@@ -270,6 +278,11 @@ def policy_prompt(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
         come from findings, not from a catalog). Then `rule`, `applies_to` and `default_outcome` are
         the caller's, and `record_policy` demands the user's words verbatim, because those words are
         the only thing the policy rests on.
+
+    Either way `default_outcome` is an **option id**, and the returned radius splits on whether each
+    matching pin's own question offers it (`not_offered`, v0.12). That is the half that used to be
+    missing on the freeform path: the caller's own sentence became the outcome of every pin in the
+    cluster, including pins whose question offered a closed set that did not contain it.
     """
     led = _open_existing(ledger)
     exceptions = [str(x) for x in (exceptions or [])]
@@ -278,14 +291,19 @@ def policy_prompt(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
 
     if offer_id:
         import interview
-        offers = {o["cluster_id"]: o for o in
-                  interview.default_policies(interview.load_catalog(), led, project_type=project_type)}
+        seeded = interview.default_policies(interview.load_catalog(), led,
+                                            project_type=project_type)
+        offers = {o["cluster_id"]: o for o in seeded["offers"]}
         offer = offers.get(offer_id)
         if offer is None:
+            stated = {o["cluster_id"] for o in seeded["no_default_outcome"]}
             raise ValueError(
                 f"{offer_id!r} is not an offer this catalog makes for project_type={project_type!r} "
                 f"({sorted(offers) or 'none'}). Read them with interview_seed_policies; a policy the "
                 f"user was never offered is one you invented."
+                + (f" That cluster does state a default, but no single one of its options carries "
+                   f"it, so it cannot be cascaded — ask it as a question." if offer_id in stated
+                   else "")
             )
         if rule or applies_to or default_outcome:
             raise ValueError(
@@ -303,35 +321,46 @@ def policy_prompt(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
                 "every one of them gets. Or pass offer_id to take a catalog offer verbatim."
             )
 
+    if not isinstance(default_outcome, str) or not default_outcome.strip():
+        raise ValueError(
+            "default_outcome must be the option id every cascaded pin gets — a non-empty string. "
+            "It is what lands in each DecisionEvent, and each pin's own question has to offer it; "
+            "a structured value is offered by no question, so it would decide nothing anywhere."
+        )
+
     return {"offer_id": offer_id, "rule": rule, "applies_to": applies_to,
             "default_outcome": default_outcome, "exceptions": exceptions,
-            **led.policy_preview(applies_to, exceptions)}
+            **led.policy_preview(applies_to, default_outcome, exceptions)}
 
 
 def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: dict | None = None,
-                  default_outcome=None, exceptions: list | None = None, human_answer: str = "",
+                  default_outcome: str = "", exceptions: list | None = None, human_answer: str = "",
                   evidence: str = "transcribed", project_type: str = "web-saas") -> dict:
     """Record a POLICY the human elected, and cascade it. This tool does not elect; it writes down
     what was elected — the same invariant `record_decision` holds, one level up.
 
     One level up is the point. A policy is an election over a whole cluster: it decides more than
     one pin, so it earns at least the discipline a single decision gets, not less. Until now it got
-    none — `Ledger.add_policy` and `apply_policies` existed with no surface on any host, while four
-    shipped passages told an agent that the user elects a policy and that it then cascades. Nothing
-    could perform either half.
+    less on the one axis that matters most — `record_decision` refuses an outcome the pin's own
+    question never offered, and this door wrote the caller's own sentence onto every pin in the
+    cluster regardless of what those pins offered.
 
     What is refused, so that this cannot be used to choose:
 
       * an `offer_id` the catalog does not make for this project type;
       * an offer restated in the caller's own words (see `policy_prompt`);
       * a policy with no rule, scope or outcome;
+      * an outcome that is not a non-empty string — it is an option id, not a payload;
       * an exception naming a pin that does not exist;
       * a `transcribed` policy with no quote — the same rule as a transcribed decision, and it bites
-        harder here, since one unquoted claim would carry a whole cluster.
+        harder here, since one unquoted claim would carry a whole cluster;
+      * and, per pin, the write itself: a pin whose own `question` does not offer this outcome is
+        HELD BACK (`not_offered`) and stays open, exactly as a blocker/high pin is. That is the
+        offered-options rule of `record_decision`, applied where it was missing.
 
     `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
-    user through the host — showing the rule AND the pins it would decide — and the agent never
-    carries the answer. See `mcp/server.py`.
+    user through the host — showing the rule, the OUTCOME it writes, and the pins it would decide —
+    and the agent never carries the answer. See `mcp/server.py`.
     """
     prompt = policy_prompt(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
                            project_type)
@@ -348,14 +377,21 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
                             default_outcome=prompt["default_outcome"],
                             exceptions=prompt["exceptions"],
                             evidence=evidence, human_answer=human_answer)
-    cascaded = led.apply_policies()
+    # Exactly this policy, once, over the radius its elector was shown. It used to call
+    # `apply_policies()`, which re-ran every policy in the ledger: the returned `cascaded` then
+    # listed pins an OLDER policy had just decided, and accepting one policy silently cascaded a
+    # previous one over pins added since it was elected — pins nobody was shown when they elected it.
+    radius = led.apply_policy(policy)
     led.save()
     _refresh_live_maps(ledger)
-    return {"policy_id": policy["id"], "rule": policy["rule"], "evidence": evidence,
-            # what THIS call decided. Every event it wrote carries evidence `cascaded` and points
-            # back at this policy by `policy_id` — none of them claims a relay nobody made.
-            "cascaded": [p["id"] for p in cascaded],
-            "held_back": prompt["held_back"], "excepted": prompt["excepted"]}
+    return {"policy_id": policy["id"], "rule": policy["rule"],
+            "default_outcome": policy["default_outcome"], "evidence": evidence,
+            # what THIS policy decided on THIS call. Every event it wrote carries evidence
+            # `cascaded` and points back at this policy by `policy_id` — none of them claims a relay
+            # nobody made, and none of them is another policy's work reported as this one's.
+            "cascaded": radius["would_decide"],
+            "held_back": radius["held_back"], "not_offered": radius["not_offered"],
+            "excepted": radius["excepted"], "already_settled": radius["already_settled"]}
 
 
 def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: int,

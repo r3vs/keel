@@ -73,6 +73,12 @@ rule, scope and outcome and quote the user, and the server asks the user itself 
 elicit. Preview the radius first (`policy_preview`); the cascaded decisions record
 `evidence: cascaded` and point back at the policy, so nothing later claims a relay nobody made.
 
+**Including the rule that matters most: `default_outcome` is an option id, and a pin gets it only if
+its own `question` offers it.** Pins that don't come back in `not_offered`, still open — ask them.
+That is the same check `ledger_record_decision` makes for one pin, and a policy decides more pins
+than one decision does, so it is not governed less. It cascades **once**, over the radius the user
+was shown; pins found later are asked, or covered by a policy elected with them in view.
+
 Use it. A pin that never reaches `decided` blocks its own remediation, its dependents, and the
 reopen loop — the analysis was done and none of it can land.
 

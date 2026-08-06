@@ -62,11 +62,19 @@ pre-decided with `evidence: "brief"` instead of asking again. It returns `create
 
 Then call `interview_seed_policies` for the catalog's per-cluster default policies. They are
 **offers**, not writes — Phase 2 opens with them and the user elects; nothing lands in the ledger
-until it does. Each offer arrives with `would_decide` / `held_back`: the pins accepting it would
-settle, and the blocker/high ones the threshold rule keeps as real questions. Carry that to Phase 2
-and put it in front of the user with the rule — what they accept is the radius. When they accept,
+until it does. Each offer arrives with `would_decide` / `held_back` / `not_offered`: the pins
+accepting it would settle, the blocker/high ones the threshold rule keeps as real questions, and any
+whose own question does not offer the outcome. Carry that to Phase 2
+and put it in front of the user with the rule **and the outcome it writes** — what they accept is
+the radius, not the sentence. When they accept,
 `ledger_record_policy` is what writes the `Policy` and cascades it; there is no other way for one to
 enter the ledger, so an offer agreed to in conversation compresses nothing.
+
+The call also returns `no_default_outcome`: clusters that state a default no single option of
+theirs carries (`nfrs` names four at once; `delivery`'s depends on the topology fork). Those are not
+offers and never cascade — a cascade may only write an outcome the pin's own question offers, so
+they are asked in Phase 2 like any other fork. Read the empty offer list for a pruned type as
+pruning, and this list as work.
 
 Also run the **threat-model** pass here (`references/threat-model.md`): STRIDE over the decided
 elements materializes security `open_decision`s, so security is designed in from Phase 1, not

@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.11). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.12). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -211,9 +211,9 @@ class TestEvidenceIsReachable(unittest.TestCase):
         led = make_ledger()
         pin = add_simple_pin(led, severity="low")
         pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
-                             default_outcome="db", evidence="transcribed",
+                             default_outcome="opt_a", evidence="transcribed",
                              human_answer="the DB wins unless I say otherwise")
-        led.apply_policies()
+        led.apply_policy(pol)
         event = led.data["decision_log"][-1]
         self.assertEqual(event["evidence"], "cascaded")
         self.assertEqual(event["policy_id"], pol["id"],
@@ -241,7 +241,7 @@ class TestEvidenceIsReachable(unittest.TestCase):
             led.decide(pin["id"], "opt_a", "r", "flip", human_answer="x", policy_id="pol_0001")
         with self.assertRaises(LedgerError):   # a policy is elected, never derived from a policy
             led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="r",
-                           default_outcome="db", evidence="cascaded")
+                           default_outcome="opt_a", evidence="cascaded")
 
 
 class TestThresholdAndPolicies(unittest.TestCase):
@@ -251,11 +251,10 @@ class TestThresholdAndPolicies(unittest.TestCase):
         led = make_ledger()
         low = add_simple_pin(led, severity="medium")
         high = add_simple_pin(led, severity="blocker")
-        led.add_policy(applies_to={"kind": "contract_mismatch"},
-                       rule="DB is source of truth by default",
-                       default_outcome={"canonical_layer": "db"})
-        decided = led.apply_policies()
-        self.assertEqual([p["id"] for p in decided], [low["id"]])
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"},
+                             rule="DB is source of truth by default",
+                             default_outcome="opt_a")
+        self.assertEqual(led.apply_policy(pol)["would_decide"], [low["id"]])
         self.assertEqual(low["state"], "decided")
         self.assertEqual(low["resolution_mode"], "policy_default")
         self.assertEqual(high["state"], "needs_input")            # never silent
@@ -265,8 +264,8 @@ class TestThresholdAndPolicies(unittest.TestCase):
         led = make_ledger()
         add_simple_pin(led, severity="low")
         pol = led.add_policy(applies_to={"kind": "contract_mismatch"},
-                             rule="DB wins", default_outcome="db")
-        led.apply_policies()
+                             rule="DB wins", default_outcome="opt_a")
+        led.apply_policy(pol)
         event = led.data["decision_log"][-1]
         self.assertEqual(event["source"], f"policy:{pol['id']}")   # user-originated, amplified
 
@@ -278,22 +277,101 @@ class TestThresholdAndPolicies(unittest.TestCase):
         med = add_simple_pin(led, severity="medium")
         high = add_simple_pin(led, severity="blocker")
         skip = add_simple_pin(led, severity="low")
-        preview = led.policy_preview({"kind": "contract_mismatch"}, exceptions=[skip["id"]])
+        preview = led.policy_preview({"kind": "contract_mismatch"}, "opt_a",
+                                     exceptions=[skip["id"]])
         self.assertEqual(preview["would_decide"], [low["id"], med["id"]])
         self.assertEqual(preview["held_back"], [high["id"]])
         self.assertEqual(preview["excepted"], [skip["id"]])
-        led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
-                       default_outcome="db", exceptions=[skip["id"]],
-                       human_answer="db wins")
-        self.assertEqual([p["id"] for p in led.apply_policies()], preview["would_decide"])
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
+                             default_outcome="opt_a", exceptions=[skip["id"]],
+                             human_answer="db wins")
+        self.assertEqual(led.apply_policy(pol)["would_decide"], preview["would_decide"])
 
     def test_policy_exceptions_stay_asked(self):
         led = make_ledger()
         pin = add_simple_pin(led, severity="low")
-        led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
-                       default_outcome="db", exceptions=[pin["id"]])
-        self.assertEqual(led.apply_policies(), [])
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
+                             default_outcome="opt_a", exceptions=[pin["id"]])
+        self.assertEqual(led.apply_policy(pol)["would_decide"], [])
         self.assertEqual(pin["state"], "needs_input")
+
+    def test_a_policy_may_not_write_an_outcome_the_pin_never_offered(self):
+        """v0.12, the blocker. `record_decision` has always refused an outcome the pin's own
+        `question` does not offer; the cascade did not, so a policy — which decides MANY pins —
+        was governed less than a single decision. Reproduced by two independent reviewers over
+        real stdio and through the pure layer: an agent-authored sentence landed as the outcome of
+        pins whose question offered a closed set that did not contain it."""
+        led = make_ledger()
+        offers = add_simple_pin(led, severity="low")
+        other = add_simple_pin(led, severity="low",
+                               question={"prompt": "Which datastore?",
+                                         "options": [{"id": "postgres", "label": "Postgres"},
+                                                     {"id": "mysql", "label": "MySQL"}]})
+        mute = add_simple_pin(led, severity="low", question=None)
+
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="the DB is truth",
+                             default_outcome="opt_a", human_answer="the DB wins")
+        radius = led.apply_policy(pol)
+        self.assertEqual(radius["would_decide"], [offers["id"]])
+        self.assertEqual(radius["not_offered"], [other["id"], mute["id"]],
+                         "a pin whose own question does not offer the outcome — or poses no "
+                         "question at all — must be held back, not decided on a value nobody "
+                         "offered it")
+        self.assertEqual(other["state"], "needs_input")
+        self.assertEqual(other["resolution_mode"], "asked")
+        self.assertEqual(mute["state"], "detected")
+        self.assertEqual([e["pin_id"] for e in led.data["decision_log"]], [offers["id"]])
+
+    def test_freeform_does_not_widen_what_a_policy_may_write(self):
+        """`allow_freeform` legitimizes an unlisted outcome on the single-pin path because there
+        the human's own words ARE the outcome. A policy outcome is one sentence elected over a
+        cluster and is nobody's words on this pin, so reading the flag as 'anything may cascade
+        here' would reopen the hole on every pin that carries a freeform escape — which is every
+        pin the greenfield catalog creates."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="low")            # allow_freeform: True
+        self.assertTrue(pin["question"]["allow_freeform"])
+        pol = led.add_policy(applies_to={"kind": "contract_mismatch"},
+                             rule="mongo everywhere", default_outcome="mongodb",
+                             human_answer="mongo everywhere")
+        self.assertEqual(led.apply_policy(pol)["not_offered"], [pin["id"]])
+        self.assertEqual(led.data["decision_log"], [])
+
+    def test_a_policy_outcome_is_an_option_id_not_a_payload(self):
+        """It was `Any`, and the cascade JSON-encoded anything else into the event's `outcome` — a
+        blob no question can offer, so it would now hold back every pin it was meant to decide.
+        Refused at the door, where the message can say so."""
+        led = make_ledger()
+        add_simple_pin(led, severity="low")
+        for bad in ({"canonical_layer": "db"}, "", "   ", None):
+            with self.subTest(default_outcome=bad), self.assertRaises(LedgerError):
+                led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="r",
+                               default_outcome=bad, human_answer="x")
+
+    def test_a_policy_cascades_once_over_the_radius_its_elector_saw(self):
+        """v0.12. `apply_policies()` re-ran EVERY policy on every call. Settled pins are skipped,
+        so the only pins a re-run could touch were pins added since an election — precisely the ones
+        that policy's elector was never shown. It also made the report false: recording pol_0002
+        returned the pins pol_0001 had just decided as its own."""
+        led = make_ledger()
+        first = add_simple_pin(led, severity="low", cluster_id="cl_one")
+        pol1 = led.add_policy(applies_to={"cluster_id": "cl_one"}, rule="A",
+                              default_outcome="opt_a", human_answer="A")
+        self.assertEqual(led.apply_policy(pol1)["would_decide"], [first["id"]])
+
+        later = add_simple_pin(led, severity="low", cluster_id="cl_one")   # found AFTER the election
+        second = add_simple_pin(led, severity="low", cluster_id="cl_two")
+        pol2 = led.add_policy(applies_to={"cluster_id": "cl_two"}, rule="B",
+                              default_outcome="opt_b", human_answer="B")
+        radius = led.apply_policy(pol2)
+
+        self.assertEqual(radius["would_decide"], [second["id"]],
+                         "a policy must report what IT decided — not what an earlier one did")
+        self.assertEqual(later["state"], "needs_input",
+                         "a pin created after an election was not in the radius the user accepted; "
+                         "deciding it here would cascade a rule over pins nobody was shown")
+        self.assertEqual([(e["pin_id"], e["outcome"]) for e in led.data["decision_log"]],
+                         [(first["id"], "opt_a"), (second["id"], "opt_b")])
 
     def test_resolution_mode_threshold(self):
         led = make_ledger()

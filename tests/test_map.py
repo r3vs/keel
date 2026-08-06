@@ -141,8 +141,9 @@ class TestDecisionEvidenceIsInlined(unittest.TestCase):
         pin = led.data["pins"][0]
         pin["severity"] = "low"                      # blocker|high is held back by the threshold
         pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="the DB is truth",
-                             default_outcome="db", human_answer="db wins unless I flag one")
-        led.apply_policies()
+                             default_outcome="a",   # the id this pin's own question offers (v0.12)
+                             human_answer="db wins unless I flag one")
+        led.apply_policy(pol)
         payload = json.loads(mapmod.render(led.data, title="cascaded").split("const LEDGER =", 1)[1]
                              .split(";\n", 1)[0].replace("<\\/", "</"))
         event = next(e for e in payload["decision_log"] if e["id"] == pin["decision"]["event_id"])

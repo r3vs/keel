@@ -93,26 +93,48 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
             "id_map": id_map}
 
 
-def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> list[dict]:
+def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> dict:
     """The catalog's per-cluster default policies become the interview's opening policy offers.
     Each, if the user accepts it, auto-resolves the low-severity tail of that cluster (the funnel's
     policy step). Not applied here — offered; the user elects (`mcp:ledger_record_policy`).
 
     `default_outcome` is stated on the offer, not derived downstream, and for a catalog offer it is
-    the rule itself: the catalog's prescription is exactly what gets written as the outcome of every
-    pin the policy cascades over. Saying it here means the user is shown the words that will land in
-    the ledger, and the write tool copies the offer instead of composing one.
+    the cluster's `default_policy_outcome`: **one of that cluster's own option ids**, so the value
+    the offer promises is a value the pins it would decide actually offer. It used to be the
+    `default_policy` sentence itself, which meant accepting the persistence offer wrote *"one
+    relational datastore until a concrete need proves otherwise; schema-first"* as the outcome of a
+    pin whose question offered `relational | document | kv | none` — prose no downstream reader can
+    consume, and an outcome nobody was ever offered.
+
+    Returns both halves, because the second is not an empty set (v0.12):
+
+      * `offers` — clusters whose stated default IS one of their options. Electable, cascadable.
+      * `no_default_outcome` — clusters that state a default no single option carries: `nfrs` names
+        four at once, `delivery`'s is conditional on the topology fork, `outcomes` has no options to
+        name. They are returned rather than dropped, so a reader can tell "this default must be
+        asked" from "this cluster has no default", and so the catalog doc and this function cannot
+        quietly disagree about which clusters state one.
     """
-    offers = []
+    offers, no_outcome = [], []
     for cluster in catalog["clusters"]:
         if project_type in cluster.get("prune_for", []):
             continue
-        if cluster.get("default_policy"):
-            offers.append({"cluster_id": f"cl_{cluster['id']}",
+        if not cluster.get("default_policy"):
+            continue
+        cid = f"cl_{cluster['id']}"
+        outcome = cluster.get("default_policy_outcome")
+        if outcome:
+            offers.append({"cluster_id": cid,
                            "rule": cluster["default_policy"],
-                           "default_outcome": cluster["default_policy"],
-                           "applies_to": {"cluster_id": f"cl_{cluster['id']}"}})
-    return offers
+                           "default_outcome": outcome,
+                           "applies_to": {"cluster_id": cid}})
+        else:
+            no_outcome.append({"cluster_id": cid,
+                               "rule": cluster["default_policy"],
+                               "reason": "no single option of this cluster carries that default, "
+                                         "and a cascade may only write an outcome the pin's own "
+                                         "question offers — ask this one"})
+    return {"offers": offers, "no_default_outcome": no_outcome}
 
 
 def funnel(ledger) -> dict:

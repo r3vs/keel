@@ -129,13 +129,25 @@ whether a human can see it.
 > ADDED four passages telling an agent the user elects a policy and that it then cascades. Exactly
 > the class this section is about, in the commit that closed the class. The door is now
 > `mcp:ledger_record_policy` (+ read-only `mcp:policy_preview`), built on `record_decision`'s shape.
-> The second finding was its consequence: `apply_policies` called `decide()` with no `evidence`, so
+> The second finding was its consequence: the cascade called `decide()` with no `evidence`, so
 > a user's own cascaded policy rendered as *"an agent relayed what the user said — ⚠ relayed with no
 > quote"* on all three of gap 1's surfaces. A cascade now has its own rung (`cascaded`, spec v0.11)
 > and names its policy by `policy_id`. Lesson worth keeping: **a new tool is not the deliverable —
 > the reachable state transition is.** `check_tool_carriers.py` would have caught the unnamed tool;
 > it cannot catch a tool that was never written, so the question to ask of any prose is not "does a
 > tool exist for this" but "name the tool that performs it, and run it".
+>
+> **And THAT opened one, closed 2026-08-06 (spec v0.12).** Both reviewers found it independently,
+> each by running the new door rather than reading it. The door governed *who* answered — quote,
+> offer taken verbatim, elicitation, rung — and not *what could be written*: `record_decision`
+> refuses an outcome the pin's own `question` never offered, and the policy path wrote the caller's
+> own sentence onto every pin in the cluster, on the strongest rung, with the outcome absent from
+> the message the human accepted. The same shape a third time: **a new surface arrived without the
+> invariant that governed the old one.** Now an outcome lands on a pin only if that pin's question
+> offers it (`not_offered` holds the rest back), `default_outcome` is an option id, the elicitation
+> names the outcome, and the cascade runs once over the radius its elector saw. The question to ask
+> of any new write door is not "is it guarded" but "name every invariant the OLD door enforced, and
+> check each at this one".
 
 The class was closed, not just the instance. Rescue's phase-2 names `mcp:ledger_record_decision` as
 the commit step with the four things it enforces; greenfield's phase-2 says what actually happens as

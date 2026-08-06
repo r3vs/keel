@@ -47,7 +47,7 @@ holds no state of its own; it projects this file.
 |---|---|---|
 | `ledger_summary` | counts of pins by state, kind and severity | — |
 | `interview_next` | the open questions, best-first by information gain | — |
-| `policy_preview` | what a policy **would** decide across its cluster, before anyone sets it | — |
+| `policy_preview` | what a policy **would** decide across its cluster, before anyone sets it (and which pins it may not: `not_offered`) | — |
 | `ledger_add_pin` | record a finding / defect / `open_decision` | ✎ |
 | `ledger_record_decision` | record the election the **human** made — refuses an outcome the pin never offered, and a relay with no quote | ✎ |
 | `ledger_record_policy` | record a **policy** the human elected for a whole cluster, then cascade it (`evidence: cascaded`) | ✎ |

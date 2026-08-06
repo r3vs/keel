@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.11). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.12). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -20,7 +20,10 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   classes) used by the challenger's premortem *before* the work and by `label_failure` *after*
   it, so "what we feared" and "what happened" are comparable instead of two prose piles;
 - v0.11 `cascaded` — a policy-cascaded DecisionEvent names its own rung and the `Policy` that
-  produced it, instead of taking the `transcribed` default and claiming a relay nobody made.
+  produced it, instead of taking the `transcribed` default and claiming a relay nobody made;
+- v0.12 the cascade is held to the offered-options rule the single-pin door already held: a pin
+  whose own `question` does not offer the policy's `default_outcome` is held back, not decided on
+  a value nobody offered it — and a policy cascades ONCE, over the radius its elector was shown.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -33,7 +36,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.11"
+SCHEMA_VERSION = "0.12"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -44,7 +47,7 @@ SCHEMA_VERSION = "0.11"
 # not follow, so every ledger on disk from that period says "0.9". That drift was not cosmetic —
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
-READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11")
+READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12")
 
 KINDS = {
     "contract_mismatch",
@@ -363,7 +366,7 @@ class Ledger:
         known. Only the elicitation path may pass `elicited`, and it is the only caller that does.
 
         `cascaded` and a `policy:` source imply each other, checked both ways. Before v0.11 a cascade
-        took the `transcribed` default, so `apply_policies` wrote "an agent relayed what the user
+        took the `transcribed` default, so `apply_policy` wrote "an agent relayed what the user
         said" onto a decision nobody relayed, and every surface repeated it. The alternative — each
         surface sniffing `source` for a `policy:` prefix — is string-parsing where an explicit field
         is available, which this package forbids elsewhere and would not survive here either.
@@ -515,7 +518,7 @@ class Ledger:
 
     # -- policies (v0.3: user decisions, amplified) ---------------------------
 
-    def add_policy(self, applies_to: dict, rule: str, default_outcome: Any,
+    def add_policy(self, applies_to: dict, rule: str, default_outcome: str,
                    exceptions: Optional[list[str]] = None,
                    evidence: str = "transcribed", human_answer: str = "") -> dict:
         """Record a policy the HUMAN elected. `evidence`/`human_answer` say how that election
@@ -526,9 +529,18 @@ class Ledger:
         travelled once, at this election, and every event it produces points back here by
         `policy_id`. Quoting is enforced one layer out, in `mcp/tools.py::record_policy`, for the
         same reason it is for `decide` — that is the only boundary an agent can reach.
+
+        v0.12: `default_outcome` is an **option id**, and so a non-empty string. It used to be
+        `Any`, and the cascade JSON-encoded anything else into the event's `outcome` — a blob no
+        pin's question could ever have offered, which under the offered-options rule below would
+        hold back every pin the policy was elected to decide. Refusing it here says that plainly
+        instead of letting it look like a policy that decides nothing.
         """
         _require(evidence in POLICY_EVIDENCE,
                  f"policy evidence must be one of {POLICY_EVIDENCE}; got {evidence!r}")
+        _require(isinstance(default_outcome, str) and default_outcome.strip(),
+                 "default_outcome must be the option id each cascaded pin's own question offers — "
+                 f"a non-empty string, not {type(default_outcome).__name__}")
         policy = {
             "id": self._next_id("pol_", self.data["policies"]),
             "applies_to": applies_to,
@@ -543,19 +555,49 @@ class Ledger:
         self.data["policies"].append(policy)
         return policy
 
-    def policy_preview(self, applies_to: dict, exceptions: Optional[list[str]] = None) -> dict:
-        """What a policy with this scope WOULD do, without doing it. Read-only.
+    @staticmethod
+    def question_offers(pin: dict, outcome: str) -> bool:
+        """Does THIS pin's own `question` offer this outcome? (v0.12)
+
+        The carrier is `question.options[].id`, compared by equality — the same field
+        `mcp/tools.py::record_decision` checks on the single-pin door, so both doors admit exactly
+        the same set of outcomes for a given pin. Two things deliberately do NOT widen it:
+
+          * **labels.** A label is prose written for a human to read; the id is what gets written.
+          * **`allow_freeform`.** Freeform is legitimate on the single-pin path because there the
+            human's own words ARE the outcome. A policy outcome is by construction not this pin's
+            human's words — it is one sentence elected over a cluster — so reading `allow_freeform`
+            as "any outcome may be cascaded here" would reopen the hole this closes, on every pin
+            whose question happens to carry a freeform escape.
+
+        A pin with no question offers nothing, which is the same answer `decision_prompt` already
+        gives: a pin that poses no fork cannot be decided through the fork it does not pose.
+        """
+        return any(o.get("id") == outcome
+                   for o in ((pin.get("question") or {}).get("options") or []))
+
+    def policy_preview(self, applies_to: dict, default_outcome: str,
+                       exceptions: Optional[list[str]] = None) -> dict:
+        """What a policy with this scope and this outcome WOULD do, without doing it. Read-only.
 
         A policy is an election over a cluster, so the thing a human is being asked to elect is a
         blast radius — and it must be showable before the write, not discoverable after it. Same
         split as `decision_prompt` / `record_decision`: the thing that asks runs without the power
         to write.
 
-        `apply_policies` calls this and cascades over exactly `would_decide`, so the preview cannot
+        `apply_policy` calls this and cascades over exactly `would_decide`, so the preview cannot
         drift from the cascade — one matcher, two callers.
+
+        `default_outcome` is a parameter and not optional (v0.12) because a pin is admitted to the
+        cascade only if **its own question offers that outcome**; a preview computed without it
+        would be a radius for a different policy than the one being elected. Pins that match the
+        scope but do not offer it land in `not_offered` and stay open — held back exactly as
+        `blocker`/`high` pins are, for a different reason that is named separately rather than
+        merged into one bucket a reader cannot act on.
         """
         excepted_ids = set(exceptions or [])
-        out: dict = {"would_decide": [], "held_back": [], "excepted": [], "already_settled": []}
+        out: dict = {"would_decide": [], "held_back": [], "not_offered": [],
+                     "excepted": [], "already_settled": []}
         for pin in self.data["pins"]:
             if not all(pin.get(k) == v for k, v in applies_to.items()):
                 continue
@@ -565,39 +607,54 @@ class Ledger:
                 out["excepted"].append(pin["id"])
             elif pin["severity"] in _NEVER_SILENT:
                 out["held_back"].append(pin["id"])       # threshold rule — never silent
+            elif not self.question_offers(pin, default_outcome):
+                out["not_offered"].append(pin["id"])     # offered-options rule — never invented
             else:
                 out["would_decide"].append(pin["id"])
         return out
 
-    def apply_policies(self) -> list[dict]:
-        """Cascade user-set policies over matching pins.
+    def apply_policy(self, policy: dict) -> dict:
+        """Cascade ONE policy — the one just elected — and report exactly what it did.
 
         Threshold rule (v0.3): blocker|high pins are never auto-resolved — they stay
         `asked` even when a policy matches; medium|low resolve as `policy_default`
         with a DecisionEvent whose source names the policy (user-originated, amplified)
         and whose rung is `cascaded` (v0.11), pointing back at the election by `policy_id`.
+
+        Offered-options rule (v0.12): a matching pin whose own `question` does not offer
+        `default_outcome` is held back too. The single-pin door has always refused an outcome the
+        pin's question never offered; a policy decides MORE pins than a single decision does, so it
+        cannot be governed less.
+
+        One policy, not all of them (v0.12). This used to be `apply_policies()`, which re-ran every
+        policy in the ledger on every call. Already-settled pins are skipped, so the only pins a
+        re-run could ever touch were pins added SINCE that policy was elected — precisely the ones
+        its elector was never shown. It also made the caller's report false: recording pol_0002
+        returned the pins pol_0001 had just cascaded over as its own. What a human elects is the
+        radius they were shown, so the cascade happens once, here, over that radius; pins that
+        appear later are asked, or covered by a policy elected with them in view.
+
+        Returns the radius it just applied — the same shape `policy_preview` returns, and by
+        construction the same values, since it is that call.
         """
-        decided = []
-        for policy in self.data["policies"]:
-            preview = self.policy_preview(policy["applies_to"], policy["exceptions"])
-            for pin_id in preview["held_back"]:
-                self.pin(pin_id)["resolution_mode"] = "asked"  # top of the review batch, never silent
-            for pin_id in preview["would_decide"]:
-                pin = self.pin(pin_id)
-                self.decide(
-                    pin_id,
-                    outcome=json.dumps(policy["default_outcome"], ensure_ascii=False)
-                    if not isinstance(policy["default_outcome"], str)
-                    else policy["default_outcome"],
-                    rationale=policy["rule"],
-                    flip_criteria=f"an exception to policy {policy['id']} surfaces",
-                    source=f"policy:{policy['id']}",
-                    evidence="cascaded",
-                    policy_id=policy["id"],
-                )
-                pin["resolution_mode"] = "policy_default"
-                decided.append(pin)
-        return decided
+        radius = self.policy_preview(policy["applies_to"], policy["default_outcome"],
+                                     policy["exceptions"])
+        # never silent, for either reason: both stay open and go to the top of the review batch
+        for pin_id in radius["held_back"] + radius["not_offered"]:
+            self.pin(pin_id)["resolution_mode"] = "asked"
+        for pin_id in radius["would_decide"]:
+            pin = self.pin(pin_id)
+            self.decide(
+                pin_id,
+                outcome=policy["default_outcome"],
+                rationale=policy["rule"],
+                flip_criteria=f"an exception to policy {policy['id']} surfaces",
+                source=f"policy:{policy['id']}",
+                evidence="cascaded",
+                policy_id=policy["id"],
+            )
+            pin["resolution_mode"] = "policy_default"
+        return radius
 
     def assign_resolution_modes(self) -> None:
         """v0.3 funnel: blocker|high → asked; the medium|low long tail may batch."""

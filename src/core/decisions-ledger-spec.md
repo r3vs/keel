@@ -1,4 +1,4 @@
-# Decisions Ledger — Spec v0.11
+# Decisions Ledger — Spec v0.12
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -237,15 +237,15 @@ A category rule the user sets in the interview that auto-resolves matching pins.
 { "id": "pol_schema_truth",
   "applies_to": { "kind": "contract_mismatch" },
   "rule": "DB is the source of truth by default",
-  "default_outcome": { "canonical_layer": "db" },
+  "default_outcome": "db",            // v0.12 — an OPTION ID, offered by the pins it decides
   "set_by": "interview",
   "evidence": "transcribed",          // v0.11 — elicited | transcribed | brief; how the user elected it
   "human_answer": "the DB wins unless I say otherwise",  // required when transcribed, verbatim
   "exceptions": ["pin_0042"] }        // excluded pins that stay `asked`
 ```
-When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "policy:<id>"` pointing back to the user's choice: it stays a **user-originated** decision, only amplified. Neutrality holds (the brainstorm still commits nothing).
+When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "policy:<id>"` pointing back to the user's choice: it stays a **user-originated** decision, only amplified. Neutrality holds (the brainstorm still commits nothing). It cascades over a pin only if that pin's own `question` offers `default_outcome` (v0.12, below); the others are held back and stay `asked`.
 
-**Elected through `mcp:ledger_record_policy`, which cannot elect one.** A policy decides a whole cluster, so it is held to the discipline a single decision gets and not less: a catalog offer is taken verbatim (`mcp:interview_seed_policies` is what offers them, with the pins each would decide), a policy the offers did not contain must state its rule, scope and outcome and quote the user, and a relayed policy with no quote is refused. Where the host can elicit, the server shows the rule *and* the blast radius and writes only on acceptance. `evidence` on the `Policy` records which of those happened — the same axis as on a `DecisionEvent`, and it belongs here because this is where the human actually answered.
+**Elected through `mcp:ledger_record_policy`, which cannot elect one.** A policy decides a whole cluster, so it is held to the discipline a single decision gets and not less: a catalog offer is taken verbatim (`mcp:interview_seed_policies` is what offers them, with the pins each would decide), a policy the offers did not contain must state its rule, scope and outcome and quote the user, and a relayed policy with no quote is refused. Where the host can elicit, the server shows the rule, the outcome it writes *and* the blast radius, and writes only on acceptance. `evidence` on the `Policy` records which of those happened — the same axis as on a `DecisionEvent`, and it belongs here because this is where the human actually answered.
 
 ### `evidence` — how the human's answer reached the log (v0.10)
 
@@ -254,7 +254,7 @@ When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "
 - **`elicited`** — the MCP server asked the user through the host and wrote the reply itself (`mcp:ledger_record_decision` on a client that declares the elicitation capability). The agent never held the value, so it could not have invented it.
 - **`transcribed`** — an agent relayed what the user said. `human_answer` carries the words verbatim, and is **required**: without a quote, an honest relay and a fabricated one are the same line in the ledger.
 - **`brief`** — settled in the project brief at frame time; the brief is the evidence.
-- **`cascaded`** (v0.11) — derived from a `Policy` the user elected. The answer reached the log once, at the policy election; this event amplifies it, and `policy_id` names the `Policy` that carries the rung and the quote. Its failure mode is neither invention nor mis-relay but **fit**: the rule may not suit this pin. Written by `apply_policies` and by nothing else — `cascaded` and a `policy:` source imply each other, checked both ways.
+- **`cascaded`** (v0.11) — derived from a `Policy` the user elected. The answer reached the log once, at the policy election; this event amplifies it, and `policy_id` names the `Policy` that carries the rung and the quote. Its failure mode is neither invention nor mis-relay but **fit**: the rule may not suit this pin. Written by `Ledger.apply_policy` and by nothing else — `cascaded` and a `policy:` source imply each other, checked both ways.
 
 It defaults to `transcribed`, the weaker rung, on purpose: a writer that says nothing has not earned the stronger claim, and understating what is known is the safe direction to be wrong in. That default is also why `cascaded` had to become its own rung: a cascade took it, so the log said "an agent relayed what the user said" about a decision nobody relayed, and all three surfaces repeated it faithfully. The alternative — every surface testing `source` for a `policy:` prefix — is string-parsing where an explicit field is available.
 
@@ -670,3 +670,19 @@ The door is `mcp:ledger_record_policy`, built on the same invariant as `mcp:ledg
 So a cascade gets its own rung, `cascaded`, and its own pointer, `policy_id`. This is not a fourth flavour of "weak": *how the human's answer reached the log* is genuinely different here — it reached it once, at the policy election, and this event is derived from that — and the derived failure mode is **fit**, not invention. The rejected alternative was to leave the default and have each surface test `source` for a `policy:` prefix: string-parsing where an explicit field is available, in a package whose own rule is to anchor on the carrier.
 
 `evidence` and `human_answer` move onto the `Policy` itself for the same reason: that is where the human actually answered, so that is where the rung belongs, and every cascaded event points back at it rather than restating a quote nobody gave *here*.
+
+---
+
+## v0.12 — The cascade is held to the rule the single decision was already held to
+
+v0.11 gave the policy election a door. The door wrote through a gap: **`record_decision` refuses an outcome the pin's own `question` never offered, and the policy path did not.** A caller could pass `default_outcome` in its own words and it landed as the `outcome` of every matching pin — including pins whose question offered a closed set that did not contain it. Reproduced both ways before the fix: over real stdio, an elicited policy stamped *"DROP the api layer and regenerate from scratch"* onto two pins offering `db | api`; through the pure layer, `default_outcome="mongodb"` onto pins offering `postgres | mysql`. Both landed. The single-pin door refuses exactly that.
+
+**The rule, and it is the whole of it: an outcome may be written onto a pin only if that pin's own `question` offers it.** The carrier is `question.options[].id`, compared by equality — the same field the single-pin door checks, so both doors admit the same set for a given pin. Labels do not count (prose for a human) and `allow_freeform` does not widen it (freeform is legitimate where the human's own words ARE that pin's outcome; a policy outcome is one sentence elected over a cluster, and is nobody's words *here*). A pin that does not offer it is **held back** — a new `not_offered` bucket beside `held_back`, both leaving the pin `asked`. Two different reasons to refuse a silent default, named separately because "why is this pin still open" is a question a reader has to be able to answer.
+
+So `default_outcome` is an **option id** and therefore a non-empty string. It was `Any`, and the cascade JSON-encoded anything else into the event: a blob no question could offer, which under this rule would decide nothing anywhere. Refusing it says that at the door instead of at every pin.
+
+**And the elicitation shows it.** The message put to the human was `Set this policy?` + the rule + the pin count, answered with a two-value accept/decline — the outcome string appeared nowhere in it, while the write claimed the strongest rung there is. What a message omits was not elected, whatever the write then claims. It now names the rule, the outcome it writes, and both held-back sets. `record_decision`'s message was re-checked against the same standard and passes for a structural reason worth keeping: each choice *leads* with the option id, and the option id is exactly what is written, so the outcome cannot go missing without the choice going missing.
+
+**The greenfield catalog path was the same defect wearing a legitimate face.** An offer's `default_outcome` was the `default_policy` sentence itself, so accepting the persistence offer would write *"one relational datastore until a concrete need proves otherwise; schema-first"* as the outcome of a pin whose question offered `relational | document | kv | none`. The user *was* shown that sentence — as a **rule** — and no pin ever offered it as an outcome. A cluster now declares `default_policy_outcome`, one of its own option ids, and only those clusters make offers. Six do; six state a default that no single option carries (`nfrs` names four at once, `delivery`'s is conditional on the topology fork, `outcomes` has no options) and come back under `no_default_outcome` instead of being dropped, so "this default must be asked" cannot be misread as "this cluster has no default".
+
+**One policy, once, over the radius its elector was shown.** `apply_policies()` re-ran every policy in the ledger on every call, so recording `pol_0002` returned pins `pol_0001` had decided as its own, and accepting any policy silently cascaded every older one over pins added since. Settled pins are skipped, so the only pins a re-run could ever touch were pins created *after* an election — precisely the ones its elector was never shown. It is now `apply_policy(policy)`: the cascade happens at the election, over that radius, and pins that appear later are asked or covered by a policy elected with them in view. The returned shape says what happened, per policy: `cascaded` (this policy, this call), `held_back`, `not_offered`, `excepted`, `already_settled`.

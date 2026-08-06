@@ -124,10 +124,52 @@ class TestFunnel(unittest.TestCase):
     def test_default_policies_offered_per_surviving_cluster(self):
         led = fresh_ledger()
         interview.expand_catalog(led, self.cat, project_type="cli")
-        offers = interview.default_policies(self.cat, led, project_type="cli")
-        offer_ids = {o["cluster_id"] for o in offers}
-        self.assertIn("cl_domain", offer_ids)
-        self.assertNotIn("cl_client", offer_ids)   # pruned cluster offers no policy
+        seeded = interview.default_policies(self.cat, led, project_type="cli")
+        stated = {o["cluster_id"] for o in seeded["offers"] + seeded["no_default_outcome"]}
+        self.assertIn("cl_domain", stated)
+        self.assertNotIn("cl_client", stated)   # pruned cluster offers no policy
+
+    def test_an_offer_promises_an_outcome_its_own_pins_offer(self):
+        """v0.12. An offer's `default_outcome` used to be the `default_policy` SENTENCE, so
+        accepting the persistence offer would have written "one relational datastore until a
+        concrete need proves otherwise; schema-first" as the outcome of a pin whose question offered
+        `relational | document | kv | none`. The user was shown that sentence as a RULE; no pin ever
+        offered it as an outcome. Verified where it lands: against the pins the offer would decide."""
+        led = fresh_ledger()
+        interview.expand_catalog(led, self.cat, project_type="web-saas")
+        seeded = interview.default_policies(self.cat, led, project_type="web-saas")
+        self.assertTrue(seeded["offers"])
+        for offer in seeded["offers"]:
+            radius = led.policy_preview(offer["applies_to"], offer["default_outcome"])
+            with self.subTest(offer=offer["cluster_id"]):
+                self.assertEqual(radius["not_offered"], [],
+                                 "every pin this offer covers must OFFER the outcome accepting it "
+                                 "would write — otherwise the offer promises a cascade that holds "
+                                 "back the very pins it was made for")
+                self.assertTrue(radius["would_decide"] or radius["held_back"],
+                                "an offer that reaches no pin at all is a rule about nothing")
+
+    def test_a_cluster_that_states_a_default_is_never_silently_dropped(self):
+        """The two lists partition the clusters that state a default: `nfrs` names four options in
+        one sentence and `delivery`'s is conditional on the topology fork, so neither is offerable —
+        but reading their absence as "no default here" is how a stated default disappears."""
+        led = fresh_ledger()
+        interview.expand_catalog(led, self.cat, project_type="web-saas")
+        seeded = interview.default_policies(self.cat, led, project_type="web-saas")
+        stated = {f"cl_{c['id']}" for c in self.cat["clusters"]
+                  if c.get("default_policy") and "web-saas" not in c.get("prune_for", [])}
+        offered = {o["cluster_id"] for o in seeded["offers"]}
+        asked = {o["cluster_id"] for o in seeded["no_default_outcome"]}
+        self.assertEqual(offered | asked, stated)
+        self.assertEqual(offered & asked, set())
+        for cluster in self.cat["clusters"]:
+            outcome = cluster.get("default_policy_outcome")
+            if outcome:
+                with self.subTest(cluster=cluster["id"]):
+                    self.assertIn(outcome, [o["id"] for o in cluster.get("options", [])],
+                                  "a declared default outcome must be one of the cluster's own "
+                                  "option ids — that is the whole reason it is declared separately "
+                                  "from the rule sentence")
 
 
 if __name__ == "__main__":
