@@ -87,6 +87,13 @@ Each decision records the rung its answer travelled on — `elicited` / `transcr
   records `transcribed`, so this line told the user that N of their decisions had been relayed by an
   agent when a policy they elected themselves had decided them. The clauses are only worth their
   bytes if each one is true of the ledger it is generated from.
+
+  v0.15 adds one sentence for the **standing rules** the region already lists, on the same two
+  counts and under the same rule (present only when a rule is actually weak). A `Policy` is an
+  election over a whole cluster and is what every `cascaded` decision derives from, so weighing the
+  cascade while saying nothing about the election behind it weighs the wrong end. It is also the one
+  clause that can fire with an empty `decision_log`: a rule that cascaded over no pin still governs
+  what gets written next, and that state was visible on no surface at all.
 """
 from __future__ import annotations
 
@@ -163,29 +170,45 @@ def _evidence_note(data: dict) -> list:
     Three clauses, at most one line, composed from what is present. They are kept apart rather than
     summed into "N weak" because they fail differently: a relay may be an invention, a cascade may
     simply not fit this pin, and an unrecorded rung is not weak — it is unknown.
+
+    A fourth clause covers the STANDING RULES the section below lists (v0.15). Those are elections
+    too — over a whole cluster — and their rung is the thing every `cascaded` decision rests on, so
+    a projection that weighs the cascade and not the election it derives from weighs the wrong end.
+    It costs bytes only when a rule is actually weak, and it earns them where the leverage is: a
+    policy elected on an agent's unquoted relay governs pins this file may not even list.
     """
     events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
-    if not events:
+    policies = list(data.get("policies") or [])
+    sentences = []
+    if events:
+        # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`,
+        # and reading it literally put "N relayed by an agent" into the user's own AGENTS.md about
+        # decisions their elected policy made. One reader for that, in the module owning the schema.
+        from ledger import decision_rung
+        rungs = [decision_rung(e) for e in events]
+        clauses = []
+        relayed = rungs.count("transcribed")
+        cascaded = rungs.count("cascaded")
+        unrecorded = sum(1 for r in rungs if not r)
+        if relayed:
+            clauses.append(f"{relayed} relayed by an agent (`transcribed`), not elicited from the user")
+        if cascaded:
+            clauses.append(f"{cascaded} cascaded from a policy the user elected once for the cluster")
+        if unrecorded:
+            clauses.append(f"{unrecorded} with no rung recorded at all")
+        if clauses:
+            sentences.append(f"of {len(events)} recorded decisions, " + "; ".join(clauses))
+    # A rule is weak on the same two counts a decision is, and it is reported even when the log is
+    # empty: a policy that cascaded over nothing still governs what gets written next, and that is
+    # exactly the state no surface used to show.
+    weak = sum(1 for p in policies if not p.get("evidence")
+               or (str(p["evidence"]) == "transcribed" and not p.get("human_answer")))
+    if weak:
+        sentences.append(f"{weak} of the standing rules below was elected with no rung recorded, "
+                         f"or relayed with no quote")
+    if not sentences:
         return []
-    # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`, and
-    # reading it literally put "N relayed by an agent" into the user's own AGENTS.md about decisions
-    # their elected policy made. One reader for that, in the module that owns the schema.
-    from ledger import decision_rung
-    rungs = [decision_rung(e) for e in events]
-    clauses = []
-    relayed = rungs.count("transcribed")
-    cascaded = rungs.count("cascaded")
-    unrecorded = sum(1 for r in rungs if not r)
-    if relayed:
-        clauses.append(f"{relayed} relayed by an agent (`transcribed`), not elicited from the user")
-    if cascaded:
-        clauses.append(f"{cascaded} cascaded from a policy the user elected once for the cluster")
-    if unrecorded:
-        clauses.append(f"{unrecorded} with no rung recorded at all")
-    if not clauses:
-        return []
-    return ["", f"*Evidence: of {len(events)} recorded decisions, " + "; ".join(clauses)
-                + " — weigh those before building on one.*"]
+    return ["", "*Evidence: " + ". ".join(sentences) + " — weigh those before building on one.*"]
 
 
 def _section(title: str, lines: list, remaining: int, more_hint: str) -> list:

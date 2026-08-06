@@ -1,4 +1,4 @@
-"""Three BEHAVIORAL invariant tests — not unit tests (Block 4 of docs/design/sota-alignment.md).
+"""Four BEHAVIORAL invariant tests — not unit tests (Block 4 of docs/design/sota-alignment.md).
 
 The difference matters and is the reason these live in their own file. A unit test asks whether a
 function returns the right value. These ask whether a *rule the package promises* actually holds at
@@ -13,6 +13,9 @@ the seam where it would be broken:
    predicate. 2 asks whether a mutator has a channel; 3 asks the question that was actually being
    dodged — *how many ways in are there*. It is computed, not listed from memory, because the last
    three times this rule was fixed it was fixed at a door, and the next door did not know.
+4. every write-time rule `decide` enforces is one the **reader** can replay over a file written
+   before it existed. 3 is about doors, 4 is about rules; both were fixed once per instance until
+   the instance count made the class visible.
 
 Stdlib unittest (also runs under pytest).
 """
@@ -304,10 +307,11 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
                                  "which is the leave-as-is answer rather than an elected option.",
     }
 
-    def _modules(self) -> dict:
+    @classmethod
+    def _modules(cls) -> dict:
         base = os.path.join(os.path.dirname(__file__), "..", "src")
         out = {}
-        for root in self.ROOTS:
+        for root in cls.ROOTS:
             for path in sorted(os.listdir(os.path.join(base, root))):
                 if path.endswith(".py"):
                     full = os.path.join(base, root, path)
@@ -450,6 +454,58 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
         self.assertEqual(result["pre_decided"], [])
         self.assertEqual([h["reason"] for h in result["brief_held_back"]],
                          ["held_back", "not_offered"])
+
+
+class TestEveryWriteTimeRuleGainsItsReader(unittest.TestCase):
+    """Invariant 4 — CLOSE THE OTHER HALF OF THE CLASS: a rule the writer enforces must be a rule
+    the reader can replay over a file written before it existed.
+
+    v0.13 named this failure — *"a new rule arrives with a writer and no reader"* — and then shipped
+    it: `decide()` held six checks inline, `nonconforming` re-implemented **one** of them by hand,
+    and nothing made the next one gain a reader. Invariant 3 is the same shape one axis over (there:
+    every DOOR reaches the predicate; here: every RULE reaches the floor), and both are asserted
+    from the source rather than from a list somebody maintains.
+
+    The AST is the carrier because the alternative — "we will remember to add it to the table" — is
+    exactly what failed. A `_require` added back into `decide` fails on the day it is added.
+    """
+
+    #: The AST reader is invariant 3's, deliberately: two readers of the same source in one file
+    #: would be the duplication these invariants exist to refuse.
+    AST = TestEveryPathToDecideIsGated
+
+    def test_decide_holds_no_rule_outside_the_shared_table(self):
+        fns = self.AST._functions(self.AST._modules()["ledger.py"])
+        calls = self.AST._calls(fns["decide"])
+        self.assertNotIn("_require", calls,
+                         "a rule enforced inline in `decide` is invisible to `nonconforming`, so "
+                         "every ledger already on disk keeps claiming a conformance it was never "
+                         "checked for. Put it in EVENT_RULES.")
+        self.assertIn("_check_event", calls, "the writer must run the shared table")
+
+    def test_the_floor_is_the_same_table_and_not_a_copy_of_it(self):
+        fns = self.AST._functions(self.AST._modules()["ledger.py"])
+        self.assertIn("event_violations", self.AST._calls(fns["nonconforming"]),
+                      "the floor must REPLAY the writer's rules, not re-state them")
+        self.assertIn("EVENT_RULES",
+                      {n.id for n in ast.walk(fns["_check_event"]) if isinstance(n, ast.Name)},
+                      "the writer must iterate the table itself, not a private copy of it")
+
+    def test_a_rule_added_to_the_table_is_reported_by_the_floor_without_being_taught(self):
+        """The counterfactual, run rather than asserted: append a rule to the table and the floor
+        reports it — which is what 'gains its reader by construction' has to mean."""
+        original = ledgermod.EVENT_RULES
+        try:
+            ledgermod.EVENT_RULES = original + (
+                ("a_rule_added_later", lambda e: e.get("outcome") != "planted",
+                 lambda e: "planted"),)
+            out = ledgermod.nonconforming({"decision_log": [{"id": "ev_0001", "outcome": "planted",
+                                                             "source": "interview",
+                                                             "evidence": "brief",
+                                                             "flip_criteria": "x"}]})
+            self.assertEqual(out, {"a_rule_added_later": ["ev_0001"]})
+        finally:
+            ledgermod.EVENT_RULES = original
 
 
 class TestGovernanceIsStamped(unittest.TestCase):

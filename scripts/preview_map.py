@@ -35,6 +35,16 @@ What to check, in both light and dark:
      Its policy carries no rung at all, so the card says that is unknown rather than calling it a
      relay. A rule enforced at the write governs no file that already exists, and this is the pin
      that shows it: if these two cascades read differently in kind, the fix did not land.
+ 10. the logging pin carries NO rung: the card must say the rung is unknown, which is a third thing
+     — not the green of an elicited one and not the amber of an unquoted relay.
+ 11. the STANDING RULES lead the left-hand list, and `pol_0003` — elected, and holding back every
+     pin it matched — is reachable and readable there. Until v0.15 it appeared on this page nowhere
+     at all, while `ledger_summary` counted it and `AGENTS.md` listed it. Its card must state the
+     rule, the scope, the `default_outcome` the user accepted, the rung, and that no decision in
+     this ledger names it. `pol_0001`'s card must list the pin it did decide, and clicking through
+     must land on that pin.
+ 12. no pin title is rewritten by the page's own assembly: the `__DERIVED__` pin renders its title
+     verbatim, and this frozen page carries no LIVE badge and no self-reload.
 """
 from __future__ import annotations
 
@@ -130,6 +140,14 @@ def build() -> Ledger:
                 as_is={"payload": "<script>alert('as_is')</script>",
                        "quoted": 'he said "ciao" & left <b>bold</b>'})
 
+    # The page assembles itself by substituting placeholders into a template, and the ledger is
+    # inlined into it — so content carrying a placeholder used to be REWRITTEN by the substitutions
+    # that ran after the data was already in the page. `esc` cannot help: it happens in Python,
+    # before the page exists. This title must render verbatim, and this frozen file must stay frozen.
+    led.add_pin(kind="other", kind_detail="renderer", severity="low", confidence="inferred",
+                provenance=P, title="placeholders in content: __DERIVED__ and __LIVE_SCRIPT__",
+                as_is={"payload": "__DATA__ __TITLE__ __LIVE_STYLE__ __LIVE_BADGE__"})
+
     # -- the remaining `evidence` rungs (spec v0.10) ------------------------------------------
     # `elicited` is on the role-enum pin above. These three complete the set the map must tell
     # apart: the weak rung with its quote, the brief, and the relay that quotes nobody. The point
@@ -224,6 +242,49 @@ def build() -> Ledger:
     old_pin["state"] = "decided"
     old_pin["resolution_mode"] = "policy_default"
     old_pin["decision"] = {"event_id": "ev_legacy", "outcome": "central"}
+
+    # A decision with NO rung at all — the third state the card must tell apart from the two weak
+    # ones. `decide()` has written `evidence` since v0.10, so this can only come from a file older
+    # than that, which is exactly when a reader must be told the rung is unknown rather than weak.
+    led.add_pin(kind="design_concern", severity="low", confidence="inferred", provenance=P,
+                title="Logging format (decided before the rung existed)",
+                as_is={"current_design": "each module picks its own format"},
+                question={"prompt": "Which log format?",
+                          "options": [{"id": "json", "label": "structured JSON"}]})
+    unrunged = led.data["pins"][-1]
+    led.data["decision_log"].append({
+        "id": "ev_norung", "pin_id": unrunged["id"], "timestamp": "2026-01-01T00:00:00+00:00",
+        "outcome": "json", "rationale": "the user picked structured logs",
+        "flip_criteria": "a log shipper that cannot parse JSON becomes the target",
+        "source": "interview"})
+    unrunged["state"] = "decided"
+    unrunged["decision"] = {"event_id": "ev_norung", "outcome": "json"}
+
+    # -- an elected policy that decided NOTHING (v0.15) ----------------------------------------
+    # The state that was invisible: the human elects a rule, every pin it matches is held back by
+    # the severity threshold, no DecisionEvent is ever written — and the map showed nothing at all,
+    # because a policy card could only be reached by joining backward from a cascaded pin.
+    # `ledger_summary` counted it and the projected AGENTS.md listed it; this surface did not.
+    led.add_pin(kind="open_decision", severity="blocker", confidence="inferred", provenance=P,
+                title="Secrets: env vars or a manager", cluster_id="cl_platform",
+                as_is={"givens": ["one deploy target"], "built": None},
+                question={"prompt": "Where do secrets live?",
+                          "options": [{"id": "manager", "label": "a secrets manager"},
+                                      {"id": "env", "label": "environment variables"}]})
+    # ...and a pin the same rule matches but whose own fork does not offer its outcome: `not_offered`
+    led.add_pin(kind="open_decision", severity="low", confidence="inferred", provenance=P,
+                title="Config: files or flags", cluster_id="cl_platform",
+                as_is={"givens": [], "built": None},
+                question={"prompt": "Where does config live?",
+                          "options": [{"id": "file", "label": "a config file"},
+                                      {"id": "flags", "label": "command-line flags"}]})
+    held = led.add_policy(applies_to={"cluster_id": "cl_platform"},
+                          rule="platform choices default to the managed service",
+                          default_outcome="manager",
+                          evidence="elicited")
+    radius = led.apply_policy(held)
+    assert radius["would_decide"] == [], radius     # the fixture is only useful if it decided none
+
     led.data["version"] = "0.9"
     return led
 

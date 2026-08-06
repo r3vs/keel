@@ -82,6 +82,31 @@ class TestSelfContained(unittest.TestCase):
         self.assertIn("policy_id", line)          # the value did reach the page...
         self.assertNotIn("</script", line.lower())  # ...and cannot close the script it rides in
 
+    def test_inlined_content_is_never_rewritten_by_a_later_substitution(self):
+        """The page was assembled by chained `.replace()`, so every substitution after `__DATA__`
+        ran over the ledger it had just inlined. A pin titled `evil __DERIVED__ title` came out as
+        `evil {} title` — or as the whole derived-rungs JSON — and `__LIVE_SCRIPT__` in a title
+        injected the self-reload loop into the frozen artifact that is meant to be safe to hand to
+        anyone. `esc` cannot reach this: it happens in Python, to the JSON literal, before the page
+        exists. Asserted on the value that comes back out of the inlined JSON, which is the only
+        thing that proves the title survived intact."""
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        titles = ["evil __DERIVED__ title", "__DATA__ and __TITLE__",
+                  "__LIVE_SCRIPT__ __LIVE_STYLE__ __LIVE_BADGE__"]
+        for t in titles:
+            led.add_pin(kind="defect", title=t, severity="low", confidence="extracted",
+                        provenance=[{"source": "recon", "detail": "x"}], as_is={"description": "d"})
+        # a non-empty DERIVED payload, so the second substitution has something to inject
+        led.data["decision_log"].append({"id": "ev_0001", "pin_id": "pin_0001", "outcome": "x",
+                                         "source": "policy:pol_0001", "evidence": "transcribed"})
+        html = mapmod.render(led.data, title="hostile")
+        payload = json.loads(html.split("const LEDGER =", 1)[1]
+                             .split(";\n", 1)[0].replace("<\\/", "</"))
+        self.assertEqual([p["title"] for p in payload["pins"]], titles)
+        # and the frozen page stays frozen: content cannot switch live mode on
+        self.assertNotIn("location.reload", html)
+        self.assertNotIn("livebadge", html)
+
     def test_empty_ledger_renders(self):
         empty = Ledger(os.path.join(tempfile.mkdtemp(), "l.json"))
         out = mapmod.render(empty.data)

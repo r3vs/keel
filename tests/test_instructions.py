@@ -37,6 +37,9 @@ LEDGER = {
     "policies": [{"id": "pol_0001", "applies_to": {"kind": "contract_mismatch"},
                   # v0.12: an option id, since that is the only thing a cascade may write
                   "rule": "the DB is the canonical layer", "default_outcome": "db",
+                  # v0.15: a properly elected rule, so the evidence note in the tests below stays
+                  # about the decisions they are each written to check
+                  "evidence": "transcribed", "human_answer": "the DB wins unless I flag one",
                   "set_by": "interview", "exceptions": []}],
 }
 
@@ -170,6 +173,45 @@ class TestEvidenceNote(unittest.TestCase):
         self.assertIn("### Standing rules", floor)
         # at the default budget the note is additive: every section it shares the region with stays
         self.assertIn("`p_0002`", ins.render(noted))
+
+
+class TestTheStandingRulesAreWeighedToo(unittest.TestCase):
+    """v0.15. This region already LISTED the policies; what it never said is how the human elected
+    them — while saying exactly that about every decision. A `Policy` decides a whole cluster and is
+    what each `cascaded` line above derives from, so weighing the cascade and not the election
+    behind it weighs the wrong end. It is also the only clause here that can fire with an empty
+    `decision_log`: a rule that cascaded over no pin still governs what gets written next."""
+
+    @staticmethod
+    def _with(policy):
+        return {**LEDGER, "decision_log": [], "policies": [policy]}
+
+    BASE = {"id": "pol_0001", "applies_to": {"kind": "contract_mismatch"},
+            "rule": "the DB is the canonical layer", "default_outcome": "db", "exceptions": []}
+
+    def test_an_elected_rule_that_decided_nothing_is_still_weighed(self):
+        body = ins.render(self._with(dict(self.BASE)))          # no rung recorded at all
+        self.assertIn("1 of the standing rules below was elected with no rung recorded", body)
+        self.assertIn("the DB is the canonical layer", body)
+
+    def test_an_unquoted_relay_of_a_whole_cluster_says_so(self):
+        body = ins.render(self._with(dict(self.BASE, evidence="transcribed")))
+        self.assertIn("relayed with no quote", body)
+
+    def test_a_properly_elected_rule_costs_nothing(self):
+        body = ins.render(self._with(dict(self.BASE, evidence="transcribed",
+                                          human_answer="the DB wins unless I flag one")))
+        self.assertNotIn("standing rules below was elected", body)
+        body = ins.render(self._with(dict(self.BASE, evidence="elicited")))
+        self.assertNotIn("standing rules below was elected", body)
+
+    def test_the_note_is_still_one_line_with_both_halves(self):
+        """`_NOTE_LINES` is budget arithmetic: a second sentence must not become a second line."""
+        note = ins._evidence_note({**LEDGER, "policies": [dict(self.BASE)], "decision_log": [
+            {"id": "ev_0001", "pin_id": "p_0002", "evidence": "transcribed"}]})
+        self.assertEqual(len(note), ins._NOTE_LINES)
+        self.assertIn("relayed by an agent", note[1])
+        self.assertIn("standing rules below", note[1])
 
 
 class TestRegion(unittest.TestCase):

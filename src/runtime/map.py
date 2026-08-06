@@ -11,7 +11,13 @@ one" decision, resolved: share one). Rescue's pins render their `as_is` (extract
 the default view; greenfield's `open_decision`/`acceptance_criterion` pins render `to_be` (the
 elected design) — the toggle flips which side leads. `contract_mismatch` pins get the three-column
 cross-layer diff panel; every pin links its interview question; a completeness traffic-light sums
-the states. A decided pin states **how the human's answer got there** (`evidence`, spec v0.10) and
+the states. **An elected `Policy` is a decision and leads the list in its own right** (v0.15): it
+used to be reachable only by joining backward from a pin a cascade had decided, so a rule the human
+elected that bound no pin — held back by the severity threshold, or offered by no pin's question —
+was on this page nowhere, while `ledger_summary` counted it and the projected `AGENTS.md` listed it
+under "Standing rules". Its card carries the rule, the scope, the `default_outcome` the user
+accepted, the rung it was elected on, the quote, and the decisions that name it. A decided pin
+states **how the human's answer got there** (`evidence`, spec v0.10) and
 shows the quote when an agent relayed it — the spec allows the weak rung only because it is made
 visible, and this is the surface people actually read. A pin decided by a policy cascade
 (`cascaded`, v0.11) shows the `Policy` it derives from and how *that* was elected, joined on the
@@ -33,6 +39,7 @@ from __future__ import annotations
 import html
 import json
 import pathlib
+import re
 from typing import Optional
 
 _TEMPLATE = r"""<!doctype html>
@@ -61,6 +68,10 @@ main{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0;min-height
 .list{border-right:1px solid var(--line);overflow-y:auto;max-height:calc(100vh - 62px)}
 .pin{padding:11px 16px;border-bottom:1px solid var(--line);cursor:pointer}
 .pin:hover{background:var(--card)}.pin.sel{background:var(--card);box-shadow:inset 3px 0 0 var(--accent)}
+.grp{padding:9px 16px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--mut);font-weight:650;border-bottom:1px solid var(--line);background:var(--bg)}
+.pol{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;color:#fff;background:var(--accent)}
+.lnk{color:var(--accent);cursor:pointer;text-decoration:underline}
 .pin .t{font-weight:600;margin-bottom:3px}.pin .m{font-size:12px;color:var(--mut);display:flex;gap:8px;flex-wrap:wrap}
 .sev{padding:1px 7px;border-radius:20px;color:#fff;font-size:11px;font-weight:600}
 .detail{padding:22px 26px;overflow-y:auto;max-height:calc(100vh - 62px)}
@@ -122,7 +133,7 @@ __LIVE_STYLE__</style></head><body>
 const LEDGER = __DATA__;
 const SEV = {blocker:'var(--blocker)',high:'var(--high)',medium:'var(--medium)',low:'var(--low)'};
 const DONE = new Set(['decided','resolved','accepted']);
-let view='as_is', sel=null;
+let view='as_is', sel=null, selPol=null;
 const ENT={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 // Named `esc` but, until now, only a String() cast — so every pin title, extracted layer shape and
 // file path went into innerHTML raw. The ledger is written by agents reading someone else's code
@@ -201,6 +212,90 @@ function decisionEvent(id){
 // hasOwnProperty, not `RUNG[r]`: the rung comes from a file agents write, and `constructor` would
 // otherwise resolve to a function and render as a rung nobody defined.
 function rungMeta(r){return Object.prototype.hasOwnProperty.call(RUNG,r)?RUNG[r]:null;}
+
+// -- the Policy as its own decision (v0.15) ---------------------------------------------------
+// A policy is an election the human made over a whole cluster, so it is a DECISION and this surface
+// has to show it. Until now it could only be reached by joining BACKWARD from a cascaded pin, so a
+// policy that cascaded over nothing — held back by the threshold, or offered by no pin's question —
+// appeared on this page nowhere at all, while `ledger_summary` counted it and the projected
+// AGENTS.md listed it under "Standing rules". Three surfaces, three answers about one elected rule.
+function scopeText(P){
+  const a=P.applies_to||{}, ks=Object.keys(a);
+  return ks.length?ks.map(k=>esc(k)+'='+esc(a[k])).join(' · '):'every pin';
+}
+function policyRows(P){
+  const pm=rungMeta(P.evidence?String(P.evidence):'');
+  return `<div class="kv"><b>rule</b><span>${esc(P.rule)}</span></div>`
+    +`<div class="kv"><b>applies to</b><span>${scopeText(P)}</span></div>`
+    // the value the user accepted, which this card never showed: a reader could see WHICH rule
+    // decided a pin and not what that rule writes.
+    // `scalarHTML`, so a policy from a file that predates the field says "—" rather than rendering
+    // an empty box that reads as an outcome nobody can see.
+    +`<div class="kv"><b>decides</b><span>${scalarHTML(P.default_outcome)}</span></div>`
+    +`<div class="kv"><b>elected</b><span class="rung ${pm?pm.cls:'weak'}">${esc(pm?pm.label:'no rung recorded')}</span></div>`
+    +(P.human_answer?`<div class="quote">“${esc(P.human_answer)}”</div>`:'');
+}
+// One rule, two subjects: on a pin's card what rests on the policy is that pin and its cluster; on
+// the policy's own card it is every decision that names it. Same test, stated to whoever is reading,
+// so `rests` carries the whole clause rather than being assembled from a subject and a verb that
+// only agree in one of the two calls.
+function policyRungWarning(P,rests){
+  if(!P.evidence)
+    return `<div class="warn">⚠ the policy itself records no rung — how the user elected it is unknown, and ${rests}</div>`;
+  if(!P.human_answer&&String(P.evidence)==='transcribed')
+    return `<div class="warn">⚠ the policy itself was relayed with no quote — ${rests}</div>`;
+  return '';
+}
+// The decisions a policy produced, joined on the event's own `policy_id` (or, for an event written
+// before that field existed, the id `map.render` already took out of `source` — in Python, once).
+function eventsOfPolicy(id){
+  const out=[], log=LEDGER.decision_log||[];
+  for(let i=0;i<log.length;i++){
+    const e=log[i];
+    if(!e||String(e.id||'').indexOf('ev_')!==0)continue;
+    if((e.policy_id||derived(e).policy_id||'')===id)out.push(e);
+  }
+  return out;
+}
+function pinById(id){
+  const ps=LEDGER.pins||[];
+  for(let i=0;i<ps.length;i++)if(ps[i]&&ps[i].id===id)return {pin:ps[i],i:i};
+  return null;
+}
+function policyDetail(P){
+  if(!P)return '<div class="empty">select a rule</div>';
+  const evs=eventsOfPolicy(P.id);
+  let did;
+  if(!evs.length)
+    // Not a warning: an elected rule that bound no pin is a legitimate state, and it is exactly the
+    // state that used to be invisible here. Say what the file records — no decision names it — and
+    // no more; WHY it bound nothing (threshold, options, or no match) is not on the event.
+    did=`<div class="why">no decision in this ledger names this rule: it cascaded over no pin. It
+      stands as an elected rule for the work that follows — the projected <code>AGENTS.md</code>
+      carries it under “Standing rules”.</div>`;
+  else{
+    // NOT `RUNG.cascaded.why`: that sentence is written to a reader looking at one pin ("this pin
+    // fell under it"), and reusing it here would say the wrong thing about a rule that decided
+    // several. Same fact, addressed to the reader who is actually here.
+    did=`<div class="why">the human answered once, here, for the whole radius below — so what you
+      weigh on each of these is not invention but FIT: whether this rule suits that pin.</div>`
+      +`<div class="kv"><b>decided</b><span>${evs.length} pin(s)</span></div>`
+      +evs.map(e=>{
+        const f=pinById(e.pin_id);
+        return f?`<div class="opt" onclick="select(${f.i})" style="cursor:pointer"><b>${esc(f.pin.title)}</b>
+          <div class="imp">→ ${esc(e.outcome)}</div></div>`
+          :`<div class="opt"><b>${esc(e.pin_id)}</b><div class="imp">this ledger holds no such pin</div></div>`;
+      }).join('');
+  }
+  const exc=(P.exceptions||[]).length
+    ? `<div class="kv"><b>exceptions</b><span class="chips">${P.exceptions.map(scalarHTML).join('')}</span></div>`
+    : '';
+  const pm=rungMeta(P.evidence?String(P.evidence):'');
+  return `<h2>${esc(P.rule)}</h2>
+    <div class="sub"><span class="pol">standing rule</span> · ${esc(P.id)} · elected by the ${esc(P.set_by||'interview')}</div>
+    <div class="card dec ${pm?pm.cls:'weak'}">${policyRows(P)}${exc}
+      ${policyRungWarning(P,'every decision that names it rests on that')}${did}</div>`;
+}
 // Events whose rung this page must READ rather than take off the field, computed by `map.render`
 // from `ledger.decision_rung` — the one implementation of that rule, in the module that owns the
 // schema. A pre-v0.11 cascade records `transcribed`, and rendering that literally is how this
@@ -241,17 +336,20 @@ function decisionCard(p){
       note+=`<div class="warn">⚠ written before the <code>cascaded</code> rung existed (this ledger is v${esc(String(LEDGER.version||'?'))}); the event records <code>${esc(d.as_recorded)}</code>, which was the default of the call it was written by — nobody relayed this, and nothing has been rewritten to say otherwise</div>`;
     if(!P) note+=`<div class="warn">⚠ cascaded from policy ${esc(pid||'(unnamed)')}, which this ledger does not contain</div>`;
     else{
-      const pm=rungMeta(P.evidence?String(P.evidence):'');
-      pol=`<div class="kv"><b>policy</b><span>${esc(P.id)} · ${esc(P.rule)}</span></div>`
-        +`<div class="kv"><b>elected</b><span class="rung ${pm?pm.cls:'weak'}">${esc(pm?pm.label:'no rung recorded')}</span></div>`
-        +(P.human_answer?`<div class="quote">“${esc(P.human_answer)}”</div>`:'');
+      const idx=(LEDGER.policies||[]).indexOf(P);
+      // a span, not an <a>: the page styles nothing else as a link, and an unstyled anchor took the
+      // browser's default blue — unreadable on the dark card this very warning sits in.
+      pol=`<div class="kv"><b>policy</b><span class="lnk" onclick="selectPolicy(${idx})">${esc(P.id)}</span></div>`
+        +policyRows(P);
       // Two different states, and merging them was the same false sentence one level up: a policy
       // written before v0.11 carries NO rung (they moved onto the Policy there), so calling it a
       // relay asserts something its file never said. Unrecorded is unknown, not weak.
-      if(!P.evidence)
-        note+=`<div class="warn">⚠ the policy itself records no rung — how the user elected it is unknown, and this pin and every other one in its cluster rest on it</div>`;
-      else if(!P.human_answer&&String(P.evidence)==='transcribed')
-        note+=`<div class="warn">⚠ the policy itself was relayed with no quote — this pin and every other one in its cluster rest on that</div>`;
+      note+=policyRungWarning(P,'this pin and every other one in its cluster rest on that');
+      // The rule writes ONE outcome; this pin records another. Only a file written outside the
+      // cascade can hold that, which is exactly when a reader has to be told rather than shown two
+      // values on one card and left to notice.
+      if(P.default_outcome!==undefined&&String(P.default_outcome)!==String(p.decision.outcome))
+        note+=`<div class="warn">⚠ this pin records <code>${esc(p.decision.outcome)}</code>, but the rule it names decides <code>${esc(P.default_outcome)}</code> — the cascade cannot have written both</div>`;
     }
   }
   return `<div class="card dec ${cls}">
@@ -272,13 +370,27 @@ function trafficLight(){
 }
 function renderList(){
   const el=document.getElementById('list'); const pins=LEDGER.pins||[];
-  if(!pins.length){el.innerHTML='<div class="empty">empty ledger</div>';return;}
+  const pols=LEDGER.policies||[];
+  if(!pins.length&&!pols.length){el.innerHTML='<div class="empty">empty ledger</div>';return;}
+  // The policies lead the list because one of them decides a whole cluster, and because a rule the
+  // human elected must be reachable whether or not it happened to bind a pin.
+  const polHTML=!pols.length?'':`<div class="grp">Standing rules — elected by the human</div>`+
+    pols.map((P,j)=>{
+      const pm=rungMeta(P.evidence?String(P.evidence):'');
+      const weak=!pm||pm.cls==='weak';
+      return `<div class="pin${j===selPol?' sel':''}" onclick="selectPolicy(${j})">
+      <div class="t">${esc(P.rule)}</div>
+      <div class="m"><span class="pol">policy</span><span>${esc(P.id)}</span>
+      <span>· ${eventsOfPolicy(P.id).length} pin(s)</span>`+
+      (weak?`<span class="rung weak">${esc(pm?pm.label:'no rung recorded')}</span>`:'')+
+      `</div></div>`;}).join('')+
+    (pins.length?`<div class="grp">Pins</div>`:'');
   // Only the WEAK rung is badged in the list. Badging all three would turn the signal into
   // decoration; the card states the rung for every decision, whichever it is.
-  el.innerHTML=pins.map((p,i)=>{
+  el.innerHTML=polHTML+pins.map((p,i)=>{
     const r=rungOf(p), m=r===null?null:rungMeta(r);
     const weak=r!==null&&(m?m.cls:'weak')==='weak';
-    return `<div class="pin${i===sel?' sel':''}" onclick="select(${i})">
+    return `<div class="pin${i===sel?' sel':''}" data-pin="${i}" onclick="select(${i})">
     <div class="t">${esc(p.title)}</div>
     <div class="m"><span class="sev" style="background:${SEV[p.severity]||'#888'}">${p.severity}</span>
     <span>${esc(p.kind)}</span><span>· ${esc(p.state)}</span>`+
@@ -318,12 +430,17 @@ function detail(p){
   if(p.decision) body+=decisionCard(p);
   return `<h2>${esc(p.title)}</h2><div class="sub"><span class="sev" style="background:${SEV[p.severity]||'#888'}">${p.severity}</span> · ${esc(p.kind)} · ${esc(p.state)}${p.substate?' ('+esc(p.substate)+')':''}</div>`+body;
 }
-function select(i){sel=i;renderList();document.getElementById('detail').innerHTML=detail((LEDGER.pins||[])[i]);}
+function select(i){sel=i;selPol=null;renderList();
+  document.getElementById('detail').innerHTML=detail((LEDGER.pins||[])[i]);}
+function selectPolicy(j){selPol=j;sel=null;renderList();
+  document.getElementById('detail').innerHTML=policyDetail((LEDGER.policies||[])[j]);}
 function setView(v){view=v;document.getElementById('bAsis').classList.toggle('on',v==='as_is');
   document.getElementById('bTobe').classList.toggle('on',v==='to_be');
   if(sel!=null)document.getElementById('detail').innerHTML=detail(LEDGER.pins[sel]);}
 trafficLight();renderList();
-if((LEDGER.pins||[]).length)select(0);else document.getElementById('detail').innerHTML=detail(null);
+if((LEDGER.pins||[]).length)select(0);
+else if((LEDGER.policies||[]).length)selectPolicy(0);
+else document.getElementById('detail').innerHTML=detail(null);
 __LIVE_SCRIPT__</script></body></html>
 """
 
@@ -352,7 +469,9 @@ _LIVE_SCRIPT = """
     if(prev.scroll)document.getElementById('list').scrollTop=prev.scroll;
   }catch(e){}
   try{
-    var st=prev.states||{}, nodes=document.querySelectorAll('.pin');
+    // `.pin[data-pin]`, not `.pin`: the standing-rule rows share the row class and sit ABOVE the
+    // pins, so a positional query would flash the wrong row for every pin in the list.
+    var st=prev.states||{}, nodes=document.querySelectorAll('.pin[data-pin]');
     (LEDGER.pins||[]).forEach(function(p,i){var k=keyOf(p,i);if((k in st)&&st[k]!==p.state&&nodes[i])nodes[i].classList.add('changed');});
   }catch(e){}
   function snapshot(){
@@ -397,16 +516,41 @@ def derived_rungs(ledger_data: dict) -> dict:
     return out
 
 
+#: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
+#: so no substitution can ever run over content a previous one inlined.
+_PLACEHOLDER_RE = re.compile(r"__(?:DATA|DERIVED|TITLE|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
+
+
 def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
-    data = json.dumps(ledger_data, ensure_ascii=False).replace("</", "<\\/")  # script-safe
-    derived = json.dumps(derived_rungs(ledger_data), ensure_ascii=False).replace("</", "<\\/")
-    return (_TEMPLATE
-            .replace("__DATA__", data)
-            .replace("__DERIVED__", derived)
-            .replace("__TITLE__", html.escape(title or "ledger"))
-            .replace("__LIVE_STYLE__", _LIVE_STYLE if live else "")
-            .replace("__LIVE_BADGE__", _LIVE_BADGE if live else "")
-            .replace("__LIVE_SCRIPT__", _LIVE_SCRIPT if live else ""))
+    """The whole page, as one string.
+
+    Substitution is a **single pass** over the template, and that is a correctness property rather
+    than a tidy-up. Chained `.replace()` calls run each one over the output of the last, so the
+    ledger — agent-written content, from someone else's repo — was inlined first and then rewritten
+    by the four substitutions that followed it. A pin titled ``evil __DERIVED__ title`` rendered as
+    ``evil {} title``, or as the whole derived-rungs JSON when that was non-empty; ``__LIVE_SCRIPT__``
+    in a pin title injected the self-reload loop into a frozen artifact meant to be safe to hand to
+    anyone. `esc` cannot help — this happens in Python, before the page exists, to the JSON literal
+    itself.
+
+    One pass fixes it structurally: `re.sub` never re-scans what a replacement emitted, so inlined
+    content is inert by construction and cannot be un-fixed by adding a placeholder later. Which is
+    the point — the previous bug in this file was `esc` not escaping, and the lesson both times is
+    that **inlining is the dangerous step**, so the guarantee has to hold at the step rather than in
+    the order of the lines around it. An unknown placeholder raises `KeyError` here rather than
+    surviving into the page as literal text.
+    """
+    values = {
+        # script-safe: a `</script>` inside the data cannot close the script it rides in
+        "__DATA__": json.dumps(ledger_data, ensure_ascii=False).replace("</", "<\\/"),
+        "__DERIVED__": json.dumps(derived_rungs(ledger_data),
+                                  ensure_ascii=False).replace("</", "<\\/"),
+        "__TITLE__": html.escape(title or "ledger"),
+        "__LIVE_STYLE__": _LIVE_STYLE if live else "",
+        "__LIVE_BADGE__": _LIVE_BADGE if live else "",
+        "__LIVE_SCRIPT__": _LIVE_SCRIPT if live else "",
+    }
+    return _PLACEHOLDER_RE.sub(lambda m: values[m.group(0)], _TEMPLATE)
 
 
 def render_file(ledger_path: str | pathlib.Path, out_path: str | pathlib.Path,

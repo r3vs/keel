@@ -1,5 +1,5 @@
 """Tests for runtime/ledger.py — each test pins one load-bearing rule of
-core/decisions-ledger-spec.md (v0.14). Stdlib unittest (also runs under pytest)."""
+core/decisions-ledger-spec.md (v0.15). Stdlib unittest (also runs under pytest)."""
 from __future__ import annotations
 
 import json
@@ -187,6 +187,22 @@ class TestEvidenceIsReachable(unittest.TestCase):
         # counts, never a blended score: three failure modes kept apart is the design
         self.assertEqual(led.summary()["decisions_by_evidence"],
                          {"elicited": 1, "transcribed": 1, "brief": 1})
+
+    def test_summary_counts_how_each_POLICY_was_elected_too(self):
+        """v0.15. A policy is an election over a whole cluster, and every `cascaded` count above
+        rests on one — so a summary that weighs the cascade and says nothing about the election it
+        derives from weighs the wrong end. It also has to be counted when the policy cascaded over
+        nothing: `policies: 1` and no event anywhere was the state that showed up on no surface."""
+        led = make_ledger()
+        led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="DB wins",
+                       default_outcome="opt_a", evidence="transcribed", human_answer="db wins")
+        led.data["policies"].append({"id": "pol_0002", "applies_to": {}, "rule": "older file",
+                                     "default_outcome": "opt_a", "exceptions": []})
+        summary = led.summary()
+        self.assertEqual(summary["decisions_by_evidence"], {}, "neither cascaded over any pin")
+        self.assertEqual(summary["policies"], 2)
+        self.assertEqual(summary["policies_by_evidence"], {"transcribed": 1, "unrecorded": 1},
+                         "a policy elected before the rung existed is unknown, never weak")
 
     def test_summary_counts_only_decisions_not_every_event(self):
         led = make_ledger()
@@ -741,6 +757,56 @@ class TestARuleEnforcedAtTheWriteGovernsNoExistingFile(unittest.TestCase):
         data["decision_log"][0].update(evidence="cascaded", policy_id="pol_0001")
         data["pins"][0]["question"] = {"prompt": "?", "options": [{"id": "api", "label": "api"}]}
         self.assertEqual(ledger_mod.nonconforming(data), {})   # outcome "db" is not offered
+
+    def test_the_floor_replays_the_writers_own_rules_rather_than_one_it_remembered(self):
+        """v0.15. The reader knew ONE write-time rule, hand-copied, and nothing forced the next one
+        to gain a reader — the v0.13 lesson, shipping inside v0.13's own fix.
+
+        The declaration below is the gate: every rule in the writer's table must carry an event
+        that violates it, asserted by set EQUALITY, so a rule added to `EVENT_RULES` without a
+        reachable failure fails here instead of being trusted."""
+        import ledger as ledger_mod
+        ok = {"id": "ev_0001", "pin_id": "pin_0001", "outcome": "db", "rationale": "r",
+              "flip_criteria": "an exception surfaces", "source": "interview",
+              "evidence": "transcribed"}
+        self.assertEqual(ledger_mod.event_violations(ok), [])
+        breaks = {
+            "committing_source": {"source": "brainstorm"},
+            "evidence_rung": {"evidence": None},          # written before the field existed
+            "cascade_rung": {"source": "policy:pol_0001"},
+            "cascade_policy_id": {"evidence": "cascaded", "source": "policy:pol_0001",
+                                  "policy_id": ""},
+            "flip_criteria": {"flip_criteria": ""},
+            "flip_signal_source": {"flip_signal": {"source": "vibes"}},
+        }
+        self.assertEqual(set(breaks), {name for name, _, _ in ledger_mod.EVENT_RULES},
+                         "a rule in the writer's table with no sample here is a rule nobody proved "
+                         "the floor can report")
+        for rule, mutation in breaks.items():
+            with self.subTest(rule=rule):
+                event = dict(ok, **mutation)
+                self.assertIn(rule, ledger_mod.event_violations(event))
+                self.assertEqual(ledger_mod.nonconforming({"decision_log": [event]}).get(rule),
+                                 ["ev_0001"], "the floor must NAME the rule, not merely refuse")
+                # and the same rule refuses the write, from the same table — one implementation
+                led = make_ledger()
+                pin = add_simple_pin(led, severity="medium")
+                kwargs = {"source": event["source"], "evidence": event["evidence"],
+                          "flip_criteria": event["flip_criteria"],
+                          "policy_id": event.get("policy_id") or None}
+                if "flip_signal" in event:
+                    kwargs["flip_signal"] = event["flip_signal"]
+                with self.assertRaises(LedgerError):
+                    led.decide(pin["id"], "opt_a", "r", **kwargs)
+
+    def test_nothing_is_appended_when_a_rule_refuses_the_write(self):
+        """The event is now built before it is checked, so 'built' must not mean 'written'."""
+        led = make_ledger()
+        pin = add_simple_pin(led, severity="medium")
+        with self.assertRaises(LedgerError):
+            led.decide(pin["id"], "opt_a", "r", "flip", source="brainstorm")
+        self.assertEqual(led.data["decision_log"], [])
+        self.assertEqual(pin["state"], "needs_input")
 
     def test_the_spec_version_and_the_runtime_agree(self):
         """`SCHEMA_VERSION` is stamped into `policy_hash` as `spec_version`, so a spec that has moved

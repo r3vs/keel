@@ -52,6 +52,11 @@ Summary of what matters here:
   brief. Every write that settles a pin whose fork was never put to the human — the cascade, the
   brief — asks `unasked_verdict`; a decision writes one event for one pin; and a cluster-wide answer
   can only be a `Policy`, which is the one thing that records the rule, the quote and the radius.
+- v0.15 does the same for v0.13's half: the write-time rules an event can be judged by live in ONE
+  table, which the writer validates against and the floor replays, so a rule added later gains its
+  reader by construction instead of being false of every file already on disk. And an elected
+  `Policy` is a decision on **all three** surfaces — its own card on the map, `policies_by_evidence`
+  in the summary, one line in the projected `AGENTS.md` — whether or not it cascaded over any pin.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen.
 

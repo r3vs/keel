@@ -387,6 +387,11 @@ class TestReadingALedgerWrittenBeforeTheRuleExisted(_Session):
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"version": "0.9", "pins": [], "policies": [],
                        "decision_log": [{"id": "ev_0001", "pin_id": "pin_0001", "outcome": "db",
+                                         # required at every version of the schema, so a faithful
+                                         # pre-v0.11 event carries it: without it this fixture
+                                         # would also trip the `flip_criteria` rule the floor now
+                                         # replays (v0.15) and stop testing the one thing it is for
+                                         "flip_criteria": "an exception to pol_0001 surfaces",
                                          "source": "policy:pol_0001", "evidence": "transcribed"}]}, fh)
         res = self._request("tools/call", {"name": "ledger_summary", "arguments": {"ledger": path}})
         self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
@@ -394,6 +399,24 @@ class TestReadingALedgerWrittenBeforeTheRuleExisted(_Session):
         self.assertEqual(out["decisions_by_evidence"], {"cascaded": 1})
         # and the file is not restamped into claiming a version its content does not satisfy
         self.assertEqual((out["version"], out["pre_rule_events"]), ("0.9", {"cascade_rung": 1}))
+
+    def test_how_each_policy_was_elected_survives_the_wire(self):
+        """v0.15, and asserted here for the reason the class docstring gives: the summary grew a
+        key, and a key the declared output schema drops reaches no agent at all. The state under
+        test is the one that was invisible everywhere — an elected rule that decided no pin, so
+        `decisions_by_evidence` is empty and this is the only thing that reports the election."""
+        path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"version": "0.14", "pins": [], "decision_log": [], "policies": [
+                {"id": "pol_0001", "applies_to": {"kind": "design_concern"}, "rule": "DB wins",
+                 "default_outcome": "db", "evidence": "elicited", "exceptions": []},
+                {"id": "pol_0002", "applies_to": {}, "rule": "an older file", "exceptions": [],
+                 "default_outcome": "db"}]}, fh)
+        res = self._request("tools/call", {"name": "ledger_summary", "arguments": {"ledger": path}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["decisions_by_evidence"], {})
+        self.assertEqual(out["policies_by_evidence"], {"elicited": 1, "unrecorded": 1})
 
 
 CLUSTERED = {
@@ -622,6 +645,45 @@ class TestTheElicitedAnswerIsCarriedNotParsed(_Session):
         rows = self.elicited[-1]["requestedSchema"]["properties"]["value"]["enum"]
         self.assertEqual(len(rows), len(set(rows)),
                          "two identical rows would make the reply ambiguous whatever the lookup")
+
+    def test_two_options_a_human_cannot_tell_apart_are_refused_before_the_question(self):
+        """The half of the mapping that was reasoned about and never run: injectivity.
+
+        It was recorded as *exercised by construction, not by a test* — which is the shape this
+        repo keeps catching in other people's code, so it is run here. Two rows that render
+        identically would collapse into one choice, and any reply naming it would be attributable
+        to neither option; the same holds for an option that renders exactly as the leave-as-is row.
+        Both are refused at the source rather than resolved by guessing, and refusing means the
+        server never asks — so nothing is written and the pin stays open."""
+        tmp = tempfile.mkdtemp()
+        collisions = [
+            # two options that render the same row
+            ([{"id": "keep", "label": "leave it"}, {"id": "keep", "label": "leave it"}],
+             "render the same choice"),
+            # an option that renders exactly as the leave-as-is row this design_concern also offers
+            ([{"id": "accept_as_is", "label": "leave it as it is"},
+              {"id": "go", "label": "extract"}], "renders exactly as the leave-as-is row"),
+        ]
+        for options, because in collisions:
+            with self.subTest(options=options):
+                path = os.path.join(tempfile.mkdtemp(dir=tmp), "ledger.json")
+                res = self._request("tools/call", {"name": "ledger_add_pin", "arguments": {
+                    "ledger": path, **{**AMBIGUOUS, "question": {
+                        "prompt": "What do we do with it?", "options": options,
+                        "allow_freeform": False}}}})
+                pin_id = res["result"]["structuredContent"]["pin_id"]
+                res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+                    "ledger": path, "pin_id": pin_id, "option_id": "keep", "rationale": "r",
+                    "human_answer": "the caller's own words", "flip_criteria": "f"}})
+                self.assertTrue(res["result"].get("isError"),
+                                "a fork whose options a human cannot tell apart is not a fork")
+                # the REASON, not just the failure: an error raised somewhere else would satisfy
+                # `isError` and prove nothing about this refusal
+                self.assertIn(because, json.dumps(res["result"].get("content")))
+                with open(path, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                self.assertEqual(data["decision_log"], [])
+                self.assertEqual([p["state"] for p in data["pins"]], ["needs_input"])
 
     def test_an_answer_outside_the_offered_choices_leaves_the_pin_open(self):
         """The other half of carrying the mapping: an unmatched reply is refused, not snapped to the

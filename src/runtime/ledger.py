@@ -1,6 +1,6 @@
 """Decisions-ledger runtime — the one implementation both skills bind to.
 
-Schema authority: `core/decisions-ledger-spec.md` (v0.14). This module materializes the
+Schema authority: `core/decisions-ledger-spec.md` (v0.15). This module materializes the
 spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 
 - append-only `decision_log` (DecisionEvent / ReopenEvent / ChallengeEvent — never edited);
@@ -31,7 +31,12 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
 - v0.14 those rules live in ONE predicate instead of in one door. Every write that settles a pin
   whose own question was never put to the human — the policy cascade, the brief — goes through
   `unasked_verdict`, and `decide()` no longer fans out over a cluster at all, so one human answer
-  can no longer become four DecisionEvents without a `Policy` to carry the election.
+  can no longer become four DecisionEvents without a `Policy` to carry the election;
+- v0.15 the same move for the v0.13 reader: the write-time rules an event can be judged by live in
+  ONE table (`EVENT_RULES`), which `decide()` validates a new event against and `nonconforming`
+  replays over an old one — so a rule added later gains its reader by construction instead of
+  being false of every existing file until somebody remembers. And an elected `Policy` is visible
+  as a decision on all three surfaces even when it cascaded over no pin at all.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -44,7 +49,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.14"
+SCHEMA_VERSION = "0.15"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -57,7 +62,7 @@ SCHEMA_VERSION = "0.14"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14")
+                     "0.14", "0.15")
 
 KINDS = {
     "contract_mismatch",
@@ -186,6 +191,66 @@ def decision_rung(event: dict) -> str:
     return str(event.get("evidence") or "")
 
 
+# -- the rules a DecisionEvent carries on its own (v0.15) --------------------------------------
+#
+# One table, two callers, and that is the whole point. `decide()` runs it over the very dict it is
+# about to append; `nonconforming` runs it over every event already on a file. Before v0.15 the
+# writer held six rules as inline `_require` calls and the reader knew ONE of them by hand — so
+# "a rule enforced at the write governs no file that already exists" (v0.13) was fixed for the one
+# rule somebody remembered to teach the reader, and a rule added later would be false of every
+# existing ledger with nothing to say so. Now a rule added here gains its reader by construction,
+# and the repo's invariant suite fails if `decide` grows a rule outside this table.
+#
+# Membership is decided by ONE question: **is the violation decidable from the stored event alone?**
+# That is why the table holds `decide`'s checks and not `record_decision`'s quote rule (which is
+# about who was asked, at a boundary the event does not record) and not the v0.12 offered-options
+# rule (which needs the pin's `question` — mutable, and possibly edited long after the decision, so
+# an option missing today does not prove it was missing then). Holding a file below its floor on
+# evidence that weak would be the same false claim pointing the other way.
+#
+# Each entry is `(name, holds(event) -> bool, message(event) -> str)`. The name is what
+# `pre_rule_events` reports, so it names the RULE, never the symptom.
+EVENT_RULES = (
+    ("committing_source",
+     lambda e: str(e.get("source") or "") == "interview"
+     or str(e.get("source") or "").startswith(_POLICY_SOURCE),
+     lambda e: "only the interview (or a user-set policy cascade) commits; "
+               f"got {e.get('source')!r}"),
+    ("evidence_rung",
+     lambda e: e.get("evidence") in DECISION_EVIDENCE,
+     lambda e: f"evidence must be one of {DECISION_EVIDENCE}; got {e.get('evidence')!r}"),
+    ("cascade_rung",
+     lambda e: (e.get("evidence") == "cascaded")
+     == str(e.get("source") or "").startswith(_POLICY_SOURCE),
+     lambda e: "`cascaded` is the rung of a policy cascade and of nothing else: a policy-sourced "
+               "event must carry it, and a directly-answered one must not "
+               f"(source={e.get('source')!r}, evidence={e.get('evidence')!r})"),
+    ("cascade_policy_id",
+     lambda e: (e.get("evidence") == "cascaded") == bool(e.get("policy_id")),
+     lambda e: "a cascaded decision must name the policy it derives from, and only a cascaded one "
+               "may name one — otherwise the rung says a policy decided this and nothing says "
+               "which, or a field points at a policy that decided nothing"),
+    ("flip_criteria",
+     lambda e: bool(e.get("flip_criteria")),
+     lambda e: "flip_criteria is required — a decision without a reopen condition fossilizes"),
+    ("flip_signal_source",
+     lambda e: "flip_signal" not in e
+     or (e.get("flip_signal") or {}).get("source") in FLIP_SIGNAL_SOURCES,
+     lambda e: f"flip_signal.source must be one of {FLIP_SIGNAL_SOURCES}"),
+)
+
+
+def event_violations(event: dict) -> list:
+    """The names of the `EVENT_RULES` this DecisionEvent does not satisfy, in table order."""
+    return [name for name, holds, _ in EVENT_RULES if not holds(event)]
+
+
+def _check_event(event: dict) -> None:
+    """Refuse to write an event that breaks a rule — reporting the first, strongest one."""
+    for name, holds, message in EVENT_RULES:
+        _require(holds(event), message(event))
+
+
 def nonconforming(data: dict) -> dict:
     """`rule -> [event ids]` for events a rule added AFTER they were written would refuse. `{}` for
     a file this runtime could have produced.
@@ -197,20 +262,21 @@ def nonconforming(data: dict) -> dict:
     log. So the stamp is a floor — the newest rule set the file's own content conforms to — and it
     rises only when nothing is left behind.
 
-    Deliberately narrow: only rules whose violation is decidable **from the event alone**. The
-    v0.12 offered-options rule is not (it needs the pin's `question`, which is mutable and may have
-    been edited long after the decision — an option missing today does not prove it was missing
-    then), so a file is not held below the floor on evidence that weak. Naming the limit rather
-    than guessing is the point; a wrong floor would be the same false claim pointing the other way.
+    It replays `EVENT_RULES`, which is the same table `decide()` validates a new event against
+    (v0.15) — so the answer to "which write-time rules does the floor know about" is *all of the
+    ones an event can be judged by*, derived rather than remembered. It used to know exactly one,
+    hand-copied, with nothing forcing the next rule to gain a reader; that is the v0.13 lesson
+    applied to itself.
+
+    The narrowness is unchanged and is the table's own membership rule: only violations decidable
+    **from the event alone**. See `EVENT_RULES` for what that excludes and why.
     """
     out: dict = {}
     for event in data.get("decision_log") or []:
         if not str(event.get("id") or "").startswith("ev_"):
             continue
-        # v0.11: a cascade carries the `cascaded` rung and names its policy. Both halves fail
-        # together on a pre-v0.11 event, so one rule covers them.
-        if cascaded_from(event) and event.get("evidence") != "cascaded":
-            out.setdefault("cascade_rung", []).append(str(event.get("id")))
+        for rule in event_violations(event):
+            out.setdefault(rule, []).append(str(event.get("id")))
     return out
 
 
@@ -487,30 +553,17 @@ class Ledger:
         `decision_rung` (v0.13): for a ledger written before v0.11 the `policy:` source is the only
         carrier there is, so it is read there — once, here in the library, not sniffed by each
         surface.
+
+        And every rule named above lives in `EVENT_RULES` rather than in this function (v0.15), so
+        the reader that decides whether an OLDER file satisfies them (`nonconforming`) replays the
+        same table instead of knowing one of them by hand.
         """
-        _require(source == "interview" or source.startswith("policy:"),
-                 f"only the interview (or a user-set policy cascade) commits; got {source!r}")
-        _require(evidence in DECISION_EVIDENCE,
-                 f"evidence must be one of {DECISION_EVIDENCE}; got {evidence!r}")
-        _require((evidence == "cascaded") == source.startswith("policy:"),
-                 "`cascaded` is the rung of a policy cascade and of nothing else: a policy-sourced "
-                 "event must carry it, and a directly-answered one must not "
-                 f"(source={source!r}, evidence={evidence!r})")
-        _require((evidence == "cascaded") == bool(policy_id),
-                 "a cascaded decision must name the policy it derives from, and only a cascaded one "
-                 "may name one — otherwise the rung says a policy decided this and nothing says "
-                 "which, or a field points at a policy that decided nothing")
         # The "a transcribed decision must quote the human" rule is enforced one layer out, in
         # `mcp/tools.py::record_decision`, because that is the only boundary an AGENT can reach and
         # so the only place the claim is actually made. Enforcing it here as well would tax the
         # library's own callers — `expand_catalog`, `accept`, the tests — for a risk none of them
-        # carry.
-        _require(bool(flip_criteria),
-                 "flip_criteria is required — a decision without a reopen condition fossilizes")
-        if flip_signal is not None:
-            _require(flip_signal.get("source") in FLIP_SIGNAL_SOURCES,
-                     f"flip_signal.source must be one of {FLIP_SIGNAL_SOURCES}")
-
+        # carry. It is also, for the same reason, not an `EVENT_RULES` entry: the event records the
+        # quote, never whether one was owed.
         pin = self.pin(pin_id)
         event = {
             "id": self._next_id("ev_", self.data["decision_log"]),
@@ -529,6 +582,10 @@ class Ledger:
             event["human_answer"] = human_answer
         if flip_signal is not None:
             event["flip_signal"] = dict(flip_signal)
+        # Validated as the dict it will be, not as the arguments it came from (v0.15): the reader
+        # (`nonconforming`) only ever sees the dict, so a rule checked on anything else is a rule
+        # the reader cannot replay. Nothing is appended if this raises.
+        _check_event(event)
         self.data["decision_log"].append(event)
         pin["state"] = "decided"
         pin.pop("substate", None)
@@ -1268,6 +1325,17 @@ class Ledger:
             elif e["id"].startswith("ev_"):
                 rung = decision_rung(e) or "unrecorded"
                 by_evidence[rung] = by_evidence.get(rung, 0) + 1
+        # v0.15: the same count for the POLICIES, because a policy IS a decision — one the human
+        # made over a whole cluster — and the count above says nothing about the election every
+        # `cascaded` entry in it rests on. A policy elected with no rung recorded, or relayed with
+        # no quote, is the thing to weigh before trusting the cascade that came out of it. Read off
+        # `Policy.evidence` directly: unlike a DecisionEvent's rung there is nothing to derive here
+        # (a policy is elected, never cascaded from another), so a reader function would be
+        # ceremony. `policies` stays a plain count so an existing caller keeps its answer.
+        pol_by_evidence: dict[str, int] = {}
+        for p in self.data["policies"]:
+            rung = str(p.get("evidence") or "") or "unrecorded"
+            pol_by_evidence[rung] = pol_by_evidence.get(rung, 0) + 1
         return {
             # The floor, not this runtime's version: it stays where the file's own content puts it
             # while `pre_rule_events` is non-empty, so the two are read together.
@@ -1277,6 +1345,7 @@ class Ledger:
             "by_state": by_state,
             "events": len(self.data["decision_log"]),
             "policies": len(self.data["policies"]),
+            "policies_by_evidence": pol_by_evidence,
             "open_questions": len(self.interview_view()),
             "failures_by_class": by_failure,
             "decisions_by_evidence": by_evidence,
