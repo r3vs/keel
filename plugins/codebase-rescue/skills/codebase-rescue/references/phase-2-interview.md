@@ -96,7 +96,10 @@ Options: `{admin,user} — DB is truth` · `add superadmin to schema` · (freefo
 > fork — the option ids are what the user is allowed to choose from, and rewriting them is you
 > deciding for them. And the question you compose must set `allow_freeform: true`, because you wrote
 > this menu: leaving the way out open is what keeps a fork of your own authorship from bounding
-> their answer.
+> their answer. **That second rule holds wherever you compose a fork, `ledger_add_pin` included**
+> — it used to be checked here only, so the same dict was refused at this door and accepted at the
+> busier one. Every question in this workflow is written by you; the user answers one, they never
+> author one, so the way out is owed on all of them.
 - `incompleteness` → question is typically scope: implement now / defer / drop (YAGNI). "Defer" is
   `mcp:ledger_defer`, not silence: the pin stays on the ledger as backlog, which is the whole
   difference between scoping something out and forgetting it. **It is an election, so it is recorded

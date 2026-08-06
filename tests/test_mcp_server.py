@@ -302,7 +302,10 @@ DESIGN_CONCERN = {
     "question": {"prompt": "Consolidate them?",
                  "options": [{"id": "keep", "label": "leave it", "implication": "drift stays possible"},
                              {"id": "extract", "label": "extract a helper", "implication": "one call shape"}],
-                 "allow_freeform": False},
+                 # v0.20: every door that composes a fork requires the way out, `add_pin` included —
+                 # this pin is created over the wire, so it is written the way an agent must now
+                 # write one. Nothing here turns on the flag; what it exercises is the option menu.
+                 "allow_freeform": True},
 }
 
 
@@ -484,7 +487,7 @@ CLUSTERED = {
     # decision, and no policy cascades over it.
     "question": {"prompt": "Which layer is truth?",
                  "options": [{"id": "db", "label": "the DB"},
-                             {"id": "api", "label": "the API"}]},
+                             {"id": "api", "label": "the API"}], "allow_freeform": True},
 }
 
 
@@ -658,7 +661,7 @@ AMBIGUOUS = {
                  "options": [{"id": "keep", "label": "leave it exactly as it is"},
                              {"id": "keep — and also delete the module",
                               "label": "keep the interface, delete the implementation"}],
-                 "allow_freeform": False},
+                 "allow_freeform": True},
 }
 PICKED_ROW = "keep — and also delete the module — keep the interface, delete the implementation"
 
@@ -726,7 +729,7 @@ class TestTheElicitedAnswerIsCarriedNotParsed(_Session):
                 res = self._request("tools/call", {"name": "ledger_add_pin", "arguments": {
                     "ledger": path, **{**AMBIGUOUS, "question": {
                         "prompt": "What do we do with it?", "options": options,
-                        "allow_freeform": False}}}})
+                        "allow_freeform": True}}}})
                 pin_id = res["result"]["structuredContent"]["pin_id"]
                 res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
                     "ledger": path, "pin_id": pin_id, "option_id": "keep", "rationale": "r",

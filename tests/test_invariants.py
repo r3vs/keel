@@ -46,7 +46,8 @@ def _blocking_ledger(tmp: str) -> str:
     led = ledgermod.Ledger(path)
     led.add_pin(kind="ambiguity", title="two auth flows", severity="blocker",
                 confidence="ambiguous", provenance=[{"source": "recon", "detail": "x"}],
-                question={"prompt": "which one?", "options": [{"id": "a", "label": "A"}]})
+                question={"prompt": "which one?", "allow_freeform": True,
+                          "options": [{"id": "a", "label": "A"}]})
     led.save()
     return path
 
@@ -135,7 +136,12 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
         readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview",
-                    "question_offers", "unasked_verdict", "settlement_verdict", "reopen_verdict"}
+                    "question_offers", "unasked_verdict", "settlement_verdict", "reopen_verdict",
+                    # v0.20: reads the `cas_` records `_reopen_minimal` appended and returns their
+                    # pin ids. It is on this list rather than in INTERNAL because it writes nothing
+                    # — the whole reason it exists is that the tool layer was deriving that radius
+                    # from a substate instead of reading the records.
+                    "cascaded_by"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -184,15 +190,30 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
             question={"prompt": "Consolidate?",
                       "options": [{"id": "keep", "label": "leave it"},
                                   {"id": "extract", "label": "extract a helper"}],
-                      "allow_freeform": False})
+                      "allow_freeform": True})
         led.save()
 
         with self.assertRaises(ValueError, msg="an outcome outside the offered menu is an election"):
             mcp_tools.record_decision(led.path, pin["id"], "rewrite_in_rust",
                                       rationale="r", flip_criteria="f", human_answer="do that")
+        # The freeform refusal, exercised on the only kind of file that can still carry a closed
+        # menu. v0.20 moved `allow_freeform` into `_validate_question`, so no door writes `False`
+        # any more — but `record_decision`'s refusal governs ledgers written before that, exactly as
+        # `nonconforming` and `decision_rung` govern the events older runtimes wrote. So the flag is
+        # flipped on the saved file, not passed to a door: a rule enforced at the write governs no
+        # file that already exists, which is why the read side keeps its branch.
+        def _rewrite(flag):
+            with open(led.path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            data["pins"][0]["question"]["allow_freeform"] = flag
+            with open(led.path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+
+        _rewrite(False)
         with self.assertRaises(ValueError, msg="freeform must be permitted by the question"):
             mcp_tools.record_decision(led.path, pin["id"], "freeform",
                                       rationale="r", flip_criteria="f", human_answer="something else")
+        _rewrite(True)
         with self.assertRaises(ValueError, msg="relaying without a quote is an unfalsifiable claim"):
             mcp_tools.record_decision(led.path, pin["id"], "extract", rationale="r", flip_criteria="f")
 
@@ -220,6 +241,7 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
 
         led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
         fork = {"prompt": "Which layer is truth?",
+                "allow_freeform": True,
                 "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
         pins = [led.add_pin(kind="contract_mismatch", title=f"drift {i}", severity=sev,
                             confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
@@ -445,8 +467,10 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
 
     FORK = {"prompt": "Consolidate?",
             "options": [{"id": "keep", "label": "leave it"},
-                        {"id": "extract", "label": "extract a helper"}]}
+                        {"id": "extract", "label": "extract a helper"}],
+            "allow_freeform": True}
     OTHER = {"prompt": "Which layer is truth?",
+             "allow_freeform": True,
              "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
     PROV = [{"source": "recon", "detail": "x"}]
 

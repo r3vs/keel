@@ -24,6 +24,12 @@ from the interview to preserve neutrality. It reads and writes the same `ledger.
   schema, not by good intentions: a proposal carrying a `decision` or an `outcome` is refused, and
   at most one may be marked `recommended` — two make the gap between what was recommended and what
   the human elected uncomputable, and that gap is the point of the mark.
+- **Opens on a live fork, never on finished work.** A pin that is `resolved`, `accepted` or
+  `deferred` is refused: its question has stopped being asked, so options for it are exploration
+  addressed to a closed room. If the exploration is the reason the pin should be re-opened, that is
+  `mcp:ledger_reopen` — which records why — and the proposals go on afterwards. A `decided` pin is
+  still open to you: the human may re-elect, and laying out what they did not choose is exactly
+  what this role is for.
 
 ## Why separate from the interview
 If the agent that proposes a solution also asks the question, it phrases the question to lead

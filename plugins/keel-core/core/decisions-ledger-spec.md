@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.19
+# Decisions Ledger — Spec v0.20
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -965,3 +965,45 @@ The map renders `verification` (with `blocked_by` as *this pin cannot close: …
 ### The general shape
 
 v0.18's was *"read the sentence the surface prints."* This one is the question before it: **name the surface a human reads this field on, and open it.** A field that is stored, gated on, and rendered nowhere is not a capability — it is a claim the artifact does not keep, and adding a writer is a change inside one module while giving it a reader is a change on somebody else's surface. That asymmetry is why this class keeps recurring, and the only defence is to ask the question at the write.
+
+---
+
+## v0.20 — The reopen half, held to the settlement half's own rules
+
+v0.17 built the two arcs that put a pin back into the open set, and built them well: no outcome on either signature, their own predicate (`reopen_verdict`), a single writer (`_reopen_minimal`), and `reopened` recorded rather than inferred. Then four rules that hold on one side of each pairing were left off the other. Every one was observed over real `uv run --script` stdio against the shipped server; none is a new mechanism, and that is the point — **each is the sibling door disagreeing with the door beside it.**
+
+### `CascadeEvent` (`cas_`) — un-finishing work leaves the same trail as finishing it
+
+`_settle` appends one `SettlementEvent` for every pin it settles. `_reopen_minimal` moved a pin's whole settled `depends_on` closure back to `needs_input` and appended **nothing** for any of them: three pins each walked `add_pin → record_decision → add_remediation → done → resolve`, one `reopen` on the root un-finished all three, and the log named the root. The question the settlement table exists to answer — *how did this pin stop being open, and on whose authority* — had no answer at all in the one direction that undoes it.
+
+```jsonc
+// CascadeEvent (inside decision_log[]) — immutable, one per pin the closure swept up
+{ "id": "cas_0001", "pin_id": "pin_0002", "timestamp": "ISO-8601",
+  "arc": "reopen",              // reopen | challenge — REOPEN_ARCS
+  "via": "rev_0001",            // the arc event that caused it
+  "from_state": "resolved", "to_state": "needs_input", "substate": "reopened" }
+```
+
+The origin pin deliberately gets **no** `cas_` entry, on `_settle`'s own rule in `_settle`'s own words: *the event is appended only where something is not already carrying it*. The `rev_`/`chl_` event is about that pin and already records `reopened`; a second entry beside it would be two carriers for one fact.
+
+### `cascaded_by(event_id)` — the radius is read, never re-derived
+
+`mcp:ledger_reopen` returned `also_reopened` as *every pin whose `substate` is `reopened` and whose state is `needs_input`* — and **nothing anywhere clears that substate**. Observed: after a legitimate cascade from `pin_0001` to `pin_0002`/`pin_0003`, a later `reopen` of an unrelated closed pin reported those same two as its own radius. That is precisely the read v0.16 removed from `cross_derive`'s return shape for the identical condition, re-introduced one layer up against the very field the arc writes. `Ledger.cascaded_by` reads the `cas_` records the call appended, and **both** tools call it: `mcp:ledger_challenge` reported no radius at all, while running the same cascade through the same writer.
+
+### `_CHALLENGE_SOURCES` — an arc that never elects may not sign itself with the door that does
+
+`reopen` has always held `source` to a closed vocabulary (`feedback:<FLIP_SIGNAL_SOURCES>`); `challenge` took any string. Observed: `upheld: true, source: "interview"` was accepted and appended a `ChallengeEvent` stamped with the value that means *a human elected this*, then reopened a human's `decided` pin. The vocabulary is `challenge:challenger` — one member, and the singleton is the roster's answer rather than an omission: the agent roster makes the challenger *"the one reopen path at the wave checkpoint"* and says in the same paragraph why the obvious second candidate is not one (*"a reviewer reopening directly would silently perform T3 work at T2"*). `challenge:cross_derivation` is not admitted here: that is the source `cross_derive` stamps on its own `xdr_` event. `premortem` — the same role's second mode, same parameter, same default — is held to the same list.
+
+### `add_proposals` refuses `CLOSED_STATES`, as `set_question` already did
+
+The two doors arrived in one commit for the two halves of one funnel, and one of them checked the state. Observed: `mcp:ledger_add_proposals` succeeded on an `accepted` pin and on a `deferred` one, writing `brainstorm.proposals` onto work whose question had stopped being asked. `CLOSED_STATES` and not `SETTLED_STATES`, which is the line `set_question` draws too: `decided` is re-electable by the human, so exploring the alternatives to a live election is what a brainstorm is *for*.
+
+### `allow_freeform` moves into `_validate_question`
+
+v0.17 introduced the rule at `set_question` — *a menu an agent composed may not bound what the human may answer* — and left it off `add_pin`, which is the older door, the busier one, and the one that composes the identical object. Observed: `ledger_add_pin(question={prompt, options})` was accepted and `ledger_set_question` with the **byte-identical** dict was refused. The rule now lives in the validator both doors call, so it holds at any door added later as well. There is no case where it should not hold: every question in this system is written by an agent — a human answers one, they never author one.
+
+The cost is stated rather than hidden: `allow_freeform: false` is no longer writable through any door. Its readers stay — `mcp:record_decision` still refuses a freeform answer the question does not permit, and `decision_prompt` still carries the flag — because a rule enforced at the write governs no file that already exists, and ledgers written before v0.20 carry closed menus.
+
+### The general shape
+
+v0.19's was *"name the surface a human reads this field on."* This one is about pairs: **for every rule, record, refusal or return key on a door, name the sibling door that does the same kind of thing and check that it agrees.** Where two doors are two halves of one mechanism — settle/reopen, upstream/downstream, the fork and its options — anything true of one must be true of the other, or the difference must be stated with its reason. All four failures above passed every gate this repo has, because each gate asks whether a rule is enforced *somewhere* and none asks whether it is enforced *at both ends of the thing it is about*.

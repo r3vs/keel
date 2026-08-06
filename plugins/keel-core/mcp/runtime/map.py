@@ -820,7 +820,9 @@ function premortemCard(p){
 // a timeline whose rows no host can produce is verified against fixtures only.
 // This does NOT duplicate the decision card: that card weighs the CURRENT answer's rung, this says
 // what happened, in order. One label and one sentence per kind, from a closed table held against
-// `ledger.LOG_ENTRY_PREFIXES`, so a seventh kind arrives here instead of being silently dropped.
+// `ledger.LOG_ENTRY_PREFIXES`, so a new kind arrives here instead of being silently dropped — which
+// is not a hypothetical any more: `cas_` was added one round later and the gate is what put its row
+// on this page.
 const TRAIL={
   // The rung is READ through `derived`, exactly as the decision card reads it, and not taken off
   // `e.evidence`. Caught by looking at the page: on the pre-v0.11 cascade the card said "cascaded
@@ -837,7 +839,11 @@ const TRAIL={
   xdr_:{label:'cross-derivation', line:e=>h`${e.agreement} on: ${e.claim}${
     e.reopened?' — pin reopened':''}`},
   fal_:{label:'failure', line:e=>h`${e.class} in ${e.phase} — ${e.detail}`},
-  rev_:{label:'reopen', line:e=>h`${e.fired} (${e.source})${e.reopened?'':' — nothing was settled to reopen'} — ${e.reason}`}};
+  rev_:{label:'reopen', line:e=>h`${e.fired} (${e.source})${e.reopened?'':' — nothing was settled to reopen'} — ${e.reason}`},
+  // The cascade. `stl_`'s twin one direction over, and the row that did not exist while the write
+  // did not either: a pin swept back into the open set by an arc aimed at something it depends on
+  // showed a state change here with no entry explaining it.
+  cas_:{label:'cascade', line:e=>h`${e.from_state} → ${e.to_state} (${e.substate}) — swept up by the ${e.arc} recorded as ${e.via}`}};
 function trailKind(id){
   const s=String(id||'');
   const keys=Object.keys(TRAIL);

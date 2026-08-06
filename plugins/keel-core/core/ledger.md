@@ -90,6 +90,18 @@ Summary of what matters here:
   only the code that ran a path may name it. And `summary` survives a log entry with no `id` —
   reading a ledger is never the operation that fails on it — with the unrecognised entry reported
   under `pre_rule_events`, never skipped in silence.
+- v0.20 holds the reopen half to the settlement half's own rules — four rules true on one side of a
+  pairing and absent on the other. Every pin a cascade sweeps back into the open set gets a
+  **`CascadeEvent`**, the way every pin a door settles gets a `SettlementEvent`: one arc call could
+  un-finish a whole dependent closure and leave a record for its origin only. The **radius** each
+  arc reports is read off those records rather than off a `substate` nothing clears — a later
+  reopen of an unrelated pin was reporting an earlier cascade's pins as its own — and **both** arcs
+  report it, having run the same cascade through the same writer. `challenge` (and the challenger's
+  premortem mode) holds `source` to a closed vocabulary as `reopen` always has, so an arc that never
+  elects cannot sign itself `interview`. `add_proposals` refuses finished work, as `set_question`
+  already did. And `allow_freeform` is required at **every** door that composes a fork, not only at
+  the one where the rule was written: a menu an agent composed may not bound what the human may
+  answer, and `add_pin` composes the identical object.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.

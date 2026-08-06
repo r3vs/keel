@@ -72,7 +72,8 @@ class TestEnvelope(unittest.TestCase):
         with self.assertRaises(LedgerError):
             add_simple_pin(led, question={"options": []})  # no prompt
         with self.assertRaises(LedgerError):
-            add_simple_pin(led, question={"prompt": "x", "options": [{"label": "no id"}]})
+            add_simple_pin(led, question={"prompt": "x", "allow_freeform": True,
+                                          "options": [{"label": "no id"}]})
 
     def test_depends_on_must_exist(self):
         led = make_ledger()
@@ -335,7 +336,8 @@ class TestThresholdAndPolicies(unittest.TestCase):
         other = add_simple_pin(led, severity="low",
                                question={"prompt": "Which datastore?",
                                          "options": [{"id": "postgres", "label": "Postgres"},
-                                                     {"id": "mysql", "label": "MySQL"}]})
+                                                     {"id": "mysql", "label": "MySQL"}],
+                                         "allow_freeform": True})
         mute = add_simple_pin(led, severity="low", question=None)
 
         pol = led.add_policy(applies_to={"kind": "contract_mismatch"}, rule="the DB is truth",
@@ -1109,7 +1111,8 @@ class TestLeavingTheOpenSetIsGovernedToo(unittest.TestCase):
                              as_is=None, to_be=None,
                              question={"prompt": "Session or JWT?",
                                        "options": [{"id": "session", "label": "server sessions"},
-                                                   {"id": "jwt", "label": "stateless JWT"}]})
+                                                   {"id": "jwt", "label": "stateless JWT"}],
+                                       "allow_freeform": True})
         before = len(led.data["decision_log"])
         led.defer(pin["id"], rationale="auth is out of the v1 slice",
                   flip_criteria="a second client appears that cannot hold a cookie",
@@ -1373,6 +1376,149 @@ class TestComingBackIntoTheOpenSetIsGovernedToo(unittest.TestCase):
             led.challenge(pin["id"], target="decision", challenge_class="unstated_assumption",
                           argument="   ", severity="high", upheld=True)
         self.assertIn("argument", str(ctx.exception))
+
+    # -- v0.20: what the settlement half does, the reopen half must do too ----------------------
+
+    def _settled_chain(self, led):
+        """Three pins, each closed the long way, each depending on the one before it."""
+        chain = []
+        for i, dep in enumerate(("", "chain")):
+            pin = led.add_pin(kind="defect", title=f"link {i}", severity="medium",
+                              confidence="extracted",
+                              provenance=[{"source": "recon", "detail": "x"}],
+                              as_is={"description": "d"},
+                              depends_on=[chain[-1]["id"]] if chain else [])
+            item = led.add_remediation(pin["id"], action="align", ladder_rung=2)
+            led.set_remediation_status(pin["id"], item["id"], "done")
+            led.resolve(pin["id"], evidence="observed on staging", rung="observed")
+            chain.append(pin)
+        root = self._resolved(led)
+        chain[0]["depends_on"] = [root["id"]]
+        return [root] + chain
+
+    def test_every_pin_the_cascade_moves_gets_the_record_a_settlement_gets(self):
+        """`_settle` appends one `stl_` per pin it settles; `_reopen_minimal` appended nothing for
+        any pin it moved. One `reopen` on the root took three `resolved` pins back into the open
+        set and the log named one — finished work un-finished with no trail, which is the exact
+        asymmetry the settlement work removed in the other direction."""
+        led = make_ledger()
+        root, dep, dep2 = self._settled_chain(led)
+        event = led.reopen(root["id"], reason="the double charge came back: 3 in 24h on prod")
+
+        moved = {p["id"] for p in (root, dep, dep2)}
+        self.assertEqual({p["id"] for p in led.data["pins"] if p["state"] == "needs_input"}, moved)
+        cascades = [e for e in led.data["decision_log"] if e["id"].startswith("cas_")]
+        self.assertEqual([e["pin_id"] for e in cascades], [dep["id"], dep2["id"]],
+                         "every pin the closure swept up owes a record; the origin already has one")
+        for entry in cascades:
+            self.assertEqual((entry["arc"], entry["via"], entry["from_state"], entry["to_state"],
+                              entry["substate"]),
+                             ("reopen", event["id"], "resolved", "needs_input", "reopened"))
+
+    def test_the_origin_pin_gets_no_second_record_because_its_own_arc_event_carries_it(self):
+        """`_settle`'s rule, in `_settle`'s words: the event is appended only where something is not
+        already carrying it. The `rev_`/`chl_` event is about the origin pin and records `reopened`,
+        so a `cas_` beside it would be two carriers for one fact."""
+        led = make_ledger()
+        root, _, _ = self._settled_chain(led)
+        led.reopen(root["id"], reason="observed again in production")
+        self.assertEqual([e["pin_id"] for e in led.data["decision_log"]
+                          if e["id"].startswith("cas_") and e["pin_id"] == root["id"]], [])
+
+    def test_the_radius_is_read_off_the_records_and_not_off_a_substate_nothing_clears(self):
+        """Reproduced over real stdio at the tool: after a legitimate cascade, an unrelated reopen
+        reported the earlier cascade's pins as its own — because the radius was every pin whose
+        `substate` is `reopened`, and nothing anywhere clears that substate. The tool-level
+        assertion is `test_mcp_tools`; this is the carrier it now reads."""
+        led = make_ledger()
+        root, dep, dep2 = self._settled_chain(led)
+        first = led.reopen(root["id"], reason="p95 has been 1.4s for six days")
+        self.assertEqual(led.cascaded_by(first["id"]), [dep["id"], dep2["id"]])
+
+        alone = self._resolved(led)
+        second = led.reopen(alone["id"], reason="a second, unrelated incident")
+        self.assertEqual(led.cascaded_by(second["id"]), [],
+                         "a pin nothing depends on has no radius, whatever the older pins carry")
+
+    def test_both_arcs_hold_their_source_to_a_closed_vocabulary(self):
+        """`reopen` always did; `challenge` took any string, so `source="interview"` — the value
+        that means *a human elected this* — was accepted onto an event that then reopened a human's
+        `decided` pin. An arc whose safety argument is that it never elects may not sign itself with
+        the door that does."""
+        import ledger as ledger_mod
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        led.decide(pin["id"], "opt_a", "r", "f")
+        with self.assertRaises(LedgerError) as ctx:
+            led.challenge(pin["id"], target="decision", challenge_class="inconsistent",
+                          argument="contradicts the pin one over", severity="high", upheld=True,
+                          source="interview")
+        self.assertIn("source must be one of", str(ctx.exception))
+        self.assertEqual(pin["state"], "decided", "a refused challenge moves nothing")
+        self.assertEqual([e for e in led.data["decision_log"] if e["id"].startswith("chl_")], [],
+                         "a refused challenge appends nothing")
+        self.assertEqual(ledger_mod._CHALLENGE_SOURCES,
+                         tuple(f"challenge:{o}" for o in ledger_mod.CHALLENGE_ORIGINS),
+                         "composed from the origins, never a second list beside them")
+        # and the arc it is the twin of still refuses its own out-of-vocabulary source
+        with self.assertRaises(LedgerError):
+            led.reopen(pin["id"], reason="r", source="challenge:challenger")
+
+    def test_the_challengers_other_mode_answers_the_same_way(self):
+        """One role, two modes, one parameter, one default. Fixing the vocabulary at the mode that
+        reopens and leaving it open at the mode that does not would teach the next reader that the
+        rule is about consequences rather than about who is speaking."""
+        led = make_ledger()
+        pin = add_simple_pin(led)
+        with self.assertRaises(LedgerError) as ctx:
+            led.premortem(pin["id"], failure_modes=[{"class": "untested_path",
+                                                     "description": "the nightly export breaks"}],
+                          guardrails=["a fixture before any refactor"], source="interview")
+        self.assertIn("source must be one of", str(ctx.exception))
+        self.assertIsNone(pin.get("premortem"))
+
+    def test_both_funnel_doors_refuse_finished_work(self):
+        """`set_question` and `add_proposals` were added in one commit for the two halves of one
+        funnel, and only one checked the state: `add_proposals` wrote `brainstorm.proposals` onto an
+        `accepted` pin and onto a `deferred` one. `CLOSED_STATES` and not `SETTLED_STATES` at both,
+        because `decided` is re-electable and exploring a live election is what a brainstorm is
+        for."""
+        import ledger as ledger_mod
+        for state in ledger_mod.CLOSED_STATES:
+            led = make_ledger()
+            pin = self._resolved(led)
+            pin["state"] = state          # the three closed states, whichever door produced it
+            with self.assertRaises(LedgerError, msg=state) as ctx:
+                led.add_proposals(pin["id"], [{"summary": "written onto finished work"}])
+            self.assertIn("reopen", str(ctx.exception))
+            self.assertIsNone(pin["brainstorm"])
+            with self.assertRaises(LedgerError, msg=state):
+                led.set_question(pin["id"], {"prompt": "p", "options": [],
+                                             "allow_freeform": True})
+        # `decided` is the state both doors deliberately still admit
+        led = make_ledger()
+        live = add_simple_pin(led)
+        led.decide(live["id"], "opt_a", "r", "f")
+        led.add_proposals(live["id"], [{"summary": "the alternative to what was elected"}])
+        self.assertEqual(live["state"], "decided")
+
+    def test_both_doors_that_compose_a_fork_require_the_way_out(self):
+        """The byte-identical dict, at both doors. §10 introduced the rule at `set_question` and
+        left it off `add_pin` — the older door, the busier one, composing the identical object."""
+        led = make_ledger()
+        closed = {"prompt": "closed menu the agent wrote",
+                  "options": [{"id": "a", "label": "A"}]}
+        with self.assertRaises(LedgerError) as at_add:
+            led.add_pin(kind="ambiguity", title="t", severity="low", confidence="inferred",
+                        provenance=[{"source": "recon", "detail": "x"}], question=dict(closed))
+        bare = led.add_pin(kind="ambiguity", title="t2", severity="low", confidence="inferred",
+                           provenance=[{"source": "recon", "detail": "x"}])
+        with self.assertRaises(LedgerError) as at_set:
+            led.set_question(bare["id"], dict(closed))
+        self.assertEqual(str(at_add.exception), str(at_set.exception),
+                         "one rule, one message: two doors onto one object may not answer "
+                         "differently, and may not answer the same thing in two voices")
+        self.assertEqual(led.data["pins"], [bare], "a refused fork creates no pin")
 
     # -- the structural half: one writer, and neither arc can decide ----------------------------
 
@@ -1995,6 +2141,81 @@ class TestARuleIsTrueOfTheThingItIsPrintedOn(unittest.TestCase):
             self.assertIsInstance(prefix, ast.Constant, "a computed log id prefix has no reader")
             written.add(prefix.value)
         self.assertEqual(written, set(ledger_mod.LOG_ENTRY_PREFIXES))
+
+class TestEveryForkThisRuntimeComposes(unittest.TestCase):
+    """`_validate_question` holds the rule for everything that passes a door. This is what does not.
+
+    `surface_assumption` and `interview._fork_question` compose a fork and hand it to `add_pin`, so
+    the validator sees theirs. `cross_derive` assigns one straight onto the pin — installing a fork
+    the human answers from without passing any door — and it happens to set `allow_freeform`.
+    "Happens to" is the state this repo keeps finding, so the bypass is asserted from the AST.
+
+    The predicate is a carrier and not a resemblance: **a dict literal assigned to a `["question"]`
+    subscript.** The first draft asked "does the literal have a `prompt` key", which flagged
+    `interview.funnel`'s entry and `tools._prompt_from_pin`'s return — two PROJECTIONS of a fork
+    that already exists, neither of which writes one. A rule that cannot tell a reader from a writer
+    is the exact defect `scripts/check_schema_fields.py` was inverted for.
+    """
+
+    ROOTS = ("runtime", "mcp")
+
+    #: The functions allowed to install a fork without passing `_validate_question`, with the reason.
+    #: Declared, so a fourth bypass fails here rather than inheriting this exemption.
+    #:
+    #: Both write-if-absent, which is the rule `set_question` is built on and the reason neither is
+    #: a hole: the menu each composes replaces nobody's. `mark_correctness_unknown` was found by
+    #: this test rather than remembered — it was not in the first draft of this dict, which is
+    #: exactly what an inverted gate is for.
+    BYPASSES = {
+        "cross_derive": "install-if-absent: two providers disagreeing pose 'which derivation "
+                        "holds', and the derivations reach the map either way",
+        "mark_correctness_unknown": "install-if-absent: the state forces an explicit next move, so "
+                                    "it carries a fork asking for one; `blocked_by` is on the pin "
+                                    "either way",
+    }
+
+    def _question_literals(self):
+        import ast
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parent.parent / "src"
+        for sub in self.ROOTS:
+            for path in sorted((root / sub).glob("*.py")):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                enclosing = {}
+                for fn in ast.walk(tree):
+                    if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        for child in ast.walk(fn):
+                            enclosing.setdefault(id(child), fn.name)
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
+                        continue
+                    for target in node.targets:
+                        if (isinstance(target, ast.Subscript)
+                                and isinstance(target.slice, ast.Constant)
+                                and target.slice.value == "question"):
+                            yield (path.name, node.lineno, enclosing.get(id(node), "<module>"),
+                                   node.value)
+
+    def test_no_fork_installed_past_the_validator_bounds_the_human(self):
+        import ast
+        closed = []
+        for name, lineno, _fn, literal in self._question_literals():
+            keys = [k.value for k in literal.keys
+                    if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+            value = dict(zip(keys, literal.values)).get("allow_freeform")
+            if not (isinstance(value, ast.Constant) and value.value is True):
+                closed.append(f"{name}:{lineno}")
+        self.assertEqual(closed, [],
+                         "a fork installed here bounds what the human may answer, and it reaches "
+                         "`_validate_question` on no path")
+
+    def test_the_composers_that_reach_no_door_are_the_declared_ones(self):
+        found = {fn for _n, _l, fn, _lit in self._question_literals()}
+        self.assertEqual(found, set(self.BYPASSES),
+                         "a function installing a fork without passing a door is a menu nothing "
+                         "validated — declare it here with the reason, or route it through "
+                         "`set_question`")
+
 
 if __name__ == "__main__":
     unittest.main()

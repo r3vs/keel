@@ -718,6 +718,12 @@ def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_sign
     reading came from. `reopened` in the return says whether the pin actually moved: an observation
     about a pin nobody had settled is still recorded, and reporting it as a move would be a second
     carrier for a fact the event already holds.
+
+    `also_reopened` is the settled dependents the cascade swept up with it — **read off the `cas_`
+    records this call appended** (`Ledger.cascaded_by`), not derived from the pins. It used to be
+    every pin carrying `substate == "reopened"` and `state == "needs_input"`, and nothing anywhere
+    clears that substate: after one legitimate cascade, a later reopen of an unrelated pin reported
+    the earlier cascade's pins as its own radius. Same bug, same fix, as `reopened` one field over.
     """
     led = _open_existing(ledger)
     event = led.reopen(pin_id, reason=reason, fired=fired, source=source)
@@ -726,9 +732,7 @@ def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_sign
     pin = led.pin(pin_id)
     return {"pin_id": pin_id, "event_id": event["id"], "reopened": event["reopened"],
             "state": pin["state"], "substate": pin.get("substate"),
-            "also_reopened": [p["id"] for p in led.data["pins"]
-                              if p["id"] != pin_id and p.get("substate") == "reopened"
-                              and p["state"] == "needs_input"]}
+            "also_reopened": led.cascaded_by(event["id"])}
 
 
 def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str, argument: str,
@@ -748,6 +752,16 @@ def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str
 
     `upheld` and `reopened` are different facts and both come back: a refutation of a pin nobody
     settled is true and moves nothing.
+
+    **`also_reopened` is here for the same reason it is on `ledger_reopen` (v0.20): the two arcs run
+    the same cascade.** An upheld challenge reopens the pin *and its settled dependents*, and this
+    tool reported none of them — observed, a `resolved` pin was taken back into the open set by a
+    challenge on the pin it depends on and appeared in no key of the response. Two arcs, one
+    predicate, one writer, added in one commit, and their radius reporting was one over. Read off the
+    `cas_` records this call appended, exactly as the downstream arc reads its own.
+
+    `source` is a closed vocabulary (`challenge:challenger`): the arc's safety argument is that it
+    never elects, so it may not sign itself with the door that does.
     """
     led = _open_existing(ledger)
     event = led.challenge(pin_id, target=target, challenge_class=challenge_class,
@@ -757,7 +771,8 @@ def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str
     pin = led.pin(pin_id)
     return {"pin_id": pin_id, "event_id": event["id"], "upheld": event["upheld"],
             "reopened": event["reopened"], "state": pin["state"],
-            "substate": pin.get("substate")}
+            "substate": pin.get("substate"),
+            "also_reopened": led.cascaded_by(event["id"])}
 
 
 def ledger_set_question(ledger: str, pin_id: str, question: dict) -> dict:

@@ -142,7 +142,7 @@ class TestLedgerWrites(unittest.TestCase):
 
     #: The fork these clustered pins pose. A policy may only write an outcome the pin's own question
     #: offers (v0.12), so a cluster with no question is a cluster no policy can cascade over.
-    FORK = {"prompt": "Which layer is truth?",
+    FORK = {"prompt": "Which layer is truth?", "allow_freeform": True,
             "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
 
     def _cluster(self, n=3):
@@ -195,7 +195,8 @@ class TestLedgerWrites(unittest.TestCase):
                                  provenance=[{"source": "recon", "detail": "d"}],
                                  question={"prompt": "Which datastore?",
                                            "options": [{"id": "postgres", "label": "Postgres"},
-                                                       {"id": "mysql", "label": "MySQL"}]})
+                                                       {"id": "mysql", "label": "MySQL"}],
+                                 "allow_freeform": True})
         out = tools.record_policy(
             self.ledger, rule="the agent's own sentence, never uttered by the user",
             applies_to={"cluster_id": "cl_data"},
@@ -217,7 +218,7 @@ class TestLedgerWrites(unittest.TestCase):
         after pol_0001 was elected — inside its own `cascaded` list."""
         args = dict(question={"prompt": "Which layer is truth?",
                               "options": [{"id": "db", "label": "the DB"},
-                                          {"id": "api", "label": "the API"}]},
+                                          {"id": "api", "label": "the API"}], "allow_freeform": True},
                     kind="contract_mismatch", severity="low", confidence="extracted",
                     provenance=[{"source": "recon", "detail": "d"}])
         tools.ledger_add_pin(self.ledger, title="one", cluster_id="cl_one", **args)
@@ -435,7 +436,7 @@ class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
             confidence="inferred", provenance=[{"source": "catalog", "detail": "identity"}],
             question={"prompt": "Session or JWT?",
                       "options": [{"id": "session", "label": "server sessions"},
-                                  {"id": "jwt", "label": "stateless JWT"}]})
+                                  {"id": "jwt", "label": "stateless JWT"}], "allow_freeform": True})
         return out["pin_id"]
 
     def test_the_four_call_chain_that_closed_an_unverifiable_blocker(self):
@@ -492,7 +493,8 @@ class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
         pid = tools.ledger_add_pin(
             self.ledger, kind="defect", title="d", severity="medium", confidence="extracted",
             provenance=[{"source": "recon", "detail": "x"}], as_is={"description": "d"},
-            question={"prompt": "?", "options": [{"id": "fix", "label": "fix it"}]})["pin_id"]
+            question={"prompt": "?", "allow_freeform": True,
+                      "options": [{"id": "fix", "label": "fix it"}]})["pin_id"]
         item = tools.ledger_add_remediation(self.ledger, pid, action="align", ladder_rung=1)
         tools.ledger_set_remediation_status(self.ledger, pid, item["item_id"], "done")
         tools.ledger_resolve(self.ledger, pid, evidence="observed: no longer reproduces",
@@ -552,6 +554,119 @@ class TestSettlingAPinThroughTheAgentsOwnDoors(unittest.TestCase):
         self.assertEqual(second["event_id"], events[-1]["id"])
         self.assertEqual(second["reopened"], events[-1]["reopened"])
         self.assertFalse(second["reopened"], "an agreement reopens nothing")
+
+    # -- v0.20: the two arcs report one radius, and they report their own ------------------------
+
+    def _closed(self, title, depends_on=()):
+        """A pin walked the whole way: add_pin -> record_decision -> add_remediation -> done ->
+        resolve. The chain the reproduction used, through the doors an agent actually calls."""
+        pid = tools.ledger_add_pin(
+            self.ledger, kind="defect", title=title, severity="medium", confidence="extracted",
+            provenance=[{"source": "recon", "detail": "x"}], depends_on=list(depends_on),
+            question={"prompt": "Fix it how?",
+                      "options": [{"id": "align", "label": "align the layers"},
+                                  {"id": "drop", "label": "drop the path"}],
+                      "allow_freeform": True})["pin_id"]
+        tools.record_decision(self.ledger, pid, "align", rationale="r", flip_criteria="f",
+                              human_answer="align them")
+        item = tools.ledger_add_remediation(self.ledger, pid, action="align", ladder_rung=2)
+        tools.ledger_set_remediation_status(self.ledger, pid, item["item_id"], "done")
+        tools.ledger_resolve(self.ledger, pid, evidence="replayed on staging", rung="observed")
+        return pid
+
+    def test_a_reopen_reports_the_radius_it_moved_and_not_an_older_ones(self):
+        """Reproduced verbatim over stdio: `also_reopened` was every pin with
+        `substate == "reopened"` and `state == "needs_input"`, and nothing anywhere clears that
+        substate — so a later reopen of an UNRELATED closed pin reported the earlier cascade's pins
+        as its own radius. The library one layer down forbids exactly this read (v0.16 corrected
+        `cross_derive` for it); the tool layer re-introduced it."""
+        root = self._closed("root")
+        dep = self._closed("dependent", depends_on=[root])
+        dep2 = self._closed("dependent of the dependent", depends_on=[dep])
+
+        first = tools.ledger_reopen(self.ledger, root, reason="3 double charges in 24h on prod")
+        self.assertEqual((first["reopened"], first["also_reopened"]), (True, [dep, dep2]))
+
+        alone = self._closed("unrelated, depends on nothing")
+        second = tools.ledger_reopen(self.ledger, alone, reason="a second, unrelated incident",
+                                     fired="incident", source="feedback:logs")
+        self.assertEqual(second["also_reopened"], [],
+                         "this call moved one pin; the three still carrying the mark are the "
+                         "previous call's radius, and nothing clears the mark")
+
+    def test_both_arcs_report_the_same_radius_under_the_same_key(self):
+        """`ledger_challenge` runs the same cascade through the same writer and reported nothing —
+        a `resolved` pin was taken back into the open set by a challenge on the pin it depends on
+        and appeared in no key of the response. Two arcs, one predicate, one writer, added in one
+        commit, and their radius reporting was one over."""
+        root = self._closed("challenged root")
+        dep = self._closed("rests on the challenged root", depends_on=[root])
+        out = tools.ledger_challenge(
+            self.ledger, root, target="decision", challenge_class="unstated_assumption",
+            argument="the retry path was never the one this was elected for",
+            severity="high", upheld=True)
+        self.assertEqual((out["upheld"], out["reopened"], out["also_reopened"]), (True, True, [dep]))
+        self.assertEqual(Ledger(self.ledger).pin(dep)["state"], "needs_input")
+        self.assertEqual(
+            set(tools.ledger_reopen.__doc__.split()) & {"also_reopened"},
+            set(tools.ledger_challenge.__doc__.split()) & {"also_reopened"},
+            "one cascade, one key, described at both doors")
+
+    def test_every_pin_the_cascade_moved_is_named_in_the_log_the_agent_can_read(self):
+        """The trail half, at the boundary: three pins were un-finished by one call and the log
+        named the root. `also_reopened` is read off these records rather than off the pins."""
+        root = self._closed("root")
+        dep = self._closed("dependent", depends_on=[root])
+        event = tools.ledger_reopen(self.ledger, root, reason="it came back")["event_id"]
+        cascades = [e for e in Ledger(self.ledger).data["decision_log"]
+                    if e["id"].startswith("cas_")]
+        self.assertEqual([(e["pin_id"], e["via"], e["arc"]) for e in cascades],
+                         [(dep, event, "reopen")])
+
+    def test_the_brainstorm_cannot_write_onto_work_that_is_finished(self):
+        """`ledger_add_proposals` succeeded on an `accepted` pin and on a `deferred` one, writing
+        `brainstorm.proposals` onto work whose question had stopped being asked — while
+        `ledger_set_question`, added in the same commit for the other half of the same funnel,
+        refused both."""
+        for settle in ("accept", "defer"):
+            pid = self._fork(severity="low")
+            Ledger(self.ledger)  # the pin exists; each branch settles it its own way
+            if settle == "accept":
+                concern = tools.ledger_add_pin(
+                    self.ledger, kind="design_concern", title="three near-identical blocks",
+                    severity="low", confidence="inferred",
+                    provenance=[{"source": "reviewer", "detail": "judgment"}],
+                    question={"prompt": "Consolidate?",
+                              "options": [{"id": "extract", "label": "extract a helper"}],
+                              "allow_freeform": True})["pin_id"]
+                tools.record_decision(self.ledger, concern, "", rationale="r", flip_criteria="f",
+                                      human_answer="leave it", accept_as_is=True)
+                pid = concern
+            else:
+                tools.ledger_defer(self.ledger, pid, rationale="out of the v1 slice",
+                                   flip_criteria="a second client appears",
+                                   human_answer="not now — v1 is one web client")
+            with self.assertRaises(ValueError, msg=settle) as ctx:
+                tools.ledger_add_proposals(self.ledger, pid,
+                                           [{"summary": "written onto finished work"}])
+            self.assertIn("reopen", str(ctx.exception))
+            self.assertIsNone(Ledger(self.ledger).pin(pid)["brainstorm"])
+
+    def test_the_older_busier_door_composes_a_fork_under_the_same_rule(self):
+        """`ledger_add_pin(question={...})` with no `allow_freeform` was accepted while
+        `ledger_set_question` refused the byte-identical dict."""
+        closed = {"prompt": "closed menu the agent wrote", "options": [{"id": "a", "label": "A"}]}
+        with self.assertRaises(ValueError) as at_add:
+            tools.ledger_add_pin(self.ledger, kind="ambiguity", title="t", severity="low",
+                                 confidence="inferred",
+                                 provenance=[{"source": "recon", "detail": "x"}],
+                                 question=dict(closed))
+        bare = tools.ledger_add_pin(self.ledger, kind="ambiguity", title="t2", severity="low",
+                                    confidence="inferred",
+                                    provenance=[{"source": "recon", "detail": "x"}])["pin_id"]
+        with self.assertRaises(ValueError) as at_set:
+            tools.ledger_set_question(self.ledger, bare, dict(closed))
+        self.assertEqual(str(at_add.exception), str(at_set.exception))
 
     def test_the_defer_door_does_not_let_its_caller_state_its_own_rung(self):
         """`ledger_defer(..., evidence="elicited")` settled a `blocker` fork on the rung whose whole

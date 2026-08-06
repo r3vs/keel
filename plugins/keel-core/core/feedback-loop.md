@@ -40,6 +40,12 @@ a periodic "did X happen?" asked at a wave boundary or on a schedule. Never a ha
 
    Check `reopened` in the result. `false` means the pin was not settled, so the observation was
    recorded and nothing moved — which is the honest answer, not a failure.
+
+   Check **`also_reopened`** too: the settled dependents this call swept up with it. One fired
+   signal can un-finish several pins, each of which gets its own record in the log
+   (`CascadeEvent`, joined to your `ReopenEvent` by `via`) — so tell the user what moved, not only
+   which pin you aimed at. It is the radius of *this* call and no other; the upstream arc
+   (`mcp:ledger_challenge`) reports the same key from the same records.
 4. **Hand off.** Reopened pins flow into the interview: `greenfield-forge slice` for a forged
    project, `codebase-rescue resume` for a rescued one. The elected new truth then flows forward
    through the normal phases (contract → build → validate) — the loop turns.

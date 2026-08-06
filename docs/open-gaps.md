@@ -11,9 +11,11 @@ not finished when the tests pass, it is finished when the behaviour was observed
 keep their original text under a closing note; they are kept, not deleted, because *why it was
 wrong* is the part that stops it coming back.
 
-> **STATUS 2026-08-06 (fourth pass).** **§1–§17 are all closed.** Nothing on this list is open. What
-> replaces them is **§18**, which is not a defect but the standing answer to the question this
-> register exists to ask: *after eight adversarial rounds, which recurring class still has no gate?*
+> **STATUS 2026-08-06 (fifth pass).** **§1–§17 and §19 are all closed.** Nothing on this list is
+> open. **§18** is not a defect but the standing answer to the question this register exists to ask:
+> *after nine adversarial rounds, which recurring class still has no gate?* **§19** is the ninth
+> round's answer to it, and it is the same class arriving through a different door: §5 built a new
+> surface and left four rules that its siblings enforce.
 >
 > | # | Gap | One line |
 > |---|---|---|
@@ -31,6 +33,7 @@ wrong* is the part that stops it coming back.
 > | ~~16~~ | ~~an unknown `settles_as` renders as a bare label~~ | **CLOSED** — one `unknownNote` sentence, seven callers, tables kept apart |
 > | ~~17~~ | ~~seven residuals of the final review~~ | **CLOSED** — 17c was the last, and it was eight prose sites rather than three |
 > | **18** | **which class still has no gate** | not a defect: the standing answer — two classes gated, one newly gated, two argued as not mechanizable |
+> | ~~19~~ | ~~four rules true on one side of a pairing, absent on the other~~ | **CLOSED** — the reopen half held to the settlement half's own rules; one residual registered, not built |
 >
 > §6 and §7 were found by opening the page in a browser, which is the only way either could have
 > been. §9–§16 came from two adversarial reviews of the v0.16 settlement work and are recorded here
@@ -49,8 +52,9 @@ wrong* is the part that stops it coming back.
 > | 6. + 7. + 8. + 13. + 14. + 16. + 17a. + 17d. + 17e. the reading surfaces never grew | ledger v0.19 | `src/runtime/map.py` — the palette block's three foreground pairs, `unknownNote`, and the card stack `verificationCard` · `brainstormCard` · `modeLine` · `readinessCard` · `remediationCard` · `premortemCard` · `trailCard`; `_SCRIPT_UNSAFE` + `_inline`; `interview.funnel`'s `blocked_by`; `instructions._pin_line`'s dispute clause and the two settled sections; `ledger.LEAVE_AS_IS_STATES` + `ledger.REOPENED_SUBSTATES`; gates `tests/test_map.py::TestThePaletteCarriesTheWarningItIsUsedFor` · `TestTheOnlyWayDataEntersThePage` · `TestEveryClosedTableThePageReadsIsTheSchemas` · `TestTheWholeEnvelopeHasAReader`, `tests/test_instructions.py::TestNoStateNameIsKeptInThisFile`, `tests/test_ledger.py::TestTheDistinctionsASurfaceSortsAndTITLESBy` |
 > | 15. + 17c. two gates that overstated themselves, and the prose one door behind | 2026-08-06 (no spec bump — nothing here is a schema rule) | `tests/test_ledger.py::TestOneWriterForTheSettledStates` — inverted to `STATE_WRITERS`, set equality over the assignment TARGET across `src/runtime` + `src/mcp`; `scripts/check_schema_fields.py::mask_writes` — Python write-positions blanked before the search, which found **six** write-only fields the same day; `map.py::detRow` + the readiness evidence rows; the three-requirement `resolved` sentence in eight playbooks and `src/core/agents.md` |
 > | 18. a number in prose answered to nobody | 2026-08-06 | `scripts/check_stated_facts.py`, wired into `.github/workflows/ci.yml` and `CLAUDE.md`'s Commands block |
+> | 19. four rules true on one side of a pairing | ledger v0.20 | `ledger.LOG_ENTRY_PREFIXES`'s `cas_` + `_reopen_minimal`'s per-pin `CascadeEvent`; `Ledger.cascaded_by`, called by both arcs' tools; `ledger._CHALLENGE_SOURCES` on `challenge` **and** `premortem`; `add_proposals`'s `CLOSED_STATES` refusal; `allow_freeform` inside `_validate_question`; gates `tests/test_ledger.py::TestEveryForkThisRuntimeComposes` and the seven new cases in `TestComingBackIntoTheOpenSetIsGovernedToo` |
 >
-> **Closed does not mean nothing remains.** Four residuals are recorded inside closed sections rather
+> **Closed does not mean nothing remains.** Five residuals are recorded inside closed sections rather
 > than fixed, each with the argument for leaving it — read the section before re-finding one:
 >
 > - **§5** — `_reopen_minimal` cascades over `("decided", "resolved", "accepted")`, three states where
@@ -63,6 +67,12 @@ wrong* is the part that stops it coming back.
 >   `not_offered` branch, and nothing can tell it from a standing demand. The stamp recorded no
 >   reason, so no reader can recover one, and reconstructing it from the policies still in the file
 >   would be the heuristic this repo forbids.
+> - **§19** — `server.py::_decision_choices` builds the elicitation enum strictly from
+>   `question.options`, so the **elicited** rung hands the human a closed menu whatever
+>   `allow_freeform` says. It predates the round that found it (every fork this runtime composes
+>   already sets the flag and already got a closed enum), and closing it is a protocol design
+>   question rather than a symmetry fix — a "something else" row needs a second `ctx.elicit` for the
+>   words, with its own decline path. The relay rung honours the flag today.
 > - **§3** — the two below.
 >
 > Two residuals of gap 3 are recorded rather than fixed, and both are named in `docs/packaging.md`:
@@ -532,6 +542,12 @@ different environment than the shell is consistent with everything ruled out abo
 ---
 
 ## 5. Both reopen arcs are reachable by nobody — **CLOSED 2026-08-06** (ledger v0.17)
+
+> **Read §19 next.** This section built the doors and built them well; the round after it found
+> **four rules that hold on one side of a pairing and were absent on the other** — the cascade with
+> no per-pin record, a radius re-derived from a substate nothing clears, an unvalidated `source`,
+> and a closed-state check on one funnel door of two. Nothing below is retracted. What it did not
+> ask is the question §19 is named for: *for every rule on a door, does the sibling door agree?*
 
 **Both arcs have doors, and so do the two states that turned out to be in the same condition.**
 `mcp:ledger_reopen` and `mcp:ledger_challenge` are served, named by shipped playbooks
@@ -1883,10 +1899,18 @@ for it. Treat its measurement as of the day it was filed.
 
 ## 18. Which recurring class still has no gate — **the standing answer, 2026-08-06**
 
-Not a defect. This is the question the register exists to answer, written down so the ninth round
+Not a defect. This is the question the register exists to answer, written down so the next round
 starts from it instead of re-deriving it. Five classes recur in the sections above. Two of them are
-now gated, one is **newly** gated by this round, and two are argued below as not mechanizable — with
-the argument, not the verdict, because a verdict without one is what gets re-litigated.
+now gated, one was **newly** gated by the eighth round (`check_stated_facts.py`), and two are argued
+below as not mechanizable — with the argument, not the verdict, because a verdict without one is
+what gets re-litigated.
+
+**§19 is the ninth round's answer, and it lands squarely in the first class below.** It also names
+the sharpest form of that class's residual: the invariant a new door misses is most often one its
+**sibling** door already enforces, which is a question a reader can actually ask — *for every rule,
+record, refusal or return key on this door, which door does the same kind of thing, and does it
+agree?* One row was added to the table for it; the rest of §19 is procedure, for the reason the
+residual paragraph below already gives.
 
 ### Gated
 
@@ -1901,6 +1925,7 @@ added rather than on the day someone reads for it:
 | every caller of `_settle` | `tests/test_ledger.py::TestOneWriterForTheSettledStates::test_every_door_reaches_the_single_writer` |
 | every function that assigns `pin["state"]` | the same class's `test_the_enumeration_of_state_writers_is_complete` (2026-08-06 — §15) |
 | every caller of `_reopen_minimal` | `TestComingBackIntoTheOpenSetIsGovernedToo` |
+| every function that installs a fork past `_validate_question` | `tests/test_ledger.py::TestEveryForkThisRuntimeComposes` (2026-08-06 — §19) |
 | every public mutator, classified | `TestEveryWritePassesAGovernedChannel::test_no_mutator_is_unclassified` |
 | every `INTERNAL` mutator, reachable | `…::test_an_INTERNAL_mutator_is_actually_reached` |
 | every writer of `resolution_mode: "asked"` | `TestAMarkWithNoClearingDoorIsWrittenForAStandingReason` |
@@ -1992,6 +2017,112 @@ seen is a gate you have not tested, and a green run is not evidence about it.
 own entry for, and it is ungated by construction: the carrier lives in somebody else's repository.
 The discipline is the one §3 and `docs/packaging.md` already state — cite the function that
 *consumes* the value, never the type that holds it, and mark what was read rather than observed.
+
+---
+
+## 19. Four rules true on one side of a pairing, absent on the other — **CLOSED 2026-08-06** (ledger v0.20)
+
+§5 added the two reopen arcs, and added them well: no outcome on either signature, their own
+predicate, a single writer, `reopened` recorded instead of inferred. This section is what it left.
+Every finding below was **observed over real `uv run --script` stdio against the shipped
+`plugins/keel-core/mcp/server.py`** before it was a test, and every one of them is the same shape:
+*a door that does the same kind of thing as its sibling, and does it differently.* All six passed
+772 tests and eight gates.
+
+### Verified — the six, and what each returned
+
+1. **The cascade moved pins with no record.** Three pins each walked
+   `add_pin → record_decision → add_remediation → done → resolve`. One `ledger_reopen` on the root
+   took all three back into the open set; the log held `ev_ stl_ ev_ stl_ ev_ stl_ rev_` — one
+   entry for the arc and **nothing** for the two pins it un-finished. `_settle` appends a per-pin
+   `stl_` for every settlement. Finished work was un-finished with no trail, which is the exact
+   asymmetry the v0.16 settlement work existed to remove one direction over.
+2. **`also_reopened` was re-derived, not reported.** `tools.py` computed it as every pin with
+   `substate == "reopened"` and `state == "needs_input"` — and **nothing clears that substate**.
+   Observed: after a legitimate cascade `pin_0001 → pin_0002, pin_0003`, a later `ledger_reopen` on
+   an unrelated closed pin returned `also_reopened: ["pin_0001","pin_0002","pin_0003"]`, none of
+   which that call touched. v0.16 removed this exact read from `cross_derive`'s return shape; the
+   tool layer re-introduced it one layer up, against the field the arc writes.
+3. **`ledger_challenge` cascaded the same reopen and reported nothing.** `pin_0006` (`resolved`,
+   `depends_on: [pin_0005]`) was moved to `needs_input`/`challenged` by a challenge on `pin_0005`
+   and appeared in no key of the response. Two arcs, one predicate, one writer, one commit, and
+   their radius reporting was one over.
+4. **`add_proposals` had no closed-state check** while `set_question` — same commit, same funnel —
+   refused `CLOSED_STATES`. Observed: `ledger_add_proposals` succeeded on an `accepted` pin and on a
+   `deferred` one, writing `brainstorm.proposals` onto work whose question had stopped being asked.
+5. **`allow_freeform` was enforced at one door of two.** `ledger_add_pin(question={prompt,
+   options})` with no flag succeeded; `ledger_set_question` with the **byte-identical** dict was
+   refused with *"a fork composed after the fact must set allow_freeform"*. §10 wrote that rule to
+   stop an agent handing the human a closed menu it wrote itself, at the newer and quieter door.
+6. **`Ledger.challenge(source=…)` took any string** while `Ledger.reopen(source=…)` validated
+   against `feedback:<FLIP_SIGNAL_SOURCES>`. Observed:
+   `ledger_challenge(..., upheld=true, source="interview")` was accepted and stored
+   `("chl_0002", "interview")` — a ChallengeEvent signed with the value that means *a human elected
+   this*, which then reopened a human's `decided` pin.
+
+### Why it matters
+
+Each one defeats the argument its own arc rests on. The arcs are safe to hand an agent **because
+they write no outcome** — and 6 let one sign itself as the door that does. The settlement table's
+whole claim is that *"how did this pin stop being open, and on whose authority"* is answerable for
+every door — and 1 left the opposite direction unanswerable for every pin but one. 2 is the
+package's own no-heuristics rule broken in the tool layer: an uncleared substate is not a carrier
+for *what this call did*. 5 is worse than an omission, because `add_pin` is where nearly every fork
+in a rescue is born, so the rule was absent exactly where it applies most.
+
+### Done looks like
+
+- `CascadeEvent` (`cas_`, the seventh entry in `LOG_ENTRY_PREFIXES`) — one per pin the closure
+  sweeps up, carrying `arc`, `via`, `from_state`, `to_state`, `substate`. The origin pin gets none,
+  on `_settle`'s own rule: its `rev_`/`chl_` event already carries `reopened`.
+- `Ledger.cascaded_by(event_id)` — one reader, two callers, so the arcs cannot report differently.
+  `mcp:ledger_challenge` gained `also_reopened`; `mcp:ledger_reopen`'s stopped being a derivation.
+- `ledger._CHALLENGE_SOURCES`, composed from `CHALLENGE_ORIGINS` the way `_FEEDBACK_SOURCES` is
+  composed from `FLIP_SIGNAL_SOURCES`. One member, and the singleton is the roster's own answer:
+  `core/agents.md` makes the challenger *"the one reopen path at the wave checkpoint"* and says in
+  the same paragraph why the reviewer is not one. `premortem` — the same role's second mode, same
+  parameter, same default — is held to the same list.
+- `add_proposals` refuses `CLOSED_STATES` in `set_question`'s words; `decided` stays open to both,
+  because the human may re-elect and laying out the alternatives is what a brainstorm is for.
+- `allow_freeform` moved into `_validate_question`, so the rule holds at every door that composes a
+  fork, including any added later. Both doors now raise the **same string** — asserted.
+- The map's trail card grew a `cas_` row; `scripts/preview_map.py` produces one through the real
+  doors, so the row is verified by something rather than by nobody.
+
+### Prove it
+
+`tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo` —
+`test_every_pin_the_cascade_moves_gets_the_record_a_settlement_gets`,
+`test_the_origin_pin_gets_no_second_record_because_its_own_arc_event_carries_it`,
+`test_the_radius_is_read_off_the_records_and_not_off_a_substate_nothing_clears`,
+`test_both_arcs_hold_their_source_to_a_closed_vocabulary`,
+`test_the_challengers_other_mode_answers_the_same_way`, `test_both_funnel_doors_refuse_finished_work`,
+`test_both_doors_that_compose_a_fork_require_the_way_out`; plus
+`tests/test_ledger.py::TestEveryForkThisRuntimeComposes`, which is inverted the way §15 inverted its
+two gates — it enumerates the functions that install a fork **without** passing a validator and holds
+that set to a declared dict. It found a composer that was not in the first draft of that dict
+(`mark_correctness_unknown`), which is the only kind of evidence an inverted gate can give.
+`tests/test_mcp_tools.py::TestSettlingAPinThroughTheAgentsOwnDoors` carries the same five at the
+boundary the reproductions used.
+
+### Traps
+
+- **`_reopen_minimal` still cascades over three states, not four.** §5's residual is unchanged and
+  deliberately so: whether a `deferred` dependent rested on the falsified truth is a real question
+  and nothing has settled it. Do not "fix" it while adding the record.
+- **`allow_freeform: false` is no longer writable through any door, and its readers stay.**
+  `mcp:record_decision` still refuses a freeform answer the question does not permit, and
+  `decision_prompt` still carries the flag, because a rule enforced at the write governs no file
+  that already exists. `test_invariants.py` exercises that refusal on a ledger whose flag is flipped
+  on disk, which is the only way such a file can now arise. Do not delete the branch as dead.
+- **The elicitation path does not honour `allow_freeform`, and this round did not fix it.** Found
+  while verifying the rule's consumers rather than assuming them: `server.py::_decision_choices`
+  builds the enum strictly from `question.options`, so on the strong rung the human is handed a
+  closed menu whatever the flag says. It predates this round — every pin `surface_assumption`,
+  `cross_derive` and `interview._fork_question` create already set the flag and already gets a
+  closed enum — and closing it is a protocol design question (a "something else" row needs a second
+  `ctx.elicit` for the words, with its own decline path), not a symmetry fix. **Registered here,
+  not built.** The relay rung honours the flag today; the elicited rung does not.
 
 ---
 

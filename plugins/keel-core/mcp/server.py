@@ -165,7 +165,7 @@ def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence
         provenance: List of {source, detail} — who found this and how (required, non-empty).
         as_is: Current descriptive state (optional).
         to_be: Elected by the interview later, not here (optional).
-        question: Materializes the pin as needs_input (optional).
+        question: Materializes the pin as needs_input (optional). {"prompt", "options": [{"id","label","implication"?}], "allow_freeform": true} — freeform is REQUIRED, exactly as in `ledger_set_question`: you are composing this menu, so the human's own words must stay a legal answer.
         depends_on: Pin ids this depends on (optional).
         kind_detail: Required when kind is "other".
         cluster_id: Optional cluster grouping.
@@ -865,7 +865,8 @@ def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_sign
     silently, and the human re-elects through `ledger_record_decision`.
 
     `reopened: false` in the result means the pin was not settled, so nothing moved — the
-    observation is still recorded.
+    observation is still recorded. `also_reopened` lists the settled dependents the cascade swept up
+    with it; each of them gets its own record in the log, so nothing is un-finished untraceably.
 
     Args:
         ledger: Path to ledger.json.
@@ -891,7 +892,8 @@ def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str
     say-so, and it is refused for the same reason a relayed decision with no quote is.
 
     `upheld` and `reopened` are different: a sound refutation of a pin nobody had settled is
-    recorded and moves nothing.
+    recorded and moves nothing. `also_reopened` lists the settled dependents the cascade swept up —
+    the same key, from the same records, as `ledger_reopen`, because it is the same cascade.
 
     Args:
         ledger: Path to ledger.json.
@@ -901,7 +903,7 @@ def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str
         argument: What refutes it. Required, non-blank — this is the challenge.
         severity: blocker | high | medium | low.
         upheld: Does the challenge survive review? True reopens the pin.
-        source: Who challenged. Defaults to the challenger role.
+        source: challenge:challenger — the read-only role this arc belongs to. Closed: an arc that never elects may not sign itself with the door that does.
     """
     return tools.ledger_challenge(ledger, pin_id, target, challenge_class, argument, severity,
                                  upheld, source)
@@ -937,6 +939,10 @@ def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str =
 
     The pin stays in `interview_next` while it is being brainstormed, with these proposals attached
     to its entry, so exploring a fork no longer takes it off the agenda.
+
+    A pin whose work is finished (`resolved` / `accepted` / `deferred`) is refused, in the same words
+    `ledger_set_question` uses: proposing options for a question that has stopped being asked is
+    un-finishing the pin, and the door for that is `ledger_reopen`, which records why.
 
     Args:
         ledger: Path to ledger.json.

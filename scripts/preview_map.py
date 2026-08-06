@@ -244,7 +244,11 @@ def build() -> Ledger:
         as_is={"givens": [], "built": None},
         question={"prompt": "Which session model?",
                   "options": [{"id": "cookie", "label": "Server sessions in a cookie"}],
-                  "allow_freeform": False})
+                  # v0.20: `False` here is no longer writable through any door — `_validate_question`
+                  # requires the way out at `add_pin` as it already did at `set_question`. This pin
+                  # is in the fixture for its `brief` evidence rung, which the flag has nothing to
+                  # do with, so it takes the value every fork now carries.
+                  "allow_freeform": True})
     led.decide(brief["id"], outcome="cookie", rationale="pre-decided by the brief",
                flip_criteria="a third-party client needs a bearer token",
                evidence="brief")
@@ -273,7 +277,8 @@ def build() -> Ledger:
                 # question is not one decision.
                 question={"prompt": "Where is the payload validated?",
                           "options": [{"id": "boundary", "label": "at the contract boundary"},
-                                      {"id": "handler", "label": "in each handler"}]})
+                                      {"id": "handler", "label": "in each handler"}],
+                          "allow_freeform": True})
     policy = led.add_policy(applies_to={"cluster_id": "cl_nfrs"},
                             rule="validate at the contract boundary; structured errors from one "
                                  "taxonomy",
@@ -295,7 +300,8 @@ def build() -> Ledger:
                 as_is={"current_design": "each caller sets its own retry policy"},
                 question={"prompt": "Where does the retry policy live?",
                           "options": [{"id": "central", "label": "one shared client"},
-                                      {"id": "call_site", "label": "per call site"}]})
+                                      {"id": "call_site", "label": "per call site"}],
+                          "allow_freeform": True})
     old_pin = led.data["pins"][-1]
     led.data["policies"].append({"id": "pol_0002", "applies_to": {"kind": "design_concern"},
                                  "rule": "one shared client owns retries", "default_outcome":
@@ -316,7 +322,8 @@ def build() -> Ledger:
                 title="Logging format (decided before the rung existed)",
                 as_is={"current_design": "each module picks its own format"},
                 question={"prompt": "Which log format?",
-                          "options": [{"id": "json", "label": "structured JSON"}]})
+                          "options": [{"id": "json", "label": "structured JSON"}],
+                          "allow_freeform": True})
     unrunged = led.data["pins"][-1]
     led.data["decision_log"].append({
         "id": "ev_norung", "pin_id": unrunged["id"], "timestamp": "2026-01-01T00:00:00+00:00",
@@ -336,14 +343,16 @@ def build() -> Ledger:
                 as_is={"givens": ["one deploy target"], "built": None},
                 question={"prompt": "Where do secrets live?",
                           "options": [{"id": "manager", "label": "a secrets manager"},
-                                      {"id": "env", "label": "environment variables"}]})
+                                      {"id": "env", "label": "environment variables"}],
+                          "allow_freeform": True})
     # ...and a pin the same rule matches but whose own fork does not offer its outcome: `not_offered`
     led.add_pin(kind="open_decision", severity="low", confidence="inferred", provenance=P,
                 title="Config: files or flags", cluster_id="cl_platform",
                 as_is={"givens": [], "built": None},
                 question={"prompt": "Where does config live?",
                           "options": [{"id": "file", "label": "a config file"},
-                                      {"id": "flags", "label": "command-line flags"}]})
+                                      {"id": "flags", "label": "command-line flags"}],
+                          "allow_freeform": True})
     held = led.add_policy(applies_to={"cluster_id": "cl_platform"},
                           rule="platform choices default to the managed service",
                           default_outcome="manager",
@@ -369,7 +378,8 @@ def build() -> Ledger:
                 title="Rate limiting (decided on a rung this map does not know)",
                 as_is={"current_design": "no limiter anywhere"},
                 question={"prompt": "Where does rate limiting live?",
-                          "options": [{"id": "gateway", "label": "at the gateway"}]})
+                          "options": [{"id": "gateway", "label": "at the gateway"}],
+                          "allow_freeform": True})
     future = led.data["pins"][-1]
     led.data["decision_log"].append({
         "id": "ev_future", "pin_id": future["id"], "timestamp": "2026-01-01T00:00:00+00:00",
@@ -388,7 +398,8 @@ def build() -> Ledger:
                 as_is={"present": "one shared schema", "missing": "any tenant boundary"},
                 question={"prompt": "Does v1 carry more than one tenant?",
                           "options": [{"id": "single", "label": "single tenant"},
-                                      {"id": "multi", "label": "multi-tenant from day one"}]})
+                                      {"id": "multi", "label": "multi-tenant from day one"}],
+                          "allow_freeform": True})
     led.defer(led.data["pins"][-1]["id"],
               rationale="v1 ships to one customer; the boundary is v2 work",
               flip_criteria="a second customer signs",
@@ -523,7 +534,8 @@ def build() -> Ledger:
                 to_be={"statement": "p95 under 800ms with the payment provider in the loop"},
                 question={"prompt": "What is the checkout latency budget?",
                           "options": [{"id": "800ms", "label": "p95 under 800ms"},
-                                      {"id": "2s", "label": "p95 under 2s"}]})
+                                      {"id": "2s", "label": "p95 under 2s"}],
+                          "allow_freeform": True})
     slo = led.data["pins"][-1]
     led.decide(slo["id"], outcome="800ms", rationale="the payment provider's own p99 is 400ms",
                flip_criteria="p95 exceeds the budget for three consecutive days",
@@ -533,6 +545,30 @@ def build() -> Ledger:
     led.set_remediation_status(slo["id"], slo_item["id"], "done")
     led.resolve(slo["id"], rung="observed",
                 evidence="load test at release: p95 620ms over 10k checkouts")
+
+    # A pin that rested on the SLO and was closed on it. It exists so the reopen below has something
+    # to CASCADE onto (`cas_`), which is the entry the trail card was missing: the arc un-finished a
+    # pin's whole settled closure and left a record for the root only, so this pin's state changed
+    # under a reader with nothing on the page saying why.
+    led.add_pin(kind="acceptance_criterion", severity="medium", confidence="extracted", provenance=P,
+                title="The checkout page renders its total without a spinner",
+                as_is={"measured": "no spinner at release"},
+                to_be={"statement": "the total is server-rendered inside the latency budget"},
+                depends_on=[slo["id"]],
+                question={"prompt": "Is the total rendered server-side?",
+                          "options": [{"id": "server", "label": "server-rendered with the page"},
+                                      {"id": "client", "label": "fetched after paint"}],
+                          "allow_freeform": True})
+    spinner = led.data["pins"][-1]
+    led.decide(spinner["id"], outcome="server", rationale="it fits inside the elected 800ms budget",
+               flip_criteria="the budget it rests on stops holding",
+               evidence="transcribed", human_answer="server-side — no spinner on the money screen")
+    spinner_item = led.add_remediation(spinner["id"], action="implement", ladder_rung=2,
+                                       canonical_target="checkout/page.tsx")
+    led.set_remediation_status(spinner["id"], spinner_item["id"], "done")
+    led.resolve(spinner["id"], rung="observed",
+                evidence="the release build renders the total in the first paint")
+
     led.reopen(slo["id"], fired="flip_signal", source="feedback:metrics",
                reason="p95 has been 1.4s for six days since the provider changed region")
 
@@ -615,7 +651,8 @@ def build() -> Ledger:
                 title="Feature flags (settled in a way this map does not know)",
                 as_is={"current_design": "flags read straight from the environment"},
                 question={"prompt": "Where do feature flags live?",
-                          "options": [{"id": "config", "label": "in the config file"}]})
+                          "options": [{"id": "config", "label": "in the config file"}],
+                          "allow_freeform": True})
     future_state = led.data["pins"][-1]
     led.data["decision_log"].append({
         "id": "ev_future_state", "pin_id": future_state["id"],
@@ -645,7 +682,8 @@ def build() -> Ledger:
                 as_is={"current_design": "each cache picks its own TTL"},
                 question={"prompt": "Who owns cache eviction?",
                           "options": [{"id": "central", "label": "one shared policy"},
-                                      {"id": "per_cache", "label": "per cache"}]})
+                                      {"id": "per_cache", "label": "per cache"}],
+                          "allow_freeform": True})
     led.data["pins"][-1]["resolution_mode"] = "policy_default"
 
     # LAST, so it fills the field only where the blocks above left it absent: this is what the

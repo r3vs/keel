@@ -64,6 +64,19 @@ spec's load-bearing rules as code, deliberately stack-agnostic and stdlib-only:
   computed from `settlement_verdict` rather than written beside it. And `defer` no longer takes a
   caller-stated rung: there is one path there and it is the relay, so only the code that ran it may
   name it — the shape `mcp:ledger_defer` already had, one layer down.
+- v0.20 the reopen half, held to the settlement half's own rules. v0.17 built the two arcs well and
+  then let four asymmetries stand against their siblings, each observed over real stdio. `_settle`
+  appends a per-pin `SettlementEvent` for every pin it settles and `_reopen_minimal` appended nothing
+  for the whole dependent closure it swept back into the open set, so three finished pins were
+  un-finished by one call and the log named one — now every cascaded pin gets a `CascadeEvent`
+  (`cas_`), and `cascaded_by` reads the radius back off those records instead of off a substate
+  nothing clears. The upstream arc reports that radius too, because it runs the same cascade.
+  `challenge` (and `premortem`, the same role's other mode) holds `source` to `_CHALLENGE_SOURCES`
+  as `reopen` always held its own — an arc whose safety argument is *it never elects* was accepting
+  `source="interview"`. `add_proposals` refuses `CLOSED_STATES`, as `set_question` — its twin from
+  the same commit, for the other half of the same funnel — already did. And `allow_freeform` moves
+  into `_validate_question`: the rule was enforced at `set_question` and absent at `add_pin`, which
+  is the older and busier door onto the identical object.
 
 On-disk form: one `ledger.json` (portable, git-versionable) written atomically.
 The target codebase's ledger lives in *that* repo's audit output dir — never in this one.
@@ -76,7 +89,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.19"
+SCHEMA_VERSION = "0.20"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -89,7 +102,7 @@ SCHEMA_VERSION = "0.19"
 # `tools._governance_record` stamps SCHEMA_VERSION as the `spec_version` component of `policy_hash`,
 # so a spec change that leaves it alone is a rule change the trail cannot show. Hence the jump.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
-                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19")
+                     "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20")
 
 KINDS = {
     "contract_mismatch",
@@ -262,6 +275,21 @@ REOPEN_TRIGGERS = ("flip_signal", "manual_checkpoint", "incident")
 # meaning two different things.
 _FEEDBACK_SOURCES = tuple(f"feedback:{src}" for src in FLIP_SIGNAL_SOURCES)
 
+# Who may refute an oracle on the UPSTREAM arc (v0.20). Closed for exactly the reason the downstream
+# arc's list is closed, and it was open for four versions: `Ledger.challenge(source=…)` took any
+# string, so `source="interview"` — the value that means *a human elected this* — was accepted onto a
+# ChallengeEvent that then reopened a human's `decided` pin. An arc whose whole safety argument is
+# *it never elects* must not be able to sign itself as the electing door.
+#
+# One member, and the singleton is the roster's answer rather than an oversight: `core/agents.md`
+# makes the challenger **"the one reopen path at the wave checkpoint"** and says in the same
+# paragraph why the obvious second candidate is not one — *"a reviewer reopening directly would
+# silently perform T3 work at T2"*. `challenge:cross_derivation` is deliberately NOT here: that is
+# the source `cross_derive` stamps on its own `xdr_` event, and admitting it at this door would let
+# an agent hand-write the event the cross-derivation path exists to produce.
+CHALLENGE_ORIGINS = ("challenger",)
+_CHALLENGE_SOURCES = tuple(f"challenge:{origin}" for origin in CHALLENGE_ORIGINS)
+
 # What `Ledger.reopen_verdict` can answer. `nothing_settled` is NOT a refusal: both arcs append
 # their event either way and report whether anything moved, which is the shape `cross_derive` was
 # corrected to in v0.16 for the identical condition — an observation about a pin that cannot be
@@ -298,7 +326,13 @@ STANDING_REFUSALS = ("held_back", "must_be_asked")
 # which is exactly why the read path must survive it: **reading a ledger is never the operation that
 # fails on it.** Unrecognised entries are reported by `nonconforming` under `log_entry_kind` rather
 # than skipped in silence, on the same rule the `settles_as` skip one function down already follows.
-LOG_ENTRY_PREFIXES = ("ev_", "stl_", "chl_", "xdr_", "fal_", "rev_")
+#
+# `cas_` (v0.20) is the CascadeEvent, and it is the entry the reopen half was missing. `_settle`
+# appends one `stl_` for every pin it settles; `_reopen_minimal` moved a pin's whole settled
+# dependent closure back into the open set and appended **nothing** for any of them, so three
+# `resolved` pins were un-finished by one call and the log named one. That is the same asymmetry the
+# v0.16 settlement work removed in the other direction, left standing on the arcs that undo it.
+LOG_ENTRY_PREFIXES = ("ev_", "stl_", "chl_", "xdr_", "fal_", "rev_", "cas_")
 
 # The `Pin` fields a `Policy` scope may match on (v0.16). A scope key naming no field of a pin
 # matched EVERY pin — `pin.get("nope") == None` is true of all of them — so `applies_to={"nope":
@@ -525,6 +559,26 @@ def _door_for(settles_as: str) -> str:
 
 
 def _validate_question(question: Optional[dict]) -> None:
+    """Every rule a fork must satisfy, at every door that composes one.
+
+    **`allow_freeform` moved here in v0.20, and where it used to live is the whole finding.** v0.17
+    introduced it at `set_question` — *a menu an agent composed may not bound what the human may
+    answer* — and left `add_pin`, which is the older door, the busier one, and the one that composes
+    the identical object. Reproduced over real stdio: `ledger_add_pin(question={prompt, options})`
+    with no `allow_freeform` was accepted, and `ledger_set_question` with the byte-identical dict was
+    refused. A rule that holds at one of two doors onto the same field is not a rule, it is a habit
+    of whoever wrote the newer door.
+
+    There is no case where it should not hold, and that is why it is here rather than duplicated:
+    **every** question in this system is written by an agent — the human answers one, they never
+    author one — so the way out is owed at every door, including any door added later. Every fork
+    this runtime composes already sets it (`surface_assumption`, `cross_derive`,
+    `mark_correctness_unknown`, `interview._fork_question`), which is what makes moving the rule a
+    tightening of `add_pin` and a change of nothing else.
+    `tests/test_ledger.py::TestEveryForkThisRuntimeComposes` holds the two that install a fork
+    without passing any door to it from the AST — and that test is where the third name in that list
+    came from, because it was not in the first draft of the exemption dict.
+    """
     if question is None:
         return
     _require(isinstance(question, dict), "question must be a dict")
@@ -534,6 +588,11 @@ def _validate_question(question: Optional[dict]) -> None:
     for opt in options:
         _require(bool(opt.get("id")) and bool(opt.get("label")),
                  "every question option needs id and label")
+    _require(bool(question.get("allow_freeform")),
+             "a fork an agent composed must set allow_freeform: the menu is what the human is "
+             "allowed to choose from, and an agent that writes a closed one has decided the shape "
+             "of their answer. Same rule at every door that composes a question — `add_pin` and "
+             "`set_question` compose the identical object.")
 
 
 class Ledger:
@@ -714,11 +773,13 @@ class Ledger:
         the side — the same act v0.16 removed from `cross_derive` and from
         `mark_correctness_unknown`, each of which had been silently replacing a human's own fork.
 
-        **The composed menu may not bound the human.** An agent composing a fork decides what the
-        human is allowed to choose from, so the fork it composes has to leave the way out open:
-        `allow_freeform` is required here and nowhere else. With it, the options are a suggestion
-        and the human's own words are still a legal outcome (`record_decision(option_id=
-        "freeform")`); without it, an agent would be handing over a closed menu it wrote itself.
+        **The composed menu may not bound the human** — `allow_freeform` is required, and as of
+        v0.20 it is required by `_validate_question`, which is to say at every door that composes a
+        fork rather than at this one. It was introduced here and enforced here only, while `add_pin`
+        — older, busier, composing the identical object — took a closed menu without complaint. With
+        the flag the options are a suggestion and the human's own words are still a legal outcome
+        (`record_decision(option_id="freeform")`); without it, an agent hands over a menu it wrote
+        itself and calls it a question.
 
         **What it deliberately does NOT do is append `provenance: agent_assumption`**, which is the
         obvious move and is wrong here. `add_pin` couples that source to the pin's `confidence`
@@ -736,10 +797,6 @@ class Ledger:
         pin = self.pin(pin_id)
         _require(bool(question), "a question is required — this door exists to add one")
         _validate_question(question)
-        _require(bool(question.get("allow_freeform")),
-                 "a fork composed after the fact must set allow_freeform: the menu is what the "
-                 "human is allowed to choose from, and an agent that writes a closed one has "
-                 "decided the shape of their answer")
         _require(not pin.get("question"),
                  f"{pin_id} already poses a fork. `question.options[].id` is the carrier the "
                  f"offered-options rule anchors on at both election doors, so replacing it decides "
@@ -763,8 +820,26 @@ class Ledger:
         because the whole value of the mark is that it becomes comparable to what the human then
         elects — the gap between the two is the single best learning signal in the ledger, and two
         recommendations make it uncomputable (`runtime/learning.py`).
+
+        **Finished work is refused (v0.20), in `set_question`'s words and for `set_question`'s
+        reason.** The two doors were added in the same commit, for the two halves of the same funnel
+        — one gives a pin the fork it lacks, the other gives that fork its options — and only one of
+        them checked the state. Reproduced over real stdio: `ledger_add_proposals` succeeded on an
+        `accepted` pin and on a `deferred` one, writing `brainstorm.proposals` onto work whose
+        question had stopped being asked. Proposing options for a question nobody will be asked is
+        not neutral, it is exploration addressed to a closed room — and the funnel then has to decide
+        whether to show it, which is the state a `brainstorming` write is supposed to settle.
+
+        `CLOSED_STATES` and not `SETTLED_STATES`, which is the same line `set_question` draws:
+        `decided` is re-electable by the human, so exploring the alternatives to a live election is
+        exactly what a brainstorm is for. The way back into the other three is `reopen`, which
+        records why.
         """
         pin = self.pin(pin_id)
+        _require(pin["state"] not in CLOSED_STATES,
+                 f"the work on {pin_id} is finished ({pin['state']}); proposing options for it is "
+                 f"un-finishing it, which is the reopen arc and has its own door (`reopen`, which "
+                 f"records why).")
         _require(sum(1 for p in proposals if p.get("recommended")) <= 1,
                  "at most one proposal may be `recommended` — two make the recommendation "
                  "uncomparable to what the human elects, which is the point of marking it")
@@ -1508,6 +1583,12 @@ class Ledger:
                  "a challenge IS its argument — state what refutes the oracle. An upheld challenge "
                  "with nothing stated reopens a human's election on an agent's say-so, which is the "
                  "unquoted relay wearing the neutral arc's clothes")
+        _require(source in _CHALLENGE_SOURCES,
+                 f"source must be one of {_CHALLENGE_SOURCES}; got {source!r}. The upstream arc "
+                 f"originates in the read-only role whose mandate is to doubt an elected oracle — "
+                 f"and an arc that never elects may not sign itself with the door that does "
+                 f"(`interview` was accepted here for four versions, on an event that then reopened "
+                 f"a human's decided pin)")
         pin = self.pin(pin_id)
         reopened = bool(upheld) and self.reopen_verdict(pin, "challenge") == "would_reopen"
         event = {
@@ -1525,7 +1606,7 @@ class Ledger:
         }
         self.data["decision_log"].append(event)
         if reopened:
-            self._reopen_minimal(pin, "challenge")
+            self._reopen_minimal(pin, "challenge", via=event["id"])
         return event
 
     def premortem(
@@ -1551,8 +1632,18 @@ class Ledger:
           **evidence** of its mitigation. Without that it is not a dismissed risk, it is a risk
           somebody decided to feel calm about — and the field would become the noise it exists
           to remove.
+
+        `source` is held to `_CHALLENGE_SOURCES` (v0.20), the same closed vocabulary `challenge`
+        checks. Mode 1 and mode 2 of one role, one parameter, one default: fixing the vocabulary at
+        the mode that reopens and leaving it open at the mode that does not is how the next reader
+        learns that the rule is about consequences rather than about who is speaking. It is not —
+        the record says who wrote it, and a record that can be signed `interview` is a record about
+        nobody.
         """
         pin = self.pin(pin_id)
+        _require(source in _CHALLENGE_SOURCES,
+                 f"source must be one of {_CHALLENGE_SOURCES}; got {source!r} — the same vocabulary "
+                 f"`challenge` checks, because this is the same role's second mode")
         _require(isinstance(failure_modes, list) and bool(failure_modes),
                  "a premortem needs at least one failure mode — 'nothing will go wrong' is the "
                  "belief the exercise exists to break")
@@ -1799,22 +1890,56 @@ class Ledger:
             "policy_hash": self._policy_hash(),
         }
         self.data["decision_log"].append(event)
-        self._reopen_minimal(pin, "reopen")
+        self._reopen_minimal(pin, "reopen", via=event["id"])
         return event
 
-    def _reopen_minimal(self, pin: dict, arc: str) -> bool:
+    def cascaded_by(self, event_id: str) -> list[str]:
+        """The pins an arc's event moved BESIDE its own — read off the records that call appended.
+
+        The reader half of `_reopen_minimal`'s `cas_` events, and it exists so that no surface has to
+        answer *"what else did this move"* by looking at the pins. The tool layer did exactly that:
+        it listed every pin with `substate == "reopened"` and `state == "needs_input"`, and nothing
+        anywhere clears that substate — so after one legitimate cascade, an unrelated `ledger_reopen`
+        on an unrelated pin reported the earlier cascade's pins as its own radius. That is the same
+        derive-from-an-uncleared-substate bug v0.16 removed from `cross_derive`'s return shape,
+        re-introduced one layer up, against the very field this arc writes.
+
+        One carrier, one reader: the per-pin events say what moved, this reads them back, and both
+        tools call it, so the two arcs cannot report their radius differently.
+        """
+        return [e["pin_id"] for e in self.data["decision_log"] if e.get("via") == event_id]
+
+    def _reopen_minimal(self, pin: dict, arc: str, via: str) -> list[str]:
         """THE only writer of the reopened state, and the only place either arc moves anything.
 
         `_settle`'s twin, and it is one function for the same reason: a rule that lives in an arc has
         to be remembered by the next arc, and there are exactly two of them precisely because nobody
-        was counting. Returns whether the pin moved, so a caller never has to re-derive it from a
-        state it just wrote.
+        was counting. Returns the ids it moved BESIDE `pin`, so a caller never has to re-derive the
+        radius from a state it just wrote.
 
         Reopen the minimum: the pin plus its settled `depends_on` dependents, transitively. An arc
         that reopens everything regenerates the very churn the skills cure.
+
+        **Every pin it moves beside `pin` gets its own `cas_` record (v0.20), and that is the half of
+        `_settle`'s twinning that was missing.** `_settle` appends one `stl_` per settlement; this
+        appended nothing for anybody. Observed over real stdio: three pins each walked
+        `add_pin → record_decision → add_remediation → done → resolve`, one `ledger_reopen` on the
+        root took all three back into the open set, and the log named the root. Finished work was
+        un-finished with no trail — the exact asymmetry the settlement work existed to remove, left
+        standing on the direction that undoes it.
+
+        The origin pin is deliberately **not** given one, on `_settle`'s own rule stated in
+        `_settle`'s own words: *the event is appended only where something is not already carrying
+        it*. The `rev_`/`chl_` event is about that pin and already records `reopened`, so a second
+        entry beside it would be two carriers for one fact. What had no carrier at all is everything
+        the closure swept up, and that is what this writes.
+
+        `via` has no default on purpose. A cascade record that points at nothing is a state change
+        with no cause, which is the condition this whole method was added to remove — so a third arc
+        has to say which event it is cascading from before it can call this at all.
         """
         if self.reopen_verdict(pin, arc) != "would_reopen":
-            return False
+            return []
         substate = _SUBSTATE_BY_ARC[arc]
         to_reopen = {pin["id"]}
         changed = True
@@ -1833,12 +1958,30 @@ class Ledger:
                         and p["state"] in ("decided", "resolved", "accepted"):
                     to_reopen.add(p["id"])
                     changed = True
+        cascaded: list[str] = []
         for p in self.data["pins"]:
-            if p["id"] in to_reopen:
-                p["state"] = "needs_input"
-                p["substate"] = substate
-                p["resolution_mode"] = "asked"   # a reopened truth is never re-defaulted silently
-        return True
+            if p["id"] not in to_reopen:
+                continue
+            if p["id"] != pin["id"]:
+                # The record `_settle` writes for every settlement, written here for every pin the
+                # closure sweeps up. `via` joins it to the arc event that caused it, which is what
+                # makes the radius readable (`cascaded_by`) instead of guessable from a substate.
+                self.data["decision_log"].append({
+                    "id": self._next_id("cas_", self.data["decision_log"]),
+                    "pin_id": p["id"],
+                    "timestamp": _now(),
+                    "arc": arc,
+                    "via": via,
+                    "from_state": p["state"],
+                    "to_state": "needs_input",
+                    "substate": substate,
+                    "policy_hash": self._policy_hash(),
+                })
+                cascaded.append(p["id"])
+            p["state"] = "needs_input"
+            p["substate"] = substate
+            p["resolution_mode"] = "asked"   # a reopened truth is never re-defaulted silently
+        return cascaded
 
     # -- remediation / build (the bridge to Phase 4) ---------------------------
 
