@@ -1229,6 +1229,60 @@ def _is_blank(value) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
 
+class TestARefutationIsShownWhileItStandsAndNotAfter(unittest.TestCase):
+    """The card had the field and not the rule.
+
+    `blocked_by` is HISTORY by design — `resolve` keeps it verbatim so *"it was blocked, then it was
+    observed"* survives as the sequence it is — and the page printed it as a present-tense verdict on
+    any pin that carried it. On the most ordinary lifecycle in the package (work blocked, blocker
+    lifted, work observed, pin closed) a reader was told `resolved` and *"⚠ this pin cannot close"*
+    in the same card, and after the incident arc *"nothing has been observed since"* sat directly
+    under the observation that closed the pin.
+
+    `ledger.refuted_claim` is the predicate that answers it, it already existed, and this surface was
+    not among its callers. So the assertion is on the DERIVATION, in Python, for the reason
+    `derived_rungs` gives: one implementation of the rule, reachable without a browser. The browser
+    check is `scripts/preview_map.py` item 20 and it is not a substitute for this — nor this for it.
+    """
+
+    def _pin(self, state, rung, blocked_by):
+        return {"id": "pin_0001", "kind": "defect", "title": "t", "severity": "high",
+                "state": state, "verification": {"rung": rung, "blocked_by": blocked_by}}
+
+    def test_a_standing_refutation_is_reported(self):
+        data = {"pins": [self._pin("correctness_unknown", None, "no way to replay a signed webhook")]}
+        self.assertEqual(mapmod.refuted_claims(data),
+                         {"pin_0001": "no way to replay a signed webhook"})
+
+    def test_an_answered_one_is_not(self):
+        # the rung above it is what answered it; the words stay on the pin as history
+        data = {"pins": [self._pin("resolved", "observed", "no way to replay a signed webhook")]}
+        self.assertEqual(mapmod.refuted_claims(data), {},
+                         "a resolved pin was told it cannot close, by the field that says it once "
+                         "could not")
+
+    def test_the_page_reads_the_derivation_and_does_not_re_derive_it(self):
+        """The other half of the same rule: a page that asks `v.blocked_by` directly has re-derived
+        the fact from one of its two carriers, which is exactly how this bug was written."""
+        code = code_only(mapmod._TEMPLATE)
+        self.assertIn("REFUTED", code, "the page must read the computed derivation")
+        self.assertNotIn("cannot close: ${v.blocked_by}", code,
+                         "the warning may not be driven by `blocked_by` alone — it is history")
+
+    def test_the_fixture_carries_both_so_the_browser_walk_has_something_to_look_at(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import preview_map
+        data = preview_map.build().data
+        standing = mapmod.refuted_claims(data)
+        answered = [p for p in data["pins"]
+                    if isinstance(p.get("verification"), dict)
+                    and p["verification"].get("blocked_by")
+                    and p["id"] not in standing]
+        self.assertTrue(standing, "no pin in the preview fixture carries a standing refutation")
+        self.assertTrue(answered, "no pin in the preview fixture carries an ANSWERED one — the "
+                                  "case this test exists for renders nowhere")
+
+
 class TestLiveMode(unittest.TestCase):
     """live=True turns the map into a self-reloading dev monitor; live=False (the default) stays the
     frozen single-file artifact. The self-contained invariant must survive live mode."""

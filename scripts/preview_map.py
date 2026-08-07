@@ -483,6 +483,26 @@ def build() -> Ledger:
                 evidence="drove 200 requests with induced 429s and watched the bucket: one "
                          "decrement per request, not two")
 
+    # ...and the shape BETWEEN those two, which is the one that read wrong: blocked, then answered.
+    # `resolve` keeps `blocked_by` verbatim so "it was blocked, then it was observed" survives as the
+    # sequence it is — and the card printed those words as a present-tense verdict, so this pin said
+    # `resolved` and "⚠ this pin cannot close" at once. Nothing here is adversarial; it is the most
+    # ordinary lifecycle in the package, and it had no fixture, which is why only a browser found it.
+    led.add_pin(kind="defect", severity="high", confidence="extracted", provenance=P,
+                title="Refunds double-counted when the gateway retried the webhook",
+                as_is={"file": "api/billing.py", "riga": 210,
+                       "sintomo": "a retried delivery credited the customer twice"})
+    unblocked = led.data["pins"][-1]
+    unblocked_item = led.add_remediation(unblocked["id"], action="implement", ladder_rung=2,
+                                         canonical_target="api/billing.py")
+    led.set_remediation_status(unblocked["id"], unblocked_item["id"], "done")
+    led.mark_correctness_unknown(
+        unblocked["id"], attempted=["replayed the recorded delivery against staging"],
+        blocked_by="the sandbox gateway would not re-sign a delivery, so no retry could be replayed")
+    led.resolve(unblocked["id"], rung="observed",
+                evidence="the gateway's new sandbox re-signs deliveries: replayed the same webhook "
+                         "four times and the ledger credited once")
+
     # ...and the SAME shape with the remediation still open, so the card that says why a pin cannot
     # close is on the page beside the one that closed. `resolve` is refused here (`remediation_open`)
     # and until now that refusal was readable nowhere but the JSON.

@@ -231,7 +231,35 @@ def _order(pin: dict) -> tuple:
     return (severity_rank(read["severity"]), read["id"])
 
 
-def _pin_line(pin: dict) -> str:
+def _failed_in_production(data: dict) -> dict:
+    """`pin_id -> the failure class`, for every pin a `production` FailureEvent was labelled on.
+
+    `ledger_label_failure` is a write door that reaches finished work on purpose — labelling an
+    incident on a `resolved` pin is the move that PRECEDES a reopen, which is why the closed-work
+    gate lets it through. The map's trail card shows the event and `learning_report` counts it; this
+    projection listed the pin under *"Settled — build on these"* with nothing said, so the one file
+    every host loads unprompted told a fresh agent to build on work that had already failed in front
+    of users.
+
+    Scoped to `production` deliberately, not to every phase: a failure labelled at `plan`, `build`,
+    `evidence` or `review` is the loop working — it happened before anything shipped, and marking it
+    here would spend bytes on the ordinary case, which is the bargain this whole region is under. A
+    production failure is the one that contradicts the heading above the line.
+    """
+    from ledger import read_collection
+    out: dict = {}
+    for event in read_collection(data, "decision_log"):
+        if not str(event.get("id") or "").startswith("fal_"):
+            continue
+        if event.get("phase") != "production":
+            continue
+        pin_id = str(event.get("pin_id") or "")
+        if pin_id:
+            out[pin_id] = str(event.get("class") or "failure")
+    return out
+
+
+def _pin_line(pin: dict, failed: dict | None = None) -> str:
     """One pin, with its elected outcome wherever it has one — in EITHER section.
 
     The outcome used to be suppressed for open pins, which was right for the three open states that
@@ -272,6 +300,12 @@ def _pin_line(pin: dict) -> str:
         substate = pin.get("substate")
         if substate in REOPENED_SUBSTATES:
             line += f" *({substate} — do not build on this answer)*"
+    # v0.28 — and a production failure is marked wherever the pin lands, for the reason the
+    # reopened substate is: the default reading of this line is *build on this*, and on a pin that
+    # already failed in front of users that reading is false. See `_failed_in_production`.
+    failure = (failed or {}).get(read["id"])
+    if failure:
+        line += f" *(failed in production — {failure})*"
     return line
 
 
@@ -467,17 +501,18 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
     # `default_outcome` is interpolated and not indexed, so it stays a plain `.get` for the reason
     # `_pin_line` gives about `kind`.
     reads = [(policy_read(p), p) for p in policies]
+    failed = _failed_in_production(data)
     sections = [
         ("Standing rules",
          [f"- {r['rule'].strip()} *(applies to "
           f"{', '.join(f'{k}={v}' for k, v in r['applies_to'].items()) or 'all pins'}; "
           f"default: {p.get('default_outcome')})*" for r, p in reads],
          "see `policies` in the ledger"),
-        ("Settled — build on these", [_pin_line(p) for p in build_on], "run `ledger_summary`"),
+        ("Settled — build on these", [_pin_line(p, failed) for p in build_on], "run `ledger_summary`"),
         ("Settled — elected NOT to be built ("
          + ", ".join(f"`{s}`" for s in LEAVE_AS_IS_STATES) + ")",
-         [_pin_line(p) for p in leave_as_is], "run `ledger_summary`"),
-        ("Open — not settled; do not decide one yourself", [_pin_line(p) for p in openp],
+         [_pin_line(p, failed) for p in leave_as_is], "run `ledger_summary`"),
+        ("Open — not settled; do not decide one yourself", [_pin_line(p, failed) for p in openp],
          "run `interview_next`"),
         ("Generated — never hand-edit", [f"- `{g}`" for g in sorted(str(x) for x in (generated or []))],
          "see the contract"),

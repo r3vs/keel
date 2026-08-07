@@ -110,7 +110,7 @@ spending its round on it:
 
 ---
 
-> **STATUS 2026-08-07 (seventeenth round — the branch closes here).** **§1–§17 and §19–§27 are all
+> **STATUS 2026-08-07 (eighteenth round — the branch closes here).** **§1–§17 and §19–§28 are all
 > closed.** Nothing on this list
 > is open. **§18** is not a defect but the standing answer to the question this register exists to
 > ask: *after sixteen adversarial rounds, which recurring class still has no gate?* **§19** was the
@@ -3445,6 +3445,70 @@ is both, aimed at the same two predicates one more time — *the pin being writt
 - **Is what the door SAYS it did what it did?** A return value is a claim about the file, and a claim
   computed after the commit is a claim nothing checked. The question to ask of any door: *if the line
   after the write raises, what does the caller believe, and what is on disk?*
+
+---
+
+## 28. What the surfaces TELL a reader — **CLOSED 2026-08-07** (map/interview/instructions, no schema change)
+
+### Verified
+
+The eighteenth round, and the first whose subject is neither the write path nor the read path but
+the sentence a human ends up reading. It came from the one review that had never run: install the
+plugin the way a user does, drive a whole session through it, and open every surface.
+
+Three findings, each observed rather than reasoned:
+
+1. **The map printed a verdict where the file recorded history.** `verificationCard` rendered
+   ``⚠ this pin cannot close: ${v.blocked_by}`` with no condition, and `resolve` deliberately KEEPS
+   `blocked_by` so *"it was blocked, then it was observed"* survives as the sequence it is. So on the
+   most ordinary lifecycle in the package — work blocked, blocker lifted, work observed, pin closed —
+   the card said `resolved` and *"this pin cannot close"* in the same breath; after the incident arc
+   it printed *"nothing has been observed since"* directly under the observation that closed the pin.
+2. **`interview_next` re-asked a settled question.** A `correctness_unknown` pin is sorted to the
+   FRONT of the funnel and arrived carrying its original fork prompt and nothing about the answer the
+   human had already given it, so an agent driving the interview asked again.
+3. **A production failure reached the projection nowhere.** `ledger_label_failure` reaches finished
+   work on purpose — an incident label is the move that precedes a reopen — and the map's trail card
+   and `learning_report` both carried it while `AGENTS.md` listed the pin under *"Settled — build on
+   these"* with nothing said.
+
+### Why it matters
+
+`ledger.refuted_claim` — the predicate that answers finding 1 exactly — **already existed**, with one
+caller, and the surface was not it. That is the shape of the whole section: every fact here was
+stored correctly, and the reader drew the wrong sentence from it. Eighteen rounds of work on what the
+package *records* had never asked what it *says*, and a person only ever meets the saying.
+
+### Done looks like
+
+- `map.refuted_claims` computes the standing refutations in Python and the page reads them, the same
+  arrangement as `derived_rungs` and `weak_policies`: one implementation of the rule, testable without
+  a browser. Standing → the warning. Answered → the same words as history, which is what they are.
+- The funnel entry carries `already_elected` (outcome + event id) and the pin's `state`, keyed off the
+  pin's own `decision` rather than off `correctness_unknown` — a reopened or contested pin has an
+  elected answer too, and re-asking blind is the same defect one arc over. The human's fork stays
+  exactly where its author left it; v0.16 removed the overwrite deliberately and this does not undo it.
+- `instructions._failed_in_production` marks the line wherever the pin lands. Scoped to the
+  `production` phase: a failure at `plan`/`build`/`evidence`/`review` is the loop working, and marking
+  those would spend bytes on the ordinary case — the bargain every clause in that region is under.
+
+### Prove it
+
+`tests/test_map.py::TestARefutationIsShownWhileItStandsAndNotAfter`,
+`tests/test_interview.py::TestAPinWhoseForkWasAnsweredSaysSo`,
+`tests/test_instructions.py::TestWorkThatFailedInProductionSaysSoHere`. But the assertion that
+matters was made in a browser: `scripts/preview_map.py` grew the *blocked, then answered* lifecycle —
+it had no fixture, which is why only a browser found it — and all 38 pins were clicked in Chromium
+with zero page errors, the standing refutations still warning and the answered one reading
+*"was blocked: … — answered since"*.
+
+### Traps
+
+- Do not drive the map's warning off `blocked_by`. Two carriers make that fact and the page must not
+  re-derive it from one of them; `test_the_page_reads_the_derivation_and_does_not_re_derive_it` fails
+  if the old expression comes back.
+- Do not answer finding 2 by overwriting the prompt with the correctness question. That is what v0.16
+  removed, and it deleted the human's own menu to do it.
 
 ---
 

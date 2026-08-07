@@ -245,5 +245,61 @@ class TestFunnel(unittest.TestCase):
                                   "from the rule sentence")
 
 
+class TestAPinWhoseForkWasAnsweredSaysSo(unittest.TestCase):
+    """`interview_next` returned a `correctness_unknown` pin under `asked`, carrying its ORIGINAL
+    fork prompt and nothing about the answer the human had already given it — so an agent driving
+    the interview re-asked a question that was settled.
+
+    The prompt is right where it is: v0.16 stopped `mark_correctness_unknown` overwriting the human's
+    fork, deliberately. What was missing is the other half — this state is reached only THROUGH an
+    election, and the real question ("we could not establish that it worked; now what") is about that
+    answer. A view that shows the fork and hides the outcome hides the subject.
+
+    The same applies to a reopened or contested pin, which is why `already_elected` keys off the
+    pin's `decision` rather than off `correctness_unknown`: those states exist to put an elected
+    answer back in front of a human, and re-asking blind is the same defect one arc over.
+    """
+
+    def _answered(self) -> Ledger:
+        led = fresh_ledger()
+        pin = led.add_pin(kind="open_decision", title="Subscription persistence", severity="high",
+                          confidence="inferred", provenance=[{"source": "recon", "detail": "x"}],
+                          question={"prompt": "generate from the contract, or hand-write?",
+                                    "allow_freeform": True,
+                                    "options": [{"id": "generate", "label": "Generate"},
+                                                {"id": "hand", "label": "Hand-write"}]})
+        led.decide(pin["id"], "generate", "one source", "if the generator cannot express a case",
+                   human_answer="Generate it like the rest. Don't hand-write it.")
+        item = led.add_remediation(pin["id"], action="implement", ladder_rung=2,
+                                   canonical_target="db/models.py")
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.mark_correctness_unknown(pin["id"], attempted=["ran the generator against the contract"],
+                                     blocked_by="no fixture pins the generated shape")
+        return led
+
+    def test_the_elected_outcome_travels_with_the_question(self):
+        entry = interview.funnel(self._answered())["asked"][0]
+        self.assertEqual(entry["already_elected"]["outcome"], "generate")
+        self.assertEqual(entry["pin_state"], "correctness_unknown")
+        self.assertTrue(entry["already_elected"]["event_id"],
+                        "the event is what a reader follows to the words the answer rests on")
+
+    def test_the_human_fork_is_still_the_prompt(self):
+        """The fix may not be 'overwrite the prompt with the correctness question' — that is exactly
+        what v0.16 removed, and it deleted the human's own menu to do it."""
+        entry = interview.funnel(self._answered())["asked"][0]
+        self.assertIn("hand-write", entry["prompt"])
+        self.assertEqual(entry["blocked_by"], "no fixture pins the generated shape")
+
+    def test_an_unanswered_pin_claims_no_election(self):
+        led = fresh_ledger()
+        led.add_pin(kind="ambiguity", title="two auth flows", severity="blocker",
+                    confidence="ambiguous", provenance=[{"source": "recon", "detail": "x"}],
+                    question={"prompt": "which one?", "allow_freeform": True,
+                              "options": [{"id": "session", "label": "Session"}]})
+        entry = interview.funnel(led)["asked"][0]
+        self.assertNotIn("already_elected", entry)
+
+
 if __name__ == "__main__":
     unittest.main()

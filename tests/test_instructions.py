@@ -620,5 +620,45 @@ class TestPathScopedRule(unittest.TestCase):
         self.assertIn("paths: []", ins.rule_generated_files([], "c.json", "generate_layers"))
 
 
+class TestWorkThatFailedInProductionSaysSoHere(unittest.TestCase):
+    """`ledger_label_failure` deliberately reaches finished work — labelling an incident on a
+    `resolved` pin is the move that PRECEDES a reopen, which is why the closed-work gate lets it
+    through. The map's trail card showed the event and `learning_report` counted it; this region
+    listed the pin under *"Settled — build on these"* with nothing said, so the one file every host
+    loads unprompted told a fresh agent to build on work that had already failed in front of users.
+
+    Scoped to the `production` phase on purpose: a failure at `plan`/`build`/`evidence`/`review` is
+    the loop working, and marking those would spend bytes on the ordinary case — the bargain every
+    clause in this region is under.
+    """
+
+    def _data(self, *events):
+        return {"pins": [_pin("pin_0001", "defect", "Refunds double-counted", "resolved",
+                              severity="blocker", outcome="fix")],
+                "decision_log": list(events)}
+
+    def _line(self, data):
+        for line in ins.render(data).splitlines():
+            if "Refunds" in line:
+                return line
+        return ""
+
+    @staticmethod
+    def _failure(phase):
+        return {"id": "fal_0001", "pin_id": "pin_0001", "class": "untested_path",
+                "detail": "a retry credited twice", "phase": phase, "source": "feedback:incident"}
+
+    def test_a_production_failure_is_marked_on_the_line(self):
+        self.assertIn("failed in production — untested_path",
+                      self._line(self._data(self._failure("production"))))
+
+    def test_an_earlier_phase_costs_no_bytes(self):
+        self.assertNotIn("failed in production", self._line(self._data(self._failure("review"))),
+                         "a failure caught before release is the loop working, not a warning")
+
+    def test_the_pin_with_no_failure_reads_exactly_as_before(self):
+        self.assertNotIn("failed in production", self._line(self._data()))
+
+
 if __name__ == "__main__":
     unittest.main()

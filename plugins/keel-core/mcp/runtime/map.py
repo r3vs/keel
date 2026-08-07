@@ -856,6 +856,20 @@ function detRow(label,v){
   return h`<div class="kv"><b>${label}</b><span>${has(DET,s)?DET[s]
     :h`⚠ ${unknownNote('determinism level',s,'nothing here says whether it reproduces')}`}</span></div>`;
 }
+// `ledger.refuted_claim`, computed in Python and inlined — the same arrangement as DERIVED and
+// WEAK_POL, for the same reason: two carriers make this fact (`blocked_by` AND a rung below the
+// closing ones), and a page that asks only the first one gets it wrong in the direction that reads
+// worst. It printed `⚠ this pin cannot close` on a RESOLVED pin, because `resolve` deliberately
+// keeps `blocked_by` so that "it was blocked, then it was observed" survives as the sequence it is.
+// Standing -> the warning. Answered -> the same words as history, which is what they are.
+const REFUTED = __REFUTED__;
+function blockedNote(p,v){
+  const standing = (p&&p.id&&has(REFUTED,p.id))?REFUTED[p.id]:'';
+  if(standing) return h`<div class="warn">⚠ this pin cannot close: ${standing}</div>`;
+  if(!v||isBlank(v.blocked_by)) return '';
+  return h`<div class="why">was blocked: ${v.blocked_by} — answered since, and the rung above is
+    what answered it</div>`;
+}
 function verificationCard(p){
   const v=p.verification||null;
   if(!v&&!p.evidence)return '';
@@ -871,7 +885,7 @@ function verificationCard(p){
       <span class="chips">${v.cross_derived_by.map(scalarHTML)}</span></div>`:''}
     ${v&&!isBlank(v.evidence)?h`<div class="kv"><b>checks</b><span>${valueHTML(v.evidence)}</span></div>`:''}
     ${info.known?h`<div class="why">${info.why}</div>`:h`<div class="warn">⚠ ${info.warn}</div>`}
-    ${v&&v.blocked_by?h`<div class="warn">⚠ this pin cannot close: ${v.blocked_by}</div>`:''}</div>`;
+    ${blockedNote(p,v)}</div>`;
 }
 
 // What the brainstorm proposed. `add_proposals` is the only writer of the `brainstorming` state and
@@ -1228,6 +1242,32 @@ def weak_policies(ledger_data: dict) -> dict:
     return out
 
 
+def refuted_claims(ledger_data: dict) -> dict:
+    """`pin_id -> the refutation still standing on it`, and nothing for a pin whose claim was
+    answered. Computed by `ledger.refuted_claim`, inlined, for the reason `derived_rungs` and
+    `weak_policies` are: the rule has one implementation, in Python, testable without a browser.
+
+    The page had the field and not the rule. `blocked_by` is deliberately HISTORY — `resolve` keeps
+    it verbatim when a later observation closes the pin, so *"it was blocked, then it was observed"*
+    reads as the sequence it is — and this card printed it as a present-tense verdict on any pin
+    carrying it. So on the most ordinary lifecycle in the package (work blocked, blocker lifted,
+    work observed and closed) the card said `resolved` and *"⚠ this pin cannot close"* in the same
+    breath; after the incident arc it printed *"nothing has been observed since"* directly under the
+    observation that closed the pin.
+
+    Two carriers make the fact and neither alone is it — which is exactly why the page must not
+    re-derive it from one of them. `refuted_claim` is the predicate, it already existed, and until
+    now it had one caller and this surface was not it.
+    """
+    from ledger import pin_read, read_collection, refuted_claim
+    out: dict = {}
+    for pin in read_collection(ledger_data, "pins"):
+        standing = refuted_claim(pin)
+        if standing:
+            out[pin_read(pin)["id"]] = standing
+    return out
+
+
 #: The characters JSON may hold that JavaScript-inside-HTML may not, and their JSON escapes. Two
 #: different holes, one table, because the mistake both times was fixing a SITE instead of the step.
 #:
@@ -1278,7 +1318,7 @@ def _inline(value) -> str:
 #: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
 #: so no substitution can ever run over content a previous one inlined.
 _PLACEHOLDER_RE = re.compile(
-    r"__(?:DATA|NONCONF|SHAPE_WHY|DERIVED|WEAK_POLICIES|SETTLED|REOPENED|ASKABLE|TITLE"
+    r"__(?:DATA|NONCONF|SHAPE_WHY|DERIVED|WEAK_POLICIES|REFUTED|SETTLED|REOPENED|ASKABLE|TITLE"
     r"|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
 
 
@@ -1329,6 +1369,9 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
         "__SHAPE_WHY__": _inline(shape_notes()),
         "__DERIVED__": _inline(derived_rungs(ledger_data)),
         "__WEAK_POLICIES__": _inline(weak_policies(ledger_data)),
+        # the refutations still STANDING (v0.28). `blocked_by` alone is history and the card used to
+        # print it as a verdict, so a resolved pin read "this pin cannot close".
+        "__REFUTED__": _inline(refuted_claims(ledger_data)),
         # the schema's own set, so the page cannot fall behind it (v0.16 added `deferred`)
         "__SETTLED__": _inline(list(SETTLED_STATES)),
         # the marks the two reopen arcs and `cross_derive` leave, so a disputed answer cannot read

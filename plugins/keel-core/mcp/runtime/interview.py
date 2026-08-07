@@ -369,6 +369,22 @@ def funnel(ledger) -> dict:
         blocked_by = (read.get("verification") or {}).get("blocked_by")
         if blocked_by:
             entry["blocked_by"] = blocked_by
+        # v0.28 — a pin can arrive at the TOP of this funnel with its fork already answered, and
+        # until now the entry could not say so. Two states do it: `correctness_unknown` (the human
+        # elected, and nothing could establish that it worked) and the reopened/contested ones (the
+        # answer stands until it is re-elected). Both carry the original `question.prompt`, because
+        # v0.16 stopped `mark_correctness_unknown` overwriting the human's fork — correctly — so an
+        # agent reading only this view saw an unanswered question and re-asked it. That is the
+        # defect `interview_next` exists to prevent, on the pin where it costs most: the elected
+        # answer is the thing the real question is ABOUT.
+        elected = read.get("decision") or {}
+        if isinstance(elected, dict) and elected.get("outcome"):
+            entry["already_elected"] = {"outcome": elected["outcome"],
+                                        "event_id": elected.get("event_id")}
+            # `pin_state`, not `state`: it names the pin's, matching this entry's own
+            # `pin_id`, and `entry["state"] = …` reads to the AST gate on state writers
+            # exactly like the thing that gate exists to catch. A blunt gate is the point.
+            entry["pin_state"] = read["state"]
         proposals = (read.get("brainstorm") or {}).get("proposals") or []
         if proposals:
             entry["proposals"] = [{"id": p.get("id"), "summary": p.get("summary"),
