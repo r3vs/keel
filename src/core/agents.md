@@ -53,7 +53,10 @@ met in letter and defeated in spirit, a fix that moves the symptom: all of these
 a judgment job, and it is why the reviewer is T2.
 
 Consequently **`resolved` needs both**: recorded evidence *and* a `MERGE`. Neither alone is
-sufficient, and neither gate re-runs the other's work.
+sufficient, and neither gate re-runs the other's work. And neither of them is the third thing the
+ledger demands — a `verification.rung` of `observed` or `cross_derived`, which is not a verdict
+either role hands down but the record that somebody watched the behaviour rather than reading the
+diff. Two roles, two gates, three requirements.
 
 This does not weaken the anti-cheat property it looks adjacent to. The rule that matters is
 **independence from the author**: an `acceptance_criterion` the `executor` both writes and codes

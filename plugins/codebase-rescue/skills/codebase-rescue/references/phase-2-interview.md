@@ -32,13 +32,18 @@ in `references/core/interview-funnel.md`. Read it first.** How *rescue* sources 
   touch; `blocker`/`high` matches are held back by the threshold rule and stay `asked`. Ask
   `mcp:policy_preview` **first**, with the same arguments: it writes nothing and answers with the
   pins the rule would decide. Put that list to the user, because what they are electing is the blast
-  radius, not the sentence.
+  radius, not the sentence — and put `scope_note` with it when it is non-empty: a scope value of
+  `null` matches every pin carrying no value for that field, so `{"cluster_id": null}` reads as *the
+  unclustered ones* and behaves as *nearly everything* on a ledger where little is clustered.
 
   **`default_outcome` is an option id those pins already offer** — `"db"`, the id on their
   `question`, not *"the DB is the source of truth"*. A matching pin whose own question does not
-  offer it comes back in `not_offered`, held back and still `asked`, exactly like a blocker: the
+  offer it comes back in `not_offered`, held back and still open, exactly like a blocker: the
   single-pin door has always refused an outcome the pin never offered, and a policy decides more
-  pins, so it is not allowed to write what one decision could not. If a cluster's pins carry no
+  pins, so it is not allowed to write what one decision could not. It is not marked
+  `resolution_mode: "asked"` the way a blocker is (v0.18) — that mark is permanent and says *this
+  pin* demands a human, while `not_offered` says *this rule* did not fit, so stamping it would put
+  the pin beyond the next policy, including the one written for it. If a cluster's pins carry no
   question, or carry questions with different option sets, that is the finding: they are not one
   decision, and no policy will cascade over them.
 - **Exception questions:** pins a policy doesn't cover, plus genuine `ambiguity` and
@@ -81,6 +86,20 @@ Options: `{admin,user} — DB is truth` · `add superadmin to schema` · (freefo
 - `defect` → usually `question: null`; goes to remediation. Promote to `needs_input` only
   when there's a genuine scope question (e.g. "is this dead code residue, or a half-built
   feature you want completed?").
+
+> **A pin with no question reaches this interview on no host — give it one with
+> `mcp:ledger_set_question`.** `ledger_add_pin`'s `question` is optional, which is right (whoever
+> finds a thing is not always whoever knows what the choice is), and the consequence is that a
+> Phase-1 finding recorded without a fork sits in `detected` for ever: `interview_next` selects on
+> the question, so the pin is invisible to the exact machinery whose job is to put it to the user.
+> Two things the tool will not let you do, both deliberate. It will not **replace** an existing
+> fork — the option ids are what the user is allowed to choose from, and rewriting them is you
+> deciding for them. And the question you compose must set `allow_freeform: true`, because you wrote
+> this menu: leaving the way out open is what keeps a fork of your own authorship from bounding
+> their answer. **That second rule holds wherever you compose a fork, `ledger_add_pin` included**
+> — it used to be checked here only, so the same dict was refused at this door and accepted at the
+> busier one. Every question in this workflow is written by you; the user answers one, they never
+> author one, so the way out is owed on all of them.
 - `incompleteness` → question is typically scope: implement now / defer / drop (YAGNI). "Defer" is
   `mcp:ledger_defer`, not silence: the pin stays on the ledger as backlog, which is the whole
   difference between scoping something out and forgetting it. **It is an election, so it is recorded
@@ -93,9 +112,11 @@ Options: `{admin,user} — DB is truth` · `add superadmin to schema` · (freefo
 Every question carries a reference to the pin(s) it came from, so the UI can cross-link:
 click the question → the map highlights the involved nodes; click a pin → its question
 surfaces. If the user opens a brainstorm on a pin, the brainstorm writes
-`proposals[]`; the user's committed answer here (and only here) sets `state: decided` and
-emits the `DecisionEvent` (with `flip_criteria`). The interview commits; the brainstorm
-never does.
+`proposals[]` with `mcp:ledger_add_proposals` — one pin per call, and the schema refuses a proposal
+carrying a `decision` or an `outcome`; the user's committed answer here (and only here) sets
+`state: decided` and emits the `DecisionEvent` (with `flip_criteria`). The interview commits; the
+brainstorm never does. The pin stays in `interview_next` while it is being brainstormed, with those
+proposals on its entry — exploring a hard fork must not be what takes it off the list.
 
 > **Committing is one tool: `mcp:ledger_record_decision`.** Nothing else moves a pin to `decided`,
 > so an answer you only wrote down in prose leaves the pin open — and an open pin blocks its own
@@ -146,17 +167,25 @@ freshly derived `to_be`s and any `Policy` cascade, trying to **refute** each
 - **ignored_fanout** — a high-`depends_on` pin resolved by silent default where the severity
   threshold demanded `asked`.
 
-A sustained challenge emits an immutable `ChallengeEvent` and returns the pin to `needs_input`
-(`challenged`) — reopening the **minimum** (the pin + genuine dependents), handed straight back to
-this interview. The challenger **challenges, never decides**; only the user's re-answer commits.
-This is cheap here and ruinous later: catching an unsound criterion now costs one question; catching
-it after Wave 1 remediation costs the wave.
+A sustained challenge is recorded with **`mcp:ledger_challenge`**: it appends the immutable
+`ChallengeEvent` and, when `upheld`, returns the pin to `needs_input` (`challenged`) — reopening the
+**minimum** (the pin + genuine dependents), handed straight back to this interview. The challenger
+**challenges, never decides**; only the user's re-answer commits. This is cheap here and ruinous
+later: catching an unsound criterion now costs one question; catching it after Wave 1 remediation
+costs the wave.
+
+> **State the argument.** The tool refuses a blank one, and the reason is the same one that makes a
+> relayed decision carry the user's words verbatim: an upheld challenge un-does an election on your
+> say-so, so what refutes the oracle has to be in the ledger and not only in your reasoning. Read
+> `reopened` in the result — `upheld` says the refutation stands, `reopened` says whether this pin
+> had anything to un-settle; a refutation of a pin nobody elected is recorded and moves nothing.
 
 > **Run the deterministic classes first.** The `challenge_oracle` tool mechanizes the classes above
 > that are decidable without judgment — an `acceptance_criterion` with no `verify` is unfalsifiable
 > as a matter of fact, not opinion. It returns proposals and never writes, so its output is where
 > the `challenger` agent *starts*, not what it reports: spend the agent's judgment on the classes a
-> checker cannot reach (unsatisfiable-against-the-code, unstated_assumption).
+> checker cannot reach (unsatisfiable-against-the-code, unstated_assumption). Applying one of its
+> proposals means calling `ledger_challenge` with it — the scan is a proposal, never a write.
 
 ## Output
 

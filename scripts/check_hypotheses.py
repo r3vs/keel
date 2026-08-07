@@ -47,6 +47,12 @@ ALLOWED = {
     "_NOTE_LINES": "the number of lines `_evidence_note` returns — a blank separator and the note "
                    "itself. Measured off the function, not chosen: "
                    "`test_the_declared_note_length_is_the_length_it_emits` fails if they diverge",
+    "_NONCONF_LINES": "the number of lines `_nonconformance_note` returns — a blank separator and "
+                      "the note itself, exactly as `_NOTE_LINES` one line up. Measured off the "
+                      "function by "
+                      "`test_the_declared_nonconformance_note_length_is_the_length_it_emits`, "
+                      "which is what makes it arithmetic rather than a guess: at the floor the "
+                      "first draft displaced `### Standing rules`",
     "SCHEMA_VERSION": "a version string, not a threshold",
     "CATALOG_VERSION": "a version string, not a threshold",
     "_INDENT": "formatting width",

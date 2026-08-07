@@ -72,6 +72,72 @@ def _open_or_create(path: str):
     return led
 
 
+def _saved(ledger: str, led) -> None:
+    """THE write-commit of this module: persist the ledger, then re-project every live map on it.
+
+    One function because the pairing was a convention, and a convention is a thing eighteen doors
+    remember and the nineteenth does not. Measured by AST over this file: 18 functions called
+    `led.save()`, 17 of them then called `_refresh_live_maps`, and `ledger_label_failure` did not —
+    while `_livemap_marker`'s own docstring states the rule it was breaking (*"'live' is the MCP
+    layer re-projecting the file on every ledger write"*). Verified over stdio: with a live map
+    registered, `ledger_label_failure` left the page on disk byte-identical, so a `FailureEvent` the
+    measurer had just recorded was absent from the surface a human was watching, and the next
+    unrelated write made it appear — which is worse than never showing it, because the page's
+    freshness badge said live throughout.
+
+    The fix is not the eighteenth call. It is that there is now exactly one place where a ledger
+    write is finished, and `tests/test_mcp_tools.py::TestOneCommitPointForEveryLedgerWrite` fails on
+    any function in this module that reaches `save()` without coming through here — quantified over
+    the callers, so the nineteenth door inherits the rule instead of remembering it.
+
+    **And it is the LAST thing a door does (v0.28).** Four doors computed their answer *after* this
+    call — `ledger_reopen`, `ledger_challenge` and `ledger_cross_derive` re-read the pin and the
+    cascade radius, `ledger_label_failure` ran `foresight` — so a read that raised there left the
+    write on disk and handed the caller `isError`. Reproduced over stdio: two `resolved` pins, one
+    `ledger_reopen`, one hand-written log entry naming a `via` and no `pin_id` — the root pin came
+    back `needs_input` in the file and the tool reported `KeyError: 'pin_id'`. An agent that reads
+    that error retries, and the retry is a second reopen.
+
+    So the shape of every door here is *compute the answer, then commit*: whatever a door returns
+    describes what happened, and a door that raises has changed nothing.
+    `TestADoorThatReportsFailureCommittedNothing` holds both halves — the position of this call by
+    AST over every function that makes it, and the file byte-identical after every raise the derived
+    corpora can provoke.
+    """
+    led.save()
+    _refresh_live_maps(ledger)
+
+
+def _require_quote(human_answer: str, evidence: str = "transcribed", *,
+                   freeform: bool = False, writes: str = "decision", because: str = "") -> None:
+    """Refuse an agent-relayed election that quotes nobody — the one carrier of that rule (v0.24).
+
+    It was four hand-written enforcement points that happened to agree: two in `record_decision`
+    (the `transcribed` rung, and the freeform path where the human's words ARE the outcome), one in
+    `record_policy`, one in `ledger_defer`. Four sentences, one rule, and the branch this was found
+    on has spent itself on exactly that shape — a rule spelled out at each door is a rule the next
+    door is written without.
+
+    Which rungs owe a quote is `ledger.QUOTED_RUNGS`, so the membership question lives with the
+    schema and this is only the refusal. The freeform path owes it whatever the rung says: there the
+    words are not evidence FOR the outcome, they are the outcome.
+
+    `writes` and `because` exist so the sentence can say what this particular call would have
+    written — a policy that decides forty pins and a defer that stops a question being asked are
+    different consequences of one missing quote, and a refusal an agent cannot act on is a wall.
+    """
+    from ledger import QUOTED_RUNGS
+    if not freeform and evidence not in QUOTED_RUNGS:
+        return
+    if str(human_answer or "").strip():
+        return
+    lead = ("a freeform election IS the human's words, so human_answer is required"
+            if freeform else
+            f"a {evidence} {writes} must carry the human's answer verbatim in human_answer — "
+            f"without it, an honest relay and a fabricated one are indistinguishable in the ledger")
+    raise ValueError(lead + (f"; {because}" if because else ""))
+
+
 def _governance_record() -> dict:
     """The policy fingerprint from what this process can see: the vendored roster and the spec
     version it ships with. Unresolvable inputs land in `missing` rather than being dropped."""
@@ -99,18 +165,18 @@ def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence
     pin = led.add_pin(kind=kind, title=title, severity=severity, confidence=confidence,
                       provenance=provenance, as_is=as_is, to_be=to_be, question=question,
                       depends_on=depends_on, kind_detail=kind_detail, cluster_id=cluster_id)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
+    out = {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: str = "medium",
                               confidence: str = "inferred") -> dict:
     led = _open_or_create(ledger)
     pin = led.surface_assumption(title=title, detail=detail, severity=severity, confidence=confidence)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"]}
+    out = {"pin_id": pin["id"], "state": pin["state"]}
+    _saved(ledger, led)
+    return out
 
 
 def decision_prompt(ledger: str, pin_id: str) -> dict:
@@ -191,7 +257,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     """
     from ledger import Ledger
     led = _open_existing(ledger)
-    pin = led.pin(pin_id)
+    pin = led.writable_pin(pin_id)
     prompt = _prompt_from_pin(pin)
     offered = {o["id"] for o in prompt["options"]}
 
@@ -204,8 +270,8 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     elif option_id == "freeform":
         if not prompt["allow_freeform"]:
             raise ValueError(f"{pin_id} does not allow a freeform answer; choose one of {sorted(offered)}")
-        if not human_answer:
-            raise ValueError("a freeform election IS the human's words — human_answer is required")
+        _require_quote(human_answer, evidence, freeform=True,
+                       because="the words are not evidence for the outcome here, they ARE it")
     elif not Ledger.question_offers(pin, option_id):
         raise ValueError(
             f"{option_id!r} is not an option this pin offers ({sorted(offered) or 'none'}). An "
@@ -213,11 +279,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
             f"interview asked. Use option_id='freeform' if the question allows it."
         )
 
-    if evidence == "transcribed" and not human_answer:
-        raise ValueError(
-            "a transcribed decision must carry the human's answer verbatim in human_answer — "
-            "without it, an honest relay and a fabricated one are indistinguishable in the ledger"
-        )
+    _require_quote(human_answer, evidence, writes="decision")
 
     if accept_as_is:
         led.accept(pin_id, rationale=rationale, flip_criteria=flip_criteria,
@@ -228,9 +290,9 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
         led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
                    evidence=evidence, human_answer=human_answer)
         state = "decided"
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin_id, "state": state, "outcome": outcome, "evidence": evidence}
+    out = {"pin_id": pin_id, "state": state, "outcome": outcome, "evidence": evidence}
+    _saved(ledger, led)
+    return out
 
 
 def interview_expand(ledger: str, project_type: str = "web-saas",
@@ -248,17 +310,30 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     `brief_held_back` with the reason and stays an open question. Un-gated, this door wrote any
     string onto any cluster at any severity — the third way into `decide` and the quietest.
 
+    **Each entry carries the brief (v0.24):** `{"outcome": "<option id>", "quote": "<the brief's own
+    words>"}`. The gate above governs *what may be written*; nothing governed *what the claim rested
+    on*, and `brief` was the one member of `DECISION_EVIDENCE` in that position — `transcribed`
+    demands `human_answer` at every door, `cascaded` demands a `policy_id` on both sides of a
+    biconditional, `elicited` cannot be claimed over MCP at all. So this tool moved pins to `decided`
+    on the caller's word that a document said so. A bare outcome string is refused, naming the shape.
+
     A key naming no cluster of this catalog, or one pruned for this `project_type`, comes back under
     `brief_unmatched` (v0.16). It used to come back nowhere: the docstring told the caller to check
     `brief_held_back`, and a typo'd or obsolete cluster id appeared on no list at all, so a fork the
     brief believed it had settled was reported as neither settled nor held.
+
+    **Calling it twice adds nothing (v0.27).** It projects a fixed catalog into the ledger, and it
+    used to re-materialise the whole of it: two calls left 24 pins for 12 clusters — the funnel
+    asking every question twice, with the first copy of each (which may already carry a decision)
+    orphaned. A cluster already in the file comes back under `already_present` with its pin and
+    state, and a `brief_decisions` key naming one is reported ignored there. This is the door an
+    agent re-runs after a context reset, so re-running it had to be the cheap answer.
     """
     import interview
     led = _open_or_create(ledger)
     result = interview.expand_catalog(led, interview.load_catalog(), project_type=project_type,
                                       brief_decisions=brief_decisions or {})
-    led.save()
-    _refresh_live_maps(ledger)
+    _saved(ledger, led)
     return result
 
 
@@ -320,6 +395,11 @@ def policy_prompt(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     matching pin's own question offers it (`not_offered`, v0.12). That is the half that used to be
     missing on the freeform path: the caller's own sentence became the outcome of every pin in the
     cluster, including pins whose question offered a closed set that did not contain it.
+
+    The radius also carries `scope_note` (v0.18), non-empty exactly when a scope key's value is
+    `null`: the matcher is a flat equality test, so a null selects the pins that carry no value for
+    that field — legitimate, and indistinguishable from a wildcard by reading the scope alone. Put
+    it in front of the user with the pin lists.
     """
     led = _open_existing(ledger)
     exceptions = [str(x) for x in (exceptions or [])]
@@ -402,12 +482,9 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     prompt = policy_prompt(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
                            project_type)
 
-    if evidence == "transcribed" and not human_answer:
-        raise ValueError(
-            "a transcribed policy must carry the human's answer verbatim in human_answer — without "
-            "it, an honest relay and a fabricated one are indistinguishable, and this one decides "
-            f"{len(prompt['would_decide'])} pin(s) at once"
-        )
+    _require_quote(human_answer, evidence, writes="policy",
+                   because=f"and it bites harder here — this one decides "
+                           f"{len(prompt['would_decide'])} pin(s) at once")
 
     led = _open_existing(ledger)
     policy = led.add_policy(applies_to=prompt["applies_to"], rule=prompt["rule"],
@@ -419,18 +496,20 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     # listed pins an OLDER policy had just decided, and accepting one policy silently cascaded a
     # previous one over pins added since it was elected — pins nobody was shown when they elected it.
     radius = led.apply_policy(policy)
-    led.save()
-    _refresh_live_maps(ledger)
     # What THIS policy decided on THIS call. Every event it wrote carries evidence `cascaded` and
     # points back at this policy by `policy_id` — none of them claims a relay nobody made, and none
     # of them is another policy's work reported as this one's. The refusal buckets are spread from
     # the radius rather than named one by one: they used to be hardcoded here while `policy_preview`
     # built its shape from `UNASKED_BUCKETS`, so the constant's own comment ("adding a bucket cannot
-    # leave one surface reporting four and another five") was false of this surface.
+    # leave one surface reporting four and another five") was false of this surface. The spread
+    # also carries `scope_note` (v0.18), which is not a bucket: what a null-valued scope key
+    # selected is part of the radius this call reports, and a caller handed the pin lists without
+    # it has been handed a narrow-looking rule that matched by absence.
     out = {"policy_id": policy["id"], "rule": policy["rule"],
            "default_outcome": policy["default_outcome"], "evidence": evidence,
            "cascaded": radius["would_decide"]}
     out.update({bucket: radius[bucket] for bucket in radius if bucket != "would_decide"})
+    _saved(ledger, led)
     return out
 
 
@@ -441,33 +520,43 @@ def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: i
     item = led.add_remediation(pin_id, action=action, ladder_rung=ladder_rung,
                                canonical_target=canonical_target, build_track=build_track,
                                contract_carrier=contract_carrier)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
+    out = {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status: str) -> dict:
     led = _open_existing(ledger)
     item = led.set_remediation_status(pin_id, item_id, status)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"item_id": item["id"], "status": item["status"]}
+    out = {"item_id": item["id"], "status": item["status"]}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> dict:
     led = _open_existing(ledger)
     pin = led.resolve(pin_id, evidence=evidence, rung=rung or None)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"],
-            "verification": pin.get("verification")}
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "verification": pin.get("verification")}
+    _saved(ledger, led)
+    return out
 
 
 def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
                      max_depth: int = 2, head: str = "") -> dict:
+    """The D0 evidence bundle for one pin's landing zone. Read-only; states no verdict.
+
+    The pin comes through `pin_read` (v0.28), and that is the fix rather than a nicety: this is a
+    READ-ONLY tool taking a `pin_id`, which is exactly the class every derived roster on this branch
+    excluded — the read-tool roster was *required == ["ledger"]*, the write-door rosters are *takes a
+    `pin_id` and commits*, and a read that takes a pin falls between them. It handed
+    `readiness.zone_of` whatever `anchors` the file held, so a number there was `TypeError: 'int'
+    object is not iterable` and a list of strings was `'str' object has no attribute 'get'`.
+    """
     import readiness
+    from ledger import pin_read
     led = _open_existing(ledger)
-    pin = led.pin(pin_id)
+    pin = pin_read(led.pin(pin_id))
     head = head or _git_head()
     if not head:
         raise RuntimeError(
@@ -475,6 +564,8 @@ def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
             "without it the staleness gate cannot run, and a zone from a stale graph describes "
             "ground that has since moved"
         )
+    # `.get` and not `pin["anchors"]`: `anchors` is not one of the paths `pin_read` MATERIALISES
+    # (`PIN_GUARANTEED`), so a file that simply omits it must read as no anchors, not as a KeyError.
     return readiness.assess(graph_path, led.data, pin.get("anchors", []),
                             repo=repo, max_depth=max_depth, head=head)
 
@@ -484,10 +575,10 @@ def ledger_set_readiness(ledger: str, pin_id: str, verdict: str, zone: dict, evi
     led = _open_existing(ledger)
     pin = led.set_readiness(pin_id, verdict, zone, evidence,
                             hardens=hardens, rationale=rationale)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "readiness": pin["readiness"],
-            "depends_on": pin["depends_on"]}
+    out = {"pin_id": pin["id"], "readiness": pin["readiness"],
+           "depends_on": pin["depends_on"]}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_mark_correctness_unknown(
@@ -502,10 +593,10 @@ def ledger_mark_correctness_unknown(
     pin = led.mark_correctness_unknown(
         pin_id, blocked_by=blocked_by, attempted=attempted,
         determinism=determinism, rung=rung)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"],
-            "verification": pin["verification"]}
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "verification": pin["verification"]}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
@@ -514,17 +605,18 @@ def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
     led = _open_existing(ledger)
     pm = led.premortem(pin_id, failure_modes, guardrails=guardrails,
                        abort_criteria=abort_criteria, paper_tigers=paper_tigers)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin_id, "premortem": pm}
+    out = {"pin_id": pin_id, "premortem": pm}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: str,
                          phase: str, source: str = "measurer") -> dict:
     led = _open_existing(ledger)
     event = led.label_failure(pin_id, failure_class, detail, phase, source=source)
-    led.save()
-    return {"event": event, "foresight": led.foresight(pin_id)}
+    out = {"event": event, "foresight": led.foresight(pin_id)}
+    _saved(ledger, led)
+    return out
 
 
 def learning_report(ledger: str, min_cluster: int = 2, candidates: list | None = None) -> dict:
@@ -582,9 +674,7 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
                         agreement: str, notes: str = "") -> dict:
     led = _open_existing(ledger)
     record = led.cross_derive(pin_id, claim, derivations, agreement, notes)
-    led.save()
-    _refresh_live_maps(ledger)
-    pin = led.pin(pin_id)
+    pin = led.writable_pin(pin_id)
     # v0.16: what the disagreement DID, said rather than inferred from the state. A closed pin is
     # recorded and not reopened — un-closing finished work has its own arc — and a caller that
     # cannot tell the two apart would read "recorded" as "handled".
@@ -594,11 +684,20 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     # by the reopen and never cleared, so a second, AGREEING derivation over the same pin reported
     # `reopened: true` while its own event recorded `false`. Two carriers for one fact, disagreeing —
     # in the return shape of the tool whose whole subject is two derivations disagreeing.
-    event = next(e for e in led.data["decision_log"] if e["id"] == record["event_id"])
-    return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
-            "event_id": event["id"],
-            "reopened": event["reopened"],
-            "verification": pin.get("verification")}
+    #
+    # `rung_raised` joins it in v0.24 and is the same kind of fact: an AGREEING derivation strengthens
+    # the pin's `verification` — unless an arc has a standing refutation on that envelope, in which
+    # case the agreement is recorded and the rung is not raised. Reported rather than left to be
+    # inferred from `verification`, because "the rung was already `cross_derived`" and "this call
+    # raised it" are two different histories that leave the same field.
+    event = next(e for e in led.readable("decision_log") if e.get("id") == record["event_id"])
+    out = {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
+           "event_id": event["id"],
+           "reopened": event["reopened"],
+           "rung_raised": event["rung_raised"],
+           "verification": pin.get("verification")}
+    _saved(ledger, led)
+    return out
 
 
 def cochange_omissions(changed: list | None = None, repo: str = ".", git_base: str = "",
@@ -618,12 +717,21 @@ def cochange_omissions(changed: list | None = None, repo: str = ".", git_base: s
 
 def scope_check(ledger: str, pin_id: str, changed: list | None = None, repo: str = ".",
                 git_base: str = "") -> dict:
+    """Did the change stay inside the boundary the pin declared? Read-only.
+
+    The pin comes through `pin_read` for `readiness_assess`'s reason and it is the same class: a
+    read-only tool taking a `pin_id`, on no derived roster, dying on the pin's own declared shapes.
+    `declared_vs_actual` reaches `(pin.get("readiness") or {}).get("zone")` and iterates
+    `pin.get("anchors")` — a `readiness` that is a string and an `anchors` that is a number are both
+    in `shape_corpus.broken_pins()`, and both took this tool down with a stack trace.
+    """
     import impact
+    from ledger import pin_read
     led = _open_existing(ledger)
     files = list(changed or [])
     if not files and git_base:
         files = impact.changed_files_from_git(repo, git_base)
-    return impact.declared_vs_actual(led.pin(pin_id), files)
+    return impact.declared_vs_actual(pin_read(led.pin(pin_id)), files)
 
 
 def agent_ready(ledger: str, pin_id: str = "") -> dict:
@@ -660,20 +768,157 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
     decided by WHICH PATH RAN. There is one path here — the agent relays — so the rung is
     `transcribed` and the human's words are always required. If deferral ever gains an elicitation
     path, that path sets the rung, exactly as `mcp/server.py::ledger_record_decision` does.
+
+    v0.18 finished that one layer down. `Ledger.defer` kept `evidence="transcribed"` as a parameter
+    for two versions after this door dropped it, so the rule was held by the door and not by the
+    thing the door protects: the next caller of the library writes a rung nobody earned, and every
+    sentence above still says it cannot. A default is not a refusal.
     """
     led = _open_existing(ledger)
-    evidence = "transcribed"
-    if not human_answer:
-        raise ValueError(
-            "a defer must carry the human's answer verbatim in human_answer — deferring "
-            "settles the pin and stops the question being asked, so an unquoted one is an agent "
-            "deciding not to decide, which is the one thing no tool here may do"
-        )
+    # There is exactly one path here — the agent relays — so the rung is `transcribed` and is not the
+    # caller's to state (see above); the same fact is what makes the quote unconditional, which is
+    # why this passes the rung rather than a boolean.
+    _require_quote(human_answer, "transcribed", writes="defer",
+                   because="deferring settles the pin and stops the question being asked, so an "
+                           "unquoted one is an agent deciding not to decide, which is the one "
+                           "thing no tool here may do")
     pin = led.defer(pin_id, rationale=rationale, flip_criteria=flip_criteria,
-                    evidence=evidence, human_answer=human_answer)
-    led.save()
-    _refresh_live_maps(ledger)
-    return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer", "evidence": evidence}
+                    human_answer=human_answer)
+    # Read off the event this call appended, not restated here (v0.18). It used to be a local
+    # `evidence = "transcribed"` that was passed down AND reported back — one fact with two
+    # carriers, and the parameter it was passed into is the one that has just been removed. The
+    # rung the caller is told about is now the rung the log actually holds.
+    event = next(e for e in led.readable("decision_log")
+                 if e.get("id") == pin["decision"]["event_id"])
+    out = {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer",
+           "evidence": event["evidence"]}
+    _saved(ledger, led)
+    return out
+
+
+# -- the two reopen arcs, and the two doors that put a pin back in front of a human ---------------
+#
+# Everything above moves a pin forward. Nothing here elects: these four record that something is
+# owed a human's attention again — a signal fired, an oracle was refuted, a finding has no fork yet,
+# the brainstorm has options. That is why they are exposed at all while `decide` is not, and the
+# distinction is enforced structurally rather than promised: no function in this block passes an
+# `outcome` anywhere, and `tests/test_ledger.py::TestComingBackIntoTheOpenSetIsGovernedToo` asserts
+# it from the AST.
+
+def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_signal",
+                  source: str = "feedback:metrics") -> dict:
+    """Record that production falsified an elected decision, and hand the pin back. Never decides.
+
+    The downstream arc of the feedback loop, and for four versions it existed in the runtime and on
+    no host: `settlement_verdict` refuses to close finished work twice with the words *"Reopen it
+    first"*, and nothing could. So the only way to correct a wrongly-closed pin was to hand-edit
+    `ledger.json`, which every playbook forbids.
+
+    It writes no outcome, which is what makes it safe to expose — there is no quote to demand and no
+    offered option to check, because nothing is being chosen. What it does demand is the observation:
+    `reason` must say what was seen, `fired` names the kind of tripwire, `source` names where the
+    reading came from. `reopened` in the return says whether the pin actually moved: an observation
+    about a pin nobody had settled is still recorded, and reporting it as a move would be a second
+    carrier for a fact the event already holds.
+
+    `also_reopened` is the settled dependents the cascade swept up with it — **read off the `cas_`
+    records this call appended** (`Ledger.cascaded_by`), not derived from the pins. It used to be
+    every pin carrying `substate == "reopened"` and `state == "needs_input"`, and nothing anywhere
+    clears that substate: after one legitimate cascade, a later reopen of an unrelated pin reported
+    the earlier cascade's pins as its own radius. Same bug, same fix, as `reopened` one field over.
+    """
+    led = _open_existing(ledger)
+    event = led.reopen(pin_id, reason=reason, fired=fired, source=source)
+    pin = led.writable_pin(pin_id)
+    out = {"pin_id": pin_id, "event_id": event["id"], "reopened": event["reopened"],
+           "state": pin["state"], "substate": pin.get("substate"),
+           "also_reopened": led.cascaded_by(event["id"])}
+    _saved(ledger, led)
+    return out
+
+
+def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str, argument: str,
+                     severity: str, upheld: bool, source: str = "challenge:challenger") -> dict:
+    """Record a ChallengeEvent against an elected oracle, and — if upheld — hand the pin back.
+
+    The upstream arc: the oracle may be wrong *from the start*, before anything is built on it. Its
+    read-only twin `challenge_oracle` proposes the deterministic classes and applies none of them;
+    this is where one lands. The judgment classes (`inconsistent`, `unsatisfiable`,
+    `unstated_assumption`, `unfounded_infeasibility`) never had a surface at all.
+
+    **Who owns `upheld`: the challenger.** "Read-only" in the roster means *about decisions* —
+    reopening is the challenger's whole mandate and electing is what it may never do, so upholding
+    belongs to it and the re-answer belongs to the human. What the arc owes in exchange is the
+    `argument`: an upheld challenge with nothing stated reopens a human's election on an assertion,
+    which is the unquoted relay one arc over, and the runtime refuses it.
+
+    `upheld` and `reopened` are different facts and both come back: a refutation of a pin nobody
+    settled is true and moves nothing.
+
+    **`also_reopened` is here for the same reason it is on `ledger_reopen` (v0.20): the two arcs run
+    the same cascade.** An upheld challenge reopens the pin *and its settled dependents*, and this
+    tool reported none of them — observed, a `resolved` pin was taken back into the open set by a
+    challenge on the pin it depends on and appeared in no key of the response. Two arcs, one
+    predicate, one writer, added in one commit, and their radius reporting was one over. Read off the
+    `cas_` records this call appended, exactly as the downstream arc reads its own.
+
+    `source` is a closed vocabulary (`challenge:challenger`): the arc's safety argument is that it
+    never elects, so it may not sign itself with the door that does.
+    """
+    led = _open_existing(ledger)
+    event = led.challenge(pin_id, target=target, challenge_class=challenge_class,
+                          argument=argument, severity=severity, upheld=bool(upheld), source=source)
+    pin = led.writable_pin(pin_id)
+    out = {"pin_id": pin_id, "event_id": event["id"], "upheld": event["upheld"],
+           "reopened": event["reopened"], "state": pin["state"],
+           "substate": pin.get("substate"),
+           "also_reopened": led.cascaded_by(event["id"])}
+    _saved(ledger, led)
+    return out
+
+
+def ledger_set_question(ledger: str, pin_id: str, question: dict) -> dict:
+    """Give a pin that poses NO fork the fork it needs to reach the interview. Never decides.
+
+    `ledger_add_pin`'s `question` is optional — a finder is not always the one who knows what the
+    choice is — and nothing could supply it afterwards, so such a pin stayed `detected` for ever and
+    appeared in `interview_next` on no host.
+
+    Write-if-absent, and refused on a pin that already poses one: `question.options[].id` is the
+    carrier the offered-options rule anchors on at both election doors, so replacing a fork is an
+    agent deciding what the human may choose from. `allow_freeform` is required, because a menu an
+    agent composed must leave the human a way to answer outside it.
+    """
+    led = _open_existing(ledger)
+    pin = led.set_question(pin_id, question)
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "options": [o["id"] for o in (pin["question"].get("options") or [])],
+           "allow_freeform": bool(pin["question"].get("allow_freeform"))}
+    _saved(ledger, led)
+    return out
+
+
+def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str = "") -> dict:
+    """Write the brainstorm's options onto ONE pin. Proposes; never decides, by schema.
+
+    The brainstorm agent's own write path, and it had none: `Ledger.add_proposals` is the only
+    writer of the `brainstorming` state and no tool reached it, so on every host the brainstorm
+    could think and could not record. A proposal carrying a `decision` or an `outcome` is refused —
+    neutrality is enforced by the schema, not by good intentions — and at most one may be
+    `recommended`, because the gap between what was recommended and what the human elected is the
+    single best learning signal in the ledger and two marks make it uncomputable.
+
+    The pin stays in the interview funnel while it is in `brainstorming` (v0.17); its proposals ride
+    along on the funnel entry, so the exploration flows into the answer instead of replacing it.
+    """
+    led = _open_existing(ledger)
+    pin = led.add_proposals(pin_id, list(proposals or []), notes=notes)
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "proposals": [p["id"] for p in pin["brainstorm"]["proposals"]],
+           "recommended": next((p["id"] for p in pin["brainstorm"]["proposals"]
+                                if p.get("recommended")), "")}
+    _saved(ledger, led)
+    return out
 
 
 # -- coverage manifest -------------------------------------------------------------------------
@@ -814,21 +1059,34 @@ def _unregister_live_map(ledger: str, out: str) -> None:
 def _refresh_live_maps(ledger: str) -> None:
     """Re-project every live map registered for this ledger. Best-effort by design: a render failure
     must never break the ledger write that triggered it, and a ledger with no live map pays nothing
-    (the marker check returns immediately)."""
+    (the marker check returns immediately).
+
+    **`Exception`, and the narrow tuple that was here is the finding (v0.25).** The docstring said
+    *never* and the handler caught `(OSError, ValueError)` — not `AttributeError`, `TypeError` or
+    `KeyError`, which are precisely the failure classes this whole round is about. A ledger the
+    renderer chokes on would therefore have taken down the WRITE that had already succeeded and been
+    persisted: the pin is on disk, the tool returns `isError`, and the agent is told its write
+    failed. The rule is the docstring's own, so the handler is the rule's: anything the projection
+    raises is the projection's problem, and the marker is read the same way for the same reason (a
+    marker file holding a JSON list met `.get`).
+
+    Nothing is swallowed that a caller needed: `render_map` is the door that RENDERS, and it does
+    not go through here — a failure there is reported to the caller who asked for a render.
+    """
     m = _livemap_marker(ledger)
     if not m.is_file():
         return
     try:
         outs = json.loads(m.read_text(encoding="utf-8")).get("outs", [])
-    except (OSError, ValueError):
+    except Exception:
         return
-    if not outs:
+    if not isinstance(outs, list) or not outs:
         return
     import map as M
     for out in outs:
         try:
             M.render_file(ledger, out, live=True)
-        except (OSError, ValueError):
+        except Exception:
             continue
 
 

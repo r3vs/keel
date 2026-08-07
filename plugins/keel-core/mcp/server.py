@@ -165,7 +165,7 @@ def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence
         provenance: List of {source, detail} — who found this and how (required, non-empty).
         as_is: Current descriptive state (optional).
         to_be: Elected by the interview later, not here (optional).
-        question: Materializes the pin as needs_input (optional).
+        question: Materializes the pin as needs_input (optional). {"prompt", "options": [{"id","label","implication"?}], "allow_freeform": true} — freeform is REQUIRED, exactly as in `ledger_set_question`: you are composing this menu, so the human's own words must stay a legal answer.
         depends_on: Pin ids this depends on (optional).
         kind_detail: Required when kind is "other".
         cluster_id: Optional cluster grouping.
@@ -318,8 +318,9 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     an unexpanded ledger makes the funnel answer "no questions" rather than "no forks".
 
     `brief_decisions` commits decisions, and "the brief said so" means nobody was asked — so each
-    one passes the same gate a policy cascade does. The outcome must be an option id that cluster's
-    own fork offers, and a `blocker`/`high` fork is never settled this way. Whatever the brief could
+    one passes the same gate a policy cascade does, AND carries the brief's own words. The outcome
+    must be an option id that cluster's fork offers, the quote must be the passage that settles it,
+    and a `blocker`/`high` fork is never settled this way. Whatever the brief could
     not carry comes back in `brief_held_back` (with the reason and the ids it did offer) and stays an
     open question for the interview. Check that list: a fork you thought was settled may not be.
 
@@ -327,11 +328,18 @@ def interview_expand(ledger: str, project_type: str = "web-saas",
     this project type — comes back in `brief_unmatched`. Check that one too: it decided nothing and
     created nothing, so it is the one input this call can receive and leave no trace of.
 
+    Safe to re-run: a cluster already in this ledger is left exactly as it is and comes back in
+    `already_present` with its pin id and state. Nothing is duplicated, nothing is re-decided, and a
+    `brief_decisions` key naming one of them is reported ignored there — settle an existing pin with
+    `ledger_record_decision`.
+
     Args:
         ledger: Path to ledger.json (created if absent — this is the first write).
         project_type: Prunes clusters that do not apply (a fork absent from the type is not a question).
-        brief_decisions: cluster_id -> the OPTION ID that cluster's fork already got in the brief;
-            those pins are created and committed with evidence "brief", unless held back.
+        brief_decisions: cluster_id -> {"outcome": the OPTION ID that cluster's fork already got in
+            the brief, "quote": the brief's own words that settle it, verbatim}. Those pins are
+            created and committed with evidence "brief", unless held back. Both keys are required:
+            the rung means nobody was asked, so the brief IS the evidence and it has to be quotable.
     """
     return tools.interview_expand(ledger, project_type, brief_decisions)
 
@@ -374,6 +382,11 @@ def policy_preview(ledger: str, offer_id: str = "", rule: str = "", applies_to: 
     ones you excluded. What a user elects when they accept a policy is that radius, not the
     sentence — and a rule that turns out to cover 40 pins is a different question from one that
     covers 3.
+
+    Show `scope_note` with it whenever it is non-empty. A scope value of `null` matches every pin
+    that carries no value for that field, so `{"cluster_id": null}` reads as "the unclustered ones"
+    and behaves as "nearly everything" on a ledger where almost nothing is clustered. The note says
+    which, and how many of how many.
 
     Same arguments as `ledger_record_policy`, so a previewed policy and a recorded one cannot differ.
     Greenfield's catalog offers already arrive with this attached (`interview_seed_policies`); this
@@ -445,8 +458,16 @@ async def ledger_record_policy(
         # actually stamped on every one of those pins — a string the caller composed — was never
         # put in front of them. What the message omits was not elected, whatever rung the write
         # then claims, and this write claims the strongest one there is.
+        # The scope note is on the elicited message and not only in the returned dict, because this
+        # is the surface a human actually reads before electing (v0.18). A scope keyed on a real but
+        # OPTIONAL pin field with a null value selects every pin carrying no value for it — narrow
+        # to read, potentially the whole ledger in effect — and the radius alone does not show which
+        # of the two a `{"cluster_id": null}` was. Empty string when there is nothing to say, so the
+        # common message is unchanged.
+        note = prompt.get("scope_note") or ""
         message = (f"Set this policy?\n\nRule: {prompt['rule']}\n"
-                   f"Outcome written on every pin it decides: {prompt['default_outcome']}\n\n"
+                   + (f"Scope: {note}\n" if note else "")
+                   + f"Outcome written on every pin it decides: {prompt['default_outcome']}\n\n"
                    f"It decides {len(would)} pin(s) without asking again"
                    + (f": {', '.join(would)}" if would else "")
                    + (f"\n{len(held)} blocker/high pin(s) are held back and still asked: "
@@ -741,10 +762,13 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
                         agreement: str, notes: str = "") -> dict:
     """Re-derive one high-stakes claim with a DIFFERENT provider; disagreement is the signal.
 
-    Agreement earns the `cross_derived` rung. Disagreement moves the pin to `needs_input`
-    (`contested`) with both derivations as options. Requires two derivations from two DISTINCT
-    providers — same-provider repetition is refused. Optional at every severity; spend it on
-    irreversible or blocker/high claims.
+    Agreement earns the `cross_derived` rung — unless a reopen or an upheld challenge has a standing
+    refutation on the pin's verification, which a re-derivation is not an answer to: the agreement is
+    recorded and `rung_raised` comes back false. Disagreement is a REOPEN ARC: it moves the pin to
+    `needs_input` (`contested`) with both derivations as options, takes back the claims a settlement
+    door reads as permission, and refuses to un-close finished work (use `ledger_reopen`, which
+    records why). Requires two derivations from two DISTINCT providers — same-provider repetition is
+    refused. Optional at every severity; spend it on irreversible or blocker/high claims.
 
     Args:
         ledger: Path to ledger.json.
@@ -835,6 +859,109 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
         human_answer: The user's words, verbatim. Required: an unquoted deferral is you deciding.
     """
     return tools.ledger_defer(ledger, pin_id, rationale, flip_criteria, human_answer)
+
+
+@mcp.tool(annotations={"title": "Ledger — Reopen (production falsified the decision)", **_RW})
+def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_signal",
+                  source: str = "feedback:metrics") -> dict:
+    """Hand a settled pin back to the interview because production falsified it. Never decides.
+
+    This is the way back out of a finished pin, and the only one: every settlement door refuses to
+    close work twice and tells you to reopen it first. Use it when a decision's `flip_criteria`
+    turned out to hold — the p95 blew the threshold, the second tenant appeared, the incident
+    happened — not when you would simply prefer a different answer.
+
+    It writes no outcome and cannot: reopening is not deciding. The pin (and only the dependents
+    that genuinely rested on it) returns to `needs_input`, marked so no later policy re-defaults it
+    silently, and the human re-elects through `ledger_record_decision`.
+
+    `reopened: false` in the result means the pin was not settled, so nothing moved — the
+    observation is still recorded. `also_reopened` lists the settled dependents the cascade swept up
+    with it; each of them gets its own record in the log, so nothing is un-finished untraceably.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin whose elected truth production falsified.
+        reason: What was actually observed, with the reading. Not "signal fired".
+        fired: flip_signal | manual_checkpoint | incident — which kind of tripwire tripped.
+        source: feedback:metrics | feedback:logs | feedback:traces | feedback:manual_checkpoint | feedback:incident.
+    """
+    return tools.ledger_reopen(ledger, pin_id, reason, fired, source)
+
+
+@mcp.tool(annotations={"title": "Ledger — Challenge an Elected Oracle (upstream arc)", **_RW})
+def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str, argument: str,
+                     severity: str, upheld: bool, source: str = "challenge:challenger") -> dict:
+    """Record a challenge against an elected oracle — and, if upheld, reopen the pin. Never decides.
+
+    The challenger's write path. `challenge_oracle` proposes the classes a script can decide and
+    applies none of them; this is where a challenge — yours or one of those — actually lands. An
+    upheld one returns the pin (and only the dependents that rested on it) to `needs_input`, where
+    the human re-elects. You may reopen; you may never re-decide.
+
+    State the `argument`. An upheld challenge with nothing stated un-does a human's election on your
+    say-so, and it is refused for the same reason a relayed decision with no quote is.
+
+    `upheld` and `reopened` are different: a sound refutation of a pin nobody had settled is
+    recorded and moves nothing. `also_reopened` lists the settled dependents the cascade swept up —
+    the same key, from the same records, as `ledger_reopen`, because it is the same cascade.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin whose oracle is being refuted.
+        target: acceptance_criterion | to_be | policy | decision.
+        challenge_class: unfalsifiable | inconsistent | unsatisfiable | unfounded_infeasibility | unstated_assumption | ignored_fanout | other.
+        argument: What refutes it. Required, non-blank — this is the challenge.
+        severity: blocker | high | medium | low.
+        upheld: Does the challenge survive review? True reopens the pin.
+        source: challenge:challenger — the read-only role this arc belongs to. Closed: an arc that never elects may not sign itself with the door that does.
+    """
+    return tools.ledger_challenge(ledger, pin_id, target, challenge_class, argument, severity,
+                                 upheld, source)
+
+
+@mcp.tool(annotations={"title": "Ledger — Pose the Fork a Pin Is Missing", **_RW})
+def ledger_set_question(ledger: str, pin_id: str, question: dict) -> dict:
+    """Give a pin recorded WITHOUT a fork the question that puts it to the human. Never decides.
+
+    A finding whose `question` was left out of `ledger_add_pin` is invisible to the whole funnel:
+    `interview_next` never returns it and no election door will touch it. This is how it gets one.
+
+    Two rules, both refusals rather than advice. It will not REPLACE an existing fork — the option
+    ids are what the human is allowed to choose from, and rewriting them is deciding for them. And
+    the question must set `allow_freeform: true`, because you are composing this menu: leaving the
+    way out open is what keeps a fork you wrote from bounding their answer.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: A pin that poses no question yet.
+        question: {"prompt": str, "options": [{"id","label","implication"?}], "allow_freeform": true}.
+    """
+    return tools.ledger_set_question(ledger, pin_id, question)
+
+
+@mcp.tool(annotations={"title": "Ledger — Brainstorm Proposals on One Pin", **_RW})
+def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str = "") -> dict:
+    """Write the brainstorm's options onto one pin. It proposes; it can never decide.
+
+    Open it on ONE hard fork to think the answer through before the interview asks it: 2–3 options,
+    each with tradeoffs, effort and the ladder rung, grounded in real sources. A proposal carrying a
+    `decision` or an `outcome` is refused, and at most one may be `recommended`.
+
+    The pin stays in `interview_next` while it is being brainstormed, with these proposals attached
+    to its entry, so exploring a fork no longer takes it off the agenda.
+
+    A pin whose work is finished (`resolved` / `accepted` / `deferred`) is refused, in the same words
+    `ledger_set_question` uses: proposing options for a question that has stopped being asked is
+    un-finishing the pin, and the door for that is `ledger_reopen`, which records why.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The one pin being explored.
+        proposals: [{"summary", "tradeoffs": {"pros","cons"}, "effort": "S|M|L", "ladder_rung", "references", "recommended"?}].
+        notes: How the options were arrived at.
+    """
+    return tools.ledger_add_proposals(ledger, pin_id, proposals, notes)
 
 
 @mcp.tool(annotations={"title": "Contract Diff (cross-layer drift)", **_RO})

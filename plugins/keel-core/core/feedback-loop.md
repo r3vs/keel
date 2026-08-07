@@ -30,10 +30,22 @@ a periodic "did X happen?" asked at a wave boundary or on a schedule. Never a ha
 1. **Gather** the `flip_signal`s across all `decided` pins.
 2. **Evaluate** each against its telemetry source (or the manual checkpoint). A signal is *fired*
    when the comparator/threshold holds over the window (e.g. `orders p95 > 200ms sustained 7d`).
-3. **On a fired signal**, emit an immutable `ReopenEvent` (`source: "feedback:<source>"`) and set
-   the pin — and only the genuine dependents that assumed the now-falsified truth — back to
-   `needs_input` (state `reopened`). The `ReopenEvent` records *why*, so the interview re-decides
-   with the new information rather than from scratch.
+3. **On a fired signal**, call **`mcp:ledger_reopen`** — it emits the immutable `ReopenEvent`
+   (`source: "feedback:<source>"`) and sets the pin, and only the genuine dependents that assumed
+   the now-falsified truth, back to `needs_input` (state `reopened`). Name what fired
+   (`fired: flip_signal | manual_checkpoint | incident`) and put the **reading** in `reason` — the
+   tool refuses a blank one, because a bare "signal fired" un-settles work a human elected and gives
+   the next reader nothing to weigh. It writes no outcome and cannot: reopening is not deciding, and
+   that is why this arc is a tool an agent may run at all.
+
+   Check `reopened` in the result. `false` means the pin was not settled, so the observation was
+   recorded and nothing moved — which is the honest answer, not a failure.
+
+   Check **`also_reopened`** too: the settled dependents this call swept up with it. One fired
+   signal can un-finish several pins, each of which gets its own record in the log
+   (`CascadeEvent`, joined to your `ReopenEvent` by `via`) — so tell the user what moved, not only
+   which pin you aimed at. It is the radius of *this* call and no other; the upstream arc
+   (`mcp:ledger_challenge`) reports the same key from the same records.
 4. **Hand off.** Reopened pins flow into the interview: `greenfield-forge slice` for a forged
    project, `codebase-rescue resume` for a rescued one. The elected new truth then flows forward
    through the normal phases (contract → build → validate) — the loop turns.
@@ -41,7 +53,9 @@ a periodic "did X happen?" asked at a wave boundary or on a schedule. Never a ha
 ## Guardrails
 
 - **Reopen, never decide.** The loop emits `ReopenEvent`s and moves pins to `needs_input`. It
-  writes no `DecisionEvent`, elects no truth, edits no code. Neutrality is schema-enforced.
+  writes no `DecisionEvent`, elects no truth, edits no code. Neutrality is schema-enforced —
+  `ledger_reopen` has no outcome parameter, and the human re-elects through
+  `mcp:ledger_record_decision` afterwards.
 - **Reopen the minimum.** Only the pin whose signal fired, plus dependents that genuinely rested
   on the falsified truth (via `depends_on`) — never the whole ledger. A loop that reopens
   everything regenerates churn, the same failure mode the skills cure.

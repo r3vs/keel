@@ -113,16 +113,26 @@ for item in roadmap.ordered_item_ids:      # fresh invocation each
   1. load item + pin + graph neighborhood + to_be     # minimal context
   2. if touching working code → Track B characterization test
   3. if item has a decision → Track A red test from to_be
-  4. implement the minimum that passes; ladder decides how; log the rung
+  4. implement the minimum that passes; ladder decides how; log the `ladder_rung` on the item
   5. EVIDENCE gate — Phase 5 on the item (see phase-5-validate.md): kind-specific proof the
      gap closed. Deterministic, cheap, and FIRST. On failure the item returns to step 4 with
      the failing evidence (a local retry, not a global restart) and step 6 never runs.
   6. JUDGMENT gate — two-stage review: (a) is the oracle satisfied HONESTLY (reads the
      recorded evidence, never re-derives it) → (b) code quality
         verdict MERGE | ADJUST | REJECT ; ADJUST/REJECT restart THIS item
-  7. pin.state = resolved  — requires BOTH the evidence and a MERGE
+  7. pin.state = resolved  — needs THREE: the evidence, a MERGE, and a `verification.rung`
+     of `observed` or `cross_derived`, passed to `mcp:ledger_resolve(rung=…)`. Every
+     remediation item on the pin must also be `done`, or the door answers `remediation_open`.
   8. clear context → next item
 ```
+
+**`rung` names two different things in that loop, and they are two different fields.** Step 4's is
+the **`ladder_rung`** — an integer 1–7 on the `RemediationItem`, recording how small the
+intervention was. Step 7's is **`verification.rung`** on the pin — one of `self_check` ·
+`re_read` · `observed` · `cross_derived`, recording how hard the result was checked. Neither
+constrains the other: a rung-1 deletion still has to be observed, and observing something says
+nothing about how it was built. Pass the second one to `mcp:ledger_resolve`; the first goes to
+`mcp:ledger_add_remediation`.
 
 **Why evidence precedes judgment.** This is the static-analysis doctrine applied to the roster
 (`references/core/agents.md`): the evidence gate runs a parse, a diff and a test suite; the review
@@ -134,7 +144,9 @@ The two are not the same check at different strengths. The evidence gate proves 
 passes**; the review gate judges **whether it passes for the right reason** — a Track-A test that
 special-cases its own input, a criterion met in letter and defeated in spirit, a fix that relocates
 the symptom. Those are green, and only a skeptical reader catches them. Neither gate re-runs the
-other's work, and `resolved` needs both.
+other's work, and `resolved` needs both — **plus the observation rung**, which is the third thing
+and is not either gate's output: the gates say the change is right, the rung says somebody watched
+it behave.
 
 ## Static signal, in-loop (not just the Phase-1 batch)
 

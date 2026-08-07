@@ -46,7 +46,8 @@ def _blocking_ledger(tmp: str) -> str:
     led = ledgermod.Ledger(path)
     led.add_pin(kind="ambiguity", title="two auth flows", severity="blocker",
                 confidence="ambiguous", provenance=[{"source": "recon", "detail": "x"}],
-                question={"prompt": "which one?", "options": [{"id": "a", "label": "A"}]})
+                question={"prompt": "which one?", "allow_freeform": True,
+                          "options": [{"id": "a", "label": "A"}]})
     led.save()
     return path
 
@@ -114,18 +115,18 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                         "an agent can take alone or re-run over pins nobody was shown",
     }
     #: Mutators reached through another governed entry point rather than a tool of their own.
+    #:
+    #: Four entries left here in v0.16, and every one of them was a state the product could not
+    #: reach. `set_question` had ZERO call sites anywhere and was exempted as "the interview funnel
+    #: writes it" (`interview.funnel` reads). `add_proposals` is the only writer of the
+    #: `brainstorming` state and nothing called it. `reopen`'s reason described *when* it should run
+    #: and never said what runs it. `challenge`'s said "exposed as challenge_oracle, which applies
+    #: upheld ChallengeEvents" — false of that function, which only proposes. All four now have
+    #: tools, and `TestAnINTERNALMutatorIsActuallyReached` is why a fifth cannot be parked here on a
+    #: sentence: an exemption whose stated reason is wrong is worse than none, because the check has
+    #: then been asked and answered.
     INTERNAL = {
-        "set_question": "NOTHING calls it — verified, zero call sites in src/ and plugins/. The "
-                        "reason here used to read 'the interview funnel writes it (interview_next "
-                        "drives the surface)', which is false: `interview.funnel` reads. It is the "
-                        "runtime half of the door docs/open-gaps.md §10 records as missing, kept "
-                        "rather than deleted because that is what §10 would expose — and an "
-                        "exemption whose stated reason is wrong is worse than none, because the "
-                        "check has then been asked and answered",
-        "add_proposals": "the brainstorm agent's own write path; neutral by schema",
         "assign_resolution_modes": "runs inside the interview funnel",
-        "reopen": "the feedback loop's downstream arc, driven by a fired flip_signal",
-        "challenge": "exposed as challenge_oracle, which applies upheld ChallengeEvents",
         "set_governance": "stamped automatically by tools._open_or_create — the server knows its "
                           "own root and version, so this is never a question put to a model",
         "save": "persistence, not a state transition",
@@ -135,7 +136,30 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         """Public Ledger methods that write. Read-only views are excluded by name, and the list of
         exclusions is short and explicit so a new writer cannot hide among them."""
         readonly = {"pin", "interview_view", "summary", "foresight", "policy_preview",
-                    "question_offers", "unasked_verdict", "settlement_verdict"}
+                    "question_offers", "unasked_verdict", "settlement_verdict", "reopen_verdict",
+                    # v0.20: reads the `cas_` records `_reopen_minimal` appended and returns their
+                    # pin ids. It is on this list rather than in INTERNAL because it writes nothing
+                    # — the whole reason it exists is that the tool layer was deriving that radius
+                    # from a substate instead of reading the records.
+                    "cascaded_by",
+                    # v0.21: the container half of the guarded read path. Both return a NEW list of
+                    # the entries a reader may index; neither touches `self.data`. They are here
+                    # and not in INTERNAL for `cascaded_by`'s reason — INTERNAL is for writers
+                    # reached through another door, and a reader reached through no door at all is
+                    # not a write path anybody needs to govern.
+                    "readable", "readable_pins",
+                    # v0.26: `pin`'s twin on the WRITE path, and it is here for exactly the reason
+                    # `pin` is. It looks a record up and REFUSES when this runtime cannot read it;
+                    # it assigns nothing. Naming it a mutator because every mutator calls it would
+                    # make the classification a claim about who its callers are rather than about
+                    # what it does — and its callers are already the governed doors.
+                    "writable_pin",
+                    # v0.28: the same pair one level out. `writable_collection` returns the list the
+                    # file already holds or refuses; `writable_pins` returns `(record, read)` pairs
+                    # built from it. Both look up and refuse, and neither assigns — what a caller
+                    # does with the records they hand back is the caller's transition, and every one
+                    # of those callers is already a governed door.
+                    "writable_collection", "writable_pins"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
@@ -184,15 +208,30 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
             question={"prompt": "Consolidate?",
                       "options": [{"id": "keep", "label": "leave it"},
                                   {"id": "extract", "label": "extract a helper"}],
-                      "allow_freeform": False})
+                      "allow_freeform": True})
         led.save()
 
         with self.assertRaises(ValueError, msg="an outcome outside the offered menu is an election"):
             mcp_tools.record_decision(led.path, pin["id"], "rewrite_in_rust",
                                       rationale="r", flip_criteria="f", human_answer="do that")
+        # The freeform refusal, exercised on the only kind of file that can still carry a closed
+        # menu. v0.20 moved `allow_freeform` into `_validate_question`, so no door writes `False`
+        # any more — but `record_decision`'s refusal governs ledgers written before that, exactly as
+        # `nonconforming` and `decision_rung` govern the events older runtimes wrote. So the flag is
+        # flipped on the saved file, not passed to a door: a rule enforced at the write governs no
+        # file that already exists, which is why the read side keeps its branch.
+        def _rewrite(flag):
+            with open(led.path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            data["pins"][0]["question"]["allow_freeform"] = flag
+            with open(led.path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+
+        _rewrite(False)
         with self.assertRaises(ValueError, msg="freeform must be permitted by the question"):
             mcp_tools.record_decision(led.path, pin["id"], "freeform",
                                       rationale="r", flip_criteria="f", human_answer="something else")
+        _rewrite(True)
         with self.assertRaises(ValueError, msg="relaying without a quote is an unfalsifiable claim"):
             mcp_tools.record_decision(led.path, pin["id"], "extract", rationale="r", flip_criteria="f")
 
@@ -220,6 +259,7 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
 
         led = ledgermod.Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
         fork = {"prompt": "Which layer is truth?",
+                "allow_freeform": True,
                 "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
         pins = [led.add_pin(kind="contract_mismatch", title=f"drift {i}", severity=sev,
                             confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
@@ -265,6 +305,49 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
         mutators = self._mutators()
         stale = sorted((set(self.HUMAN_ONLY) | set(self.INTERNAL)) - mutators)
         self.assertEqual(stale, [], "these exemptions name methods that are gone")
+
+    def test_an_INTERNAL_mutator_is_actually_reached(self):
+        """The inverse gate, and the one that would have caught four exemptions at once.
+
+        `test_no_mutator_is_unclassified` asks whether every writer has a *declared* channel. It
+        cannot ask whether the declaration is TRUE, and for four versions it was not: `set_question`
+        and `add_proposals` had zero call sites in anything that ships, `reopen` had none either, and
+        `challenge`'s only caller was `challenger.run`, which nothing calls. Each carried a sentence
+        naming an entry point, and the sentences were prose. `check_tool_carriers.py` sees write
+        tools that EXIST and are named by nobody; it cannot see a capability that was never given a
+        tool, and this is the direction it does not cover.
+
+        So the carrier is the call graph, not the reason string: an INTERNAL mutator must be reached
+        transitively from something an agent can call, computed over the ASTs of `src/runtime/*.py`
+        and `src/mcp/*.py`, rooted at the functions of `tools.py` that `server.py` actually serves.
+        `HUMAN_ONLY` is held to the same standard — `decide` is withheld from agents, not from the
+        product, and a `decide` nothing reaches is the state nobody can produce all over again.
+        """
+        ast_ = TestEveryPathToDecideIsGated
+        modules = ast_._modules()
+        served = {n.name for n in modules["server.py"].body
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                          and d.func.attr == "tool" for d in n.decorator_list)}
+        self.assertGreater(len(served), 40, "no @mcp.tool functions found — this gate went vacuous")
+        edges = {}
+        for tree in modules.values():
+            for name, fn in ast_._functions(tree).items():
+                edges.setdefault(name, set()).update(ast_._calls(fn))
+        reachable, frontier = set(), list(served)
+        while frontier:
+            name = frontier.pop()
+            for callee in edges.get(name, ()):  # names, by final component — the same rule as above
+                if callee not in reachable:
+                    reachable.add(callee)
+                    frontier.append(callee)
+        unreached = sorted(n for n in (set(self.INTERNAL) | set(self.HUMAN_ONLY))
+                           if n not in reachable)
+        self.assertEqual(unreached, [],
+                         "these ledger mutators are exempted from having a tool AND are called by "
+                         "nothing an agent can reach. That is not a governed channel, it is a state "
+                         "the runtime can produce and the product cannot — give it a door or delete "
+                         "it, and never leave the reason as a sentence nobody re-checked.")
 
 
 class TestEveryPathToDecideIsGated(unittest.TestCase):
@@ -402,8 +485,10 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
 
     FORK = {"prompt": "Consolidate?",
             "options": [{"id": "keep", "label": "leave it"},
-                        {"id": "extract", "label": "extract a helper"}]}
+                        {"id": "extract", "label": "extract a helper"}],
+            "allow_freeform": True}
     OTHER = {"prompt": "Which layer is truth?",
+             "allow_freeform": True,
              "options": [{"id": "db", "label": "the DB"}, {"id": "api", "label": "the API"}]}
     PROV = [{"source": "recon", "detail": "x"}]
 
@@ -465,8 +550,10 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
             {"id": "sync", "order": 2, "kind": "open_decision", "severity": "medium",
              "title": "Sync", "options": [{"id": "reqresp", "label": "request/response"}]}]}
         result = interview.expand_catalog(led, catalog, project_type="web-saas", brief_decisions={
-            "persistence": "relational",              # offered, but `high` — the threshold holds
-            "sync": "mongodb"})                       # medium, but nothing offers it
+            # offered, but `high` — the threshold holds
+            "persistence": {"outcome": "relational", "quote": "postgres, schema-first"},
+            # medium, but nothing offers it
+            "sync": {"outcome": "mongodb", "quote": "mongo everywhere"}})
         self.assertEqual(result["pre_decided"], [])
         self.assertEqual([h["reason"] for h in result["brief_held_back"]],
                          ["held_back", "not_offered"])
@@ -515,9 +602,14 @@ class TestEveryWriteTimeRuleGainsItsReader(unittest.TestCase):
             ledgermod.EVENT_RULES = original + (
                 ("a_rule_added_later", lambda e: e.get("outcome") != "planted",
                  lambda e: "planted"),)
-            out = ledgermod.nonconforming({"decision_log": [{"id": "ev_0001", "outcome": "planted",
+            # A WHOLE ledger, not just the log: since v0.21 the floor also reports a collection
+            # that is not there (`collection_shape`), so a fixture missing two of the three would
+            # be testing this rule against a file that breaks a different one.
+            out = ledgermod.nonconforming({"pins": [], "policies": [],
+                                           "decision_log": [{"id": "ev_0001", "outcome": "planted",
                                                              "source": "interview",
                                                              "evidence": "brief",
+                                                             "brief_quote": "one relational store",
                                                              "flip_criteria": "x"}]})
             self.assertEqual(out, {"a_rule_added_later": ["ev_0001"]})
         finally:
@@ -561,6 +653,119 @@ class TestGovernanceIsStamped(unittest.TestCase):
         rec = governance.record(roster="/nope/agents.md", spec_version="0.9")
         self.assertIn("roster", rec["missing"])
 
+
+
+class TestAMarkWithNoClearingDoorIsWrittenForAStandingReason(unittest.TestCase):
+    """v0.18. `resolution_mode: "asked"` is **permanent** — nothing in this package clears it, and
+    since v0.16 `unasked_verdict` reads it as the pin's own standing demand. That makes every writer
+    of it a decision about the pin's whole future, so the writers are enumerated by set EQUALITY
+    over the AST, each with the reason, exactly as the callers of `decide` and `_settle` are.
+
+    The gap this closes is the one that made §12 possible: a seventh writer could be added for a
+    seventh reason, and none of the six carried its reason anywhere a reader could compare. Two of
+    them carried it as a code comment while a policy cascade contradicted them.
+
+    **No door clears the mark, and none should** — a door that unsets *this must be asked* is a door
+    that can silence the severity threshold, and an agent could reach it. So the correctness of the
+    field rests entirely on this list.
+    """
+
+    AST = TestEveryPathToDecideIsGated
+
+    #: `(module, function)` -> why this pin's demand to be asked is a STANDING property of the pin.
+    #: Every entry has to survive the question "would this still be true after any later rule runs?"
+    #: — which `not_offered` does not, and which is why `apply_policy` and `expand_catalog` now
+    #: consult `ledger.STANDING_REFUSALS` instead of marking every pin they did not decide.
+    WRITERS = {
+        ("ledger.py", "surface_assumption"):
+            "a forced assumption is vetoable BY A HUMAN — that is the whole of what surfacing it "
+            "means, and no cascade may take the veto away",
+        ("ledger.py", "apply_policy"):
+            "the severity threshold and a mark the pin already carries, via STANDING_REFUSALS. It "
+            "used to mark `not_offered` too, which is a fact about the RULE's fit and put the pin "
+            "beyond every later policy for ever",
+        ("ledger.py", "assign_resolution_modes"):
+            "the funnel's opening split: blocker|high are asked, the medium|low tail may batch",
+        # `cross_derive` wrote this itself until v0.24, for the reason *a contested claim is never
+        # re-defaulted silently*. Same reason, same mark — through the arcs' one writer now, which
+        # is what made the rest of that writer's obligations reach it too.
+        ("ledger.py", "_reopen_minimal"):
+            "a reopened truth is never re-defaulted silently — production, the challenger or a "
+            "provider disagreement just falsified the last answer, and re-defaulting it would "
+            "answer it the same way again",
+        ("ledger.py", "mark_correctness_unknown"):
+            "the pin carries the fork that asks what to do about work nobody could verify; a "
+            "cascade answering it would be the silent close this state exists to prevent",
+        ("interview.py", "expand_catalog"):
+            "the brief's own threshold half, via STANDING_REFUSALS — same predicate, same tuple, "
+            "and it had the identical `not_offered` defect for the identical reason",
+    }
+
+    def _asked_writers(self) -> set:
+        """Every function that assigns the literal `"asked"` to a `resolution_mode` subscript.
+
+        Anchored on the assignment node, not on a grep for the word: the carrier is the write."""
+        found = set()
+        for module, tree in self.AST._modules().items():
+            for fn_name, fn in self.AST._functions(tree).items():
+                for node in ast.walk(fn):
+                    if not isinstance(node, ast.Assign):
+                        continue
+                    if not any(isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Constant)
+                               and t.slice.value == "resolution_mode" for t in node.targets):
+                        continue
+                    if any(isinstance(c, ast.Constant) and c.value == "asked"
+                           for c in ast.walk(node.value)):
+                        found.add((module, fn_name))
+        return found
+
+    def test_the_enumeration_of_writers_is_complete(self):
+        self.assertEqual(self._asked_writers(), set(self.WRITERS),
+                         "a writer of a mark nothing can clear needs its reason declared here. If "
+                         "the reason is about a RULE rather than about the pin, it does not belong "
+                         "on the pin at all — that is what v0.18 removed.")
+
+    def test_nothing_clears_the_mark_anywhere(self):
+        """The other half, and the reason the list above is load-bearing rather than documentation.
+        A `del pin["resolution_mode"]`, or an assignment of anything else over an existing `asked`,
+        would be a door that can silence the threshold rule."""
+        offenders = []
+        for module, tree in self.AST._modules().items():
+            for fn_name, fn in self.AST._functions(tree).items():
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Delete):
+                        for t in node.targets:
+                            if (isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Constant)
+                                    and t.slice.value == "resolution_mode"):
+                                offenders.append((module, fn_name, "del"))
+                    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "pop" and node.args
+                            and isinstance(node.args[0], ast.Constant)
+                            and node.args[0].value == "resolution_mode"):
+                        offenders.append((module, fn_name, "pop"))
+        self.assertEqual(offenders, [],
+                         "nothing clears `resolution_mode`, deliberately — fix the writer instead")
+
+    def test_the_shared_tuple_is_what_both_unasked_doors_read(self):
+        """One rule, one home. The two writers that turn an `unasked_verdict` bucket into the mark
+        are the two that had the same bug, and a rule spelled out at two doors is a rule one of them
+        gets fixed without."""
+        import ledger as ledgermod_
+        self.assertEqual(ledgermod_.STANDING_REFUSALS, ("held_back", "must_be_asked"))
+        for bucket in ledgermod_.STANDING_REFUSALS:
+            self.assertIn(bucket, ledgermod_.UNASKED_BUCKETS)
+        self.assertNotIn("not_offered", ledgermod_.STANDING_REFUSALS)
+
+        readers = set()
+        for module, tree in self.AST._modules().items():
+            for fn_name, fn in self.AST._functions(tree).items():
+                if any(isinstance(n, ast.Name) and n.id == "STANDING_REFUSALS"
+                       for n in ast.walk(fn)):
+                    readers.add((module, fn_name))
+        self.assertEqual(readers, {("ledger.py", "apply_policy"),
+                                   ("interview.py", "expand_catalog")},
+                         "these are the two writes that settle a pin nobody was shown, so these "
+                         "are the two that decide what a refusal records on the pin")
 
 if __name__ == "__main__":
     unittest.main()

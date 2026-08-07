@@ -47,6 +47,11 @@ EXPECTED_TOOLS = {
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
+    # v0.17 — the way BACK, plus the two forks nobody could pose. None of these elects either: they
+    # record that something is owed a human's attention again. All four were fully implemented in
+    # the runtime and reachable from no host, which is how `settlement_verdict` came to refuse a
+    # close with the words "Reopen it first" about an arc nothing could run.
+    "ledger_reopen", "ledger_challenge", "ledger_set_question", "ledger_add_proposals",
     # comprehension / understand-mode (the structural-graph family)
     "build_graph", "understand_codebase", "explain_node", "graph_query", "guided_tour",
     "domain_view", "fingerprint_scan", "graph_map", "impact_overlay", "docs_claims",
@@ -83,6 +88,7 @@ WRITE_TOOLS = {
     "ledger_add_pin", "ledger_surface_assumption", "ledger_add_remediation",
     "ledger_set_remediation_status", "ledger_resolve", "ledger_defer",
     "ledger_mark_correctness_unknown", "ledger_set_readiness",
+    "ledger_reopen", "ledger_challenge", "ledger_set_question", "ledger_add_proposals",
     "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
     "generator_observe", "interview_expand", "ledger_record_decision", "ledger_record_policy",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
@@ -296,7 +302,10 @@ DESIGN_CONCERN = {
     "question": {"prompt": "Consolidate them?",
                  "options": [{"id": "keep", "label": "leave it", "implication": "drift stays possible"},
                              {"id": "extract", "label": "extract a helper", "implication": "one call shape"}],
-                 "allow_freeform": False},
+                 # v0.20: every door that composes a fork requires the way out, `add_pin` included —
+                 # this pin is created over the wire, so it is written the way an agent must now
+                 # write one. Nothing here turns on the flag; what it exercises is the option menu.
+                 "allow_freeform": True},
 }
 
 
@@ -385,8 +394,10 @@ class TestTheBriefIsAWriteAndSaysWhatItRefused(_Session):
         path = os.path.join(tempfile.mkdtemp(), "ledger.json")
         res = self._request("tools/call", {"name": "interview_expand", "arguments": {
             "ledger": path, "project_type": "web-saas", "brief_decisions": {
-                "persistence": "mongodb — an outcome no option offers",
-                "identity": "roll our own crypto"}}})
+                "persistence": {"outcome": "mongodb — an outcome no option offers",
+                                "quote": "we store documents in mongo"},
+                "identity": {"outcome": "roll our own crypto",
+                             "quote": "auth is ours, hand-rolled"}}}})
         self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
         out = res["result"]["structuredContent"]
         self.assertEqual(out["pre_decided"], [])
@@ -478,7 +489,7 @@ CLUSTERED = {
     # decision, and no policy cascades over it.
     "question": {"prompt": "Which layer is truth?",
                  "options": [{"id": "db", "label": "the DB"},
-                             {"id": "api", "label": "the API"}]},
+                             {"id": "api", "label": "the API"}], "allow_freeform": True},
 }
 
 
@@ -652,7 +663,7 @@ AMBIGUOUS = {
                  "options": [{"id": "keep", "label": "leave it exactly as it is"},
                              {"id": "keep — and also delete the module",
                               "label": "keep the interface, delete the implementation"}],
-                 "allow_freeform": False},
+                 "allow_freeform": True},
 }
 PICKED_ROW = "keep — and also delete the module — keep the interface, delete the implementation"
 
@@ -720,7 +731,7 @@ class TestTheElicitedAnswerIsCarriedNotParsed(_Session):
                 res = self._request("tools/call", {"name": "ledger_add_pin", "arguments": {
                     "ledger": path, **{**AMBIGUOUS, "question": {
                         "prompt": "What do we do with it?", "options": options,
-                        "allow_freeform": False}}}})
+                        "allow_freeform": True}}}})
                 pin_id = res["result"]["structuredContent"]["pin_id"]
                 res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
                     "ledger": path, "pin_id": pin_id, "option_id": "keep", "rationale": "r",

@@ -17,14 +17,38 @@ Deliberately NOT checked: keys nested inside an `as_is` / `to_be` / `question` p
 free-form by kind — the map projects them by structure precisely because the spec does not promise
 their names — so requiring a reader would invert the design.
 
-The honest limit, stated because a gate that hides one is worse than none: this matches on the field
-NAME, so it cannot distinguish a pin's `depends_on` from an item's. It would not have caught the bug
-that prompted it. It catches the *next* field — one declared under a name nothing else uses — and
-the instance itself is pinned by `tests/test_ledger.py` instead. Two different questions, two
-different gates.
+**A reader is not a writer, and until 2026-08-06 this gate could not tell them apart** — which is the
+whole of §15 in `docs/open-gaps.md`, and it was the more serious of that section's two instances.
+The corpus below contains `src/runtime/*.py`, and that is where the WRITES are: a field mentioned
+nowhere but `pin["x"] = …` in `ledger.py` matched `\bx\b` and passed, on the gate whose first line
+is *"must be read by something that ships"*. `cross_derivations` and `verification` did exactly
+that, for their entire lives as write-only fields — the two gaps (§8, §14) this gate exists for,
+green throughout. Reproduced by planting a field whose only mention was one dict-literal key in
+`ledger.py`: `0 with no reader`.
+
+So every Python source is now parsed, and the syntactic positions in which a name can only be a
+WRITE are blanked before the search runs: a `Store`/`Del` subscript slice (`pin["x"] = …`,
+`del pin["x"]`), a key in a dict literal being built (`{"x": …}`), a keyword argument (`f(x=…)`),
+and a parameter name (`def f(x=…)`). What survives is everything a read can look like —
+`pin["x"]` in a Load, `.get("x")`, a membership test, a name inside a tuple constant, and the
+JavaScript the map template carries in a Python string, which is a real reader and is not parseable
+as Python.
+
+Three honest limits, stated because a gate that hides one is worse than none:
+
+  * It matches on the field NAME, so it cannot distinguish a pin's `depends_on` from an item's. It
+    would not have caught the bug that prompted it. It catches the *next* field — one declared
+    under a name nothing else uses — and the instance itself is pinned by `tests/test_ledger.py`.
+  * A **docstring or comment** in the module that writes the field still counts. Masking those too
+    was measured and refused: it fails this tree on correct fields whose runtime reader is a
+    `**kwargs` spread or a `for k, v in …` loop, and the prose in `ledger.py` is addressed to the
+    same agent audience `src/core/*.md` is. The narrower question — *is it read on a surface a
+    human opens* — is §14's, and no gate answers it.
+  * `setdefault("x", …)` and `pop("x")` both read and write; they are left counting as reads.
 """
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 import sys
@@ -72,6 +96,57 @@ def declared_fields(spec_text: str) -> list[tuple[str, int]]:
     return out
 
 
+def _write_only_spans(tree: ast.AST) -> list[tuple[int, int, int]]:
+    """(1-based line, start byte-col, end byte-col) for every name that can only be a write.
+
+    Byte columns, not characters: `ast` reports `col_offset` as a UTF-8 offset, and this tree's
+    Python carries em-dashes and arrows in the prose that shares those lines.
+    """
+    spans: list[tuple[int, int, int]] = []
+
+    def name_span(node: ast.AST, name: str) -> None:
+        spans.append((node.lineno, node.col_offset,
+                      node.col_offset + len(name.encode("utf-8"))))
+
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)):
+            spans.append((node.slice.lineno, node.slice.col_offset,
+                          node.slice.end_col_offset))          # pin["x"] = … / del pin["x"]
+        elif isinstance(node, ast.Dict):
+            for key in node.keys:                              # {"x": …} — a record being built
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    spans.append((key.lineno, key.col_offset, key.end_col_offset))
+        elif isinstance(node, ast.keyword) and node.arg:
+            name_span(node, node.arg)                          # f(x=…)
+        elif isinstance(node, ast.arg):
+            name_span(node, node.arg)                          # def f(x=…)
+        elif (isinstance(node, ast.Attribute)
+                and isinstance(node.ctx, (ast.Store, ast.Del))):
+            spans.append((node.lineno, node.end_lineno and node.end_col_offset
+                          - len(node.attr.encode("utf-8")), node.end_col_offset))
+    return spans
+
+
+def mask_writes(source: str) -> str:
+    """The Python source with every write-position name blanked out. Unparseable source is returned
+    whole rather than silently dropped — losing a reader would fail a correct field."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return source
+    lines = [bytearray(line.encode("utf-8")) for line in source.splitlines()]
+    for lineno, start, end in _write_only_spans(tree):
+        if not (1 <= lineno <= len(lines)) or start is None:
+            continue
+        row = lines[lineno - 1]
+        for i in range(max(start, 0), min(end, len(row))):
+            row[i] = 0x20
+    return "\n".join(row.decode("utf-8", "replace") for row in lines)
+
+
 def readers() -> str:
     """Everything that ships and could consume a field: our code, and our doctrine.
 
@@ -80,6 +155,9 @@ def readers() -> str:
     `writing-skills`, which never ships — so a field whose only reader was a TODO passed a gate whose
     own docstring promised otherwise. Same bug as the one `check_tool_carriers.py` carried, and the
     same fix: the build owns the fact, nobody keeps a second copy of it.
+
+    Python is masked (see `mask_writes`) so that only a READ survives into the corpus; prose and
+    JSON are not, because neither can assign.
     """
     text = []
     paths = [p for p in build.shipped_skill_files() if p.suffix in (".md", ".json")]
@@ -88,7 +166,8 @@ def readers() -> str:
     for path in paths:
         if path.resolve() == SPEC.resolve():
             continue                    # the declaration is not a reading of itself
-        text.append(path.read_text(encoding="utf-8"))
+        raw = path.read_text(encoding="utf-8")
+        text.append(mask_writes(raw) if path.suffix == ".py" else raw)
     return "\n".join(text)
 
 

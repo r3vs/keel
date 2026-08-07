@@ -12,13 +12,17 @@ Both disciplines from the catalog playbook are enforced here:
 2. **Skip what the brief already decided** — recorded as pre-committed `DecisionEvent`s (source
    `interview`, so neutrality holds), never re-asked. Skipping is a *write*, so it passes the one
    predicate every unasked write passes (`Ledger.unasked_verdict`): the brief settles a fork only
-   with one of that fork's own options, and never a `blocker`/`high` one. See `expand_catalog`.
+   with one of that fork's own options, and never a `blocker`/`high` one. And since v0.24 it carries
+   the brief — each entry quotes the passage that settles its fork, because *"the brief said so"* was
+   the one rung in `DECISION_EVIDENCE` that nothing made a caller back up. See `expand_catalog`.
 """
 from __future__ import annotations
 
 import json
 import pathlib
 from typing import Optional
+
+from ledger import downstream_of, pin_read
 
 _HERE = pathlib.Path(__file__).resolve().parent
 
@@ -55,6 +59,30 @@ def load_catalog(path: str | pathlib.Path = None) -> dict:
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
 
 
+#: The `provenance.source` every pin this module materialises carries. It is the carrier for *this
+#: pin came from that catalog cluster*, and `expand_catalog` is the only writer of it.
+CATALOG_SOURCE = "decision-catalog"
+
+
+def catalog_cluster(pin: dict) -> str:
+    """The catalog cluster this pin was materialised from, or `""` for a pin that was not (v0.27).
+
+    The one reading of that fact. `expand_catalog` writes it as a `provenance` entry — the field
+    whose entire job is *where this pin came from* — and this reads it back, so the tool that
+    materialises the catalog can tell what is already in the file. `cluster_id` is deliberately NOT
+    the carrier: `cl_<id>` is a SCOPE (a policy's `applies_to` selects on it, and `decide
+    (apply_to_cluster=True)` cascades over it), so any pin an agent groups with the persistence fork
+    carries it, and reading it as origin would make a hand-grouped finding look like a catalog fork.
+
+    Through `pin_read`, because this runs over a file this runtime did not necessarily write.
+    """
+    for entry in pin_read(pin).get("provenance") or []:
+        detail = str(entry.get("detail") or "")
+        if entry.get("source") == CATALOG_SOURCE and detail.startswith("cluster:"):
+            return detail[len("cluster:"):]
+    return ""
+
+
 def _fork_question(cluster: dict) -> Optional[dict]:
     opts = cluster.get("options", [])
     if not opts:
@@ -74,13 +102,52 @@ def _fork_question(cluster: dict) -> Optional[dict]:
     }
 
 
+def _brief_entry(cluster_id: str, value) -> dict:
+    """One `brief_decisions` entry, as `{"outcome", "quote"}` — or a refusal naming the shape.
+
+    The door for the rule the `brief_quote` entry of `ledger.EVENT_RULES` carries. It is here as well
+    as there because the two answer different questions and both are worth answering at the right
+    moment: the table decides whether an EVENT is conformant (and replays over files this runtime
+    did not write), and this decides whether a CALL can proceed — a caller that passed the old bare
+    string gets told what the new shape is and why, at the argument, rather than a rule violation
+    about a dict it never saw.
+
+    A blank quote is the same as no quote, on `human_answer`'s rule: what makes the rung checkable is
+    the passage, and whitespace is not one.
+    """
+    if isinstance(value, dict):
+        outcome, quote = value.get("outcome", ""), value.get("quote", "")
+    else:
+        outcome, quote = value, ""
+    outcome, quote = str(outcome or "").strip(), str(quote or "").strip()
+    if not outcome or not quote:
+        raise ValueError(
+            f"brief_decisions[{cluster_id!r}] must be "
+            '{"outcome": "<one of that fork\'s own option ids>", "quote": "<the brief\'s own words '
+            'that settle it>"} — the `brief` rung means nobody was asked, so the brief IS the '
+            "evidence, and a rung whose evidence nothing carries is a claim an honest reading and "
+            f"an invented one make identically. Got {value!r}.")
+    return {"outcome": outcome, "quote": quote}
+
+
 def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
                    brief_decisions: Optional[dict] = None) -> dict:
     """Materialize open_decision / acceptance_criterion pins from the catalog into the ledger.
 
     - `project_type` prunes whole clusters (a fork absent from the type is not a question).
-    - `brief_decisions` maps cluster_id → an already-decided outcome; those pins are created and
-      immediately committed (pre-decided by the brief), never left as open questions.
+    - `brief_decisions` maps cluster_id → `{"outcome": <option id>, "quote": <the brief's own
+      words>}`; those pins are created and immediately committed (pre-decided by the brief), never
+      left as open questions.
+
+    **The shape is a mapping and not a bare outcome, since v0.24, and that is the whole of the rung's
+    evidence.** `elicited` is unreachable over MCP (the server asks and the agent never holds the
+    value), `transcribed` is refused at every door without `human_answer`, `cascaded` names its
+    `Policy` on both sides of a biconditional — and `brief` demanded nothing, so this door moved pins
+    to `decided` on the caller's word that a document said so. Reproduced with three clusters over
+    real stdio: one `ev_` event on disk carrying `evidence: "brief"`, `rationale: "pre-decided by the
+    brief"`, and no reference of any kind to a brief. The passage travels with the outcome rather
+    than in a parallel dict for the reason every pairing in this package is one object: two dicts
+    keyed the same way are two things that can disagree about which fork they are answering.
 
     **`brief` is a rung, not a hole (v0.14).** It means *answered from the project brief, without
     asking* — which is exactly why it is held to `Ledger.unasked_verdict`, the same predicate the
@@ -93,9 +160,12 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
     fork settles it with one of the fork's own options; anything else is a fork the brief left open,
     and the funnel exists to ask those.
 
-    A held-back cluster is NOT dropped: its pin is created open, marked `resolution_mode: asked`,
-    and named in the return, so an agent reading the result knows the brief did not carry it rather
-    than assuming it did.
+    A held-back cluster is NOT dropped: its pin is created open, named in the return so an agent
+    reading the result knows the brief did not carry it rather than assuming it did, and marked
+    `resolution_mode: asked` when — and only when — the refusal is a standing property of the pin
+    (`ledger.STANDING_REFUSALS`, v0.18). A `blocker` fork demands to be asked whatever any rule
+    says; a fork whose menu did not contain the brief's word does not, and that mark had no
+    clearing door.
 
     **Nor is a key that matched no cluster** (v0.16). `brief_decisions` is agent-supplied, and a key
     naming no cluster of this catalog — or one pruned for this `project_type` — used to fall through
@@ -104,17 +174,48 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
     inputs beside it is the same class this module's own gate exists to close, one layer up. They
     come back in `brief_unmatched` with which of the two it was.
 
+    **A cluster already in the ledger is left alone (v0.27).** This is a PROJECTION of a fixed
+    catalog into the ledger, not an `add` door, and it was not idempotent: a second call
+    re-materialised every surviving fork, so `interview_expand` twice on the default catalog left
+    **24 pins for 12 clusters** — every question in the funnel duplicated, every `depends_on` edge
+    wired to the newer copy, and the older copy (which may already carry a decision, a brainstorm or
+    a remediation) orphaned beside it. Phase 1 is the step an agent re-runs after a crash, after a
+    context reset, or because a resumed session cannot tell whether it ran; "run it again" must be
+    the cheap answer there, and it was the expensive one. What each pin came from is already on the
+    pin (`catalog_cluster`, off `provenance`), so nothing new is stored to make this decidable — it
+    was decidable all along and nothing asked. Those clusters come back under `already_present` with
+    the pin and its state, and a `brief_decisions` key naming one is reported there as ignored: the
+    fork is in the file, and settling a pin that already exists is `mcp:ledger_record_decision`'s
+    job, at the door that holds the offered-options rule.
+
     depends_on is wired from catalog cluster ids to the freshly-created pin ids. Returns
-    {created, pruned, pre_decided, brief_held_back, brief_unmatched, id_map}.
+    {created, pruned, pre_decided, brief_held_back, brief_unmatched, already_present, id_map}.
     """
-    brief_decisions = brief_decisions or {}
+    brief_decisions = {cid: _brief_entry(cid, value)
+                       for cid, value in (brief_decisions or {}).items()}
     id_map: dict[str, str] = {}       # catalog cluster id -> ledger pin id
-    created, pruned, pre_decided, held_back = [], [], [], []
+    created, pruned, pre_decided, held_back, already = [], [], [], [], []
+    # First occurrence wins, so a ledger written by a pre-v0.27 double call resolves to the pin the
+    # older edges already point at rather than to whichever copy happens to be last in the file.
+    materialised: dict[str, dict] = {}
+    for existing in ledger.readable_pins():
+        read = pin_read(existing)
+        origin = catalog_cluster(existing)
+        if origin and origin not in materialised:
+            materialised[origin] = read
 
     for cluster in sorted(catalog["clusters"], key=lambda c: c["order"]):
         cid = cluster["id"]
         if project_type in cluster.get("prune_for", []):
             pruned.append(cid)
+            continue
+        if cid in materialised:
+            read = materialised[cid]
+            id_map[cid] = read["id"]
+            entry = {"cluster_id": cid, "pin_id": read["id"], "state": read["state"]}
+            if cid in brief_decisions:
+                entry["brief_ignored"] = brief_decisions[cid]["outcome"]
+            already.append(entry)
             continue
         deps = [id_map[d] for d in cluster.get("depends_on", []) if d in id_map]
         question = _fork_question(cluster)
@@ -135,11 +236,22 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
         if cid not in brief_decisions:
             created.append(pin["id"])
             continue
-        outcome = brief_decisions[cid]
+        outcome, quote = brief_decisions[cid]["outcome"], brief_decisions[cid]["quote"]
         verdict = ledger.unasked_verdict(pin, outcome)
         if verdict != "would_decide":
             # Held back for the reason the predicate gives, and the pin joins the questions to ask.
-            pin["resolution_mode"] = "asked"
+            #
+            # The mark is written only for a refusal that is a standing property of the PIN
+            # (v0.18). This door had the identical defect `apply_policy` had, for the identical
+            # reason — `verdict != "would_decide"` includes `not_offered`, which says the BRIEF's
+            # answer is not on this fork's menu, and stamping that on the pin made it permanent:
+            # nothing clears `resolution_mode`, so a later policy that fits the pin exactly would
+            # be refused for ever by a sentence somebody typed into a brief. Reading the shared
+            # tuple rather than repeating the rule is the point; a rule spelled out at two doors is
+            # a rule one of them will be fixed without.
+            from ledger import STANDING_REFUSALS
+            if verdict in STANDING_REFUSALS:
+                pin["resolution_mode"] = "asked"
             created.append(pin["id"])
             held_back.append({"cluster_id": cid, "pin_id": pin["id"], "outcome": outcome,
                               "reason": verdict, "severity": pin["severity"],
@@ -148,15 +260,16 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
         ledger.decide(pin["id"], outcome=outcome,
                       rationale="pre-decided by the brief",
                       flip_criteria=f"if the brief's {cid} choice is contradicted downstream",
-                      evidence="brief")
+                      evidence="brief", brief_quote=quote)
         pre_decided.append(cid)
     # Sorted, not in the caller's dict order: this is a report about a set, and a report whose order
     # depends on how the argument was typed is one two runs can disagree about.
-    unmatched = [{"cluster_id": cid, "outcome": brief_decisions[cid],
+    unmatched = [{"cluster_id": cid, "outcome": brief_decisions[cid]["outcome"],
                   "reason": "pruned_for_project_type" if cid in pruned else "no_such_cluster"}
                  for cid in sorted(brief_decisions) if cid not in id_map]
     return {"created": created, "pruned": pruned, "pre_decided": pre_decided,
-            "brief_held_back": held_back, "brief_unmatched": unmatched, "id_map": id_map}
+            "brief_held_back": held_back, "brief_unmatched": unmatched,
+            "already_present": already, "id_map": id_map}
 
 
 def default_policies(catalog: dict, ledger, project_type: str = "web-saas") -> dict:
@@ -207,23 +320,77 @@ def funnel(ledger) -> dict:
     """Run the compression over the current ledger and return the interview view.
 
     200 pins → clusters → policies → the few real questions (asked), the rest skimmable as
-    proposed_default. Order the asked questions by information gain (the ledger's interview_view
-    already sorts by transitive downstream fan-out). Returns a structured, renderable view."""
+    proposed_default. Order the asked questions by information gain (the ledger's `interview_view`
+    already sorts by downstream fan-out, off the same `ledger.downstream_of` this reports).
+    Returns a structured, renderable view.
+
+    An entry carries `proposals` when the brainstorm has written any (v0.17). `core/brainstorm.md`
+    states the arc — *"its proposals surface back as options on that pin's interview question, so
+    the user's exploration flows straight into their answer"* — and this is the surface where that
+    sentence is either true or decoration: the pin only just became reachable here at all, and
+    arriving at the top of the funnel with the options it was opened for invisible would waste the
+    fix. Neutrality is unchanged: a proposal is not an option id, `record_decision` still admits
+    only what `question.options[].id` offers or a freeform answer the question permits, and
+    `recommended` is carried as the brainstorm's own mark rather than as a default.
+
+    An entry carries `blocked_by` when the pin's `verification` envelope records one (v0.19). A
+    `correctness_unknown` pin is sorted to the FRONT of this funnel by `interview_view`, and the one
+    sentence that makes it answerable is what stopped verification — which used to arrive here only
+    because `mark_correctness_unknown` pasted it into the human's own `question.prompt`, i.e. by
+    deleting their fork. v0.16 rightly stopped doing that and the reach went with it: the pin
+    arrived first, and blank. So the reason travels as its own key, beside the prompt rather than
+    inside it, and the fork stays exactly where its author left it."""
     ledger.assign_resolution_modes()
     view = ledger.interview_view()
-
-    def transitive_downstream(pin_id: str, seen: frozenset = frozenset()) -> int:
-        total = 0
-        for p in ledger.data["pins"]:
-            if pin_id in p.get("depends_on", []) and p["id"] not in seen:
-                total += 1 + transitive_downstream(p["id"], seen | {p["id"]})
-        return total
-
+    # v0.21: the same guarded read `interview_view` uses. This function walks the pins that view
+    # just returned and indexed three of the same fields directly, so guarding one and not the
+    # other would have moved the crash two lines down rather than removed it — the two are halves
+    # of one funnel and a file either reads or does not.
+    # v0.27: the fan-out is `ledger.downstream_of`, and it is imported rather than written here for
+    # the reason this line is commented at all. This function held `transitive_downstream`, a
+    # byte-identical copy of `interview_view`'s own nested `transitive` — same recursion, same
+    # per-branch `seen`, same defect: both counted simple PATHS, so one diamond in the roadmap
+    # inflated the `downstream` number this funnel prints beside every question. Two copies of a
+    # wrong answer is what let it survive two rounds of review of the surface it feeds.
+    reads = [pin_read(p) for p in ledger.readable_pins()]
     asked, tail = [], []
     for pin in view:
-        entry = {"pin_id": pin["id"], "title": pin["title"], "severity": pin["severity"],
-                 "prompt": (pin.get("question") or {}).get("prompt", ""),
-                 "downstream": transitive_downstream(pin["id"])}
+        read = pin_read(pin)
+        entry = {"pin_id": read["id"], "title": read["title"],
+                 "severity": read["severity"],
+                 "prompt": read["question"].get("prompt", ""),
+                 "downstream": len(downstream_of(read["id"], reads))}
+        # v0.25 — through the SAME read, for the reason the three fields above already are. These
+        # two were left indexing the file directly and both killed this tool over stdio: `or {}` is
+        # a guard against absence and no guard at all against a `verification` that is a string, and
+        # a `proposals` that is truthy and not a list of objects was walked character by character
+        # into `p.get(...)`. `interview_next` is one of the four surfaces an agent meets a strange
+        # file on, and a funnel that dies reports zero open questions.
+        blocked_by = (read.get("verification") or {}).get("blocked_by")
+        if blocked_by:
+            entry["blocked_by"] = blocked_by
+        # v0.28 — a pin can arrive at the TOP of this funnel with its fork already answered, and
+        # until now the entry could not say so. Two states do it: `correctness_unknown` (the human
+        # elected, and nothing could establish that it worked) and the reopened/contested ones (the
+        # answer stands until it is re-elected). Both carry the original `question.prompt`, because
+        # v0.16 stopped `mark_correctness_unknown` overwriting the human's fork — correctly — so an
+        # agent reading only this view saw an unanswered question and re-asked it. That is the
+        # defect `interview_next` exists to prevent, on the pin where it costs most: the elected
+        # answer is the thing the real question is ABOUT.
+        elected = read.get("decision") or {}
+        if isinstance(elected, dict) and elected.get("outcome"):
+            entry["already_elected"] = {"outcome": elected["outcome"],
+                                        "event_id": elected.get("event_id")}
+            # `pin_state`, not `state`: it names the pin's, matching this entry's own
+            # `pin_id`, and `entry["state"] = …` reads to the AST gate on state writers
+            # exactly like the thing that gate exists to catch. A blunt gate is the point.
+            entry["pin_state"] = read["state"]
+        proposals = (read.get("brainstorm") or {}).get("proposals") or []
+        if proposals:
+            entry["proposals"] = [{"id": p.get("id"), "summary": p.get("summary"),
+                                   "effort": p.get("effort"),
+                                   "recommended": bool(p.get("recommended"))}
+                                  for p in proposals]
         if pin.get("resolution_mode") == "proposed_default":
             tail.append(entry)
         else:

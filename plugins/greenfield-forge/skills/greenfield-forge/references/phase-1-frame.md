@@ -56,10 +56,19 @@ For each live, undecided fork, materialize one `open_decision` pin (schema: `ref
 It reads the machine form of the catalog, prunes by the `project_type` from Step 1, creates one pin
 per surviving fork with the catalog's options, implications, `cluster_id`, `severity` and
 `depends_on` already wired to the freshly-created pin ids, and takes the Step-2 givens as
-`brief_decisions` (cluster id → **the option id** that fork already got in the brief), which it
-commits as pre-decided with `evidence: "brief"` instead of asking again. It returns `created` /
-`pruned` / `pre_decided` / `brief_held_back` / `brief_unmatched`, which is the audit of what Steps
-1–2 actually did.
+`brief_decisions` (cluster id → `{"outcome": **the option id** that fork already got in the brief,
+"quote": the passage of the brief that settles it, verbatim}`), which it
+commits as pre-decided with `evidence: "brief"` instead of asking again. Both keys are required:
+the rung says nobody was asked, so the brief has to be quotable (spec v0.24). It returns `created` /
+`pruned` / `pre_decided` / `brief_held_back` / `brief_unmatched` / `already_present`, which is the
+audit of what Steps 1–2 actually did.
+
+**Re-running it is safe and costs nothing** (spec v0.27). A cluster whose pin is already in this
+ledger is left exactly as it is — same pin id, same state, same decision — and comes back under
+`already_present`; a `brief_decisions` key naming one is reported ignored there rather than applied,
+because settling a fork that exists is `ledger_record_decision`'s door. So if a phase was
+interrupted, or a fresh invocation cannot tell whether Step 3 ran, **call it again**: it used to
+re-materialize the whole catalog, leaving two of every fork.
 
 **`brief` is a rung, not a shortcut, and `brief_held_back` is where that bites.** It means
 *answered from the brief, without asking* — so each one passes the same gate a policy cascade

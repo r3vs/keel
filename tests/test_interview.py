@@ -75,7 +75,8 @@ class TestExpand(unittest.TestCase):
     def test_brief_decided_forks_are_pre_committed_not_asked(self):
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"client": "ssr"})
+                                          brief_decisions={"client": {"outcome": "ssr",
+                                           "quote": "server-rendered, SEO is the whole business"}})
         self.assertIn("client", result["pre_decided"])
         client = next(p for p in led.data["pins"] if p["title"].startswith("Client"))
         self.assertEqual(client["state"], "decided")
@@ -88,8 +89,10 @@ class TestExpand(unittest.TestCase):
         nobody quoted. Reproduced verbatim from the review."""
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas", brief_decisions={
-            "persistence": "mongodb — an outcome no option offers",
-            "identity": "roll our own crypto"})
+            "persistence": {"outcome": "mongodb — an outcome no option offers",
+                            "quote": "we will use mongo"},
+            "identity": {"outcome": "roll our own crypto",
+                         "quote": "auth is ours"}})
         self.assertEqual(result["pre_decided"], [])
         self.assertEqual(led.data["decision_log"], [],
                          "the brief is a rung, not a hole — nothing here was ever put to the user")
@@ -107,7 +110,8 @@ class TestExpand(unittest.TestCase):
         IS one of the fork's own options."""
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"persistence": "relational"})
+                                          brief_decisions={"persistence": {"outcome": "relational",
+                                                           "quote": "postgres, schema-first"}})
         self.assertEqual(result["pre_decided"], [])
         held = result["brief_held_back"][0]
         self.assertEqual((held["cluster_id"], held["reason"], held["severity"]),
@@ -120,7 +124,8 @@ class TestExpand(unittest.TestCase):
         an input consumed silently while the inputs beside it are reported on."""
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"persistance": "relational"})
+                                          brief_decisions={"persistance": {"outcome": "relational",
+                                                           "quote": "postgres, schema-first"}})
         self.assertEqual(result["brief_unmatched"],
                          [{"cluster_id": "persistance", "outcome": "relational",
                            "reason": "no_such_cluster"}])
@@ -136,7 +141,8 @@ class TestExpand(unittest.TestCase):
         self.assertTrue(pruned, "no cluster is pruned for a cli — this guard went vacuous")
         led2 = fresh_ledger()
         result = interview.expand_catalog(led2, self.cat, project_type="cli",
-                                          brief_decisions={pruned[0]: "whatever"})
+                                          brief_decisions={pruned[0]: {"outcome": "whatever",
+                                                       "quote": "the brief says so"}})
         self.assertEqual(result["brief_unmatched"],
                          [{"cluster_id": pruned[0], "outcome": "whatever",
                            "reason": "pruned_for_project_type"}])
@@ -144,7 +150,8 @@ class TestExpand(unittest.TestCase):
     def test_a_matched_key_is_never_reported_as_unmatched(self):
         led = fresh_ledger()
         result = interview.expand_catalog(led, self.cat, project_type="web-saas",
-                                          brief_decisions={"persistence": "relational"})
+                                          brief_decisions={"persistence": {"outcome": "relational",
+                                                           "quote": "postgres, schema-first"}})
         self.assertEqual(result["brief_unmatched"], [])   # held back, but matched
 
     def test_pruned_cluster_with_dependents_still_wires_surviving_deps(self):
@@ -236,6 +243,62 @@ class TestFunnel(unittest.TestCase):
                                   "a declared default outcome must be one of the cluster's own "
                                   "option ids — that is the whole reason it is declared separately "
                                   "from the rule sentence")
+
+
+class TestAPinWhoseForkWasAnsweredSaysSo(unittest.TestCase):
+    """`interview_next` returned a `correctness_unknown` pin under `asked`, carrying its ORIGINAL
+    fork prompt and nothing about the answer the human had already given it — so an agent driving
+    the interview re-asked a question that was settled.
+
+    The prompt is right where it is: v0.16 stopped `mark_correctness_unknown` overwriting the human's
+    fork, deliberately. What was missing is the other half — this state is reached only THROUGH an
+    election, and the real question ("we could not establish that it worked; now what") is about that
+    answer. A view that shows the fork and hides the outcome hides the subject.
+
+    The same applies to a reopened or contested pin, which is why `already_elected` keys off the
+    pin's `decision` rather than off `correctness_unknown`: those states exist to put an elected
+    answer back in front of a human, and re-asking blind is the same defect one arc over.
+    """
+
+    def _answered(self) -> Ledger:
+        led = fresh_ledger()
+        pin = led.add_pin(kind="open_decision", title="Subscription persistence", severity="high",
+                          confidence="inferred", provenance=[{"source": "recon", "detail": "x"}],
+                          question={"prompt": "generate from the contract, or hand-write?",
+                                    "allow_freeform": True,
+                                    "options": [{"id": "generate", "label": "Generate"},
+                                                {"id": "hand", "label": "Hand-write"}]})
+        led.decide(pin["id"], "generate", "one source", "if the generator cannot express a case",
+                   human_answer="Generate it like the rest. Don't hand-write it.")
+        item = led.add_remediation(pin["id"], action="implement", ladder_rung=2,
+                                   canonical_target="db/models.py")
+        led.set_remediation_status(pin["id"], item["id"], "done")
+        led.mark_correctness_unknown(pin["id"], attempted=["ran the generator against the contract"],
+                                     blocked_by="no fixture pins the generated shape")
+        return led
+
+    def test_the_elected_outcome_travels_with_the_question(self):
+        entry = interview.funnel(self._answered())["asked"][0]
+        self.assertEqual(entry["already_elected"]["outcome"], "generate")
+        self.assertEqual(entry["pin_state"], "correctness_unknown")
+        self.assertTrue(entry["already_elected"]["event_id"],
+                        "the event is what a reader follows to the words the answer rests on")
+
+    def test_the_human_fork_is_still_the_prompt(self):
+        """The fix may not be 'overwrite the prompt with the correctness question' — that is exactly
+        what v0.16 removed, and it deleted the human's own menu to do it."""
+        entry = interview.funnel(self._answered())["asked"][0]
+        self.assertIn("hand-write", entry["prompt"])
+        self.assertEqual(entry["blocked_by"], "no fixture pins the generated shape")
+
+    def test_an_unanswered_pin_claims_no_election(self):
+        led = fresh_ledger()
+        led.add_pin(kind="ambiguity", title="two auth flows", severity="blocker",
+                    confidence="ambiguous", provenance=[{"source": "recon", "detail": "x"}],
+                    question={"prompt": "which one?", "allow_freeform": True,
+                              "options": [{"id": "session", "label": "Session"}]})
+        entry = interview.funnel(led)["asked"][0]
+        self.assertNotIn("already_elected", entry)
 
 
 if __name__ == "__main__":

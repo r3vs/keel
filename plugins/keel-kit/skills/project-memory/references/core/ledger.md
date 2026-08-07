@@ -68,6 +68,71 @@ Summary of what matters here:
   resolve; a CLOSED pin is not settled again by any door, it is reopened; and
   `resolution_mode: "asked"` **binds** — the pin's own standing demand to be asked is read by the
   unasked predicate rather than merely written by six sites.
+- v0.17 gives the way BACK the same treatment, having found it reachable by nobody: both reopen arcs
+  and the two forks-in-waiting had no tool on any host, so `settlement_verdict`'s own refusal
+  (*"Reopen it first"*) named an arc nothing could run. `reopen_verdict(pin, arc)` answers *would
+  this arc move this pin*, `_reopen_minimal` is its single writer (the twin of `_settle`), and each
+  event now records `reopened` beside `upheld` rather than leaving a reader to infer it from a
+  `substate` nothing clears. `set_question` becomes **write-if-absent** with `allow_freeform`
+  required — a fork composed after the fact may not bound what the human may answer — and a pin in
+  `brainstorming` stays in the interview view, because asking the brainstorm for options used to be
+  what took the fork off the agenda.
+- v0.18 corrects four rules that were false of the thing they were printed on. A policy scope whose
+  value is `null` selects the pins carrying **no value** for that field — legitimate, and
+  indistinguishable from a wildcard by reading the scope — so the radius now carries `scope_note`
+  saying which, and how many of how many. `resolution_mode: "asked"` is written only for a refusal
+  that is a **standing property of the pin** (`held_back` · `must_be_asked`): `not_offered` is a
+  fact about the *rule's* fit, and recording it on the pin put that pin beyond every later policy,
+  permanently, with no clearing door — deliberately still none, since a door that unsets *must be
+  asked* can silence the threshold rule. The `correctness_unknown` fork's `accept` option states
+  what the door will actually do with it, asked of `settlement_verdict` rather than written beside
+  it. `defer` no longer takes a caller-stated rung at the library either: one path reaches it, and
+  only the code that ran a path may name it. And `summary` survives a log entry with no `id` —
+  reading a ledger is never the operation that fails on it — with the unrecognised entry reported
+  under `pre_rule_events`, never skipped in silence.
+- v0.20 holds the reopen half to the settlement half's own rules — four rules true on one side of a
+  pairing and absent on the other. Every pin a cascade sweeps back into the open set gets a
+  **`CascadeEvent`**, the way every pin a door settles gets a `SettlementEvent`: one arc call could
+  un-finish a whole dependent closure and leave a record for its origin only. The **radius** each
+  arc reports is read off those records rather than off a `substate` nothing clears — a later
+  reopen of an unrelated pin was reporting an earlier cascade's pins as its own — and **both** arcs
+  report it, having run the same cascade through the same writer. `challenge` (and the challenger's
+  premortem mode) holds `source` to a closed vocabulary as `reopen` always has, so an arc that never
+  elects cannot sign itself `interview`. `add_proposals` refuses finished work, as `set_question`
+  already did. And `allow_freeform` is required at **every** door that composes a fork, not only at
+  the one where the rule was written: a menu an agent composed may not bound what the human may
+  answer, and `add_pin` composes the identical object.
+- v0.21 applies two of those fixes where the round that made them did not look. *Reading a ledger is
+  never the operation that fails on it* was true of the log and false of the **pins**: `summary` and
+  `interview_view` died with a bare `KeyError` on six pin shapes, on files the map and the
+  `AGENTS.md` projection read without complaint. One guarded read (`Ledger.readable` for the
+  container, `pin_read` for the fields) replaces them, and every value it substitutes is reported
+  under `pre_rule_events` by a `PIN_RULES` entry — the same table shape, and the same refusal to
+  skip in silence, that the log half already had. And the states the interview reads are now
+  **`INTERVIEW_STATES`** rather than a literal, because the map re-derived them and printed the
+  funnel's countdown — *if you say nothing, the interview settles this* — on `detected` pins, which
+  pose no fork and reach the interview on no host.
+- v0.22 asks the same question of the CARRIERS a settlement door decides on. The way back into the
+  open set rewrote the state and left every other one standing, so a pin reopened **by an incident**
+  came back still claiming its behaviour had been observed, and re-closed on the evidence the
+  incident had refuted. `SETTLEMENT_CARRIERS` names each carrier and what the arcs owe it — the
+  `verification` claim is demoted (the rung comes off, `blocked_by` says what refuted it), the
+  remediation record stands, because what did not survive is the claim the work *worked* — and the
+  table is held to the predicate's own AST. The dispute mark moves to `_settle`, so `resolve` stops
+  writing `resolved` over a live `substate: reopened`; `unasked_verdict` and `policy_preview` join
+  the guarded read, since a read-only tool must never be the call that fails on a ledger; and
+  `add_proposals` refuses a pin that poses no fork, where its own output is unreachable.
+- v0.23 carries that same read to the two **projections**, which is where two rounds of hardening it
+  had never reached: neither `map.render` nor `instructions.render` builds a `Ledger`, so a guard
+  living on the class was a guard neither could use. `readable_ledger` is the one door for a caller
+  holding ledger DATA, `policy_read` is `pin_read`'s twin for the third collection, and
+  `severity_rank` is now the package's ONE severity ordering — the copy in the `AGENTS.md`
+  projection read a *missing* severity as `low`, so a pin whose file states nothing outranked one
+  that states a severity outside the set, in the section a tight budget clips first. On the map,
+  what the guard drops is now **stated on the page**: `nonconforming` reaches a banner, the traffic
+  light never reads green over a file it could not read, and `mount` is a failure boundary that
+  renders what it could not project instead of leaving a pane blank. A surface that cannot render
+  something says so where a human reads — never blank, never raised.
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.

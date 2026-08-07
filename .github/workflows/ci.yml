@@ -49,6 +49,13 @@ jobs:
       - name: Schema-field linter (every declared field has a reader)
         run: python scripts/check_schema_fields.py
 
+      # A number this repo computes, restated in this repo's prose. Three consecutive rounds of
+      # docs/open-gaps.md ended by correcting a stale count BY HAND and writing "covered by no
+      # gate" — the test total, the tool count in a table cell, the ledger-spec version. Each was
+      # found by whoever happened to edit the line beside it, which is not a process.
+      - name: Stated-fact linter (a number in prose equals what computes it)
+        run: python scripts/check_stated_facts.py
+
       # The mirror of the above, one layer out: a field with no reader and a WRITE TOOL no playbook
       # names are the same bug — a capability the artifact carries and the workflow never reaches.
       # The server makes tools discoverable, which answers it for the tools an agent goes looking

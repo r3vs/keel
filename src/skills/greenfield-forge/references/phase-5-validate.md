@@ -31,8 +31,10 @@ built* work instead of *closed gaps*.
   together with the diff/commit it covers, because the two-stage review that follows reads this
   record instead of re-deriving it. On failure return the item to Phase 4 with the failing evidence
   attached — a local retry of that item, NOT a global restart — and the review never runs on it.
-- **Evidence is necessary, not sufficient.** `pin.state = resolved` requires the evidence **and** a
-  `MERGE` from the two-stage review. This gate proves the oracle *passes*; it cannot see whether it
+- **Evidence is necessary, not sufficient.** `pin.state = resolved` requires the evidence, **and** a
+  `MERGE` from the two-stage review, **and** a `verification.rung` of `observed` or `cross_derived`
+  — three things, and the door refuses without the third (`mcp:ledger_resolve(rung=…)`). This gate
+  proves the oracle *passes*; it cannot see whether it
   passes for the right reason. Never set `resolved` from this gate alone.
 - Mutation results gate whether a Track-A test is trustworthy: a test that does not kill mutants is
   not accepted as validation.

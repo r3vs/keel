@@ -56,14 +56,25 @@ def divergences(ledger) -> dict:
     - **upheld challenges** — an oracle that survived the interview and did not survive refutation.
     - **labeled failures** — what actually went wrong, in the shared vocabulary.
     - **reopens** — production falsifying a decision that looked sound.
+
+    **Every read here is guarded (v0.25), and it is the last surface that was not.** `e["id"]` is
+    the exact expression v0.18 removed from `summary()` — whose own comment names it — left standing
+    one module over, so `learning_report` died with a bare `KeyError: 'id'` on a log entry carrying
+    none while `ledger_summary` answered about the same file in the same session. The pin half read
+    `pin["id"]` and `pin["brainstorm"]` directly for the same reason: this module was written before
+    the read path existed and nothing brought it through afterwards. Reading a ledger is never the
+    operation that fails on it, and a report that dies reports no divergences — which is the
+    confident wrong answer, in the module about learning from being wrong.
     """
+    from ledger import pin_read
     out = {"brainstorm_vs_election": [], "upheld_challenges": [], "failures": [], "reopens": [],
            "unmatched_elections": [], "determinism": "D0"}
-    events = ledger.data["decision_log"]
-    for pin in ledger.data["pins"]:
+    events = ledger.readable("decision_log")
+    for raw in ledger.readable_pins():
+        pin = pin_read(raw)
         proposals = ((pin.get("brainstorm") or {}).get("proposals")) or []
         recommended = next((p for p in proposals if p.get("recommended")), None)
-        decision = pin.get("decision")
+        decision = pin["decision"]
         if recommended and decision:
             outcome = str(decision.get("outcome", ""))
             ids = {str(p.get("id")) for p in proposals}
@@ -73,7 +84,7 @@ def divergences(ledger) -> dict:
                 out["unmatched_elections"].append({"pin": pin["id"], "outcome": outcome})
             elif outcome != str(recommended.get("id")):
                 out["brainstorm_vs_election"].append({
-                    "pin": pin["id"], "title": pin.get("title"),
+                    "pin": pin["id"], "title": pin["title"],
                     "recommended": recommended.get("id"),
                     "recommended_summary": recommended.get("summary"),
                     "elected": outcome,
@@ -81,14 +92,17 @@ def divergences(ledger) -> dict:
                                              if str(p.get("id")) == outcome), None),
                 })
     for e in events:
-        if e["id"].startswith("chl_") and e.get("upheld"):
-            out["upheld_challenges"].append({"pin": e["pin_id"], "class": e["class"],
+        eid = str(e.get("id") or "")
+        if eid.startswith("chl_") and e.get("upheld"):
+            out["upheld_challenges"].append({"pin": e.get("pin_id"),
+                                             "class": str(e.get("class") or "unrecorded"),
                                              "argument": e.get("argument")})
-        elif e["id"].startswith("fal_"):
-            out["failures"].append({"pin": e["pin_id"], "class": e["class"],
+        elif eid.startswith("fal_"):
+            out["failures"].append({"pin": e.get("pin_id"),
+                                    "class": str(e.get("class") or "unrecorded"),
                                     "phase": e.get("phase"), "detail": e.get("detail")})
-        elif e["id"].startswith("rev_"):
-            out["reopens"].append({"pin": e["pin_id"], "fired": e.get("fired"),
+        elif eid.startswith("rev_"):
+            out["reopens"].append({"pin": e.get("pin_id"), "fired": e.get("fired"),
                                    "reason": e.get("reason")})
     out["total"] = sum(len(out[k]) for k in
                        ("brainstorm_vs_election", "upheld_challenges", "failures", "reopens"))

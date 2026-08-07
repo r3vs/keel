@@ -44,6 +44,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ledger import pin_read
+
 # HYPOTHESIS, tunable — a pin at or above this inbound fan-out, defaulted rather than asked, is an
 # ignored_fanout smell. Nothing measured 2; it is the smallest count where "several decisions rest
 # on this" is literally true. Declared here rather than hidden, and reused by premortem_required so
@@ -52,7 +54,7 @@ _FANOUT_THRESHOLD = 2
 
 
 def _inbound_fanout(ledger, pin_id: str) -> int:
-    return sum(1 for p in ledger.data["pins"] if pin_id in p.get("depends_on", []))
+    return sum(1 for p in ledger.readable_pins() if pin_id in pin_read(p)["depends_on"])
 
 
 def _has_testable_verify(pin: dict) -> bool:
@@ -74,19 +76,28 @@ def scan(ledger) -> list[dict]:
     Each item: {pin_id, target, class, argument, severity}. The caller (or an agent that adds its
     own judgment-class challenges) decides which to apply via ledger.challenge(upheld=True)."""
     proposals: list[dict] = []
-    for pin in ledger.data["pins"]:
-        if pin["state"] not in ("decided", "accepted"):
+    # Through the guarded read (v0.22): `mcp:challenge_oracle` takes nothing but a ledger path and
+    # is served read-only, so it is under the same rule the summary is — reading a ledger is never
+    # the operation that fails on it. `kind` is not one of `pin_read`'s five and is asked with
+    # `.get`, which is what a membership test wanted anyway.
+    for raw in ledger.readable_pins():
+        # The WHOLE pin through the guarded read (v0.25), not five fields of it. v0.22 bound `read`
+        # for the fields somebody had reproduced and went on asking `pin.get("to_be")` beside it,
+        # which is the split this round removed: `pin_read` returns the pin, and `read` IS the pin.
+        pin = read = pin_read(raw)
+        if read["state"] not in ("decided", "accepted"):
             continue
 
         # unfalsifiable: an elected outcome/to_be with no testable verify
-        if pin["kind"] in ("acceptance_criterion", "open_decision", "contract_mismatch",
-                           "internal_contradiction", "ambiguity"):
+        if pin.get("kind") in ("acceptance_criterion", "open_decision", "contract_mismatch",
+                               "internal_contradiction", "ambiguity"):
             to_be = pin.get("to_be")
-            if isinstance(to_be, dict) and ("verify" in to_be or pin["kind"] == "acceptance_criterion"):
+            if isinstance(to_be, dict) and ("verify" in to_be
+                                            or pin.get("kind") == "acceptance_criterion"):
                 if not _has_testable_verify(pin):
                     proposals.append({
-                        "pin_id": pin["id"], "target": "acceptance_criterion"
-                        if pin["kind"] == "acceptance_criterion" else "to_be",
+                        "pin_id": read["id"], "target": "acceptance_criterion"
+                        if pin.get("kind") == "acceptance_criterion" else "to_be",
                         "class": "unfalsifiable",
                         "argument": "the elected to_be/criterion has no testable verify — "
                                     "no test could fail it, so it cannot serve as an oracle",
@@ -119,14 +130,19 @@ def premortem_required(ledger, pin: dict) -> dict:
     Whether the premortem is any *good* is judgment and stays with the agent; this only answers
     whether one is owed.
     """
+    # The guarded pin first, so every read below is one (v0.25). A `readiness` that is a bare
+    # string met `.get("verdict")` here and took `mcp:agent_ready` down through `premortem_gaps` —
+    # a read-only tool, on a file it did not write.
+    pin = pin_read(pin)
     because = []
     if pin.get("severity") in ("blocker", "high"):
         because.append(f"severity {pin['severity']} — never handled silently")
     verdict = (pin.get("readiness") or {}).get("verdict")
     if verdict in ("harden_first", "redesign"):
         because.append(f"landing zone is {verdict} — the ground is already known to be weak")
-    if any(e.get("pin_id") == pin["id"] and (e["id"].startswith("chl_") or e["id"].startswith("rev_"))
-           for e in ledger.data["decision_log"]):
+    if any(e.get("pin_id") == pin["id"]
+           and str(e.get("id") or "").startswith(("chl_", "rev_"))
+           for e in ledger.readable("decision_log")):
         because.append("this pin has been reopened before")
     fanout = _inbound_fanout(ledger, pin["id"])
     if fanout >= _FANOUT_THRESHOLD:
@@ -138,12 +154,13 @@ def premortem_gaps(ledger) -> list[dict]:
     """Pins that owe a premortem and do not have one. The challenger's own queue — and the
     `needs_challenge` route of the agent-ready card (`agentready.py`)."""
     out = []
-    for pin in ledger.data["pins"]:
+    for raw in ledger.readable_pins():
+        pin = pin_read(raw)
         if pin["state"] in ("resolved", "accepted", "deferred") or pin.get("premortem"):
             continue
         req = premortem_required(ledger, pin)
         if req["required"]:
-            out.append({"pin_id": pin["id"], "title": pin.get("title"),
+            out.append({"pin_id": pin["id"], "title": pin["title"],
                         "because": req["because"]})
     return out
 

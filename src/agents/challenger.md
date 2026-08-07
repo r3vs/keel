@@ -32,6 +32,10 @@ You run right after the interview commits (Phase 2) and again at each wave check
 - On a sustained challenge, emit an immutable `ChallengeEvent` (`source: "challenge:challenger"`) and
   set the challenged pin back to `needs_input` (`challenged`). **Reopen the minimum** — the pin plus
   the genuine `depends_on` dependents that rested on the falsified oracle, never the whole ledger.
+  `source` is a closed vocabulary and `challenge:challenger` is the whole of it: you are the one
+  reopen path here, and an arc that never elects may not sign itself `interview`, which is the door
+  that does. Read **`also_reopened`** back and say what moved — the dependents this challenge swept
+  up are pins somebody had finished, each recorded as a `CascadeEvent` pointing at your event.
 - **Teach when you block:** the `argument` names the class and how to recognize it next time, not a
   bare verdict (`${CLAUDE_PLUGIN_ROOT}/core/agents.md`, "teach on rejection").
 - **You are the only reopen path at the wave checkpoint.** The `reviewer` doubts the code and cannot

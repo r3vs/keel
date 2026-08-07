@@ -56,8 +56,11 @@ never a change or a guess.
   record instead of re-deriving it, and evidence it cannot tie to the diff in front of it is not
   evidence. On failure return the item to Phase 4 with the failing evidence attached — a local
   retry of that item, NOT a global restart — and the review never runs on it.
-- **Evidence is necessary, not sufficient.** `pin.state = resolved` requires the evidence **and** a
-  `MERGE` from the two-stage review that follows. This gate proves the oracle *passes*; it cannot
+- **Evidence is necessary, not sufficient.** `pin.state = resolved` requires the evidence, **and** a
+  `MERGE` from the two-stage review that follows, **and** a `verification.rung` of `observed` or
+  `cross_derived` — three things, and the door refuses without the third
+  (`mcp:ledger_resolve(rung=…)`; the two weaker rungs are what `correctness_unknown` exists to
+  record). This gate proves the oracle *passes*; it cannot
   see whether it passes for the right reason — a Track-A test that special-cases its own input is
   green here and is exactly what the reviewer exists to catch. Never set `resolved` from this gate
   alone.

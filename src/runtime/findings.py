@@ -27,7 +27,11 @@ from typing import Callable, Iterable, Optional
 
 # SARIF level → our severity; tools that emit `security-severity` refine it further.
 _SARIF_LEVEL = {"error": "high", "warning": "medium", "note": "low", "none": "low"}
-_SEVERITY_RANK = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
+# The severity vocabulary and its ordering are the ledger's, not a fourth copy of the same four
+# pairs (v0.23). A finding becomes a pin, so the band a finding is filed under and the rank a
+# pin is sorted by must be one answer — and a copy is how two surfaces came to sort the same
+# pins by two tables that disagreed about a missing value.
+from ledger import SEVERITIES, severity_rank  # noqa: E402
 
 # Deterministic rule-id prefixes: a proven diagnostic, not a heuristic guess — skips fp-check
 # (still clustered + surfaced, but never DROPPED as a suspected false positive).
@@ -45,7 +49,7 @@ def finding(tool: str, rule_id: str, message: str, severity: str,
         severity = ("blocker" if security_severity >= 9 else "high" if security_severity >= 7
                     else "medium" if security_severity >= 4 else "low")
     return {"tool": tool, "rule_id": rule_id, "message": message,
-            "severity": severity if severity in _SEVERITY_RANK else "medium",
+            "severity": severity if severity in SEVERITIES else "medium",
             "file": file, "line": line,
             "deterministic": deterministic or rule_id.split(".")[0].split("-")[0].lower()
             in _DETERMINISTIC_PREFIXES,
@@ -190,7 +194,7 @@ class FpGate:
             rec["anchors"].append(f)
             if v == "CONFIRM":          # strongest verdict wins the cluster
                 rec["verdict"], rec["reason"] = "CONFIRM", reason
-            if _SEVERITY_RANK[f["severity"]] < _SEVERITY_RANK[rec["lead"]["severity"]]:
+            if severity_rank(f["severity"]) < severity_rank(rec["lead"]["severity"]):
                 rec["lead"] = f
         for rec in surviving.values():
             rec["count"] = len(rec["anchors"])

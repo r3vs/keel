@@ -832,12 +832,11 @@ def build(check: bool):
     emit(mpath, marketplace(), check)
 
     # Anything the build did not just produce is stale — a renamed skill would otherwise linger in
-    # every user's install forever. Interpreter debris is neither source nor output: running the
-    # built MCP server writes __pycache__ into the plugin, and treating that as drift would fail
-    # --check for anyone who had simply tried the server.
+    # every user's install forever. Interpreter debris is excluded by `_debris`, which is also what
+    # the count in `main` asks (see there).
     if OUT.exists():
         for p in sorted(OUT.rglob("*"), reverse=True):
-            if "__pycache__" in p.parts or p.suffix == ".pyc":
+            if _debris(p):
                 continue
             if p.is_file() and p not in produced:
                 note("REMOVE", p)
@@ -845,6 +844,24 @@ def build(check: bool):
                     p.unlink()
             elif p.is_dir() and not check and not any(p.iterdir()):
                 p.rmdir()
+
+
+def _debris(path: Path) -> bool:
+    """Interpreter debris under `plugins/` — neither source nor output.
+
+    Running the built MCP server writes `__pycache__` into the plugin, and treating that as drift
+    would fail `--check` for anyone who had simply tried the server. **One predicate, because two
+    loops twelve lines apart were asking two different questions about the same tree**: the REMOVE
+    sweep skipped debris and the count did not, so the number printed as the evidence that the tree
+    is in sync counted files the tree does not have — 294 against 293 on a clean checkout, and the
+    294 was quoted in a report as proof.
+    """
+    return "__pycache__" in path.parts or path.suffix == ".pyc"
+
+
+def shipped_files() -> list:
+    """Every file under `plugins/` that IS build output — what `--check` reports the count of."""
+    return [p for p in OUT.rglob("*") if p.is_file() and not _debris(p)] if OUT.exists() else []
 
 
 def main():
@@ -855,7 +872,7 @@ def main():
     for p in problems:
         print(f"PROBLEM  {p}")
 
-    n = sum(1 for p in OUT.rglob("*") if p.is_file()) if OUT.exists() else 0
+    n = len(shipped_files())
     if check:
         if changes or problems:
             print(f"\nbuild: {len(changes)} out-of-sync, {len(problems)} problem(s) "

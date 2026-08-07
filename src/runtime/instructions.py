@@ -117,20 +117,51 @@ What the budget refused, deliberately: **no per-pin state token.** A ` (deferred
 bytes on every line of the section most likely to be clipped. The exact state of any pin is one
 `ledger_summary` call away and is in the map's sub-line, where a human looks.
 
+One per-pin clause is bought rather than refused, and the test is the one this section applies to
+everything: does the default reading of the line without it say something FALSE? A `substate` in
+`ledger.REOPENED_SUBSTATES` means the printed outcome is under dispute, so the bare line asserts an
+elected answer that is currently contradicted — see `_pin_line`. It fires on the pins that carry the
+substate and on no others, which is what separates it from a token every line pays for.
+
 That refusal used to rest on a claim that was false of two states, and the claim is what was wrong,
 not the refusal. It read: *the bucket already carries the only instruction that differs between
 these pins, and that instruction is identical for all four states inside each bucket.* It is not.
-`deferred` is the one settled state whose instruction is **do not build this**, and it was landing
+`deferred` is a settled state whose instruction is **do not build this**, and it was landing
 first inside *"build on these"* — severity-ordered, so six deferred blockers clipped two elected
 decisions off the end of the section. And a `correctness_unknown` pin — *elected, and we could not
 establish that it worked* — reached the region as an unanswered question, because the open section
-suppressed the outcome. Both are fixed where they broke, at zero bytes per line: the settled section
-sorts `deferred` last and its heading says what a `defer` outcome means, the elected outcome is
-printed in **either** section wherever a pin has one, and the open heading says *not settled; do not
-decide one yourself*, which is true of a pin carrying an answer and of one carrying none. The
+suppressed the outcome. Both are fixed where they broke, at zero bytes per line: the elected outcome
+is printed in **either** section wherever a pin has one, and the open heading says *not settled; do
+not decide one yourself*, which is true of a pin carrying an answer and of one carrying none. The
 headings are what must be true of every member — `resolved` and `deferred` are settled without being
 "elected" in the narrow sense, and `correctness_unknown` is open without anyone having failed to
 decide it, which is why neither says "decided".
+
+Which is exactly where the first attempt at that fix was still wrong, and v0.19 says so
+--------------------------------------------------------------------------------------
+*"`deferred` is the ONE settled state whose instruction is do not build this"* was a claim about two
+states made about one. `accept` is defined in `settlement_verdict` as leaving the concern exactly as
+it is — the same instruction — so an `accepted` blocker still outranked an elected `decided` medium
+under the clip, inside a section headed *build on these*, under a parenthetical that named only
+`defer`. And the sort that put deferrals last did it by comparing `state == "deferred"`, a literal
+state name in the file whose own test class asserts *a set the schema owns cannot be kept here*.
+
+So the set is the schema's (`ledger.LEAVE_AS_IS_STATES`) and the settled half is **two sections**,
+not one section with an ordering trick and a parenthetical. Three consequences, and the middle one
+is the reason this shape was chosen over a cheaper true heading:
+
+- the heading is true of every member of the section it heads, which is this file's stated standard
+  and is not achievable by any single heading over both groups;
+- a reader can tell WHICH pins are the do-not-build ones without a per-pin state token — the very
+  thing the budget refused. Membership is carried by the heading, which costs 2 lines **once**
+  instead of a suffix on every line;
+- the clip now falls on the do-not-build pins first, which is strictly better than the ordering hack
+  it replaces: the section that survives a tight budget is the one that says what to build.
+
+It costs 2 lines only when both groups are non-empty (`_section` drops an empty section whole), so a
+project with nothing deferred or accepted pays nothing — the same bargain `_evidence_note` makes.
+And no state name is written in this module any more, which is what makes a fifth settled state with
+leave-as-is semantics arrive here rather than silently inherit today's placement.
 """
 from __future__ import annotations
 
@@ -165,41 +196,70 @@ _HEAD_TEMPLATE = (
 #: the floor below so a tight budget can never squeeze every section out and fall back to "nothing
 #: elected yet" on a ledger that has decisions — the note must cost the sections nothing.
 _NOTE_LINES = 2
+#: The nonconformance note (blank line + one line), emitted only when the file holds something the
+#: schema does not describe. Counted in the floor for exactly the reason above, and it is counted
+#: because the first draft was not: at the floor it displaced `### Standing rules` — the rules an
+#: agent must obey — which is the one thing this budget promises survives.
+_NONCONF_LINES = 2
 
-#: Header + the evidence note + a heading + one item + its clip note. Below this a budget cannot be
-#: honoured at all, and overrunning it silently is the exact failure the budget exists to prevent —
-#: so it is refused.
-_MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + 4
-
-_SEVERITY_RANK = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
-
+#: Header + both conditional notes + a heading + one item + its clip note. Below this a budget
+#: cannot be honoured at all, and overrunning it silently is the exact failure the budget exists to
+#: prevent — so it is refused.
+_MIN_LINES = len(_HEAD_TEMPLATE) + _NOTE_LINES + _NONCONF_LINES + 4
 
 def _fingerprint(body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
 
 
 def _order(pin: dict) -> tuple:
-    return (_SEVERITY_RANK.get(pin.get("severity", "low"), 9), str(pin.get("id", "")))
+    """Severity then id, through the schema's own ordering — and the table this module used to keep
+    is gone (v0.23).
 
+    It read a MISSING severity as `low` and an unrecognised one as 9, so a pin whose file says
+    nothing about how bad it is sorted AHEAD of a pin that states a severity outside the set — in
+    the section a tight budget clips first. `ledger.severity_rank` says the opposite, with an
+    argument (`pin_read`): an unrankable severity is not evidence of anything, and *missing* and
+    *unrecognised* are the same amount of nothing. Two surfaces ordering the same pins by two
+    tables, the newer one contradicting the older's argued direction; one of them had to go, and it
+    is the one that carried no argument.
 
-def _settled_order(pin: dict) -> tuple:
-    """Severity, but a `deferred` pin sorts after every other settled one.
-
-    The section is filled top-down against a hard line budget, so its order decides what survives a
-    clip — and `deferred` is the one settled state whose instruction is *do not build this*. Six
-    deferred blockers were emitted first and clipped two elected decisions to `(+2 more)`: the
-    pins that say what to build, dropped for the pins that say what not to, in the file an agent
-    reads before writing anything.
-
-    The two SETS still come from the ledger and are not re-listed here (the module docstring says
-    why). This names one state, to answer a question the schema does not: which settled pins are
-    settled by *not being done*. A state added to the schema later keeps today's placement rather
-    than disappearing, which is the safe direction for a default.
+    Both fields come through `pin_read`, which is also what stops `severity` being used as a dict
+    key: a list severity is unhashable, and that is how the whole projection died on one pin.
     """
-    return (pin.get("state") == "deferred",) + _order(pin)
+    from ledger import pin_read, severity_rank
+    read = pin_read(pin)
+    return (severity_rank(read["severity"]), read["id"])
 
 
-def _pin_line(pin: dict) -> str:
+def _failed_in_production(data: dict) -> dict:
+    """`pin_id -> the failure class`, for every pin a `production` FailureEvent was labelled on.
+
+    `ledger_label_failure` is a write door that reaches finished work on purpose — labelling an
+    incident on a `resolved` pin is the move that PRECEDES a reopen, which is why the closed-work
+    gate lets it through. The map's trail card shows the event and `learning_report` counts it; this
+    projection listed the pin under *"Settled — build on these"* with nothing said, so the one file
+    every host loads unprompted told a fresh agent to build on work that had already failed in front
+    of users.
+
+    Scoped to `production` deliberately, not to every phase: a failure labelled at `plan`, `build`,
+    `evidence` or `review` is the loop working — it happened before anything shipped, and marking it
+    here would spend bytes on the ordinary case, which is the bargain this whole region is under. A
+    production failure is the one that contradicts the heading above the line.
+    """
+    from ledger import read_collection
+    out: dict = {}
+    for event in read_collection(data, "decision_log"):
+        if not str(event.get("id") or "").startswith("fal_"):
+            continue
+        if event.get("phase") != "production":
+            continue
+        pin_id = str(event.get("pin_id") or "")
+        if pin_id:
+            out[pin_id] = str(event.get("class") or "failure")
+    return out
+
+
+def _pin_line(pin: dict, failed: dict | None = None) -> str:
     """One pin, with its elected outcome wherever it has one — in EITHER section.
 
     The outcome used to be suppressed for open pins, which was right for the three open states that
@@ -209,14 +269,43 @@ def _pin_line(pin: dict) -> str:
     the human had already answered. A pin with no decision prints no outcome, so the honest line
     costs nothing where there is nothing to say — which is why this is one rule, not a per-section
     flag.
+
+    **And an outcome under dispute is marked as one** (v0.19). That same deletion inverted one state
+    over: a pin reopened by `cross_derive(agreement="disagree")`, by the feedback arc or by an upheld
+    challenge still carries the outcome it was elected with, and printing it bare formats a
+    contradicted answer exactly like a build instruction. The heading above it forbids *deciding*,
+    not *building on* — and this is the surface with nobody to ask. The map has said it loudly since
+    v0.16 (an amber CROSS-DERIVATION — DISAGREE card); `grep -c substate` over this file returned 0.
+
+    The mark costs bytes only on the pins that carry the substate, which is the same bargain
+    `_evidence_note` and the leave-as-is section make: nothing on the common case, a clause where the
+    default reading would be false. The substate is not compared to a name — `ledger.REOPENED_SUBSTATES`
+    owns that set, for the reason the module docstring gives about every set the schema owns.
+
+    Every field it indexes comes through `pin_read` (v0.23). Two of them killed this function over
+    real stdio on ordinary malformations — `.strip()` on a title that was an object, `.get()` on a
+    `decision` that was a string — and the file it kills is `AGENTS.md`, the one thing every host
+    loads unprompted. `kind` stays a plain `.get`: it is only interpolated, never indexed, so
+    substituting it would be inventing a claim about the pin rather than avoiding a crash.
     """
+    from ledger import REOPENED_SUBSTATES, pin_read
+    read = pin_read(pin)
     kind = pin.get("kind", "other")
     if kind == "other" and pin.get("kind_detail"):
         kind = f"other:{pin['kind_detail']}"
-    line = f"- `{pin.get('id', '?')}` [{kind}] {pin.get('title', '').strip()}"
-    outcome = (pin.get("decision") or {}).get("outcome")
+    line = f"- `{read['id'] or '?'}` [{kind}] {read['title'].strip()}"
+    outcome = read["decision"].get("outcome")
     if outcome:
         line += f" — **{outcome}**"
+        substate = pin.get("substate")
+        if substate in REOPENED_SUBSTATES:
+            line += f" *({substate} — do not build on this answer)*"
+    # v0.28 — and a production failure is marked wherever the pin lands, for the reason the
+    # reopened substate is: the default reading of this line is *build on this*, and on a pin that
+    # already failed in front of users that reading is false. See `_failed_in_production`.
+    failure = (failed or {}).get(read["id"])
+    if failure:
+        line += f" *(failed in production — {failure})*"
     return line
 
 
@@ -230,6 +319,35 @@ _POLICY_WEAKNESS_CLAUSE = {
     "unknown_rung": "elected on a rung this projection does not know",
     "unquoted_relay": "relayed with no quote",
 }
+
+
+def _nonconformance_note(data: dict) -> list:
+    """One line saying what this file holds that the schema does not describe — or nothing.
+
+    **v0.25, and it was the last surface with no such line.** The map has carried a banner since
+    v0.23 and `ledger_summary` has reported `pre_rule_events` since v0.21; this projection called
+    `nonconforming` nowhere at all. On one hostile ledger the three surfaces gave three accounts of
+    one file: `ledger_summary` said 8 pins and 24 nonconformances across 15 rules, the map showed a
+    banner, and the region every fresh agent loads listed 6 pins and said nothing — the shortest
+    list, in the one file no host loads on request. A projection that silently drops what it could
+    not read is telling an agent there is less here than there is, which is the same claim a blank
+    map makes, made where it is hardest to notice.
+
+    Counts and rule names, not ids: the region is a budgeted index and the ids are on the map and in
+    `ledger_summary`, both of which this line names. It costs bytes only when there is something to
+    say, exactly as `_evidence_note` does.
+    """
+    from ledger import nonconforming
+    report = nonconforming(data)
+    if not report:
+        return []
+    total = sum(len(ids) for ids in report.values())
+    rules = ", ".join(f"`{r}`" for r in sorted(report))
+    return ["", f"*This ledger holds {total} thing(s) the schema does not describe ({rules}), so "
+                f"what is listed below is what a reader can index — not all the file contains. "
+                f"`ledger_summary` reports the same list under `pre_rule_events`; the map shows it "
+                f"as a banner. Nothing was rewritten, and a file in this state does not get its "
+                f"`version` raised.*"]
 
 
 def _evidence_note(data: dict) -> list:
@@ -252,8 +370,10 @@ def _evidence_note(data: dict) -> list:
     rules those are is `ledger.policy_weakness`'s answer and not this module's (v0.16) — the two
     surfaces that report it must not be able to disagree about the count.
     """
-    events = [e for e in (data.get("decision_log") or []) if str(e.get("id", "")).startswith("ev_")]
-    policies = list(data.get("policies") or [])
+    from ledger import read_collection
+    events = [e for e in read_collection(data, "decision_log")
+              if str(e.get("id", "")).startswith("ev_")]
+    policies = read_collection(data, "policies")
     sentences = []
     if events:
         # `ledger.decision_rung`, never `e["evidence"]`: a pre-v0.11 cascade records `transcribed`,
@@ -320,15 +440,17 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
            generated: Optional[list] = None) -> str:
     """The managed region's body: the ledger's elected state as instructions, markers excluded.
 
-    Four sections, in the order an agent needs them: the standing rules it must obey, the pins that
-    have stopped being open (`ledger.SETTLED_STATES` — build on these), the pins still awaiting
-    something (`ledger.OPEN_STATES` — surface an assumption instead of inventing an answer), and the
-    generated files it must never hand-edit. Ordering is severity then id — stable, so an unchanged
-    ledger re-renders byte-identically and the drift-check has no false positives.
+    Five sections, in the order an agent needs them: the standing rules it must obey, the settled
+    pins it should build on, the settled pins it must **not** build (`ledger.LEAVE_AS_IS_STATES`),
+    the pins still awaiting something (`ledger.OPEN_STATES` — surface an assumption instead of
+    inventing an answer), and the generated files it must never hand-edit. Ordering is severity then
+    id — stable, so an unchanged ledger re-renders byte-identically and the drift-check has no false
+    positives.
 
-    The two state sets come from the ledger and are complements over `ledger.STATES`, so no pin can
-    fall between them; the module docstring records why they are not listed here and why no per-pin
-    state token is projected.
+    The state sets come from the ledger, `SETTLED_STATES`/`OPEN_STATES` are complements over
+    `ledger.STATES` so no pin can fall between them, and `LEAVE_AS_IS_STATES` partitions the settled
+    half; the module docstring records why none of them is listed here and why no per-pin state
+    token is projected.
 
     Above them, the header carries one conditional line when some decision rests on an agent's relay
     (`_evidence_note`) — see the module docstring for why that is the only shape of `evidence` this
@@ -352,27 +474,45 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
             f"file. Minimum {_MIN_LINES}. Refusing rather than silently overrunning the budget — an "
             f"exceeded cap that reports success is the failure this budget exists to prevent."
         )
-    pins = list(data.get("pins") or [])
-    policies = list(data.get("policies") or [])
+    # v0.21 filtered the two collections here, inline; v0.23 asks the carrier, because a rule with a
+    # copy in every reader is the thing this file's own module docstring keeps finding one surface
+    # over. `read_collection` is `Ledger.readable`'s body — this function holds no `Ledger`, which is
+    # exactly why the guard on the method never reached it. What is dropped is reported by
+    # `nonconforming` under `entry_shape` / `collection_shape` — and from v0.25 it is reported HERE
+    # too, in the region's own header, rather than only on the two surfaces that already said it.
+    from ledger import read_collection
+    pins = read_collection(data, "pins")
+    policies = read_collection(data, "policies")
 
     head = ([line.format(ledger=ledger_path) for line in _HEAD_TEMPLATE]
+            + _nonconformance_note(data)
             + _evidence_note(data))
 
     # The two sets are the ledger's, not this module's (see the module docstring). Imported here
     # rather than at module scope for the same reason `_evidence_note` imports what it needs: the
     # rule has one implementation, in the module that owns the schema.
-    from ledger import OPEN_STATES, SETTLED_STATES
-    settled = sorted((p for p in pins if p.get("state") in SETTLED_STATES), key=_settled_order)
+    from ledger import LEAVE_AS_IS_STATES, OPEN_STATES, SETTLED_STATES, policy_read
+    settled = sorted((p for p in pins if p.get("state") in SETTLED_STATES), key=_order)
+    build_on = [p for p in settled if p.get("state") not in LEAVE_AS_IS_STATES]
+    leave_as_is = [p for p in settled if p.get("state") in LEAVE_AS_IS_STATES]
     openp = sorted((p for p in pins if p.get("state") in OPEN_STATES), key=_order)
+    # `policy_read` for the two fields this line INDEXES — `.strip()` on the rule and `.items()` on
+    # the scope, both of which killed the whole projection on a hand-written policy (v0.23).
+    # `default_outcome` is interpolated and not indexed, so it stays a plain `.get` for the reason
+    # `_pin_line` gives about `kind`.
+    reads = [(policy_read(p), p) for p in policies]
+    failed = _failed_in_production(data)
     sections = [
         ("Standing rules",
-         [f"- {p.get('rule', '').strip()} *(applies to "
-          f"{', '.join(f'{k}={v}' for k, v in (p.get('applies_to') or {}).items()) or 'all pins'}; "
-          f"default: {p.get('default_outcome')})*" for p in policies],
+         [f"- {r['rule'].strip()} *(applies to "
+          f"{', '.join(f'{k}={v}' for k, v in r['applies_to'].items()) or 'all pins'}; "
+          f"default: {p.get('default_outcome')})*" for r, p in reads],
          "see `policies` in the ledger"),
-        ("Settled — build on these (`defer` = elected NOT to build, not now)",
-         [_pin_line(p) for p in settled], "run `ledger_summary`"),
-        ("Open — not settled; do not decide one yourself", [_pin_line(p) for p in openp],
+        ("Settled — build on these", [_pin_line(p, failed) for p in build_on], "run `ledger_summary`"),
+        ("Settled — elected NOT to be built ("
+         + ", ".join(f"`{s}`" for s in LEAVE_AS_IS_STATES) + ")",
+         [_pin_line(p, failed) for p in leave_as_is], "run `ledger_summary`"),
+        ("Open — not settled; do not decide one yourself", [_pin_line(p, failed) for p in openp],
          "run `interview_next`"),
         ("Generated — never hand-edit", [f"- `{g}`" for g in sorted(str(x) for x in (generated or []))],
          "see the contract"),

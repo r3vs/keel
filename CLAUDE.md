@@ -87,7 +87,7 @@ Each skill is **design-complete with the runtime largely implemented**; its `TOD
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
 Plan A); rescue's VibraFlow verdict was **re-run on a fresh graph** (2026-07-14 — WEAK cross-layer
 correspondence, so standalone extraction is Plan A). The runtime lives under `src/runtime/`
-(core stdlib-only, exercised by `tests/` on every PR): `ledger.py` (spec v0.16), `shapes.py` (field-shape engine +
+(core stdlib-only, exercised by `tests/` on every PR): `ledger.py` (implements the spec, currently v0.28), `shapes.py` (field-shape engine +
 drift-check, 8 stacks), `treesitter_extract.py` (the **primary** extraction backend — a real grammar per language, so
 real-world TS/GraphQL/SQL parse with no per-repo patches; declarative per-grammar data, degrades to
 the stdlib parsers when absent), `generate.py` (contract generators,
@@ -115,7 +115,8 @@ python scripts/build.py --check        # the drift gate: plugins/ still equals w
 python scripts/check_consistency.py    # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
 python scripts/verify_pointers.py      # every *.md cross-reference resolves; exits 1 on dangling
 python scripts/check_hypotheses.py     # every tuned number in the runtime is declared (AST, not grep)
-python scripts/check_schema_fields.py  # every field the ledger spec declares is read by something that ships
+python scripts/check_schema_fields.py  # every field the ledger spec declares is READ by something that ships
+python scripts/check_stated_facts.py   # every number this repo restates in prose equals what computes it
 python scripts/check_tool_carriers.py  # every WRITE tool the server exposes is named by a shipped playbook
 python scripts/verify_commands.py      # every agent-facing COMMAND resolves after install; exits 1 on drift
 python scripts/run_evals.py --validate # each skill's evals.json is well-formed (structure, not behaviour)
@@ -179,7 +180,7 @@ are all unified under this one principle — which is why there is deliberately 
 - **The decisions ledger is the single source of truth.** Three surfaces — the visual map/wiki,
   the interview, and the brainstorm — hold *no state of their own*; they all read/write one
   `ledger.json`. This is deliberate: it is the exact anti-divergence property the skills enforce on
-  the codebases they touch. Schema authority: `src/core/decisions-ledger-spec.md` (shared, v0.16);
+  the codebases they touch. Schema authority: `src/core/decisions-ledger-spec.md` (shared, v0.28);
   English pointer summary: `src/core/ledger.md`.
 - **A `Pin` is a discriminated union on `kind`** (`contract_mismatch | internal_contradiction |
   ambiguity | incompleteness | design_concern | defect | open_decision | acceptance_criterion |
@@ -379,7 +380,7 @@ is not this one.
 - **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
   `src/core/*.md` is the single authoring source for the shared doctrine — **edit it there, never in
   a `plugins/**/references/core/` copy**, then run `scripts/build.py`. Within that,
-  `src/core/decisions-ledger-spec.md` (v0.16) is authoritative for the ledger schema. Do not let a
+  `src/core/decisions-ledger-spec.md` (v0.28) is authoritative for the ledger schema. Do not let a
   `SKILL.md`, a reference summary, or a vendored copy drift from them.
 - **`src/core/decisions-ledger-spec.md` is the authoritative schema** (English, like the rest of the
   repo); `src/core/ledger.md` is the short English pointer summary to it.

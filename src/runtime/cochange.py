@@ -82,10 +82,14 @@ def outside(repo: str, files: Iterable[str], min_commits: int = DEFAULT_MIN_COMM
     The primitive both consumers share: the landing-zone gate asks it about a blast radius, the
     omission check asks it about a diff. One implementation, because two would drift.
     """
+    zone = {_norm(f) for f in files}
+    # Nothing co-changes with nothing: every row below is gated on `tset & zone`, so an empty set
+    # already returned `[]` — this only stops us walking `limit` commits of history to prove it.
+    if not zone:
+        return []
     window = commits(repo, limit)
     if not window:
         return []
-    zone = {_norm(f) for f in files}
     pair: dict[str, int] = collections.Counter()
     own: dict[str, int] = collections.Counter()
     zone_commits = 0

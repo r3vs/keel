@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import buildloop
 import challenger
+from ledger import pin_read
 
 _DONE_STATES = ("resolved", "accepted")
 
@@ -49,7 +50,7 @@ OWNERS = {
 def _has_oracle(pin: dict) -> bool:
     """An elected, named check. Presence only — whether it is *falsifiable* is the quality layer's
     question, and answering it here with a keyword list is the trap this package documents."""
-    to_be = pin.get("to_be")
+    to_be = pin_read(pin).get("to_be")
     if isinstance(to_be, dict) and str(to_be.get("verify") or "").strip():
         return True
     # a defect's oracle is its reproduction: the as_is IS the failing observation
@@ -63,6 +64,7 @@ def _has_scope(pin: dict) -> bool:
     pins anchor into a tree that exists, forge's build items name a `canonical_target` for a tree
     that does not yet.
     """
+    pin = pin_read(pin)
     if pin.get("anchors"):
         return True
     return any(i.get("canonical_target") for i in pin.get("remediation", []))
@@ -75,6 +77,7 @@ def _terrain(ledger, pin: dict) -> dict:
     is the ordinary case for a greenfield item on an empty tree. Reporting `unassessed` there would
     manufacture a gap out of a project's own emptiness.
     """
+    pin = pin_read(pin)
     if not pin.get("anchors"):
         return {"state": "not_applicable", "why": "no anchors — nothing existing is being landed on"}
     readiness = pin.get("readiness")
@@ -82,17 +85,26 @@ def _terrain(ledger, pin: dict) -> dict:
         return {"state": "unassessed", "why": "this change lands on existing code and no landing "
                                               "zone was assessed (`readiness_assess`)"}
     verdict = readiness.get("verdict")
-    by_id = {p["id"]: p for p in ledger.data["pins"]}
+    # The guarded read (v0.22): `mcp:agent_ready` is served read-only and takes nothing but a
+    # ledger path, so a pin missing a field must not make the gate the call that fails.
+    by_id = {pin_read(p)["id"]: p for p in ledger.readable_pins()}
     open_prereqs = [h for h in readiness.get("hardens", [])
-                    if h in by_id and by_id[h]["state"] not in _DONE_STATES]
+                    if h in by_id and pin_read(by_id[h])["state"] not in _DONE_STATES]
     return {"state": verdict, "why": readiness.get("rationale", ""),
             "open_prerequisites": open_prereqs,
             "determinism": readiness.get("determinism", "D2")}
 
 
 def card(ledger, pin_id: str) -> dict:
-    """The two-layer readiness card for one pin. Computes presence; delegates judgment; routes."""
-    pin = ledger.pin(pin_id)
+    """The two-layer readiness card for one pin. Computes presence; delegates judgment; routes.
+
+    Through the whole guarded read (v0.25), not a field at a time. `mcp:agent_ready` is served
+    read-only and takes nothing but a ledger path, so a strange file must never be the call that
+    fails — and the derived corpus proved this one still did, on four shapes at once: a `readiness`
+    that is a bool met `.get("verdict")`, a `remediation` member that is a string met
+    `.get("canonical_target")`. v0.22 guarded the two fields somebody reproduced and left the rest,
+    which is the pattern this round replaced with a table."""
+    pin = pin_read(ledger.pin(pin_id))
     terrain = _terrain(ledger, pin)
     premortem_req = challenger.premortem_required(ledger, pin)
 
@@ -148,9 +160,14 @@ def card(ledger, pin_id: str) -> dict:
 
 
 def _challenges_for(ledger, pin_id: str) -> list[dict]:
-    return [{"id": e["id"], "class": e["class"], "upheld": e["upheld"], "argument": e["argument"]}
-            for e in ledger.data["decision_log"]
-            if e.get("pin_id") == pin_id and e["id"].startswith("chl_")]
+    # Every read a `.get`, the dispatch key most of all — `summary()`'s v0.18 rule, which this
+    # function was the last holdout of (§22 registered it as a residual and the derived corpus
+    # cashed it): `e["id"]` on a hand-written log entry carrying none is a bare `KeyError` from a
+    # read-only tool.
+    return [{"id": str(e.get("id") or ""), "class": e.get("class"), "upheld": e.get("upheld"),
+             "argument": e.get("argument")}
+            for e in ledger.readable("decision_log")
+            if e.get("pin_id") == pin_id and str(e.get("id") or "").startswith("chl_")]
 
 
 def gate(ledger) -> dict:
@@ -160,7 +177,7 @@ def gate(ledger) -> dict:
     shrank the queue would make an item disappear with no addressee — the same black hole a state
     that appears on no surface creates. It reports, loudly, and names who is owed the work.
     """
-    cards = [card(ledger, p["id"]) for p in buildloop.ready(ledger)]
+    cards = [card(ledger, pin_read(p)["id"]) for p in buildloop.ready(ledger)]
     by_route: dict[str, list] = {}
     for c in cards:
         by_route.setdefault(c["route"], []).append(c["pin"])
