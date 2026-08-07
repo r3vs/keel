@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
-SCHEMA_VERSION = "0.27"
+SCHEMA_VERSION = "0.28"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -132,7 +132,7 @@ SCHEMA_VERSION = "0.27"
 # now, and this line makes the failure unreachable rather than merely tested.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
                      "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22",
-                     "0.23", "0.24", "0.25", "0.26", SCHEMA_VERSION)
+                     "0.23", "0.24", "0.25", "0.26", "0.27", SCHEMA_VERSION)
 
 KINDS = {
     "contract_mismatch",
@@ -1590,8 +1590,12 @@ class Ledger:
         collection under `collection_shape`, both visible in `summary()`'s `pre_rule_events` beside
         the counts they are missing from.
 
-        The WRITE path deliberately keeps `self.data[…]`: a write onto a file this runtime cannot
-        read is a different question from a read of it, and the answer there is to refuse.
+        The WRITE path does not come through here: a write onto a file this runtime cannot read is a
+        different question from a read of it, and the answer there is to refuse —
+        `writable_collection` is where that refusal lives (v0.28). For two versions this paragraph
+        said the write path "deliberately keeps `self.data[…]`", which described the code and named
+        no refusal: there was none, and ten agent-reachable doors died with a raw
+        `AttributeError`/`KeyError` on a `pins` that is an object or a `decision_log` that is absent.
 
         The rule itself moved to the module-level `read_collection` in v0.23, and this method is now
         that function with `self.data` supplied. It had to: the two PROJECTIONS read a ledger as
@@ -1656,8 +1660,75 @@ class Ledger:
                  f"`ledger_summary` under `pre_rule_events` — fix the record, then write.")
         return pin
 
+    def writable_collection(self, name: str) -> list:
+        """THE lookup of the WRITE path for a whole COLLECTION: the list itself, or a refusal naming
+        what cannot be read (v0.28).
+
+        **`writable_pin`'s twin, one level out, and it is the half that was stated and never
+        built.** `Ledger.readable`'s own docstring has said since v0.21 that *a write onto a file
+        this runtime cannot read is a different question from a read of it, and the answer there is
+        to refuse*. Nothing refused. Every write door reached `self.data["pins"]` /
+        `self.data["decision_log"]` / `self.data["policies"]` raw, so a container that is an object,
+        a string, a number or simply absent took the door down with a stack trace naming a line of
+        ours: reproduced over real stdio against the shipped plugin on **ten agent-reachable doors
+        across both derived rosters** — `AttributeError: 'str' object has no attribute 'get'` out of
+        `_next_id`, `AttributeError: 'dict' object has no attribute 'append'` out of the appends.
+
+        The split is `writable_pin`'s and is the same split: `read_collection` answers *what may a
+        reader index* and substitutes `[]`; this answers *may this collection be written to at all*
+        and refuses. Substituting here would be worse than crashing — `save()` writes `self.data`
+        back, so a door that quietly appended to a substituted `[]` would either lose the append or
+        overwrite whatever the file was carrying under that key.
+
+        The RECORD half of the same file is deliberately not this rule. One malformed pin among
+        thirty does not make the file unwritable: the target of the write is refused by
+        `writable_pin`, and every OTHER record is read through the read path (`writable_pins`). The
+        blast radius of a bad record is that record.
+        """
+        _require(name in LEDGER_COLLECTIONS,
+                 f"{name!r} is not one of this file's collections {LEDGER_COLLECTIONS}")
+        value = self.data.get(name)
+        _require(isinstance(value, list),
+                 f"`{name}` cannot be written to: a ledger's `{name}` is a list, and this file "
+                 f"carries {type(value).__name__ if value is not None else 'nothing'} there — so "
+                 f"there is no collection to append to and no record to look up in. It is reported "
+                 f"by `ledger_summary` under `pre_rule_events` as `collection_shape`; fix the file, "
+                 f"then write.")
+        return value
+
+    def writable_pins(self) -> list[tuple[dict, dict]]:
+        """`(record, read)` for every pin in the file — what the WRITE path may do with the pins it
+        is **not** writing to (v0.28).
+
+        **The rule this carries: a write door refuses the pin it writes to, and READS every other
+        one.** `writable_pin` guarded the target and nothing else, so a write onto a perfectly
+        well-formed pin died because a different pin somewhere in the file lacked an `id` —
+        `set_readiness`'s `{p["id"]: p for p in self.data["pins"]}` and `_reopen_minimal`'s cascade
+        walk, both reproduced with a healthy target. That makes the blast radius of one malformed
+        record the whole file, which is the opposite of what the read path spent two rounds
+        establishing.
+
+        Refusing is right for the target and wrong here, and the reason is what the door is asking
+        of each: it is about to WRITE the target, so inventing half a record would persist; it only
+        needs to know whether the others are settled, what they depend on and what they are called,
+        and `pin_read`'s substitutions answer all three the emptiest true way. A pin with no
+        readable `id` is depended on by nothing and named by nothing; one with no readable `state`
+        is in no state's bucket, so no cascade sweeps it up and no index claims it. It participates
+        as what it is — nothing — instead of taking the call down.
+
+        The pair is what makes one carrier serve both callers: the cascade must WRITE onto the
+        record while DECIDING off the read, and handing it only the reads would have it mutate a
+        copy.
+        """
+        return [(p, pin_read(p)) for p in self.writable_collection("pins") if isinstance(p, dict)]
+
     def _next_id(self, prefix: str, collection: list, key: str = "id") -> str:
-        n = 1 + sum(1 for item in collection if str(item.get(key, "")).startswith(prefix))
+        # `isinstance` before `.get`: the collection is a list this runtime can append to (that is
+        # `writable_collection`'s promise) and its ENTRIES are whatever the file holds — a bare
+        # string among the pins is `entry_shape`'s finding, not a reason for every id this file ever
+        # mints to raise `AttributeError`.
+        n = 1 + sum(1 for item in collection
+                    if isinstance(item, dict) and str(item.get(key, "")).startswith(prefix))
         return f"{prefix}{n:04d}"
 
     # -- governance (v0.9) ---------------------------------------------------
@@ -1714,7 +1785,7 @@ class Ledger:
                      "an agent_assumption pin must carry confidence inferred|ambiguous")
 
         pin = {
-            "id": self._next_id("pin_", self.data["pins"]),
+            "id": self._next_id("pin_", self.writable_collection("pins")),
             "kind": kind,
             "title": title,
             "severity": severity,
@@ -1734,7 +1805,7 @@ class Ledger:
             pin["cluster_id"] = cluster_id
         if kind_detail:
             pin["kind_detail"] = kind_detail
-        self.data["pins"].append(pin)
+        self.writable_collection("pins").append(pin)
         return pin
 
     def surface_assumption(
@@ -2025,7 +2096,7 @@ class Ledger:
         # of a settled state and a writer that trusts its callers is a writer with five contracts.
         self._gate_settlement(pin, door)
         event = {
-            "id": self._next_id("ev_", self.data["decision_log"]),
+            "id": self._next_id("ev_", self.writable_collection("decision_log")),
             "pin_id": pin["id"],
             "timestamp": _now(),
             "outcome": outcome,
@@ -2052,7 +2123,7 @@ class Ledger:
         # (`nonconforming`) only ever sees the dict, so a rule checked on anything else is a rule
         # the reader cannot replay. Nothing is appended if this raises.
         _check_event(event)
-        self.data["decision_log"].append(event)
+        self.writable_collection("decision_log").append(event)
         # The dispute mark is cleared by `_settle` (v0.22), not here: it used to be popped on this
         # line, which gave the rule to the three doors that are elections and to none of the two
         # that are not — so `resolve` left `substate: "reopened"` standing on finished work.
@@ -2093,14 +2164,19 @@ class Ledger:
         else:
             _require(not hardens, f"only harden_first carries prerequisites, not {verdict!r}")
 
-        by_id = {p["id"]: p for p in self.data["pins"]}
+        # Every OTHER pin through the read path (v0.28, `writable_pins`): this index is not what is
+        # being written, it is what the write is checked against, and a pin that carries no readable
+        # `id` is a pin nothing can name as a prerequisite. It used to be `{p["id"]: p for p in
+        # self.data["pins"]}`, so one such pin anywhere in the file took down a `set_readiness` on a
+        # perfectly well-formed target.
+        by_id = {read["id"]: read for _, read in self.writable_pins() if read["id"]}
         for h in hardens:
             _require(h != pin_id, "a pin cannot harden itself")
             _require(h in by_id, f"no pin {h}")
             # CHANGE-JUSTIFIED, enforced rather than promised: remediation is admitted only when it
             # reduces *this* change's risk. A pin whose anchors lie outside the landing zone is
             # someone else's cleanup, and admitting it is how a bounded gate becomes a rewrite.
-            anchors = [(a.get("loc") or "").split(":")[0] for a in by_id[h].get("anchors", [])]
+            anchors = [(a.get("loc") or "").split(":")[0] for a in by_id[h]["anchors"]]
             _require(any(a in zone_files for a in anchors if a),
                      f"{h} anchors outside the landing zone — hardening must be justified by THIS "
                      "change, not by the code being imperfect elsewhere")
@@ -2122,6 +2198,9 @@ class Ledger:
 
     @staticmethod
     def _reaches(start: str, target: str, by_id: dict) -> bool:
+        """`by_id` holds GUARDED reads (`writable_pins`), so `depends_on` is a list of strings here
+        by construction — the raw field can be a bare string, which is iterable, and this walk would
+        then build a DAG out of letters."""
         seen, stack = set(), [start]
         while stack:
             cur = stack.pop()
@@ -2130,7 +2209,7 @@ class Ledger:
             if cur in seen or cur not in by_id:
                 continue
             seen.add(cur)
-            stack.extend(by_id[cur].get("depends_on", []))
+            stack.extend(by_id[cur]["depends_on"])
         return False
 
     def defer(self, pin_id: str, rationale: str, flip_criteria: str,
@@ -2211,7 +2290,7 @@ class Ledger:
                  "default_outcome must be the option id each cascaded pin's own question offers — "
                  f"a non-empty string, not {type(default_outcome).__name__}")
         policy = {
-            "id": self._next_id("pol_", self.data["policies"]),
+            "id": self._next_id("pol_", self.writable_collection("policies")),
             "applies_to": applies_to,
             "rule": rule,
             "default_outcome": default_outcome,
@@ -2221,7 +2300,7 @@ class Ledger:
         }
         if human_answer:
             policy["human_answer"] = human_answer
-        self.data["policies"].append(policy)
+        self.writable_collection("policies").append(policy)
         return policy
 
     @staticmethod
@@ -2500,7 +2579,7 @@ class Ledger:
         event = None
         if decision_event is None:
             event = {
-                "id": self._next_id("stl_", self.data["decision_log"]),
+                "id": self._next_id("stl_", self.writable_collection("decision_log")),
                 "pin_id": pin["id"],
                 "timestamp": _now(),
                 "door": door,
@@ -2509,7 +2588,7 @@ class Ledger:
                 "verification_rung": verification_rung,
                 "policy_hash": self._policy_hash(),
             }
-            self.data["decision_log"].append(event)
+            self.writable_collection("decision_log").append(event)
         if _STATE_BY_DOOR[door] in SETTLED_STATES:
             pin.pop("substate", None)
         pin["state"] = _STATE_BY_DOOR[door]
@@ -2755,7 +2834,7 @@ class Ledger:
         pin = self.writable_pin(pin_id)
         reopened = bool(upheld) and self.reopen_verdict(pin, "challenge") == "would_reopen"
         event = {
-            "id": self._next_id("chl_", self.data["decision_log"]),
+            "id": self._next_id("chl_", self.writable_collection("decision_log")),
             "pin_id": pin_id,
             "timestamp": _now(),
             "target": target,
@@ -2767,7 +2846,7 @@ class Ledger:
             "source": source,
             "policy_hash": self._policy_hash(),
         }
-        self.data["decision_log"].append(event)
+        self.writable_collection("decision_log").append(event)
         if reopened:
             self._reopen_minimal(pin, "challenge", via=event["id"])
         return event
@@ -2940,7 +3019,7 @@ class Ledger:
         # Recorded BEFORE anything moves, and recorded whatever happens next: an arc that reopens
         # without appending is a state change nobody can audit, which is exactly what this was.
         event = {
-            "id": self._next_id("xdr_", self.data["decision_log"]),
+            "id": self._next_id("xdr_", self.writable_collection("decision_log")),
             "pin_id": pin_id,
             "timestamp": _now(),
             "claim": record["claim"],
@@ -2959,7 +3038,7 @@ class Ledger:
             "source": "challenge:cross_derivation",
             "policy_hash": self._policy_hash(),
         }
-        self.data["decision_log"].append(event)
+        self.writable_collection("decision_log").append(event)
         record["event_id"] = event["id"]
         record["rung_raised"] = event["rung_raised"]
         if refuted:
@@ -3014,7 +3093,7 @@ class Ledger:
         _require(phase in FAILURE_PHASES, f"phase must be one of {FAILURE_PHASES}")
         _require(bool(str(detail).strip()), "a failure label needs what actually happened")
         event = {
-            "id": self._next_id("fal_", self.data["decision_log"]),
+            "id": self._next_id("fal_", self.writable_collection("decision_log")),
             "pin_id": pin_id,
             "timestamp": _now(),
             "class": failure_class,
@@ -3023,7 +3102,7 @@ class Ledger:
             "source": source,
             "policy_hash": self._policy_hash(),
         }
-        self.data["decision_log"].append(event)
+        self.writable_collection("decision_log").append(event)
         return event
 
     def foresight(self, pin_id: str) -> dict:
@@ -3033,13 +3112,18 @@ class Ledger:
         that occurred and nobody foresaw; `paper_tigers_held` are dismissed risks that stayed
         dismissed. D0 — a set comparison over recorded events, no scoring: the numbers are small,
         rare and human, and a rate computed over them would be a statistic with no population.
+
+        A READ, through the read path (v0.28): it is the second half of what `ledger_label_failure`
+        returns, and it used to index `e["id"]` over the raw log — the exact expression v0.18 removed
+        from `summary()` — on a call whose first half had already been committed to disk.
         """
-        pin = self.pin(pin_id)
-        foreseen = {fm.get("class") for fm in (pin.get("premortem") or {}).get("failure_modes", [])}
-        happened = [e for e in self.data["decision_log"]
-                    if e.get("pin_id") == pin_id and e["id"].startswith("fal_")]
-        occurred = {e["class"] for e in happened}
-        tigers = {pt["risk"] for pt in (pin.get("premortem") or {}).get("paper_tigers", [])}
+        pin = pin_read(self.pin(pin_id))
+        premortem = pin.get("premortem") or {}
+        foreseen = {fm.get("class") for fm in premortem.get("failure_modes", [])}
+        happened = [e for e in self.readable("decision_log")
+                    if e.get("pin_id") == pin_id and str(e.get("id", "")).startswith("fal_")]
+        occurred = {e.get("class") for e in happened}
+        tigers = {pt.get("risk") for pt in premortem.get("paper_tigers", [])}
         return {
             "pin": pin_id,
             "has_premortem": bool(pin.get("premortem")),
@@ -3080,7 +3164,7 @@ class Ledger:
                  f"source must be one of {_FEEDBACK_SOURCES}; got {source!r}. The downstream arc "
                  f"originates in production, and its origins are the ones a flip_signal can name")
         event = {
-            "id": self._next_id("rev_", self.data["decision_log"]),
+            "id": self._next_id("rev_", self.writable_collection("decision_log")),
             "pin_id": pin_id,
             "timestamp": _now(),
             "reason": str(reason).strip(),
@@ -3092,7 +3176,7 @@ class Ledger:
             "source": source,
             "policy_hash": self._policy_hash(),
         }
-        self.data["decision_log"].append(event)
+        self.writable_collection("decision_log").append(event)
         self._reopen_minimal(pin, "reopen", via=event["id"])
         return event
 
@@ -3109,8 +3193,16 @@ class Ledger:
 
         One carrier, one reader: the per-pin events say what moved, this reads them back, and both
         tools call it, so the two arcs cannot report their radius differently.
+
+        A READ, through the read path (v0.28). It used to index `e["pin_id"]` raw over
+        `self.data["decision_log"]`, and it is called by all three arc tools AFTER the write was
+        committed: on a file carrying one hand-written entry that names a `via` and no `pin_id`, the
+        reopen landed on disk and the tool answered `isError`, so an agent reading that error and
+        retrying reopened the pin a second time. Both halves are fixed — this one reads what a reader
+        may index, and the door now computes its answer before it commits.
         """
-        return [e["pin_id"] for e in self.data["decision_log"] if e.get("via") == event_id]
+        return [str(e.get("pin_id", "")) for e in self.readable("decision_log")
+                if e.get("via") == event_id and e.get("pin_id")]
 
     def _reopen_minimal(self, pin: dict, arc: str, via: str) -> list[str]:
         """THE only writer of the reopened state, and the only place either arc moves anything.
@@ -3152,16 +3244,24 @@ class Ledger:
         `settlement_verdict` believed it, because the envelope is the single carrier of that fact by
         design. Writing the state without invalidating the claim the state was reached on is a reopen
         that only the surfaces see.
+
+        **And every OTHER pin is read through the read path (v0.28).** The walk indexed `p["id"]` and
+        `p["state"]` over the raw list, so a reopen of a well-formed pin died with `KeyError: 'id'`
+        because some unrelated pin in the file carried none — one bad record, and the whole file
+        unwritable. `writable_pins` pairs each record with its guarded read: the cascade DECIDES off
+        the read (a pin with no readable id is depended on by nothing; one with no readable state is
+        in no settled state, so nothing sweeps it up) and WRITES onto the record.
         """
         if self.reopen_verdict(pin, arc) != "would_reopen":
             return []
         substate = _SUBSTATE_BY_ARC[arc]
+        pins = self.writable_pins()
         to_reopen = {pin["id"]}
         changed = ARC_CASCADES[arc]
         while changed:
             changed = False
-            for p in self.data["pins"]:
-                if p["id"] in to_reopen:
+            for p, read in pins:
+                if not read["id"] or read["id"] in to_reopen:
                     continue
                 # NOTE: three states, where `SETTLED_STATES` has four — `deferred` is not cascaded
                 # over. Kept exactly as it was rather than "corrected", because whether a pin elected
@@ -3169,30 +3269,30 @@ class Ledger:
                 # settles it. Recorded in `docs/open-gaps.md` under §5 rather than resolved by
                 # guessing: inventing a rationale for someone else's tuple is how a hardcoded list
                 # acquires the authority of a decision.
-                if any(dep in to_reopen for dep in p.get("depends_on", [])) \
-                        and p["state"] in ("decided", "resolved", "accepted"):
-                    to_reopen.add(p["id"])
+                if any(dep in to_reopen for dep in read["depends_on"]) \
+                        and read["state"] in ("decided", "resolved", "accepted"):
+                    to_reopen.add(read["id"])
                     changed = True
         cascaded: list[str] = []
-        for p in self.data["pins"]:
-            if p["id"] not in to_reopen:
+        for p, read in pins:
+            if read["id"] not in to_reopen:
                 continue
-            if p["id"] != pin["id"]:
+            if read["id"] != pin["id"]:
                 # The record `_settle` writes for every settlement, written here for every pin the
                 # closure sweeps up. `via` joins it to the arc event that caused it, which is what
                 # makes the radius readable (`cascaded_by`) instead of guessable from a substate.
-                self.data["decision_log"].append({
-                    "id": self._next_id("cas_", self.data["decision_log"]),
-                    "pin_id": p["id"],
+                self.writable_collection("decision_log").append({
+                    "id": self._next_id("cas_", self.writable_collection("decision_log")),
+                    "pin_id": read["id"],
                     "timestamp": _now(),
                     "arc": arc,
                     "via": via,
-                    "from_state": p["state"],
+                    "from_state": read["state"],
                     "to_state": "needs_input",
                     "substate": substate,
                     "policy_hash": self._policy_hash(),
                 })
-                cascaded.append(p["id"])
+                cascaded.append(read["id"])
             p["state"] = "needs_input"
             p["substate"] = substate
             p["resolution_mode"] = "asked"   # a reopened truth is never re-defaulted silently
@@ -3218,7 +3318,11 @@ class Ledger:
         an envelope onto it would be manufacturing a statement the file never made, which is the
         `mark_correctness_unknown`/`cross_derive` overwrite v0.16 removed twice.
         """
-        envelope = pin.get("verification") or {}
+        # Through the read path (v0.28): this is called on every pin the cascade sweeps up, not only
+        # on the one `writable_pin` cleared, so the envelope here is whatever the file holds. A
+        # `verification` that is a string reads as `{}` and returns below — which is the right answer
+        # anyway, since a claim nothing can read is a claim there is nothing to take back.
+        envelope = pin_read(pin).get("verification") or {}
         if envelope.get("rung") not in _CLOSING_RUNGS:
             return
         pin["verification"] = {

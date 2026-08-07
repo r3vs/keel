@@ -1,4 +1,4 @@
-# Decisions Ledger — Spec v0.27
+# Decisions Ledger — Spec v0.28
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1315,3 +1315,45 @@ Introduced by this round's own bump and caught by one of its plants: `SCHEMA_VER
 ### The general shape
 
 v0.26 asked *which doors read this record before writing it*. This one asks the two questions that survives: **is the number a surface prints the number it claims to be**, and **what is outside the roster BECAUSE of how the roster is derived**. A derivation is a claim about a class, and every derivation this branch wrote said "takes a `pin_id`" — so the doors that write without naming a pin were invisible not by oversight but by construction. The question to ask of any derived roster: *state the predicate out loud, then name what writes and does not satisfy it.*
+
+
+## v0.28 — What a door reports, and what it may read while writing
+
+Four findings, one subject: **the write path's relationship to the file it was handed.** v0.26 refused the record a door writes; this one asks the three questions that leaves — what a door may read *besides* that record, what it may assume about the *collection* the record sits in, and whether what it *reports* is what it *did*. All four were reproduced over real `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd, on the derived corpora.
+
+### The commit is the last thing a door does
+
+`ledger_reopen`, `ledger_challenge` and `ledger_cross_derive` computed their answer *after* `_saved`, and `ledger_label_failure` ran `foresight` there. `Ledger.cascaded_by` indexed `e["pin_id"]` raw over the log, so on a file carrying one hand-written entry that names a `via` and no `pin_id`, the write landed on disk and the tool answered `isError: KeyError: 'pin_id'`. Observed: two `resolved` pins, one `ledger_reopen`, the root pin `needs_input` in the file and an error at the caller.
+
+**Report-after-commit is its own bug class**, independent of which read happened to raise: an agent that reads that error retries, and the retry is a second reopen. So the shape of every door is *compute the answer, then commit, then return the name* — checked positionally, by AST, over every function in the module that reaches the commit point. The behavioural half derives its trap from each door's own output: run the door once, read back the log ids it appended, then re-run it on a fresh copy carrying a `cas_` entry that names one of those ids as its `via`. Its non-vacuity floor is derived too — every door that reads a cascade radius must be one the planted `via` actually reaches.
+
+### `writable_collection` — the container half of the write path's refusal
+
+`Ledger.readable`'s own docstring had said since v0.21 that *a write onto a file this runtime cannot read is a different question from a read of it, and the answer there is to refuse*. Nothing refused. Every write door reached `self.data["pins"]` / `["decision_log"]` / `["policies"]` raw, so a collection that is an object, a string, a number or simply absent took the door down: **ten agent-reachable doors across both derived rosters**, with `AttributeError: 'str' object has no attribute 'get'` out of `_next_id` and `'dict' object has no attribute 'append'` out of the appends.
+
+```
+ledger.read_collection(data, name)      the READ — substitutes [], drops non-object entries
+Ledger.writable_collection(name)        the WRITE — the list itself, or a refusal naming it
+```
+
+Substituting on the write path is not available for `writable_pin`'s reason one level out: `save()` writes `self.data` back, so a door that appended to a substituted `[]` would either lose the append or overwrite what the file carries under that key. The refusal names the collection and points at `pre_rule_events`, where `nonconforming` already reports it as `collection_shape`. The gate is AST and quantifies over the module: an expression that takes a `LEDGER_COLLECTIONS` name off `self.data` — by subscript **or** by `.get`, because a rule that knew one spelling would be satisfied by the other — may appear in `writable_collection` and nowhere else, and the carrier must be called with every collection name.
+
+### `writable_pins` — a write door refuses the pin it writes and READS every other one
+
+`writable_pin` guarded the target and nothing else. `set_readiness` built `{p["id"]: p for p in self.data["pins"]}` and `_reopen_minimal` walked `p["id"]` / `p["state"]` over the same raw list, so a write onto a **well-formed** pin died with `KeyError: 'id'` because a different pin somewhere in the file carried none. One malformed record made the whole file unwritable, which inverts what the read path spent two rounds establishing.
+
+```
+Ledger.writable_pins() -> list[(record, read)]      the file's pins, paired with pin_read(record)
+```
+
+The split is decided by what the door asks of each. It is about to WRITE the target, so inventing half a record would persist — refuse. It only needs to know whether the others are settled, what they depend on and what they are called, and `pin_read`'s substitutions answer all three the emptiest true way: a pin with no readable `id` is named by nothing and depended on by nothing, one with no readable `state` is in no settled state, so no cascade sweeps it up and no index claims it. It participates as what it is — nothing. The pair is what lets one carrier serve both callers: the cascade decides off the read and writes onto the record.
+
+The roster half runs the whole derived corpus as a **bystander** — every violation `PIN_SHAPES` can describe, beside a healthy target, at every door in the union of both write rosters.
+
+### A read-only tool that takes a `pin_id` is on no roster by construction
+
+The read-tool gate derived its roster as `required == ["ledger"]`. That reads like *a read-only tool that reads a ledger* and is that minus every one which also takes a `pin_id` — a whole class, and it was two tools. `scope_check` and `readiness_assess` were in **none** of the three derived rosters on this branch: the write rosters are *takes a `pin_id` and commits*, so a READ that takes a pin falls between all of them. Both died on the pin's own declared shapes — `'str' object has no attribute 'get'` from `declared_vs_actual`'s `(pin.get("readiness") or {}).get("zone")`, `'int' object is not iterable` from `zone_of`'s walk over `anchors`. The rule is now *the tool's FIRST required argument is the ledger*, with the extra arguments declared as payload like every other call.
+
+### The general shape
+
+v0.26: *a rule proved of the readers is unproved for the writers.* v0.27: *a derived roster is a claim about a class, so name what does the dangerous thing and does not satisfy the predicate.* This one is both, turned on the same predicate twice — the roster that said `required == ["ledger"]` and the guard that said "the pin being written" — plus the one question neither shape asks: **not what a door does, but whether what it says it did is true.** A door's return value is a claim about the file, and a claim made after the commit is a claim nothing checked.

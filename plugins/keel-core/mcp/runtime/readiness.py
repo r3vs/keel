@@ -96,13 +96,18 @@ def _open_pins_in_zone(ledger_data: dict, zone_files: set) -> list[dict]:
 
 def _churn(repo: str, files: Iterable[str], since: str = "") -> dict:
     """Commits touching each zone file. `git log` is the carrier; no weighting, no score."""
+    # An empty zone has no churn, and the answer was already `{}` — this only stops us reading the
+    # repository's whole history in order to intersect it with nothing. It is not a degrade: a zone
+    # is empty when every anchor was unresolved, which `zone_of` reports under `unresolved_anchors`.
+    wanted = set(files)
+    if not wanted:
+        return {}
     args = ["log", "--format=%H", "--name-only"]
     if since:
         args += [f"--since={since}"]
     log = _run_git(args, repo)
     if not log:
         return {}
-    wanted = set(files)
     counts: dict[str, int] = collections.Counter()
     for line in log.splitlines():
         line = line.strip()

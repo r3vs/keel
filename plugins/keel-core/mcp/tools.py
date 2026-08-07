@@ -89,6 +89,20 @@ def _saved(ledger: str, led) -> None:
     write is finished, and `tests/test_mcp_tools.py::TestOneCommitPointForEveryLedgerWrite` fails on
     any function in this module that reaches `save()` without coming through here — quantified over
     the callers, so the nineteenth door inherits the rule instead of remembering it.
+
+    **And it is the LAST thing a door does (v0.28).** Four doors computed their answer *after* this
+    call — `ledger_reopen`, `ledger_challenge` and `ledger_cross_derive` re-read the pin and the
+    cascade radius, `ledger_label_failure` ran `foresight` — so a read that raised there left the
+    write on disk and handed the caller `isError`. Reproduced over stdio: two `resolved` pins, one
+    `ledger_reopen`, one hand-written log entry naming a `via` and no `pin_id` — the root pin came
+    back `needs_input` in the file and the tool reported `KeyError: 'pin_id'`. An agent that reads
+    that error retries, and the retry is a second reopen.
+
+    So the shape of every door here is *compute the answer, then commit*: whatever a door returns
+    describes what happened, and a door that raises has changed nothing.
+    `TestADoorThatReportsFailureCommittedNothing` holds both halves — the position of this call by
+    AST over every function that makes it, and the file byte-identical after every raise the derived
+    corpora can provoke.
     """
     led.save()
     _refresh_live_maps(ledger)
@@ -151,16 +165,18 @@ def ledger_add_pin(ledger: str, kind: str, title: str, severity: str, confidence
     pin = led.add_pin(kind=kind, title=title, severity=severity, confidence=confidence,
                       provenance=provenance, as_is=as_is, to_be=to_be, question=question,
                       depends_on=depends_on, kind_detail=kind_detail, cluster_id=cluster_id)
+    out = {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
     _saved(ledger, led)
-    return {"pin_id": pin["id"], "kind": pin["kind"], "state": pin["state"]}
+    return out
 
 
 def ledger_surface_assumption(ledger: str, title: str, detail: str, severity: str = "medium",
                               confidence: str = "inferred") -> dict:
     led = _open_or_create(ledger)
     pin = led.surface_assumption(title=title, detail=detail, severity=severity, confidence=confidence)
+    out = {"pin_id": pin["id"], "state": pin["state"]}
     _saved(ledger, led)
-    return {"pin_id": pin["id"], "state": pin["state"]}
+    return out
 
 
 def decision_prompt(ledger: str, pin_id: str) -> dict:
@@ -274,8 +290,9 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
         led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
                    evidence=evidence, human_answer=human_answer)
         state = "decided"
+    out = {"pin_id": pin_id, "state": state, "outcome": outcome, "evidence": evidence}
     _saved(ledger, led)
-    return {"pin_id": pin_id, "state": state, "outcome": outcome, "evidence": evidence}
+    return out
 
 
 def interview_expand(ledger: str, project_type: str = "web-saas",
@@ -479,7 +496,6 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
     # listed pins an OLDER policy had just decided, and accepting one policy silently cascaded a
     # previous one over pins added since it was elected — pins nobody was shown when they elected it.
     radius = led.apply_policy(policy)
-    _saved(ledger, led)
     # What THIS policy decided on THIS call. Every event it wrote carries evidence `cascaded` and
     # points back at this policy by `policy_id` — none of them claims a relay nobody made, and none
     # of them is another policy's work reported as this one's. The refusal buckets are spread from
@@ -493,6 +509,7 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
            "default_outcome": policy["default_outcome"], "evidence": evidence,
            "cascaded": radius["would_decide"]}
     out.update({bucket: radius[bucket] for bucket in radius if bucket != "would_decide"})
+    _saved(ledger, led)
     return out
 
 
@@ -503,30 +520,43 @@ def ledger_add_remediation(ledger: str, pin_id: str, action: str, ladder_rung: i
     item = led.add_remediation(pin_id, action=action, ladder_rung=ladder_rung,
                                canonical_target=canonical_target, build_track=build_track,
                                contract_carrier=contract_carrier)
+    out = {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
     _saved(ledger, led)
-    return {"item_id": item["id"], "pin_id": pin_id, "status": item["status"]}
+    return out
 
 
 def ledger_set_remediation_status(ledger: str, pin_id: str, item_id: str, status: str) -> dict:
     led = _open_existing(ledger)
     item = led.set_remediation_status(pin_id, item_id, status)
+    out = {"item_id": item["id"], "status": item["status"]}
     _saved(ledger, led)
-    return {"item_id": item["id"], "status": item["status"]}
+    return out
 
 
 def ledger_resolve(ledger: str, pin_id: str, evidence: str, rung: str = "") -> dict:
     led = _open_existing(ledger)
     pin = led.resolve(pin_id, evidence=evidence, rung=rung or None)
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "verification": pin.get("verification")}
     _saved(ledger, led)
-    return {"pin_id": pin["id"], "state": pin["state"],
-            "verification": pin.get("verification")}
+    return out
 
 
 def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
                      max_depth: int = 2, head: str = "") -> dict:
+    """The D0 evidence bundle for one pin's landing zone. Read-only; states no verdict.
+
+    The pin comes through `pin_read` (v0.28), and that is the fix rather than a nicety: this is a
+    READ-ONLY tool taking a `pin_id`, which is exactly the class every derived roster on this branch
+    excluded — the read-tool roster was *required == ["ledger"]*, the write-door rosters are *takes a
+    `pin_id` and commits*, and a read that takes a pin falls between them. It handed
+    `readiness.zone_of` whatever `anchors` the file held, so a number there was `TypeError: 'int'
+    object is not iterable` and a list of strings was `'str' object has no attribute 'get'`.
+    """
     import readiness
+    from ledger import pin_read
     led = _open_existing(ledger)
-    pin = led.pin(pin_id)
+    pin = pin_read(led.pin(pin_id))
     head = head or _git_head()
     if not head:
         raise RuntimeError(
@@ -534,6 +564,8 @@ def readiness_assess(ledger: str, pin_id: str, graph_path: str, repo: str = ".",
             "without it the staleness gate cannot run, and a zone from a stale graph describes "
             "ground that has since moved"
         )
+    # `.get` and not `pin["anchors"]`: `anchors` is not one of the paths `pin_read` MATERIALISES
+    # (`PIN_GUARANTEED`), so a file that simply omits it must read as no anchors, not as a KeyError.
     return readiness.assess(graph_path, led.data, pin.get("anchors", []),
                             repo=repo, max_depth=max_depth, head=head)
 
@@ -543,9 +575,10 @@ def ledger_set_readiness(ledger: str, pin_id: str, verdict: str, zone: dict, evi
     led = _open_existing(ledger)
     pin = led.set_readiness(pin_id, verdict, zone, evidence,
                             hardens=hardens, rationale=rationale)
+    out = {"pin_id": pin["id"], "readiness": pin["readiness"],
+           "depends_on": pin["depends_on"]}
     _saved(ledger, led)
-    return {"pin_id": pin["id"], "readiness": pin["readiness"],
-            "depends_on": pin["depends_on"]}
+    return out
 
 
 def ledger_mark_correctness_unknown(
@@ -560,9 +593,10 @@ def ledger_mark_correctness_unknown(
     pin = led.mark_correctness_unknown(
         pin_id, blocked_by=blocked_by, attempted=attempted,
         determinism=determinism, rung=rung)
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "verification": pin["verification"]}
     _saved(ledger, led)
-    return {"pin_id": pin["id"], "state": pin["state"],
-            "verification": pin["verification"]}
+    return out
 
 
 def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
@@ -571,16 +605,18 @@ def ledger_premortem(ledger: str, pin_id: str, failure_modes: list,
     led = _open_existing(ledger)
     pm = led.premortem(pin_id, failure_modes, guardrails=guardrails,
                        abort_criteria=abort_criteria, paper_tigers=paper_tigers)
+    out = {"pin_id": pin_id, "premortem": pm}
     _saved(ledger, led)
-    return {"pin_id": pin_id, "premortem": pm}
+    return out
 
 
 def ledger_label_failure(ledger: str, pin_id: str, failure_class: str, detail: str,
                          phase: str, source: str = "measurer") -> dict:
     led = _open_existing(ledger)
     event = led.label_failure(pin_id, failure_class, detail, phase, source=source)
+    out = {"event": event, "foresight": led.foresight(pin_id)}
     _saved(ledger, led)
-    return {"event": event, "foresight": led.foresight(pin_id)}
+    return out
 
 
 def learning_report(ledger: str, min_cluster: int = 2, candidates: list | None = None) -> dict:
@@ -638,7 +674,6 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
                         agreement: str, notes: str = "") -> dict:
     led = _open_existing(ledger)
     record = led.cross_derive(pin_id, claim, derivations, agreement, notes)
-    _saved(ledger, led)
     pin = led.writable_pin(pin_id)
     # v0.16: what the disagreement DID, said rather than inferred from the state. A closed pin is
     # recorded and not reopened — un-closing finished work has its own arc — and a caller that
@@ -656,11 +691,13 @@ def ledger_cross_derive(ledger: str, pin_id: str, claim: str, derivations: list,
     # inferred from `verification`, because "the rung was already `cross_derived`" and "this call
     # raised it" are two different histories that leave the same field.
     event = next(e for e in led.readable("decision_log") if e.get("id") == record["event_id"])
-    return {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
-            "event_id": event["id"],
-            "reopened": event["reopened"],
-            "rung_raised": event["rung_raised"],
-            "verification": pin.get("verification")}
+    out = {"pin_id": pin_id, "cross_derivation": record, "state": pin["state"],
+           "event_id": event["id"],
+           "reopened": event["reopened"],
+           "rung_raised": event["rung_raised"],
+           "verification": pin.get("verification")}
+    _saved(ledger, led)
+    return out
 
 
 def cochange_omissions(changed: list | None = None, repo: str = ".", git_base: str = "",
@@ -680,12 +717,21 @@ def cochange_omissions(changed: list | None = None, repo: str = ".", git_base: s
 
 def scope_check(ledger: str, pin_id: str, changed: list | None = None, repo: str = ".",
                 git_base: str = "") -> dict:
+    """Did the change stay inside the boundary the pin declared? Read-only.
+
+    The pin comes through `pin_read` for `readiness_assess`'s reason and it is the same class: a
+    read-only tool taking a `pin_id`, on no derived roster, dying on the pin's own declared shapes.
+    `declared_vs_actual` reaches `(pin.get("readiness") or {}).get("zone")` and iterates
+    `pin.get("anchors")` — a `readiness` that is a string and an `anchors` that is a number are both
+    in `shape_corpus.broken_pins()`, and both took this tool down with a stack trace.
+    """
     import impact
+    from ledger import pin_read
     led = _open_existing(ledger)
     files = list(changed or [])
     if not files and git_base:
         files = impact.changed_files_from_git(repo, git_base)
-    return impact.declared_vs_actual(led.pin(pin_id), files)
+    return impact.declared_vs_actual(pin_read(led.pin(pin_id)), files)
 
 
 def agent_ready(ledger: str, pin_id: str = "") -> dict:
@@ -738,15 +784,16 @@ def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
                            "thing no tool here may do")
     pin = led.defer(pin_id, rationale=rationale, flip_criteria=flip_criteria,
                     human_answer=human_answer)
-    _saved(ledger, led)
     # Read off the event this call appended, not restated here (v0.18). It used to be a local
     # `evidence = "transcribed"` that was passed down AND reported back — one fact with two
     # carriers, and the parameter it was passed into is the one that has just been removed. The
     # rung the caller is told about is now the rung the log actually holds.
     event = next(e for e in led.readable("decision_log")
                  if e.get("id") == pin["decision"]["event_id"])
-    return {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer",
-            "evidence": event["evidence"]}
+    out = {"pin_id": pin["id"], "state": pin["state"], "outcome": "defer",
+           "evidence": event["evidence"]}
+    _saved(ledger, led)
+    return out
 
 
 # -- the two reopen arcs, and the two doors that put a pin back in front of a human ---------------
@@ -782,11 +829,12 @@ def ledger_reopen(ledger: str, pin_id: str, reason: str, fired: str = "flip_sign
     """
     led = _open_existing(ledger)
     event = led.reopen(pin_id, reason=reason, fired=fired, source=source)
-    _saved(ledger, led)
     pin = led.writable_pin(pin_id)
-    return {"pin_id": pin_id, "event_id": event["id"], "reopened": event["reopened"],
-            "state": pin["state"], "substate": pin.get("substate"),
-            "also_reopened": led.cascaded_by(event["id"])}
+    out = {"pin_id": pin_id, "event_id": event["id"], "reopened": event["reopened"],
+           "state": pin["state"], "substate": pin.get("substate"),
+           "also_reopened": led.cascaded_by(event["id"])}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str, argument: str,
@@ -820,12 +868,13 @@ def ledger_challenge(ledger: str, pin_id: str, target: str, challenge_class: str
     led = _open_existing(ledger)
     event = led.challenge(pin_id, target=target, challenge_class=challenge_class,
                           argument=argument, severity=severity, upheld=bool(upheld), source=source)
-    _saved(ledger, led)
     pin = led.writable_pin(pin_id)
-    return {"pin_id": pin_id, "event_id": event["id"], "upheld": event["upheld"],
-            "reopened": event["reopened"], "state": pin["state"],
-            "substate": pin.get("substate"),
-            "also_reopened": led.cascaded_by(event["id"])}
+    out = {"pin_id": pin_id, "event_id": event["id"], "upheld": event["upheld"],
+           "reopened": event["reopened"], "state": pin["state"],
+           "substate": pin.get("substate"),
+           "also_reopened": led.cascaded_by(event["id"])}
+    _saved(ledger, led)
+    return out
 
 
 def ledger_set_question(ledger: str, pin_id: str, question: dict) -> dict:
@@ -842,10 +891,11 @@ def ledger_set_question(ledger: str, pin_id: str, question: dict) -> dict:
     """
     led = _open_existing(ledger)
     pin = led.set_question(pin_id, question)
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "options": [o["id"] for o in (pin["question"].get("options") or [])],
+           "allow_freeform": bool(pin["question"].get("allow_freeform"))}
     _saved(ledger, led)
-    return {"pin_id": pin["id"], "state": pin["state"],
-            "options": [o["id"] for o in (pin["question"].get("options") or [])],
-            "allow_freeform": bool(pin["question"].get("allow_freeform"))}
+    return out
 
 
 def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str = "") -> dict:
@@ -863,11 +913,12 @@ def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str =
     """
     led = _open_existing(ledger)
     pin = led.add_proposals(pin_id, list(proposals or []), notes=notes)
+    out = {"pin_id": pin["id"], "state": pin["state"],
+           "proposals": [p["id"] for p in pin["brainstorm"]["proposals"]],
+           "recommended": next((p["id"] for p in pin["brainstorm"]["proposals"]
+                                if p.get("recommended")), "")}
     _saved(ledger, led)
-    return {"pin_id": pin["id"], "state": pin["state"],
-            "proposals": [p["id"] for p in pin["brainstorm"]["proposals"]],
-            "recommended": next((p["id"] for p in pin["brainstorm"]["proposals"]
-                                 if p.get("recommended")), "")}
+    return out
 
 
 # -- coverage manifest -------------------------------------------------------------------------

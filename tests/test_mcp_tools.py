@@ -715,10 +715,28 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
     declared, the two are held together by set equality, and
     `test_every_minimal_call_reaches_the_file` proves each call runs on a well-formed ledger — which
     is what makes the broken-ledger run an exercise of the body rather than of a refusal.
+
+    **v0.28 — the membership rule had a hole shaped like two tools.** The roster was
+    `required == ["ledger"]`, which is not *a read-only tool that reads a ledger*: it is that minus
+    every read-only tool that also takes a `pin_id`. `scope_check` and `readiness_assess` are exactly
+    that class, they were in none of the three derived rosters on this branch — the two write-door
+    rosters are *takes a `pin_id` and commits*, so a READ that takes a pin falls between all of them
+    — and both died on the pin's own declared shapes: `'str' object has no attribute 'get'` from
+    `declared_vs_actual`'s `(pin.get("readiness") or {}).get("zone")`, `'int' object is not
+    iterable` from `zone_of`'s walk over `anchors`. The rule is now *the tool's first required
+    argument is the ledger*, and the extra arguments are declared in `MINIMAL_CALL` like every other
+    payload. `docs/open-gaps.md` §26's fourth shape, one round later and one roster over: **say the
+    predicate in words, then name what does the dangerous thing and does not satisfy it.**
     """
 
     #: Dying on a shape looks like exactly this. A deliberate refusal never does.
     SHAPE_DEATHS = (KeyError, AttributeError, IndexError, TypeError)
+
+    #: Substituted into `MINIMAL_CALL` at call time, because neither can be a literal in a table: a
+    #: pin id has to name a pin in the fixture actually under test, and a graph has to be a file.
+    PIN = "<a pin this ledger carries>"
+    GRAPH = "<a graph built at HEAD>"
+    HEAD = "feed1234beefcafe"
 
     #: The minimal LEGITIMATE call per tool: the arguments without which it refuses before reading
     #: anything. Held to the derived roster by set equality, so a read-only ledger tool added to the
@@ -736,7 +754,34 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         "build_waves": {},
         "challenge_oracle": {},
         "instructions_diff": {},
+        "scope_check": {"pin_id": PIN, "changed": ["a.py"]},
+        # `head` is declared even though it has a default: without it the tool shells out to git for
+        # HEAD, so what it exercises would depend on the cwd the suite happens to run in.
+        "readiness_assess": {"pin_id": PIN, "graph_path": GRAPH, "head": HEAD},
     }
+
+    def _call(self, name, path, tmp):
+        """The declared payload with the two sentinels resolved against THIS fixture."""
+        import ledger as mod
+        out = {}
+        for key, value in self.MINIMAL_CALL[name].items():
+            if value == self.PIN:
+                # The LAST pin, and that is load-bearing: every corpus loop below APPENDS its
+                # malformed record, so naming the first pin would hand these two tools a healthy
+                # one and the gate would pass with the fix reverted — verified by planting exactly
+                # that. Where the fault is the id itself the lookup refuses, which is a refusal
+                # about the call and not an exercise; the other ~95 shapes reach the body.
+                with open(path, encoding="utf-8") as fh:
+                    pins = mod.read_collection(json.load(fh), "pins")
+                value = mod.pin_read(pins[-1])["id"] if pins else "pin_0001"
+            elif value == self.GRAPH:
+                value = os.path.join(tmp, "graph.json")
+                if not os.path.exists(value):
+                    with open(value, "w", encoding="utf-8") as fh:
+                        json.dump({"graph": {"built_at_commit": self.HEAD},
+                                   "nodes": [], "links": []}, fh)
+            out[key] = value
+        return out
 
     #: **DERIVED, not listed (v0.25).** This was seven hand-written pin shapes with a comment
     #: saying it was identical to `tests/test_ledger.py`'s list "because the principle is one" —
@@ -752,8 +797,14 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
 
     @staticmethod
     def _read_only_ledger_tools():
-        """`(server tool name, tools.py callable)` for every read-only tool whose only required
-        argument is the ledger path — read off the `@mcp.tool` decoration, never listed here."""
+        """`(server tool name, tools.py callable)` for every read-only tool whose FIRST required
+        argument is the ledger path — read off the `@mcp.tool` decoration, never listed here.
+
+        *First*, not *only* (v0.28). `required == ["ledger"]` reads like the same predicate and is
+        not: it silently excludes every read-only tool that also takes a `pin_id`, which is a whole
+        class and was two tools. What makes a tool belong here is that it READS A LEDGER; what it
+        needs besides the path is a payload, and payloads are declared in `MINIMAL_CALL`.
+        """
         import ast
         path = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py")
         with open(path, encoding="utf-8") as fh:
@@ -768,7 +819,7 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
                 continue
             names = [a.arg for a in node.args.args]
             required = names[:len(names) - len(node.args.defaults)]
-            if required != ["ledger"]:
+            if required[:1] != ["ledger"]:
                 continue
             # The body is one `return tools.<fn>(...)`; the tool layer is what this exercises.
             called = next((c.func.attr for c in ast.walk(node)
@@ -781,9 +832,14 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
 
     def test_the_roster_is_derived_and_every_member_has_a_call(self):
         roster = self._read_only_ledger_tools()
-        self.assertIn("policy_preview", [name for name, _ in roster],
+        names = [name for name, _ in roster]
+        self.assertIn("policy_preview", names,
                       "the tool the finding was reproduced on must be in the derived roster, or "
                       "the derivation is checking something else")
+        for late in ("scope_check", "readiness_assess"):
+            self.assertIn(late, names,
+                          f"{late} is a read-only tool that reads a ledger and takes a `pin_id`; "
+                          f"a membership rule that excludes it is the hole v0.28 closed")
         self.assertGreaterEqual(len(roster), 5, "the derivation went vacuous")
         self.assertEqual({name for name, _ in roster}, set(self.MINIMAL_CALL),
                          "a read-only ledger tool with no declared call would be listed and never "
@@ -794,10 +850,11 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         """The half that makes the other half an exercise: on a WELL-FORMED ledger every declared
         call must simply answer. A call that refuses here is refusing on its arguments, so its run
         against a broken ledger proves nothing about the body."""
-        path = _ledger_with_pins(tempfile.mkdtemp())
+        tmp = tempfile.mkdtemp()
+        path = _ledger_with_pins(tmp)
         for name, fn in self._read_only_ledger_tools():
             with self.subTest(tool=name):
-                fn(path, **self.MINIMAL_CALL[name])
+                fn(path, **self._call(name, path, tmp))
 
     def test_no_read_only_ledger_tool_dies_on_a_pin_shape(self):
         tmp = tempfile.mkdtemp()
@@ -816,7 +873,7 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
             for name, fn in roster:
                 with self.subTest(tool=name, pin=label):
                     try:
-                        fn(path, **self.MINIMAL_CALL[name])
+                        fn(path, **self._call(name, path, tmp))
                     except self.SHAPE_DEATHS as exc:
                         self.fail(f"{name} died on the file rather than answering about it: "
                                   f"{type(exc).__name__}: {exc}")
@@ -842,7 +899,7 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
             for name, fn in roster:
                 with self.subTest(tool=name, policy=label):
                     try:
-                        fn(path, **self.MINIMAL_CALL[name])
+                        fn(path, **self._call(name, path, tmp))
                     except self.SHAPE_DEATHS as exc:
                         self.fail(f"{name} died on the file rather than answering about it: "
                                   f"{type(exc).__name__}: {exc}")
@@ -869,7 +926,7 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
             for name, fn in roster:
                 with self.subTest(tool=name, event=label):
                     try:
-                        fn(path, **self.MINIMAL_CALL[name])
+                        fn(path, **self._call(name, path, tmp))
                     except self.SHAPE_DEATHS as exc:
                         self.fail(f"{name} died on the file rather than answering about it: "
                                   f"{type(exc).__name__}: {exc}")
@@ -897,7 +954,7 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
             for name, fn in roster:
                 with self.subTest(tool=name, file=label):
                     try:
-                        fn(path, **self.MINIMAL_CALL[name])
+                        fn(path, **self._call(name, path, tmp))
                     except self.SHAPE_DEATHS as exc:
                         self.fail(f"{name} died on the file rather than answering about it: "
                                   f"{type(exc).__name__}: {exc}")
@@ -1302,6 +1359,242 @@ class TestNoWriteDoorDiesOnThePinAlreadyInTheFile(unittest.TestCase):
                 except Exception:
                     pass                      # a refusal naming what cannot be read is the answer
         self.assertEqual(crashes, [], "\n".join(crashes[:20]))
+
+
+def _every_write_door():
+    """Every write door an agent can reach, per-pin and ledger-wide, with its declared payload.
+
+    The union of the two derived rosters — `TestALedgerWideWriteDoorIsOnARosterToo
+    ::test_the_two_rosters_together_are_every_write_door_in_this_module` is what asserts that union
+    is the whole module, so a door added tomorrow arrives here without anyone remembering.
+    """
+    per_pin = TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach
+    wide = TestALedgerWideWriteDoorIsOnARosterToo
+    out = [(name, True, per_pin.CALL[name]) for name in sorted(per_pin._write_doors())]
+    out += [(name, False, kwargs) for name, (_disposition, kwargs) in sorted(wide.WIDE.items())]
+    return out
+
+
+def _fixture(tmp):
+    """`(ledger data, candidate pin ids)` — one ledger every declared call above can run against.
+
+    The catalog is seeded (`record_policy` resolves its `offer_id` out of it), and the first pin has
+    walked remediation → resolve → reopen, which is what `test_every_declared_call_runs_on_work
+    _that_is_not_finished` established as the state where each declared call answers rather than
+    refusing on a rule of its own. The second poses NO fork, because `ledger_set_question` is
+    write-if-absent and the first one carries the fork every election door needs.
+    """
+    ledger = os.path.join(tmp, "ledger.json")
+    tools.interview_expand(ledger)
+    pin = tools.ledger_add_pin(
+        ledger, kind="defect", title="double charge on retry", severity="high",
+        confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+        as_is={"description": "d"},
+        question={"prompt": "which fix?", "options": [{"id": "opt_a", "label": "idempotency key"}],
+                  "allow_freeform": True})["pin_id"]
+    item = tools.ledger_add_remediation(ledger, pin, action="align", ladder_rung=2)["item_id"]
+    tools.ledger_set_remediation_status(ledger, pin, item, "done")
+    tools.ledger_resolve(ledger, pin, evidence="replayed on staging", rung="observed")
+    tools.ledger_reopen(ledger, pin, reason="it came back", fired="incident")
+    bare = tools.ledger_add_pin(
+        ledger, kind="defect", title="a finding whose fork nobody has written yet", severity="low",
+        confidence="extracted", provenance=[{"source": "recon", "detail": "x"}])["pin_id"]
+    with open(ledger, encoding="utf-8") as fh:
+        return json.load(fh), (pin, bare)
+
+
+def _planted(tmp, data, index=0):
+    """`data` written to its own ledger file, so each case starts from the same bytes."""
+    path = os.path.join(tempfile.mkdtemp(dir=tmp), f"l{index}.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    return path
+
+
+def _targets(base, tmp, candidates):
+    """`door -> pin id` — the fixture pin each declared payload can actually be applied to.
+
+    Derived by ASKING (each candidate is tried on a scratch copy and the first that answers wins),
+    not declared: naming the door that needs the questionless pin is how a table acquires an
+    exemption nobody re-checks. A door that answers on neither is a fail, loudly — a gate whose
+    subject is what happens *inside* a door proves nothing about one that refused on its arguments.
+    """
+    out, unrunnable = {}, []
+    for index, (door, per_pin, kwargs) in enumerate(_every_write_door()):
+        if not per_pin:
+            out[door] = None
+            continue
+        for pin_id in candidates:
+            try:
+                getattr(tools, door)(_planted(tmp, base, 900 + index), pin_id, **kwargs)
+            except Exception:                             # noqa: BLE001
+                continue
+            out[door] = pin_id
+            break
+        else:
+            unrunnable.append(door)
+    if unrunnable:
+        raise AssertionError(f"no fixture pin lets {unrunnable} run, so every case below would be "
+                             f"a refusal about the call rather than an exercise of the door")
+    return out
+
+
+class TestNoWriteDoorDiesOnAPinItIsNotWritingTo(unittest.TestCase):
+    """v0.28 — `writable_pin` guards the pin being written and no other.
+
+    Reproduced with a WELL-FORMED target both times, over real
+    `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd: a `ledger_reopen` and
+    a `ledger_set_readiness` on a healthy pin both died with `KeyError: 'id'` because a DIFFERENT pin
+    in the file carried none, and `ledger_add_pin` / `ledger_surface_assumption` /
+    `interview_expand` / `ledger_cross_derive` died the same way on a bare string among the pins. The
+    blast radius of one malformed record was the whole file.
+
+    Both axes are derived and neither names a function: the doors are the union of the two rosters,
+    the bystanders are `shape_corpus.broken_pins()` — every violation `PIN_SHAPES` can describe. The
+    sibling class one up runs the same corpus with the broken pin as the TARGET, where the answer is
+    a refusal; here the answer is that nothing happens to the call at all.
+    """
+
+    CRASH = (AttributeError, TypeError, KeyError, IndexError)
+
+    def test_no_door_crashes_because_a_different_pin_is_unreadable(self):
+        from shape_corpus import broken_pins
+        tmp = tempfile.mkdtemp()
+        base, candidates = _fixture(tempfile.mkdtemp())
+        doors = _every_write_door()
+        targets = _targets(base, tmp, candidates)
+        cases = broken_pins()
+        self.assertGreaterEqual(len(doors), 17, "the roster union went vacuous")
+        self.assertGreaterEqual(len(cases), 100, "the corpus derivation went vacuous")
+        crashes = []
+        for index, (label, broken) in enumerate(cases):
+            broken = json.loads(json.dumps(broken))
+            if isinstance(broken.get("id"), str):
+                broken["id"] = f"pin_{index + 900:04d}"    # unless the fault IS the id
+            data = json.loads(json.dumps(base))
+            data["pins"].append(broken)
+            data["pins"].append("a bare string where a pin goes")
+            for door, per_pin, kwargs in doors:
+                path = _planted(tmp, data, index)
+                args = (path, targets[door]) if per_pin else (path,)
+                try:
+                    getattr(tools, door)(*args, **kwargs)
+                except self.CRASH as exc:
+                    crashes.append(f"{door} on a bystander [{label}]: "
+                                   f"{type(exc).__name__}: {exc}")
+                except Exception:
+                    pass          # a refusal about the CALL is a legitimate answer
+        self.assertEqual(crashes, [], "\n".join(crashes[:20]))
+
+
+class TestADoorThatReportsFailureCommittedNothing(unittest.TestCase):
+    """v0.28 — three doors ran their reporting AFTER the commit, so a write landed and the caller
+    was told it had not.
+
+    Reproduced over real `uv run --script plugins/keel-core/mcp/server.py` stdio from a foreign cwd:
+    two `resolved` pins, one `ledger_reopen`, and one hand-written log entry naming a `via` and no
+    `pin_id`. `Ledger.cascaded_by` indexed `e["pin_id"]` raw, and it runs after `_saved` — so the
+    root pin came back `needs_input` in the file and the tool answered `isError: KeyError: 'pin_id'`.
+    An agent that reads that error retries, and the retry is a second reopen of a pin the first call
+    already reopened.
+
+    **Report-after-commit is its own bug class**, independent of the read that happened to raise:
+    whatever a door returns must describe what happened. So the rule is positional and it is checked
+    positionally — the commit is the LAST thing a door does — and the behavioural half derives its
+    trap from what each door itself writes rather than from the one file a reviewer built.
+    """
+
+    @staticmethod
+    def _committing_functions():
+        """`name -> (body, index of the statement that commits)` for every door in the module."""
+        tree, ast = _ast_tools()
+        out = {}
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            at = [i for i, stmt in enumerate(fn.body)
+                  if any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                         and c.func.id == "_saved" for c in ast.walk(stmt))]
+            if at:
+                out[fn.name] = (fn.body, at)
+        return out, ast
+
+    def test_the_commit_is_the_last_thing_every_door_does(self):
+        """The structural half, quantified over every function that commits — so the nineteenth
+        door inherits the rule instead of being written without it.
+
+        A door may end with the commit, or with `return <name>` after it: the answer is computed
+        first and then handed back untouched. Anything else — a lookup, a join, a dict literal that
+        indexes a pin — is an expression that can raise on somebody's file with the write already on
+        disk, which is the whole finding.
+        """
+        doors, ast = self._committing_functions()
+        self.assertGreaterEqual(len(doors), 17, "the derivation went vacuous")
+        for name, (body, at) in sorted(doors.items()):
+            with self.subTest(door=name):
+                self.assertEqual(len(at), 1, f"{name} commits more than once")
+                index = at[0]
+                if index == len(body) - 1:
+                    continue
+                self.assertEqual(index, len(body) - 2,
+                                 f"{name} does {len(body) - 1 - index} more things after "
+                                 f"committing; whatever it returns must describe what happened")
+                tail = body[-1]
+                self.assertTrue(isinstance(tail, ast.Return) and isinstance(tail.value, ast.Name),
+                                f"{name} builds its answer after the commit — build it first, then "
+                                f"commit, then `return` the name")
+
+    def test_a_door_that_raises_left_the_file_byte_identical(self):
+        """The behavioural half, and the trap is DERIVED from each door rather than declared: run
+        the door once, read back the log ids it appended, then re-run it on a fresh copy of the same
+        fixture carrying a hand-written `cas_` entry that names one of those ids as its `via` and
+        nothing else. That is the reproduction — generalised to every door, including doors that
+        read no radius at all, where the entry is simply inert.
+        """
+        tmp = tempfile.mkdtemp()
+        base, candidates = _fixture(tempfile.mkdtemp())
+        doors = _every_write_door()
+        targets = _targets(base, tmp, candidates)
+        self.assertGreaterEqual(len(doors), 17, "the roster union went vacuous")
+        trapped, failures = set(), []
+        before = {str(e.get("id")) for e in base["decision_log"]}
+        for index, (door, per_pin, kwargs) in enumerate(doors):
+            clean = _planted(tmp, base, index)
+            args = (clean, targets[door]) if per_pin else (clean,)
+            getattr(tools, door)(*args, **kwargs)
+            with open(clean, encoding="utf-8") as fh:
+                appended = [str(e.get("id")) for e in json.load(fh)["decision_log"]
+                            if str(e.get("id")) not in before]
+            for via in appended or [""]:
+                planted = json.loads(json.dumps(base))
+                planted["decision_log"].append({"id": "cas_9001", "via": via})
+                path = _planted(tmp, planted, 100 + index)
+                with open(path, encoding="utf-8") as fh:
+                    was = fh.read()
+                if via:
+                    trapped.add(door)
+                try:
+                    getattr(tools, door)(*((path, targets[door]) if per_pin else (path,)), **kwargs)
+                except Exception as exc:                  # noqa: BLE001
+                    with open(path, encoding="utf-8") as fh:
+                        now = fh.read()
+                    if was != now:
+                        failures.append(f"{door} reported {type(exc).__name__}: {exc} — and the "
+                                        f"write is on disk. A caller that retries writes twice.")
+        self.assertEqual(failures, [], "\n".join(failures[:10]))
+        # The non-vacuity floor, derived rather than counted: a door that reads a cascade radius is
+        # a door the planted `via` actually reaches, and those are exactly the three the finding was
+        # reproduced on. If one of them stops appending an event, this loop stops being a trap for
+        # it and says so instead of passing quietly.
+        tree, ast = _ast_tools()
+        radius_readers = {fn.name for fn in ast.walk(tree)
+                          if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+                          and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                                  and c.func.attr == "cascaded_by" for c in ast.walk(fn))}
+        self.assertTrue(radius_readers, "nothing reads a radius, so the derivation went vacuous")
+        self.assertLessEqual(radius_readers, trapped,
+                             f"{sorted(radius_readers - trapped)} read a cascade radius and had no "
+                             f"`via` planted — the trap missed the doors it was derived for")
 
 
 class TestALedgerWideWriteDoorIsOnARosterToo(unittest.TestCase):

@@ -2522,20 +2522,31 @@ class TestARuleIsTrueOfTheThingItIsPrintedOn(unittest.TestCase):
     def test_every_prefix_a_writer_writes_is_a_prefix_a_reader_knows(self):
         """`LOG_ENTRY_PREFIXES` is a declaration, so it is held to the writers rather than trusted:
         a new event kind whose prefix is not here would be reported as corruption by the very check
-        that exists to report corruption, and its events would vanish from every count."""
+        that exists to report corruption, and its events would vanish from every count.
+
+        The log is named by the carrier now (`writable_collection("decision_log")`) rather than by a
+        subscript of `self.data`, because v0.28 made that the only way a writer reaches a collection
+        — `TestAWriteOntoACollectionThisRuntimeCannotReadIsRefused` holds that shut, which is what
+        keeps this derivation from going quietly vacuous.
+        """
         import ast
         import ledger as ledger_mod
         path = os.path.join(os.path.dirname(__file__), "..", "src", "runtime", "ledger.py")
         with open(path, encoding="utf-8") as fh:
             tree = ast.parse(fh.read(), filename=path)
+
+        def names_the_log(node) -> bool:
+            return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "writable_collection" and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "decision_log")
+
         written = set()
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                     and node.func.attr == "_next_id" and len(node.args) > 1):
                 continue
-            target = node.args[1]
-            if not (isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant)
-                    and target.slice.value == "decision_log"):
+            if not names_the_log(node.args[1]):
                 continue
             prefix = node.args[0]
             self.assertIsInstance(prefix, ast.Constant, "a computed log id prefix has no reader")
@@ -3521,6 +3532,211 @@ class TestAWriteOntoAPinThisRuntimeCannotReadIsRefused(unittest.TestCase):
                     self.fail(f"the write lookup crashed on {label!r}: "
                               f"{type(exc).__name__}: {exc}")
                 self.fail(f"{label!r} passed the write lookup, so every door indexes it raw")
+
+
+class TestAWriteOntoACollectionThisRuntimeCannotReadIsRefused(unittest.TestCase):
+    """v0.28 — the rule was written down for two versions and nothing paid it.
+
+    `Ledger.readable`'s own docstring said, in these words: *"The WRITE path deliberately keeps
+    `self.data[…]`: a write onto a file this runtime cannot read is a different question from a read
+    of it, and the answer there is to refuse."* It did not refuse. Every write door reached the three
+    collections raw, so a `pins` that is an object, a `decision_log` that is absent or a `policies`
+    that is a number took the door down with `AttributeError: 'str' object has no attribute 'get'`
+    out of `_next_id`, or `'dict' object has no attribute 'append'` out of the append — reproduced
+    over real stdio against the shipped plugin on **ten agent-reachable doors across both derived
+    rosters**.
+
+    The carrier is `Ledger.writable_collection`, and it is `writable_pin`'s twin one level out: the
+    RECORD half refuses the pin being written and the CONTAINER half refuses the collection, while
+    every OTHER record is read through the read path (`writable_pins`). One malformed pin does not
+    make a file unwritable; a `pins` that is not a list does, because there is nothing there to
+    append to.
+    """
+
+    @staticmethod
+    def _collection_names(node) -> set:
+        """The `LEDGER_COLLECTIONS` names an expression takes off `self.data` — by subscript
+        (`self.data["pins"]`) or by `.get` (`self.data.get("pins")`), because a rule that only knew
+        the first spelling would be satisfied by rewriting it as the second."""
+        import ast
+
+        import ledger as mod
+
+        def is_self_data(n) -> bool:
+            return (isinstance(n, ast.Attribute) and n.attr == "data"
+                    and isinstance(n.value, ast.Name) and n.value.id == "self")
+
+        out = set()
+        for n in ast.walk(node):
+            if isinstance(n, ast.Subscript) and is_self_data(n.value) \
+                    and isinstance(n.slice, ast.Constant) and n.slice.value in mod.LEDGER_COLLECTIONS:
+                out.add(n.slice.value)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) \
+                    and n.func.attr == "get" and is_self_data(n.func.value) and n.args \
+                    and isinstance(n.args[0], ast.Constant) \
+                    and n.args[0].value in mod.LEDGER_COLLECTIONS:
+                out.add(n.args[0].value)
+        return out
+
+    def test_nothing_reaches_a_collection_except_the_carrier(self):
+        """Quantified over every function in the module, not over the ones somebody remembered.
+
+        Both halves matter and the second is what keeps this from going vacuous the day someone
+        deletes the carrier: the forbidden expression appears in exactly one function, AND the
+        carrier is actually called, with nothing but the declared collection names.
+        """
+        import ast
+        import inspect
+
+        import ledger as mod
+        tree = ast.parse(inspect.getsource(mod))
+        offenders = {}
+        callers, named = set(), set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            reached = self._collection_names(fn)
+            if reached and fn.name != "writable_collection":
+                offenders[fn.name] = sorted(reached)
+            for call in ast.walk(fn):
+                if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) \
+                        and call.func.attr == "writable_collection":
+                    callers.add(fn.name)
+                    if call.args and isinstance(call.args[0], ast.Constant):
+                        named.add(call.args[0].value)
+        self.assertEqual(offenders, {},
+                         "a write path that indexes `self.data[<collection>]` itself is a door "
+                         "`writable_collection` cannot refuse for — route it through the carrier")
+        self.assertGreaterEqual(len(callers), 8,
+                                "the carrier has almost no callers, so the rule above is being "
+                                "satisfied by there being nothing left to check")
+        self.assertEqual(named, set(mod.LEDGER_COLLECTIONS),
+                         "every collection this file writes must be reached by name through the "
+                         "carrier; one that is not is one the refusal never sees")
+
+    def test_every_broken_container_is_refused_and_named(self):
+        """The behavioural half, over the DERIVED container corpus (`shape_corpus.broken_ledgers`),
+        at every `Ledger` method that takes a `pin_id` plus the three ledger-wide writers. A refusal
+        naming the collection is the answer; an `AttributeError` about `.append` is the finding."""
+        import ledger as mod
+        from shape_corpus import GOOD_PIN, broken_ledgers
+        base = {"version": SCHEMA_VERSION, "pins": [json.loads(json.dumps(GOOD_PIN))],
+                "decision_log": [], "policies": []}
+        cases = [(label, data) for label, data in broken_ledgers(base)
+                 if isinstance(data, dict)]
+        self.assertGreaterEqual(len(cases), 12, "the derived corpus went vacuous")
+        calls = {
+            "add_pin": lambda led: led.add_pin(kind="defect", title="t", severity="low",
+                                               confidence="extracted",
+                                               provenance=[{"source": "recon", "detail": "x"}]),
+            "add_policy": lambda led: led.add_policy(applies_to={"kind": "defect"}, rule="r",
+                                                     default_outcome="db",
+                                                     human_answer="the DB wins"),
+            "label_failure": lambda led: led.label_failure(GOOD_PIN["id"], "untested_path", "d",
+                                                           "production"),
+            "reopen": lambda led: led.reopen(GOOD_PIN["id"], reason="it came back",
+                                             fired="incident"),
+        }
+        crashes = []
+        for label, data in cases:
+            for name, call in calls.items():
+                path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump(data, fh)
+                try:
+                    call(Ledger(path))
+                except LedgerError:
+                    pass                       # the refusal, which is the answer
+                except (KeyError, AttributeError, TypeError, IndexError) as exc:
+                    crashes.append(f"{name} on [{label}]: {type(exc).__name__}: {exc}")
+                except Exception:
+                    pass                       # a refusal about the call is legitimate too
+        self.assertEqual(crashes, [], "\n".join(crashes[:20]))
+        # And the sentence an agent gets says which collection and where it is already reported.
+        path = os.path.join(tempfile.mkdtemp(), "ledger.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(dict(base, pins={"pin_0009": "nope"}), fh)
+        with self.assertRaises(LedgerError) as ctx:
+            Ledger(path).add_pin(kind="defect", title="t", severity="low", confidence="extracted",
+                                 provenance=[{"source": "recon", "detail": "x"}])
+        self.assertIn("`pins`", str(ctx.exception))
+        self.assertIn("pre_rule_events", str(ctx.exception),
+                      "a refusal an agent cannot act on is a wall")
+        self.assertIn("collection_shape", mod.nonconforming(dict(base, pins={"x": 1})),
+                      "the refusal points at a report; the report has to hold the same fault")
+
+
+class TestAWriteReadsEveryOtherPinThroughTheReadPath(unittest.TestCase):
+    """v0.28 — `writable_pin` guarded the pin being written and no other one in the file.
+
+    Reproduced with a WELL-FORMED target both times: `set_readiness` built
+    `{p["id"]: p for p in self.data["pins"]}` and `_reopen_minimal` walked `p["id"]` / `p["state"]`
+    over the same raw list, so a write onto a healthy pin died with `KeyError: 'id'` because a
+    DIFFERENT pin somewhere in the file carried none. The blast radius of one malformed record was
+    the whole file, which inverts what the read path spent two rounds establishing.
+
+    The split, and it is the same one `writable_pin`'s docstring draws: the target is REFUSED
+    (inventing half a record would persist — the door writes it back), every other record is READ
+    (`Ledger.writable_pins`, `pin_read`'s substitutions), because all the door needs of them is
+    whether they are settled, what they depend on and what they are called.
+
+    The roster half — every write door an agent can reach, against the whole derived corpus as a
+    BYSTANDER — is `tests/test_mcp_tools.py::TestNoWriteDoorDiesOnThePinAlreadyInTheFile`. This is
+    the library half.
+    """
+
+    def test_the_carrier_reads_what_it_cannot_refuse(self):
+        import ledger as mod
+        led = make_ledger()
+        good = add_simple_pin(led)
+        led.writable_collection("pins").extend(
+            [{"kind": "defect"}, "a bare string where a pin goes", {"id": 7}])
+        pairs = led.writable_pins()
+        self.assertEqual(len(pairs), 3, "a non-object entry is not a pin; the two objects are")
+        self.assertEqual([r["id"] for _, r in pairs], [good["id"], "", ""],
+                         "an unreadable id reads as the emptiest true value, so nothing names it")
+        self.assertTrue(all(isinstance(r["depends_on"], list) for _, r in pairs))
+        self.assertIs(pairs[0][0], good,
+                      "the RECORD is the file's own object — the cascade writes onto it while "
+                      "deciding off the read, and a copy would mutate nothing")
+
+    def test_one_unreadable_pin_does_not_make_the_file_unwritable(self):
+        """The reproduction, on both sites, with a well-formed target."""
+        import ledger as mod
+        for shape in ({"kind": "defect"}, {"id": "pin_0404", "state": 7},
+                      {"id": "pin_0405", "depends_on": "pin_0001"},
+                      "a bare string where a pin goes"):
+            with self.subTest(bystander=shape):
+                led = make_ledger()
+                target = add_simple_pin(led)
+                led.decide(target["id"], outcome="opt_a", rationale="r", flip_criteria="f",
+                           human_answer="opt A")
+                led.writable_collection("pins").append(json.loads(json.dumps(shape)))
+                # the cascade walk
+                led.reopen(target["id"], reason="it came back", fired="incident")
+                self.assertEqual(mod.pin_read(target)["state"], "needs_input")
+                # the prerequisite index
+                other = add_simple_pin(led, title="the hardening")
+                other["anchors"] = [{"loc": "a.py:1"}]
+                led.set_readiness(target["id"], "harden_first", {"files": ["a.py"]},
+                                  {"graph": "n/a"}, hardens=[other["id"]])
+                self.assertIn(other["id"], target["depends_on"])
+
+    def test_a_malformed_bystander_is_swept_up_by_nothing(self):
+        """What the read's substitutions BUY, stated as behaviour rather than as an absence of
+        crashes: a pin whose state cannot be read is in no settled state, so no cascade takes it
+        back into the open set and no `cas_` record claims it did."""
+        led = make_ledger()
+        root = add_simple_pin(led)
+        led.decide(root["id"], outcome="opt_a", rationale="r", flip_criteria="f",
+                   human_answer="opt A")
+        stranger = {"id": "pin_0404", "state": "resolved", "depends_on": root["id"]}
+        led.writable_collection("pins").append(stranger)
+        event = led.reopen(root["id"], reason="it came back", fired="incident")
+        self.assertEqual(led.cascaded_by(event["id"]), [],
+                         "`depends_on` is a bare string there, and a DAG built out of its letters "
+                         "is exactly what the guarded read exists to refuse")
+        self.assertEqual(stranger["state"], "resolved", "nothing was written onto it")
 
 
 class TestFinishedWorkIsRefusedAtEveryDoorThatWritesToAPin(unittest.TestCase):

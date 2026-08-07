@@ -153,7 +153,13 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                     # it assigns nothing. Naming it a mutator because every mutator calls it would
                     # make the classification a claim about who its callers are rather than about
                     # what it does — and its callers are already the governed doors.
-                    "writable_pin"}
+                    "writable_pin",
+                    # v0.28: the same pair one level out. `writable_collection` returns the list the
+                    # file already holds or refuses; `writable_pins` returns `(record, read)` pairs
+                    # built from it. Both look up and refuse, and neither assigns — what a caller
+                    # does with the records they hand back is the caller's transition, and every one
+                    # of those callers is already a governed door.
+                    "writable_collection", "writable_pins"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:
