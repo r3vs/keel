@@ -846,7 +846,7 @@ def build(check: bool):
                 p.rmdir()
 
 
-def _debris(path: pathlib.Path) -> bool:
+def _debris(path: Path) -> bool:
     """Interpreter debris under `plugins/` — neither source nor output.
 
     Running the built MCP server writes `__pycache__` into the plugin, and treating that as drift
