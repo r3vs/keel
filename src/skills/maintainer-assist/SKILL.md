@@ -86,16 +86,27 @@ into the ledger makes a second source of truth, and the copy is the stale one.
    PR. A triage verdict formed from the title is a guess wearing a label.
 2. **Find the code, not the keyword.** Use `graph_query` / `explain_node` to locate what the report
    is actually about. A reporter's vocabulary rarely matches the codebase's.
-3. **Check whether it is already known.** `gh search issues` for duplicates, then the ledger: a bug
-   this package already pinned does not need a second home.
-4. **Classify with the shared vocabulary** where it fits (`references/core/decisions-ledger-spec.md`
+3. **Check whether it is already known — three ways, and say where you looked.** `gh search issues`
+   for duplicate reports; the ledger for a pin that already covers it; and the code itself for the
+   behavior **searched by domain concept rather than by the reporter's wording**, because a request
+   for "export to CSV" is already implemented if the codebase calls it a report download. A negative
+   result is only worth anything if you state where you searched — "I found no existing
+   implementation" without that is an assertion, not a check.
+4. **Check whether it was already refused.** A request rejected once and re-litigated every quarter
+   is a tax on the maintainer, so the refusal has a home: a `deferred` pin, with the original issue
+   as its provenance and the reason in the pin. Search those before triaging, and when the answer is
+   *no* again, point at the pin instead of re-arguing it. `deferred` rather than a separate file on
+   purpose — a rejection is a decision, and this package already has exactly one place decisions
+   live. (An **already implemented** outcome is not a rejection and gets no such pin: point at where
+   it lives.)
+5. **Classify with the shared vocabulary** where it fits (`references/core/decisions-ledger-spec.md`
    — the failure classes), so an issue report and an internal failure label can be compared instead
    of being two taxonomies.
-5. **Turn a confirmed report into a pin**, not a promise. `ledger_add_pin` with
+6. **Turn a confirmed report into a pin**, not a promise. `ledger_add_pin` with
    `provenance: {source: "issue", detail: "owner/repo#123"}` and `confidence: inferred` — a bug
    report is a claim until reproduced. Reproduce it, and the confidence becomes `extracted`.
-6. **Draft the response; the human sends it.** Write the body to a file, show it, then run the
+7. **Draft the response; the human sends it.** Write the body to a file, show it, then run the
    `gh` command. Every comment, review and label change is an outward action on someone else's work.
-7. **Report merge-readiness, never merge.** `gh pr checks` and `gh pr view --json statusCheckRollup`
+8. **Report merge-readiness, never merge.** `gh pr checks` and `gh pr view --json statusCheckRollup`
    give the state; state what passes, what does not, and **what you could not check** — an unchecked
    CI run is not a passing one.

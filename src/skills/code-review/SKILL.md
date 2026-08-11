@@ -49,6 +49,54 @@ Work in this order and stop at the first that applies:
    a trade-off, not a defect.
 4. **Noise.** Style a formatter should own, preference, restatement. Do not raise it.
 
+### Two axes, and one must not mask the other
+
+The precedence above orders findings *within* a review. It does not merge two different questions,
+and they are different:
+
+- **Spec** — does the change do what the pin says? Finding 1 is this axis at its most severe.
+- **Standards** — does it follow how this codebase is written?
+
+A change can pass either and fail the other, which is why the report keeps them apart and **does not
+rank across them**. Code that follows every convention while implementing the wrong thing passes
+Standards and fails Spec; code that does exactly what the pin asked in a style the repo rejects does
+the reverse. Picking one winner across the two is how the weaker verdict hides the stronger one.
+Where the two are read by separate readers, give each only its own question — a reader told the other
+axis's conclusion evaluates that sentence instead of the code.
+
+### The Standards floor, for the repo that documents nothing
+
+A documented repo standard always wins, and anything a formatter or linter already enforces is not a
+review finding. When the repo documents nothing — the common case in a codebase this package is
+called to rescue — the axis is not empty. Match the diff against this baseline, and read each entry
+as *what it is → what to do about it*:
+
+- **Mysterious name** — a name that does not say what the thing does or holds → rename it; if no
+  honest name comes, the design is what is murky.
+- **Duplicated code** — the same logic shape in more than one hunk → extract it, call it from both.
+- **Feature envy** — a function reaching into another object's data more than its own → move it onto
+  the data it envies.
+- **Data clumps** — the same few fields travelling together everywhere → a type wanting to be born.
+- **Primitive obsession** — a string or int standing in for a domain concept → give the concept its
+  own small type.
+- **Repeated switches** — the same cascade on the same type recurring → one map both sites share, or
+  polymorphism.
+- **Shotgun surgery** — one logical change forcing scattered edits → gather what changes together.
+- **Divergent change** — one module edited for several unrelated reasons → split it so each changes
+  for one reason.
+- **Speculative generality** — abstraction, parameters or hooks for needs the pin does not have →
+  delete it; inline back until a real need shows.
+- **Message chains** — long `a.b().c().d()` navigation the caller should not depend on → hide the
+  walk behind one method.
+- **Middle man** — a thing that mostly delegates onward → cut it, call the real target.
+- **Refused bequest** — an implementer ignoring most of what it inherits → composition instead.
+
+**Every one is a labelled judgement, never a violation.** Say "possible feature envy" and name the
+hunk; a smell is a place to look, and calling it a defect is how a review turns into noise. Several
+of them are depth findings wearing a local name — when the honest fix is where the seam goes rather
+than how this function is written, raise it in the vocabulary that says so
+(`references/core/module-design.md`) and let it become a `design_concern` pin.
+
 **Bound the loop.** Three cycles maximum. If the same class of finding recurs past that, the
 disagreement is about the contract, not the code — escalate it to a pin and let the interview settle
 it. And watch for review theater: more than two rounds producing nothing actionable means you are

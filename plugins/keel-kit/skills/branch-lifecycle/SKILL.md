@@ -37,6 +37,28 @@ Independent scopes go in parallel worktrees. Conflicting scopes serialize, whate
 - Rebase on the base branch often. Never auto-resolve a conflict in code you did not write — a
   conflict is a finding about overlapping scope, and resolving it silently destroys that signal.
 
+## The wide refactor — the scope no vertical slice can hold
+
+One mechanical change whose **blast radius** fans across the whole codebase — rename a column,
+retype a shared symbol, move a package — cannot be a normal scope. Every slice of it breaks
+thousands of call sites at once, so no slice lands green, and forcing it into one produces a branch
+that is red for days and conflicts with everything.
+
+Sequence it **expand → migrate → contract** instead, and let the DAG carry the ordering:
+
+1. **Expand.** Add the new form *beside* the old one. Nothing breaks, because nothing has moved.
+2. **Migrate**, in batches sized by blast radius — per package, per directory. Each batch is its own
+   scope, each `depends_on` the expand, and CI stays green batch to batch because the old form is
+   still there. Batches that touch disjoint trees run in parallel worktrees; batches that share a
+   file are `conflicts_with` and serialize, exactly as any other scope.
+3. **Contract.** Delete the old form once no caller remains, in a scope that `depends_on` every
+   migrate batch.
+
+Where even a batch cannot stay green alone, keep the sequence but give the batches a shared
+integration branch that they all block, and promise green **only there** — declared up front, so a
+red batch is the plan rather than a surprise. *Make the change easy, then make the easy change*: the
+expand step is the "make it easy" half, and it is the half that gets skipped.
+
 ## Finish — and this is where discipline usually collapses
 
 1. `verification-before-completion` — the behavior was observed, not merely tested.
