@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
-SCHEMA_VERSION = "0.28"
+SCHEMA_VERSION = "0.29"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -132,7 +132,7 @@ SCHEMA_VERSION = "0.28"
 # now, and this line makes the failure unreachable rather than merely tested.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
                      "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22",
-                     "0.23", "0.24", "0.25", "0.26", "0.27", SCHEMA_VERSION)
+                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", SCHEMA_VERSION)
 
 KINDS = {
     "contract_mismatch",
@@ -204,6 +204,19 @@ POLICY_EVIDENCE = ("elicited", "transcribed", "brief")
 # What lives here is the membership question — WHICH rung owes a quote — because that is a fact
 # about the schema, and the tuple is what a fourth rung would have to join to acquire the rule.
 QUOTED_RUNGS = ("transcribed",)
+
+# The one value in the outcome position that is NOT an option id: at both election doors it selects
+# the "answer in your own words" path, where the human's words are the outcome rather than evidence
+# for it. It is a bare string in an agent-facing signature and so cannot become unrepresentable the
+# way `server.py::_ACCEPT_AS_IS_ROW` did (that one maps to `None`, which no option id can be) — and
+# nothing constrains an option id, because an agent authors them at `add_pin`. A question offering
+# an option called `freeform` therefore renders two branches that arrive at the door as one token:
+# the human picks the option, `record_decision` takes the freeform arm, and the ledger records the
+# free text as the outcome of a fork that never offered it — on the `elicited` rung, where the whole
+# claim is that nobody touched the value. So the collision is refused where the fork is COMPOSED
+# (`_validate_question`), not resolved by precedence where it is elected: two branches a caller
+# cannot tell apart is the same defect as two rows a human cannot tell apart, one layer down.
+FREEFORM_OUTCOME = "freeform"
 
 # Why a standing rule is one a reader must WEIGH before trusting what cascaded out of it. `""` when
 # it is not one of these. Three codes rather than a boolean, for the reason every count in this file
@@ -814,8 +827,9 @@ EVENT_RULES = (
      lambda e: "a cascaded decision must name the policy it derives from, and only a cascaded one "
                "may name one — otherwise the rung says a policy decided this and nothing says "
                "which, or a field points at a policy that decided nothing"),
-    # v0.24 — the rung that owed nothing. `elicited` is unreachable over MCP (the server computes it
-    # and the agent never holds the value), `transcribed` demands `human_answer` at every door,
+    # v0.24 — the rung that owed nothing. `elicited` is unreachable BY AN AGENT (the path that asked
+    # computes it — the server's elicitation branch, or the human-run door added in v0.29 — and the
+    # agent holds the value in neither), `transcribed` demands `human_answer` at every door,
     # `cascaded` demands `policy_id` on both sides of the biconditional above — and `brief` demanded
     # nothing at all, so `interview_expand(brief_decisions=…)` moved pins to `decided` on the
     # caller's word that a project brief said so. The rung means *answered from the brief without
@@ -1515,6 +1529,13 @@ def _validate_question(question: Optional[dict]) -> None:
     for opt in options:
         _require(bool(opt.get("id")) and bool(opt.get("label")),
                  "every question option needs id and label")
+        _require(opt.get("id") != FREEFORM_OUTCOME,
+                 f"an option may not be called {FREEFORM_OUTCOME!r}: that is the token both "
+                 f"election doors read as 'the human answered in their own words', so a menu "
+                 f"carrying it offers two branches that arrive as one — the door would record the "
+                 f"free text as the outcome of a fork that never offered it. Rename the option "
+                 f"(`write_in`, `other`, `something_else`); the way out itself is already offered "
+                 f"by allow_freeform, which every composed fork must set anyway.")
     _require(bool(question.get("allow_freeform")),
              "a fork an agent composed must set allow_freeform: the menu is what the human is "
              "allowed to choose from, and an agent that writes a closed one has decided the shape "
@@ -2042,8 +2063,12 @@ class Ledger:
         only says who is *entitled* to commit and every writer can claim it. The rungs differ in
         what could have gone wrong, so they are kept apart instead of averaged:
 
-          * `elicited` — the server asked the user through the host and wrote the reply itself. The
-            agent never carried the value, so it could not have invented it.
+          * `elicited` — the answer was captured by a door the agent did not mediate, so it could
+            not have invented it. Two carriers establish that, and v0.29 names both rather than the
+            one mechanism this line used to describe: the MCP server asking through the host
+            (`mcp/server.py`), and `mcp/decide.py`, which the deciding human runs and which refuses
+            a stdin that is not a terminal. The claim is the property; the mechanism is whichever
+            path ran, and only that path may state it.
           * `transcribed` — an agent relayed what the user said, recorded verbatim in
             `human_answer`. Weaker: honest relay and confabulation look identical here.
           * `brief` — pre-decided in the project brief at frame time; the brief is the evidence, and
@@ -2059,7 +2084,10 @@ class Ledger:
 
         It defaults to `transcribed`, the WEAKER rung, deliberately: a caller that says nothing has
         not earned the strong claim, and the safe direction to be wrong in is understating what is
-        known. Only the elicitation path may pass `elicited`, and it is the only caller that does.
+        known. Only a path that actually asked a human may pass `elicited`, and since v0.29 there
+        are two: the server's elicitation branch and the human-run door. Which callers those are is
+        not left to this sentence — `tests/test_human_door.py::TestOnlyAnAskingPathMayClaimItAsked`
+        derives the set by AST over every call site in the package and fails on a third.
 
         `cascaded` and a `policy:` source imply each other, checked both ways. Before v0.11 a cascade
         took the `transcribed` default, so `apply_policy` wrote "an agent relayed what the user

@@ -252,10 +252,13 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     "200 findings → one decision" is that tool, and it is the only shape of it that can say, on each
     pin, whose answer this was.
 
-    `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
-    user through the host and the agent never carries the value. See `mcp/server.py`.
+    `evidence="elicited"` is reserved for the two paths that actually ask a human and so may say so:
+    the adapter's elicitation branch (`mcp/server.py`, the server asks through the host) and
+    `mcp/decide.py` (the deciding human runs it, and it refuses a non-terminal stdin). The agent
+    carries the value on neither. v0.29 widened the rung from the first mechanism to the property
+    both establish; a caller that is neither has not earned it.
     """
-    from ledger import Ledger
+    from ledger import FREEFORM_OUTCOME, Ledger
     led = _open_existing(ledger)
     pin = led.writable_pin(pin_id)
     prompt = _prompt_from_pin(pin)
@@ -267,7 +270,20 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
                 f"{pin_id} is a {prompt['kind']}; leaving-as-is is the legitimate resolution of a "
                 f"design_concern only — an open_decision has nothing to keep."
             )
-    elif option_id == "freeform":
+    elif option_id == FREEFORM_OUTCOME:
+        if FREEFORM_OUTCOME in offered:
+            # `_validate_question` refuses this menu at every door that composes one, so a pin that
+            # carries it was hand-written or predates that gate. Refusing is the only honest answer
+            # left: the token means two things here, and picking either one is this door deciding
+            # which fork was answered. Same shape as the duplicate-row refusal in
+            # `server.py::_decision_choices` — a fork whose branches a caller cannot tell apart is
+            # not a fork, and resolving it by precedence would just hide which of the two ran.
+            raise ValueError(
+                f"{pin_id} offers an option whose id is {FREEFORM_OUTCOME!r}, which is also the "
+                f"token that selects a free-text answer — so this call names two different "
+                f"outcomes and the pin stays open. Rename that option with `ledger_set_question` "
+                f"(the fork is unanswerable as written), then elect it."
+            )
         if not prompt["allow_freeform"]:
             raise ValueError(f"{pin_id} does not allow a freeform answer; choose one of {sorted(offered)}")
         _require_quote(human_answer, evidence, freeform=True,
@@ -286,7 +302,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
                    evidence=evidence, human_answer=human_answer)
         outcome, state = "keep", "accepted"
     else:
-        outcome = human_answer if option_id == "freeform" else option_id
+        outcome = human_answer if option_id == FREEFORM_OUTCOME else option_id
         led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
                    evidence=evidence, human_answer=human_answer)
         state = "decided"
@@ -475,9 +491,12 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
         HELD BACK (`not_offered`) and stays open, exactly as a blocker/high pin is. That is the
         offered-options rule of `record_decision`, applied where it was missing.
 
-    `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
-    user through the host — showing the rule, the OUTCOME it writes, and the pins it would decide —
-    and the agent never carries the answer. See `mcp/server.py`.
+    `evidence="elicited"` is reserved for the two paths that actually ask a human — the adapter's
+    elicitation branch (`mcp/server.py`) and `mcp/decide.py`, run by the human — each of which shows
+    the rule, the OUTCOME it writes, and the pins it would decide, and neither of which lets the
+    agent carry the answer. The door takes a CATALOG `offer_id` only: there the rule, the scope and
+    the outcome come from shipped data, so nothing on screen was agent-authored. A rule an agent
+    composed is elected on the rung that says an agent relayed it.
     """
     prompt = policy_prompt(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
                            project_type)

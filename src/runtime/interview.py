@@ -140,8 +140,9 @@ def expand_catalog(ledger, catalog: dict, project_type: str = "web-saas",
       left as open questions.
 
     **The shape is a mapping and not a bare outcome, since v0.24, and that is the whole of the rung's
-    evidence.** `elicited` is unreachable over MCP (the server asks and the agent never holds the
-    value), `transcribed` is refused at every door without `human_answer`, `cascaded` names its
+    evidence.** `elicited` is unreachable by an agent (the path that asked writes it — the server's
+    elicitation branch, or the human-run `mcp/decide.py` since v0.29 — and the agent holds the value
+    in neither), `transcribed` is refused at every door without `human_answer`, `cascaded` names its
     `Policy` on both sides of a biconditional — and `brief` demanded nothing, so this door moved pins
     to `decided` on the caller's word that a document said so. Reproduced with three clusters over
     real stdio: one `ev_` event on disk carrying `evidence: "brief"`, `rationale: "pre-decided by the
