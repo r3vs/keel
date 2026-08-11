@@ -258,7 +258,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     carries the value on neither. v0.29 widened the rung from the first mechanism to the property
     both establish; a caller that is neither has not earned it.
     """
-    from ledger import Ledger
+    from ledger import FREEFORM_OUTCOME, Ledger
     led = _open_existing(ledger)
     pin = led.writable_pin(pin_id)
     prompt = _prompt_from_pin(pin)
@@ -270,7 +270,20 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
                 f"{pin_id} is a {prompt['kind']}; leaving-as-is is the legitimate resolution of a "
                 f"design_concern only — an open_decision has nothing to keep."
             )
-    elif option_id == "freeform":
+    elif option_id == FREEFORM_OUTCOME:
+        if FREEFORM_OUTCOME in offered:
+            # `_validate_question` refuses this menu at every door that composes one, so a pin that
+            # carries it was hand-written or predates that gate. Refusing is the only honest answer
+            # left: the token means two things here, and picking either one is this door deciding
+            # which fork was answered. Same shape as the duplicate-row refusal in
+            # `server.py::_decision_choices` — a fork whose branches a caller cannot tell apart is
+            # not a fork, and resolving it by precedence would just hide which of the two ran.
+            raise ValueError(
+                f"{pin_id} offers an option whose id is {FREEFORM_OUTCOME!r}, which is also the "
+                f"token that selects a free-text answer — so this call names two different "
+                f"outcomes and the pin stays open. Rename that option with `ledger_set_question` "
+                f"(the fork is unanswerable as written), then elect it."
+            )
         if not prompt["allow_freeform"]:
             raise ValueError(f"{pin_id} does not allow a freeform answer; choose one of {sorted(offered)}")
         _require_quote(human_answer, evidence, freeform=True,
@@ -289,7 +302,7 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
                    evidence=evidence, human_answer=human_answer)
         outcome, state = "keep", "accepted"
     else:
-        outcome = human_answer if option_id == "freeform" else option_id
+        outcome = human_answer if option_id == FREEFORM_OUTCOME else option_id
         led.decide(pin_id, outcome=outcome, rationale=rationale, flip_criteria=flip_criteria,
                    evidence=evidence, human_answer=human_answer)
         state = "decided"

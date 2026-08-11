@@ -70,6 +70,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import tools  # noqa: E402  — after the path bootstrap above
+from ledger import FREEFORM_OUTCOME  # noqa: E402  — `tools` put the runtime on the path
 
 #: Menu rows that are not an option id. Objects, not strings: an option id is authored by an agent
 #: through `ledger_add_pin`, so any sentinel STRING could be collided with on purpose — the reason
@@ -139,7 +140,7 @@ def decide_pin(ledger: str, pin_id: str) -> int:
     picked = _pick(rows)
     accept_as_is = picked is _AS_IS
     if picked is _FREEFORM:
-        option_id = "freeform"
+        option_id = FREEFORM_OUTCOME
         human_answer = _ask("\nYour answer, in your own words (here the words ARE the outcome):")
     else:
         option_id = "" if accept_as_is else picked

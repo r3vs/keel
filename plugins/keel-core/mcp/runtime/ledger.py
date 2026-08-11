@@ -205,6 +205,19 @@ POLICY_EVIDENCE = ("elicited", "transcribed", "brief")
 # about the schema, and the tuple is what a fourth rung would have to join to acquire the rule.
 QUOTED_RUNGS = ("transcribed",)
 
+# The one value in the outcome position that is NOT an option id: at both election doors it selects
+# the "answer in your own words" path, where the human's words are the outcome rather than evidence
+# for it. It is a bare string in an agent-facing signature and so cannot become unrepresentable the
+# way `server.py::_ACCEPT_AS_IS_ROW` did (that one maps to `None`, which no option id can be) — and
+# nothing constrains an option id, because an agent authors them at `add_pin`. A question offering
+# an option called `freeform` therefore renders two branches that arrive at the door as one token:
+# the human picks the option, `record_decision` takes the freeform arm, and the ledger records the
+# free text as the outcome of a fork that never offered it — on the `elicited` rung, where the whole
+# claim is that nobody touched the value. So the collision is refused where the fork is COMPOSED
+# (`_validate_question`), not resolved by precedence where it is elected: two branches a caller
+# cannot tell apart is the same defect as two rows a human cannot tell apart, one layer down.
+FREEFORM_OUTCOME = "freeform"
+
 # Why a standing rule is one a reader must WEIGH before trusting what cascaded out of it. `""` when
 # it is not one of these. Three codes rather than a boolean, for the reason every count in this file
 # is kept apart: they fail differently, and "1 weak" says which sentence to write nowhere.
@@ -1516,6 +1529,13 @@ def _validate_question(question: Optional[dict]) -> None:
     for opt in options:
         _require(bool(opt.get("id")) and bool(opt.get("label")),
                  "every question option needs id and label")
+        _require(opt.get("id") != FREEFORM_OUTCOME,
+                 f"an option may not be called {FREEFORM_OUTCOME!r}: that is the token both "
+                 f"election doors read as 'the human answered in their own words', so a menu "
+                 f"carrying it offers two branches that arrive as one — the door would record the "
+                 f"free text as the outcome of a fork that never offered it. Rename the option "
+                 f"(`write_in`, `other`, `something_else`); the way out itself is already offered "
+                 f"by allow_freeform, which every composed fork must set anyway.")
     _require(bool(question.get("allow_freeform")),
              "a fork an agent composed must set allow_freeform: the menu is what the human is "
              "allowed to choose from, and an agent that writes a closed one has decided the shape "

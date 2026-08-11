@@ -1398,6 +1398,12 @@ Three things keep the widening honest:
 
 `verify_commands.py` forbids a shipped file from naming a runnable path: after install it resolves against the *user's* project, and that is what killed the CLI floor. A door only a human can run needs the human to learn where it is — from prose, which is precisely what is forbidden. The resolution is that the **server** prints it: the host started `server.py` from a path it resolved, so the process is the one component entitled to state where its own sibling lives, and it does so inside the refusal the agent will relay. The agent passes on a string it did not compute and cannot execute. No playbook names the door.
 
+### An option may not be called `freeform`
+
+Found in the same pass, one field over, and the same defect: a **sentinel that a caller can collide with**. `record_decision` reads `option_id == "freeform"` as *the human answered in their own words*, and nothing constrained an option id — an agent authors them at `ledger_add_pin`. A question offering an option called `freeform` therefore has two branches that arrive at the door as one token: the human picks the option, the freeform arm wins, and the ledger records the free text as the outcome of a fork that **never offered it**, with `question_offers` never consulted. On the elicitation path that lands on the strongest rung there is.
+
+`server.py::_ACCEPT_AS_IS_ROW` had already reasoned this through for the leave-as-is row and answered it with `None`, which no option id can be. The freeform token is part of an agent-facing signature and cannot become unrepresentable, so the menu gives way instead: `_validate_question` refuses the id at **every door that composes a fork** — the v0.20 rule about `allow_freeform`, applied to the new constraint before it could repeat — and `record_decision` refuses to elect a pin that carries one anyway, because a hand-edited file can still hold it and picking either meaning would be the door deciding which fork was answered. `FREEFORM_OUTCOME` is the one carrier both election doors and the human door now read.
+
 ### The general shape
 
 A rung is a **claim about which path ran**, and every earlier round of this register turned on claims with no carrier. This one adds the case where the carrier exists, is honest, and answers a *different question than the one being asked*: `check_client_capability` answers *can you?*, and the failure was *will you?*. When a carrier is one question off, the fix is not a better default on the answer it gives — it is a path where the question does not arise.

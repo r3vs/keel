@@ -1969,5 +1969,39 @@ class TestARenderFailureNeverBreaksTheWriteThatTriggeredIt(unittest.TestCase):
                                            detail="d", phase="production")
 
 
+class TestAForkWhoseBranchesArriveAsOneTokenIsRefused(unittest.TestCase):
+    """`_validate_question` closes this at composition. A ledger can still be hand-edited, so the
+    election door refuses rather than picking one of the two meanings — which is what it did before:
+    the freeform arm won, and the free text was recorded as the outcome of a fork that never offered
+    it, on whichever rung the caller claimed."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ledger = os.path.join(self.tmp, "ledger.json")
+        led = Ledger(self.ledger)
+        pin = led.add_pin(kind="ambiguity", title="which reading holds?", severity="low",
+                          confidence="inferred",
+                          provenance=[{"source": "static", "detail": "two readings"}],
+                          question={"prompt": "which?", "allow_freeform": True,
+                                    "options": [{"id": "keep", "label": "keep it"}]})
+        # Hand-edited past the composition gate — the only way this pin can exist.
+        pin["question"]["options"].append({"id": "freeform", "label": "some other route"})
+        led.save()
+        self.pin_id = pin["id"]
+
+    def test_the_door_refuses_and_the_pin_stays_open(self):
+        with self.assertRaises(ValueError) as caught:
+            tools.record_decision(self.ledger, self.pin_id, "freeform", "r", "f",
+                                  human_answer="in my own words")
+        self.assertIn("two different outcomes", str(caught.exception))
+        self.assertEqual(Ledger(self.ledger).pin(self.pin_id)["state"], "needs_input")
+
+    def test_the_other_option_on_the_same_pin_still_elects(self):
+        """The refusal is about the colliding token, not about the pin."""
+        out = tools.record_decision(self.ledger, self.pin_id, "keep", "r", "f",
+                                    human_answer="keep it")
+        self.assertEqual(out["state"], "decided")
+
+
 if __name__ == "__main__":
     unittest.main()

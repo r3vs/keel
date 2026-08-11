@@ -55,6 +55,7 @@ from fastmcp.server.context import Context
 from fastmcp.server.elicitation import AcceptedElicitation
 
 import tools
+from ledger import FREEFORM_OUTCOME
 
 
 def _human_door() -> str:
@@ -308,7 +309,7 @@ async def ledger_record_decision(
             )
         human_answer = str(result.data)
         if not by_choice:
-            picked = "freeform"
+            picked = FREEFORM_OUTCOME
         elif human_answer in by_choice:
             picked = by_choice[human_answer]
         else:

@@ -4158,5 +4158,43 @@ class TestOneAnswerForHowMuchAForkCollapses(unittest.TestCase):
         self.assertEqual(downstream_of(second["id"], reads), {first["id"]})
 
 
+class TestAnOptionMayNotBeCalledFreeform(unittest.TestCase):
+    """The sentinel collision `_ACCEPT_AS_IS_ROW` already solved one field over.
+
+    `record_decision` reads `option_id == "freeform"` as *the human answered in their own words*,
+    and nothing constrained an option id, so a question offering one called `freeform` had two
+    branches that arrive at the door as one token. The refusal is at composition, not at election:
+    both doors that compose a fork pay it, which is the rule `allow_freeform` learned in v0.20.
+    """
+
+    def _question(self, option_id):
+        return {"prompt": "Which reading holds?", "allow_freeform": True,
+                "options": [{"id": option_id, "label": "answer in some other way"}]}
+
+    def test_add_pin_refuses_it(self):
+        led = make_ledger()
+        with self.assertRaises(LedgerError) as caught:
+            led.add_pin(kind="ambiguity", title="t", severity="low", confidence="inferred",
+                        provenance=[{"source": "s", "detail": "d"}],
+                        question=self._question("freeform"))
+        self.assertIn("may not be called", str(caught.exception))
+
+    def test_set_question_refuses_the_byte_identical_dict(self):
+        """The v0.20 finding, applied to the new rule before it can repeat: a rule that holds at
+        one of two doors onto the same field is a habit of whoever wrote the newer door."""
+        led = make_ledger()
+        pin = add_simple_pin(led, title="t")
+        with self.assertRaises(LedgerError):
+            led.set_question(pin["id"], self._question("freeform"))
+
+    def test_a_neighbouring_id_is_untouched(self):
+        """The refusal is equality on the one token, not a family of lookalikes."""
+        led = make_ledger()
+        pin = led.add_pin(kind="ambiguity", title="t", severity="low", confidence="inferred",
+                          provenance=[{"source": "s", "detail": "d"}],
+                          question=self._question("free_form"))
+        self.assertEqual(pin["question"]["options"][0]["id"], "free_form")
+
+
 if __name__ == "__main__":
     unittest.main()
