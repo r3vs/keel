@@ -239,5 +239,59 @@ class TestTheDoorShipsWithTheServer(unittest.TestCase):
         self.assertTrue(checked, "no built plugin ships the MCP server — the sweep proved nothing")
 
 
+class TestTheDoorWritesWhatTheHumanTyped(unittest.TestCase):
+    """The happy path, in-process — the half a TTY guard makes unreachable from a test runner.
+
+    Everything above proves the door REFUSES. A guard with no exercised success path is a file that
+    might refuse everything, which is the failure mode of a gate nobody ran forwards.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(SRC, "mcp"))
+        import decide
+        self.decide = decide
+        self.tmp = tempfile.mkdtemp()
+        led = Ledger(os.path.join(self.tmp, "ledger.json"))
+        led.add_pin(kind="ambiguity", title="is orders in v1 scope?", severity="blocker",
+                    confidence="inferred",
+                    provenance=[{"source": "static", "detail": "routes reference a missing model"}],
+                    question={"prompt": "Which reading holds?", "allow_freeform": True,
+                              "options": [{"id": "in_scope", "label": "ships in v1"},
+                                          {"id": "future", "label": "a later feature"}]})
+        led.save()
+        self.ledger = led.path
+
+    def _typed(self, *answers):
+        """Stand in for the person at the keyboard; `decide_pin` reads through `input` only."""
+        it = iter(answers)
+        import builtins
+        original = builtins.input
+        builtins.input = lambda *_: next(it)
+        self.addCleanup(setattr, builtins, "input", original)
+
+    def test_picking_an_option_records_it_on_the_strong_rung(self):
+        self._typed("1", "orders is already half-wired into the routes",
+                    "if the v1 cut list drops orders", "y")
+        self.assertEqual(self.decide.decide_pin(self.ledger, "pin_0001"), 0)
+        led = Ledger(self.ledger)
+        self.assertEqual(led.pin("pin_0001")["state"], "decided")
+        event = led.data["decision_log"][-1]
+        self.assertEqual(event["outcome"], "in_scope")
+        self.assertEqual(event["evidence"], "elicited")
+        self.assertTrue(event["flip_criteria"], "a decision with no reopen condition fossilizes")
+
+    def test_declining_the_confirmation_writes_nothing(self):
+        self._typed("2", "r", "f", "n")
+        self.assertEqual(self.decide.decide_pin(self.ledger, "pin_0001"), 1)
+        self.assertEqual(Ledger(self.ledger).pin("pin_0001")["state"], "needs_input")
+
+    def test_the_freeform_row_makes_the_words_the_outcome(self):
+        self._typed("3", "neither reading is right", "r", "f", "y")
+        self.assertEqual(self.decide.decide_pin(self.ledger, "pin_0001"), 0)
+        event = Ledger(self.ledger).data["decision_log"][-1]
+        self.assertEqual(event["outcome"], "neither reading is right")
+        self.assertEqual(event["human_answer"], "neither reading is right")
+
+
 if __name__ == "__main__":
     unittest.main()
