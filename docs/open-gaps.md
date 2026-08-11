@@ -3512,6 +3512,147 @@ with zero page errors, the standing refutations still warning and the answered o
 
 ---
 
+## 29. Two sessions can take the same pin — **OPEN** (schema, would be ledger v0.30)
+
+### Verified
+
+Found by reading another package rather than by an incident here, which is worth saying plainly:
+`mattpocock/skills`'s wayfinder gives every unit of work an **assignee taken before any work starts**,
+and calls the takeable set the *frontier* — open, unblocked, **unclaimed**. Checking this package for
+the third of those three: `grep -n "claim\|lease\|lock" src/core/decisions-ledger-spec.md` returns
+nothing about ownership. The only `claim` hits are the English word.
+
+What exists instead protects a different thing. `branch-lifecycle` declares a scope's **file globs**
+and distinguishes `depends_on` (B needs A's result — ordering) from `conflicts_with` (B and A touch
+the same files — mutual exclusion). Worktrees then make that enforceable: two agents in two trees
+cannot corrupt each other's files. All of that is about **files**. None of it is about the **item**.
+
+So the concurrency this package already invites — *"the user may run unblocked items in parallel"* —
+is safe against corruption and unprotected against duplication: two sessions read the same
+`ledger.json`, both see the same unblocked pin, both take it. Nothing corrupts. They do the same work
+twice, in different trees, and discover it at the merge. On a `grilling`-shaped pin the failure is
+worse than waste — the second session asks the human a question the first already answered, because
+sessions share no context.
+
+### Why it matters
+
+The scope-glob mechanism cannot be stretched to cover this, and it is worth being precise about why:
+two sessions resolving the same pin may legitimately touch **disjoint** files (one writes the fix, one
+writes the test), so `conflicts_with` correctly reports no conflict. The overlap is in the *work
+item*, which is the one thing the ledger owns and the filesystem does not.
+
+It is also the cheapest possible fix for a real failure — an owner and a timestamp — which is exactly
+the shape of gap that stays open for a year because nobody thinks it is worth a version bump.
+
+### Done looks like
+
+- A pin carries `claimed_by` (an opaque session/agent identifier) and `claimed_at`. Both `null` by
+  default; `pin_read` normalises a malformed value to `null`, never to a plausible invented one, and
+  reports the substitution under `pre_rule_events` like every other guarded field.
+- **One tool takes the claim, and it writes nothing else** — the whole property is that the claim
+  lands *before* the work, so a tool that also does something is a tool somebody will call second.
+  It is compare-and-set: claiming a pin that already has a live claim fails and returns the holder,
+  rather than overwriting.
+- A claim **expires**. An agent that dies holding one must not park a pin forever, and the ledger has
+  no daemon to reap it, so staleness is computed at read time from `claimed_at` against a declared
+  TTL — a tuned number, therefore declared as a hypothesis where `check_hypotheses.py` can see it.
+- The reader that makes it worth having: the frontier — open ∧ unblocked ∧ unclaimed — is what
+  `interview_next` and the wave scheduler select over, and what the map renders. `check_schema_fields`
+  is the gate that will refuse the field otherwise, and correctly: a claim nothing reads is a
+  decoration.
+- Releasing is explicit and also the settlement doors' business: resolving, deferring or accepting a
+  pin clears its claim, because a settled pin is not held.
+
+### Prove it
+
+The assertion that matters is not a unit test of the setter. It is two processes: open the same
+`ledger.json` twice, have both call the claim tool on the same pin, and observe exactly one success
+and one refusal naming the holder — the same shape as the two-writer tests the ledger already has.
+Then the expiry: a claim stamped past the TTL is selectable again, and the tool says it reclaimed a
+stale one rather than silently taking it.
+
+### Traps
+
+- **Do not make the claim a `state`.** It is orthogonal to the lifecycle: a pin can be `needs_input`
+  and claimed, or `decided` and claimed. Folding it into the state machine would multiply every
+  existing state by two and break every transition table in the spec.
+- **Do not reuse `depends_on` or `conflicts_with`.** Those two are already the ordering/exclusion
+  pair, deliberately separated, and a third meaning on either is how a schedule deadlocks.
+- **Do not let the claim gate a write.** It is advisory scheduling metadata, not a lock: an agent that
+  legitimately needs to write a claimed pin (the human said so) must not be stopped by it. The failure
+  it prevents is duplicated *work*, not concurrent *access* — the ledger's existing write discipline
+  covers the latter, and conflating the two would put a lock in a file nobody can unlock.
+
+---
+
+## 30. In-scope, but not yet phrasable — the register that does not exist — **OPEN** (design question)
+
+### Verified
+
+Same source, same method. Wayfinder's map carries a **Not yet specified** section — its *fog of war* —
+for decisions you can tell are coming but cannot yet phrase, and the test that separates it from a
+ticket is sharp: **can you state the question precisely *now*?** — explicitly not *can you answer it
+now*. A sharp-but-unanswerable question is a ticket; a question you cannot yet phrase is fog.
+
+This package has no such register, and the two states that look like it are not:
+
+- `deferred` is **out of scope now** — a decision taken, with a settlement event behind it.
+- an unwritten pin is nothing at all.
+
+So a decision the interview can *sense* — the funnel compresses pins into decisions, and an
+experienced reader can often tell that a whole area will need one — has two available homes, and both
+are wrong. Written as a pin now, it is a badly-phrased fork the human must answer, which is precisely
+the *"tell me about your app"* open-chat failure `core/interview-funnel.md` was built to prevent: an
+under-specified question invites the model to fill it in. Left unwritten, it is gone.
+
+### Why it matters
+
+The funnel's whole thesis is that the enemy is the number of **decisions**, not the number of pins.
+A fog register is the other half of that thesis: some decisions are not yet decisions, and forcing
+them into the pin shape early is how the interview grows questions nobody can answer — the exact
+fatigue the compression exists to remove.
+
+It is also the honest name for something the package already does implicitly. Greenfield's phases
+2→7 discover decisions as they go; rescue's `understand` mode surfaces areas before it surfaces
+forks. Both already have fog. Neither can write it down.
+
+### Done looks like — and this is the part to settle first
+
+Three candidate shapes, cheapest first. **Pick one in an interview; do not merge them:**
+
+1. **A top-level `fog` collection** — free-text entries with an area and an optional cluster hint, no
+   `kind`, no state machine, deliberately coarser than a pin. Cheapest; adds no state.
+2. **A pin state `unspecifiable`** — reuses the pin shape, so the graduation is a transition rather
+   than a move. Tempting and probably wrong: the entry has no `question`, and the whole pin schema is
+   organised around one.
+3. **A map/interview surface only**, no schema — fog lives in the projected region and nowhere else.
+   Cheapest of all, and fails the package's own rule: a thing no carrier holds is a claim.
+
+Whichever wins, **graduation is the load-bearing half and must be part of it**: when a fog patch
+becomes phrasable it becomes a pin *and is deleted from the fog*, so it lives in exactly one place.
+Without that, the register is a second home for the same thing — the divergence this package exists
+to find. And fog gathers only *toward* the elected scope: work past it is `deferred`, and never
+graduates.
+
+### Prove it
+
+A fixture where resolving one pin makes a fog patch phrasable: the graduation produces a pin, the
+patch disappears from the fog, and `ledger_summary` reports it in neither place twice. Plus the
+negative: a patch that is still fog after the round is still fog, and nothing invented a question for
+it.
+
+### Traps
+
+- **Do not let an agent graduate fog on its own.** Phrasing the question *is* framing the decision,
+  and framing is where the answer gets smuggled in. The agent proposes the phrasing; the human
+  elects it, like any fork.
+- **Do not size fog like a ticket.** One patch may become three pins or none. Pre-slicing it into
+  pin-sized pieces is the same premature specification the register exists to avoid.
+- **Do not let it become a backlog.** It is bounded by the elected scope. A fog register that grows
+  monotonically is a to-do list wearing a doctrine's name.
+
+---
+
 ## Do not re-litigate
 
 Settled with evidence; re-opening these costs a session and lands where it started.

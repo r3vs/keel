@@ -18,6 +18,52 @@
 
 ---
 
+## 0. Stato di attuazione — aggiornato dopo l'implementazione
+
+Questo studio è stato scritto come analisi, poi eseguito. Quanto segue è ciò che è **atterrato**,
+perché un documento che continua a proporre ciò che è già fatto è esattamente la sedimentazione di
+cui parla la §6 ①.
+
+| Presa | Stato | Dove |
+|---|---|---|
+| ① `writing-for-agents` | **fatto** | `src/core/writing-for-agents.md`; `writing-skills` e `documentation-lifecycle` lo puntano |
+| ② asse di invocazione | **fatto** | frontmatter autorale; `build.py` deriva il sidecar Codex; `tests/test_invocation_axis.py` |
+| ③ router | **fatto** | `src/skills/which-skill/` (in `keel-core`), con `tests/test_router_completeness.py` |
+| ④ pagine per umani | **non fatto** | vedi la nota qui sotto |
+| ⑤ Fase 1 di debugging | **fatto** | `src/skills/systematic-debugging/SKILL.md`, riscritta attorno al loop rosso |
+| ⑥ fog of war | **specificato, non implementato** | `docs/open-gaps.md` §30 — tre forme candidate, da eleggere in intervista |
+| ⑦ reclamo sulla frontiera | **specificato, non implementato** | `docs/open-gaps.md` §29 — sarebbe ledger v0.30 |
+| ⑧ vocabolario dei moduli profondi | **fatto** | `src/core/module-design.md` |
+| ⑨ le prese piccole | **quasi tutte fatte** | vedi la tabella della §6 ⑨, ora annotata |
+
+**Due correzioni a ciò che questo studio affermava**, entrambe scoperte verificando invece di
+ricordare:
+
+- **Sull'asse di invocazione, l'argomento dei token era il più debole dei due.** Il costo di ~5,5 KB
+  è reale, ma quasi tutte queste skill *devono* restare model-invoked: è il design. Ciò che l'asse
+  compra davvero è che la scelta smetta di essere un'omissione — e ha due costi che lo studio non
+  conosceva perché non li aveva verificati: una skill user-invoked **non è raggiungibile da un'altra
+  skill**, e su Claude Code **non viene precaricata in un subagent**, cosa che qui conta perché il
+  roster ne ha sei. In pratica una sola skill lo merita: il router.
+- **Il meccanismo è più economico del previsto.** Lo studio, seguendo mattpocock, lo trattava come un
+  fatto Claude+Codex. **Pi legge la stessa chiave di Claude Code** — `dist/core/skills.js` la parsa e
+  `formatSkillsForPrompt` filtra via quelle skill dal prompt — quindi una riga autorale serve due
+  host, il build ne genera uno, e opencode è un residuo dichiarato (la sua unica porta è il tool
+  `skill` del modello, quindi negare il permesso toglie la skill anche all'umano: è disattivazione,
+  non user-invocation).
+- **Una presa della §6 ⑨ era un buco inventato.** *"Riferisci per nome, mai per id"* è già vero qui:
+  `map.py` rende `p.title` sulle card e nell'intestazione del pin. Verificato, non corretto.
+
+**Perché ④ non è stato fatto**, dichiarato invece che taciuto: la regola che rende quelle pagine
+valide è che `Common questions` sia **cacciata, non inventata**, e che il conteggio resti onesto
+rispetto all'evidenza. Questo pacchetto non ha ancora campo — nessun issue tracker con domande
+ricorrenti, nessun wiki d'audience. Scrivere diciotto pagine di domande plausibili sarebbe
+esattamente il padding che quella regola vieta. La fonte onesta esiste ed è `docs/open-gaps.md`
+(diciotto round di ciò che è andato storto), ma trasformarla in pagine è un lavoro a sé, non un
+sottoprodotto di questo.
+
+---
+
 ## 1. Metodo
 
 Clone completo, lettura integrale di: i tre file di ingresso (`README.md`, `CLAUDE.md`/`AGENTS.md`
@@ -489,17 +535,17 @@ l'istinto di un agente a generare astrazioni. Va scritto come test, non come con
 
 | Presa | Dove | Perché |
 |---|---|---|
-| **Test tautologico** come anti-pattern nominato | `test-driven-development` | il valore atteso ricalcolato come lo calcola il codice passa per costruzione — è il difetto più probabile in una suite *generata*, che è esattamente il caso di rescue |
-| **Seam pre-concordato**: nessun test su un seam non confermato | `test-driven-development` | rende il "one criterion, one test, one BuildItem" di Keel verificabile *prima* invece che dopo |
-| **Expand–contract per i refactor larghi** | `branch-lifecycle` / doctrine di `buildloop` | il caso in cui nessuna slice verticale può atterrare verde è quello che uno scheduler a DAG gestisce peggio |
-| **Baseline di 12 smell di Fowler**, col repo che sovrascrive | `code-review` | dà al reviewer qualcosa su cui poggiare quando il repo non documenta standard — cioè sempre, in rescue |
-| **Due assi non fusi, nessun rerank** | `code-review` | il rerank è ciò che fa mascherare un asse dall'altro; Keel ha precedenza a primo-match, che è una scelta diversa e va difesa esplicitamente |
-| **KB `.out-of-scope/`** delle richieste rifiutate | `maintainer-assist` | lega agli stati `deferred`/`accepted`; impedisce di ri-litigare |
-| **Controllo di ridondanza per concetto di dominio**, non per le parole della richiesta | `maintainer-assist` | il "è già implementato?" fatto bene |
-| **`prototype` come fonte primaria** su ramo fuori da main | nuova skill o modulo | fa salire di rung un `open_decision` su "come si comporta" |
-| **`wizard`** per i passi solo-umani | nuova skill | l'inverso di `assumptions.md`: non un'assunzione dell'agente, un'azione a gate umano |
-| **Riferisci per nome, mai per id** | ovunque il ledger venga narrato | `map.py` e `ledger_summary` mostrano id: un muro di id è illeggibile |
-| **Albero dei confini di fase** (continue / clear / handoff / subagent / compact) | `src/core/trust-axes.md` o vicino | la tabella fonte-primaria-vs-secondaria è un frame che Keel non ha, e il reset di contesto fra fasi è già la sua architettura |
+| ✅ **Test tautologico** come anti-pattern nominato | `test-driven-development` | il valore atteso ricalcolato come lo calcola il codice passa per costruzione — è il difetto più probabile in una suite *generata*, che è esattamente il caso di rescue |
+| ✅ **Seam pre-concordato**: nessun test su un seam non confermato | `test-driven-development` | rende il "one criterion, one test, one BuildItem" di Keel verificabile *prima* invece che dopo |
+| ✅ **Expand–contract per i refactor larghi** | `branch-lifecycle` | il caso in cui nessuna slice verticale può atterrare verde è quello che uno scheduler a DAG gestisce peggio |
+| ✅ **Baseline di 12 smell di Fowler**, col repo che sovrascrive | `code-review` | dà al reviewer qualcosa su cui poggiare quando il repo non documenta standard — cioè sempre, in rescue |
+| ✅ **Due assi non fusi, nessun rerank** | `code-review` | il rerank è ciò che fa mascherare un asse dall'altro; Keel ha precedenza a primo-match, che è una scelta diversa e va difesa esplicitamente |
+| ✅ **Le richieste rifiutate hanno una casa** — come pin `deferred`, non come file separato | `maintainer-assist` | lega agli stati `deferred`/`accepted`; impedisce di ri-litigare |
+| ✅ **Controllo di ridondanza per concetto di dominio**, e dire dove hai cercato | `maintainer-assist` | il "è già implementato?" fatto bene |
+| ✅ **`prototype` come fonte primaria** su ramo fuori da main | `src/skills/prototype/` | fa salire di rung un `open_decision` su "come si comporta" |
+| ⬜ **`wizard`** per i passi solo-umani | nuova skill | l'inverso di `assumptions.md`: non un'assunzione dell'agente, un'azione a gate umano |
+| — **Riferisci per nome, mai per id** | *già vero*: `map.py` rende `p.title` | verificato dopo aver scritto la riga; era un buco inventato |
+| ✅ **Albero dei confini di fase** (continue / clear / handoff / subagent / compact) | `src/core/phase-boundaries.md` | la tabella fonte-primaria-vs-secondaria è un frame che Keel non ha, e il reset di contesto fra fasi è già la sua architettura |
 
 ---
 
