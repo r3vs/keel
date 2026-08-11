@@ -252,8 +252,11 @@ def record_decision(ledger: str, pin_id: str, option_id: str, rationale: str, fl
     "200 findings → one decision" is that tool, and it is the only shape of it that can say, on each
     pin, whose answer this was.
 
-    `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
-    user through the host and the agent never carries the value. See `mcp/server.py`.
+    `evidence="elicited"` is reserved for the two paths that actually ask a human and so may say so:
+    the adapter's elicitation branch (`mcp/server.py`, the server asks through the host) and
+    `mcp/decide.py` (the deciding human runs it, and it refuses a non-terminal stdin). The agent
+    carries the value on neither. v0.29 widened the rung from the first mechanism to the property
+    both establish; a caller that is neither has not earned it.
     """
     from ledger import Ledger
     led = _open_existing(ledger)
@@ -475,9 +478,12 @@ def record_policy(ledger: str, offer_id: str = "", rule: str = "", applies_to: d
         HELD BACK (`not_offered`) and stays open, exactly as a blocker/high pin is. That is the
         offered-options rule of `record_decision`, applied where it was missing.
 
-    `evidence="elicited"` is reserved for the adapter's elicitation path, where the server asks the
-    user through the host — showing the rule, the OUTCOME it writes, and the pins it would decide —
-    and the agent never carries the answer. See `mcp/server.py`.
+    `evidence="elicited"` is reserved for the two paths that actually ask a human — the adapter's
+    elicitation branch (`mcp/server.py`) and `mcp/decide.py`, run by the human — each of which shows
+    the rule, the OUTCOME it writes, and the pins it would decide, and neither of which lets the
+    agent carry the answer. The door takes a CATALOG `offer_id` only: there the rule, the scope and
+    the outcome come from shipped data, so nothing on screen was agent-authored. A rule an agent
+    composed is elected on the rung that says an agent relayed it.
     """
     prompt = policy_prompt(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
                            project_type)

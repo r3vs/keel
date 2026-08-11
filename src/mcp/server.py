@@ -48,12 +48,29 @@ bundled CLI was removed), so ``uv`` is a hard prerequisite: `bootstrap.sh` insta
 loudly** if it cannot, turning a silent absence into a fail-fast the operator can act on.
 """
 import sys
+from pathlib import Path
 
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from fastmcp.server.elicitation import AcceptedElicitation
 
 import tools
+
+
+def _human_door() -> str:
+    """The absolute path of `decide.py`, computed by the one process the host located for us.
+
+    No shipped file may WRITE a runnable path: after install it resolves against the user's project,
+    which is why `verify_commands.py` exists and why the CLI floor was removed. That rule is about
+    strings authored ahead of time, and it leaves a hole — on a client that declines elicitation
+    there is no electing surface at all, and the fix is a door only a human may run, whose location
+    nobody is allowed to write down.
+
+    This resolves it: the host started this file from a path IT resolved, so the server is the one
+    component that can state where its own sibling is, at the moment the refusal is raised. The agent
+    relays a string it did not compute and cannot execute — the path class stays closed.
+    """
+    return str(Path(__file__).resolve().with_name("decide.py"))
 
 
 def _client_can_elicit(ctx) -> bool:
@@ -282,7 +299,12 @@ async def ledger_record_decision(
             # whole path exists to make impossible.
             raise ValueError(
                 f"the user did not answer ({type(result).__name__}); {pin_id} stays open. "
-                f"An unanswered fork is not a decision — ask again, or leave it to the interview."
+                f"An unanswered fork is not a decision — ask again, or leave it to the interview.\n"
+                f"If this client declines EVERY elicitation, no pin can reach `decided` through "
+                f"this tool: the relay rung below is unreachable, and dropping to it would make you "
+                f"the author of an outcome the user may have just refused. Ask them to run the "
+                f"human door themselves — you cannot run it, and it will refuse a pipe:\n"
+                f"  uv run --script {_human_door()} pin {ledger} {pin_id}"
             )
         human_answer = str(result.data)
         if not by_choice:
@@ -479,7 +501,14 @@ async def ledger_record_policy(
         if not isinstance(result, AcceptedElicitation):
             raise ValueError(
                 f"the user did not answer ({type(result).__name__}); no policy was set. "
-                f"An unanswered offer is not an election — ask again, or decide the pins one by one."
+                f"An unanswered offer is not an election — ask again, or decide the pins one by "
+                f"one.\nIf this client declines EVERY elicitation, ask the user to run the human "
+                f"door themselves:\n" + (
+                    f"  uv run --script {_human_door()} policy {ledger} {offer_id}" if offer_id else
+                    f"  uv run --script {_human_door()} pin {ledger} <pin_id>\n"
+                    f"…one pin at a time: that door takes a CATALOG offer_id, and this rule is one "
+                    f"you composed. A rule an agent wrote, elected on a rung that claims no agent "
+                    f"carried it, is exactly the laundering the rung exists to prevent.")
             )
         human_answer = str(result.data)
         if human_answer != _POLICY_ACCEPT:

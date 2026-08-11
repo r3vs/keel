@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.28
+# Decisions Ledger — Spec v0.29
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -276,7 +276,7 @@ When a Policy cascades over a pin it generates a `DecisionEvent` with `source: "
 
 `source` says who was *entitled* to commit, and every writer can claim `interview`. `evidence` says how the answer actually travelled, because the failure modes differ and averaging them would hide the weak one:
 
-- **`elicited`** — the MCP server asked the user through the host and wrote the reply itself (`mcp:ledger_record_decision` on a client that declares the elicitation capability). The agent never held the value, so it could not have invented it.
+- **`elicited`** — the answer was captured by a door the agent did not mediate: it never held the value, so it could not have invented it. **Two carriers establish that property, and v0.29 names both** rather than the single mechanism this line used to describe — the MCP server asking through the host (`mcp:ledger_record_decision` on a client that declares the elicitation capability), and `mcp/decide.py`, which the deciding human runs and which refuses a stdin that is not a terminal. The rung is a fact about **which path ran**, so only the path that ran may state it, and no agent is either of them.
 - **`transcribed`** — an agent relayed what the user said. `human_answer` carries the words verbatim, and is **required**: without a quote, an honest relay and a fabricated one are the same line in the ledger.
 - **`brief`** — settled in the project brief at frame time; the brief is the evidence, and since **v0.24** the runtime collects it: `brief_quote` carries the passage that settles this fork, verbatim, checked as a biconditional (only a `brief` event may carry one). It was the one member of this vocabulary whose claim had **no carrier at all** — the other three are each demanded by something — so `interview_expand(brief_decisions=…)` moved pins to `decided` on the caller's word that a document said so. `brief_decisions` is therefore `{cluster_id: {"outcome", "quote"}}`; a bare outcome is refused, naming the shape. Which is also why it is gated like a cascade (v0.14): *nobody was asked here*, so the outcome must be one the pin's own `question` offers and a `blocker`/`high` pin is never settled this way. Written by `interview.expand_catalog` from `brief_decisions`, and what it may not carry comes back in `brief_held_back` and is asked — as does a key naming no cluster at all, in `brief_unmatched` (v0.16).
 - **`cascaded`** (v0.11) — derived from a `Policy` the user elected. The answer reached the log once, at the policy election; this event amplifies it, and `policy_id` names the `Policy` that carries the rung and the quote. Its failure mode is neither invention nor mis-relay but **fit**: the rule may not suit this pin. Written by `Ledger.apply_policy` and by nothing else — `cascaded` and a `policy:` source imply each other, checked both ways.
@@ -1359,3 +1359,45 @@ The read-tool gate derived its roster as `required == ["ledger"]`. That reads li
 ### The general shape
 
 v0.26: *a rule proved of the readers is unproved for the writers.* v0.27: *a derived roster is a claim about a class, so name what does the dangerous thing and does not satisfy the predicate.* This one is both, turned on the same predicate twice — the roster that said `required == ["ledger"]` and the guard that said "the pin being written" — plus the one question neither shape asks: **not what a door does, but whether what it says it did is true.** A door's return value is a claim about the file, and a claim made after the commit is a claim nothing checked.
+
+
+## v0.29 — A capability the client declares is not an answer it will give
+
+Observed on a real client, three times in a row: `ledger_record_decision` raised `the user did not answer (DeclinedElicitation)`, and no pin could reach `decided` on that host at all.
+
+### The two-rung tool that had one rung
+
+`_client_can_elicit` asks the session `check_client_capability(ClientCapabilities(elicitation=…))` — deliberately, so that host support is a fact read off the client's own `initialize` rather than a per-host table that rots. Then:
+
+```python
+if ctx is not None and _client_can_elicit(ctx):      # ← short-circuits the relay entirely
+    result = await ctx.elicit(...)
+    if not isinstance(result, AcceptedElicitation):
+        raise ValueError(...)                        # declined and cancelled are not outcomes
+```
+
+A client that **declares** the capability and then **declines** every request reaches neither rung: the strong one raises, and the relay below it is unreachable, because the path is chosen before the request is sent. `evidence = "transcribed"` is assigned above the branch and is pure fall-through. So the electing surface — `ledger_record_decision` *and* `ledger_record_policy`, the only two doors a human's election travels through — was gone on that host, which is the same *"the decision has no surface"* the CLI's removal produced, arrived at from the other side.
+
+### Why the obvious fix inverts the guarantee it was meant to restore
+
+Degrading to `transcribed` after a decline reads like a weakening and is not one. `Declined` is the protocol's value for **request not accepted**, and two opposite situations land on it: *no prompt was ever drawn* (this client) and *the human saw the fork and pressed no* (a conforming one). Nothing downstream can tell them apart, so on a conforming host the fallback converts a refusal into an outcome the agent authored. `_require_quote` does not stand in the way — it demands a verbatim `human_answer` and an offered `option_id`, both of which an agent supplies. Distinguishing `Declined` from `Cancelled` separates two flavours of *not accepted*, not the two semantics; the discriminant does not discriminate the thing that matters.
+
+### The door, and the rung widened from a mechanism to a property
+
+`mcp/decide.py` — run by the person deciding, never by an agent — puts the fork as the pin poses it, takes the answer at a prompt, and writes it. It does not ask the protocol to distinguish *can you?* from *will you?*; it removes the question, because the hand that decides is the hand that writes.
+
+That makes `elicited`'s definition too narrow rather than false: the rung's claim was always the property — *the agent never held the value* — stated in terms of the one mechanism that then established it. v0.29 names **two carriers for one claim**. A fifth member of `DECISION_EVIDENCE` was the alternative and is worse: a new rung is a new concept on `POLICY_EVIDENCE`, on `QUOTED_RUNGS`'s membership question, on the map's rung table, on `instructions.py`'s clause and on every count, and this register's own lesson is that each round's new defect lived in that round's new surface.
+
+Three things keep the widening honest:
+
+- **The guard.** The door refuses a stdin that is not a terminal. Piped or redirected input is how an agent would answer its prompts and mint an `elicited` write — that is the agent-run CLI this package removed, in different bytes. No flag carries an answer either. *Honest limit, observed:* under msys/Git Bash `< /dev/null` reports a TTY, so the guard does not fire there; it mints nothing, because the first read takes EOF and the run cancels, but the guard is not the only thing between a pipe and a write.
+- **The policy door takes a catalog `offer_id` only.** There the rule, the scope and the outcome come from shipped data and the radius from the same matcher the cascade runs, so nothing on screen was agent-authored. A rule an agent composed is elected on the rung that says an agent relayed it.
+- **The set of entitled callers is derived, not asserted.** `decide()` has always held that the rung is a fact about which path ran; nothing enforced it, and a direct call proved `record_decision(evidence="elicited")` was open to anybody. `tests/test_human_door.py::TestOnlyAnAskingPathMayClaimItAsked` now takes the set by AST over every call site in the package and fails on a third.
+
+### The path nobody is allowed to write down
+
+`verify_commands.py` forbids a shipped file from naming a runnable path: after install it resolves against the *user's* project, and that is what killed the CLI floor. A door only a human can run needs the human to learn where it is — from prose, which is precisely what is forbidden. The resolution is that the **server** prints it: the host started `server.py` from a path it resolved, so the process is the one component entitled to state where its own sibling lives, and it does so inside the refusal the agent will relay. The agent passes on a string it did not compute and cannot execute. No playbook names the door.
+
+### The general shape
+
+A rung is a **claim about which path ran**, and every earlier round of this register turned on claims with no carrier. This one adds the case where the carrier exists, is honest, and answers a *different question than the one being asked*: `check_client_capability` answers *can you?*, and the failure was *will you?*. When a carrier is one question off, the fix is not a better default on the answer it gives — it is a path where the question does not arise.
