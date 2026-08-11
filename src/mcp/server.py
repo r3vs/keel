@@ -867,6 +867,85 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return tools.agent_ready(ledger, pin_id)
 
 
+@mcp.tool(annotations={"title": "Ledger — Fog (decisions you cannot yet phrase)", **_RO})
+def ledger_fog(ledger: str) -> dict:
+    """What this project can tell is coming and cannot yet state as a question.
+
+    Read it at the start of an interview round. A fog patch is deliberately coarser than a pin: it
+    has an area and what made you sense it, and **no question**, because the test that separates fog
+    from a ticket is *can you state the question precisely now* — not *can you answer it now*.
+
+    `oldest_days` is the number that matters. The register is bounded by the elected scope, so
+    patches should graduate or clear as the scope firms up; one that only grows is a backlog.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.ledger_fog(ledger)
+
+
+@mcp.tool(annotations={"title": "Ledger — Record Fog", **_RW_CREATE})
+def ledger_add_fog(ledger: str, area: str, sensed: str, provenance: list,
+                   cluster_hint: str = "") -> dict:
+    """Record a decision you can tell is coming and cannot yet phrase. Do not invent a question.
+
+    Use it when the interview can *sense* that a whole area will need a fork but nobody can state it
+    yet. Writing it as a pin now produces a badly-phrased question the human has to answer, which is
+    the open-chat failure the funnel exists to prevent: an under-specified question invites you to
+    fill it in, and the filling-in is the decision.
+
+    There is nowhere here to put a question. If you can phrase one, this is not fog — record a pin.
+
+    Args:
+        ledger: Path to ledger.json.
+        area: Where the decision is coming from. Coarse on purpose.
+        sensed: What made you think a decision is coming. Concrete, in your own words.
+        provenance: [{source, detail}] — who sensed this and how.
+        cluster_hint: Optional catalog cluster, if you can already guess where it lands.
+    """
+    return tools.ledger_add_fog(ledger, area, sensed, provenance, cluster_hint)
+
+
+@mcp.tool(annotations={"title": "Ledger — Graduate Fog into a Pin the Human Phrased", **_RW})
+def ledger_graduate_fog(ledger: str, fog_id: str, question: dict, human_answer: str,
+                        kind: str = "open_decision", title: str = "", severity: str = "medium",
+                        confidence: str = "inferred") -> dict:
+    """The patch became phrasable. It becomes a pin **and leaves the register** — one home, always.
+
+    You may propose the phrasing. You may not elect it: phrasing the question is framing the
+    decision, and framing is where the answer gets smuggled in. So `human_answer` is the user's own
+    words about how the fork should be put, and this tool refuses without them.
+
+    Args:
+        ledger: Path to ledger.json.
+        fog_id: The patch that became phrasable.
+        question: The fork, as the human put it — prompt + options, freeform left open.
+        human_answer: The user's words on how to phrase it. Required.
+        kind: The pin kind. `open_decision` for a greenfield fork; something else if it fits better.
+        title: Defaults to the patch's area.
+        severity: blocker | high | medium | low.
+        confidence: extracted | inferred | ambiguous.
+    """
+    return tools.ledger_graduate_fog(ledger, fog_id, question, human_answer, kind, title,
+                                     severity, confidence)
+
+
+@mcp.tool(annotations={"title": "Ledger — Clear Fog (there was no fork here)", **_RW})
+def ledger_clear_fog(ledger: str, fog_id: str, rationale: str, human_answer: str) -> dict:
+    """Drop a patch that turned out not to be a decision, or that the scope moved past.
+
+    Held to what `ledger_defer` is held to, and for the same reason: clearing stops the register
+    asking about something, so doing it on your own authority is deciding not to decide.
+
+    Args:
+        ledger: Path to ledger.json.
+        fog_id: The patch to drop.
+        rationale: Why there is no fork here — a clearance with no reason is a deletion.
+        human_answer: The user's words. Required.
+    """
+    return tools.ledger_clear_fog(ledger, fog_id, rationale, human_answer)
+
+
 @mcp.tool(annotations={"title": "Ledger — Frontier (what is takeable, and who holds the rest)",
                        **_RO})
 def ledger_frontier(ledger: str) -> dict:

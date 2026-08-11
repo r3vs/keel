@@ -166,7 +166,11 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                     # anybody needs to govern — and the two WRITERS beside them (`claim`, `release`)
                     # are deliberately not here: both are served, and the whole property being
                     # bought is that taking a pin is a governed, visible act.
-                    "claims", "frontier"}
+                    "claims", "frontier",
+                    # v0.31: the register's two readers. `fog` looks one patch up and raises on an
+                    # unknown id (it is `pin`'s twin, and `pin` is here); `fog_view` returns the
+                    # patches plus the age of the oldest. Neither assigns.
+                    "fog", "fog_view"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:

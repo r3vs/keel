@@ -745,6 +745,7 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
     MINIMAL_CALL = {
         "ledger_summary": {},
         "ledger_frontier": {},
+        "ledger_fog": {},
         "interview_next": {},
         "interview_seed_policies": {},
         "policy_preview": {"rule": "the DB wins on nullability",
@@ -1076,7 +1077,13 @@ class TestOneRefusalForTheQuoteRule(unittest.TestCase):
             if any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
                    and c.func.id == "_require_quote" for c in ast.walk(fn)):
                 asked.add(fn.name)
-        self.assertEqual(roster, {"record_decision", "record_policy", "ledger_defer"},
+        self.assertEqual(roster, {"record_decision", "record_policy", "ledger_defer",
+                                  # v0.31 — the two fog exits. Neither elects an outcome, and both
+                                  # take the words for the reason `ledger_defer` does: each one
+                                  # stops something being asked. Graduating settles HOW the fork is
+                                  # put, which is where an agent would smuggle the answer in;
+                                  # clearing settles that there is no fork at all.
+                                  "ledger_graduate_fog", "ledger_clear_fog"},
                          "the derivation stopped finding the doors it was written for")
         self.assertEqual(roster, asked,
                          "a door that accepts the human's words and enforces the rule itself is "
@@ -1377,7 +1384,15 @@ def _every_write_door():
     wide = TestALedgerWideWriteDoorIsOnARosterToo
     out = [(name, True, per_pin.CALL[name]) for name in sorted(per_pin._write_doors())]
     out += [(name, False, kwargs) for name, (_disposition, kwargs) in sorted(wide.WIDE.items())]
-    return out
+    # The one sentinel a ledger-wide payload can carry, resolved against the shared fixture the way
+    # `_targets` resolves the per-pin one. `_fixture` seeds exactly one fog patch and asserts its
+    # id, so this is a lookup rather than a guess.
+    return [(name, is_pin, {k: (_FOG_ID if v == wide.FOG else v) for k, v in kwargs.items()})
+            for name, is_pin, kwargs in out]
+
+
+#: The id `_fixture`'s single fog patch gets. Held there, not hoped for here.
+_FOG_ID = "fog_0001"
 
 
 def _fixture(tmp):
@@ -1404,6 +1419,12 @@ def _fixture(tmp):
     bare = tools.ledger_add_pin(
         ledger, kind="defect", title="a finding whose fork nobody has written yet", severity="low",
         confidence="extracted", provenance=[{"source": "recon", "detail": "x"}])["pin_id"]
+    # One fog patch, so the two doors that CONSUME one have something to consume. Its id is asserted
+    # rather than assumed, because `_every_write_door` resolves the `FOG` sentinel to it.
+    patch = tools.ledger_add_fog(
+        ledger, area="billing", sensed="trials are special-cased in three places",
+        provenance=[{"source": "interview", "detail": "phase 2"}])["fog_id"]
+    assert patch == _FOG_ID, f"the fixture's fog id moved to {patch}; `_FOG_ID` names it"
     with open(ledger, encoding="utf-8") as fh:
         return json.load(fh), (pin, bare)
 
@@ -1628,7 +1649,14 @@ class TestALedgerWideWriteDoorIsOnARosterToo(unittest.TestCase):
     #: `projects` — it materialises a fixed external set into the ledger, so a second call must be a
     #: no-op. `creates` — each call records a fresh act (a finding, an assumption, an election), and
     #: two of those are two records; collapsing them would be this runtime deciding that two things
-    #: a human did are one thing.
+    #: a human did are one thing. `consumes` (v0.31) — the door CONSUMES the record it names, so a
+    #: second identical call must refuse: the fog patch it graduated or cleared is gone, and a door
+    #: that quietly did nothing there would let a caller believe it had graduated something twice.
+    #:
+    #: Substituted at call time, because a fog id has to name a patch in the fixture under test —
+    #: the same reason `MINIMAL_CALL` cannot hold a literal pin id.
+    FOG = "<a fog patch this ledger carries>"
+
     WIDE = {
         "ledger_add_pin": ("creates", {
             "kind": "defect", "title": "t", "severity": "low", "confidence": "extracted",
@@ -1637,6 +1665,19 @@ class TestALedgerWideWriteDoorIsOnARosterToo(unittest.TestCase):
         "interview_expand": ("projects", {}),
         "record_policy": ("creates", {"offer_id": "cl_persistence",
                                       "human_answer": "yes, take the default"}),
+        "ledger_add_fog": ("creates", {
+            "area": "billing",
+            "sensed": "three call sites already special-case trials",
+            "provenance": [{"source": "interview", "detail": "phase 2"}]}),
+        "ledger_graduate_fog": ("consumes", {
+            "fog_id": FOG, "human_answer": "ask it as plan versus flag",
+            "question": {"prompt": "Do trials get their own plan, or a flag on the paid one?",
+                         "options": [{"id": "plan", "label": "their own plan"},
+                                     {"id": "flag", "label": "a flag"}],
+                         "allow_freeform": True}}),
+        "ledger_clear_fog": ("consumes", {
+            "fog_id": FOG, "rationale": "trials were cut from v1 entirely",
+            "human_answer": "drop it, no trials in v1"}),
     }
 
     @staticmethod
@@ -1682,14 +1723,33 @@ class TestALedgerWideWriteDoorIsOnARosterToo(unittest.TestCase):
     def _records(ledger):
         with open(ledger, encoding="utf-8") as fh:
             data = json.load(fh)
-        return {name: len(data.get(name) or []) for name in ("pins", "decision_log", "policies")}
+        return {name: len(data.get(name) or [])
+                for name in ("pins", "decision_log", "policies", "fog")}
+
+    def _substituted(self, ledger, kwargs: dict) -> dict:
+        """The declared call with its sentinels resolved against THIS fixture."""
+        out = dict(kwargs)
+        if out.get("fog_id") == self.FOG:
+            out["fog_id"] = tools.ledger_add_fog(
+                ledger, area="billing", sensed="trials are special-cased in three places",
+                provenance=[{"source": "interview", "detail": "phase 2"}])["fog_id"]
+        return out
 
     def test_a_second_identical_call_does_what_the_door_declares(self):
-        for name, (disposition, kwargs) in sorted(self.WIDE.items()):
+        for name, (disposition, declared) in sorted(self.WIDE.items()):
             with self.subTest(door=name, disposition=disposition):
                 ledger = self._seeded()
+                kwargs = self._substituted(ledger, declared)
                 getattr(tools, name)(ledger, **kwargs)
                 once = self._records(ledger)
+                if disposition == "consumes":
+                    with self.assertRaises(Exception, msg=f"{name} consumed the record it names, "
+                                                          f"so calling it again must refuse rather "
+                                                          f"than quietly do nothing"):
+                        getattr(tools, name)(ledger, **kwargs)
+                    self.assertEqual(self._records(ledger), once,
+                                     "a refused call left something behind")
+                    continue
                 getattr(tools, name)(ledger, **kwargs)
                 twice = self._records(ledger)
                 if disposition == "projects":

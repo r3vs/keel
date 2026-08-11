@@ -86,6 +86,9 @@ EXPECTED_TOOLS = {
     # same one; worktrees stop them corrupting each other's files and say nothing about the item.
     # `ledger_frontier` is the reader that makes the two writers worth having.
     "ledger_frontier", "ledger_claim", "ledger_release",
+    # v0.31 — the fog register: the decisions this project can sense and cannot yet phrase, which
+    # had two available homes before this (a badly-phrased pin, or nothing) and both were wrong.
+    "ledger_fog", "ledger_add_fog", "ledger_graduate_fog", "ledger_clear_fog",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
@@ -97,6 +100,7 @@ WRITE_TOOLS = {
     "generator_observe", "interview_expand", "ledger_record_decision", "ledger_record_policy",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
     "ledger_claim", "ledger_release",
+    "ledger_add_fog", "ledger_graduate_fog", "ledger_clear_fog",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
 

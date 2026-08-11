@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.30
+# Decisions Ledger — Spec v0.31
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -18,6 +18,7 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
 - **`DecisionEvent`** — append-only, immutable log of the *why*; now with `flip_criteria`.
 - **`SettlementEvent`** (v0.16) — append-only record of a pin leaving the open set through a door that carries **no election**: `resolve` (its authority is an observation) and `correctness_unknown` (its authority is the recorded absence of one). The three elected doors — `decide` · `accept` · `defer` — are recorded by the `DecisionEvent` they already write, which now states which state it produced (`settles_as`). One entry per settlement, never two.
 - **`RemediationItem`** — the bridge to Phase 4; records the ponytail ladder rung.
+- **`Fog`** (v0.31) — a decision this project can *sense* is coming and **cannot yet phrase**. Deliberately coarser than a `Pin`, and it carries **no question**, because the test that separates it from a ticket is *can you state the question precisely now*. It lives in its own top-level `fog` collection, and it leaves that collection the moment it becomes a pin.
 
 ---
 
@@ -1465,3 +1466,68 @@ That sets the strength honestly. Between the compare-and-set's read and the call
 ### The general shape
 
 Two mechanisms can look like they cover the same risk and cover **different halves of it**, and the gap is invisible while both are described in the same sentence. Worktrees and `conflicts_with` protect the *files*; nothing protected the *item*. When a guarantee is stated as "we already handle concurrency", the question that finds the hole is *concurrency of what* — and the answer is usually a noun nobody named.
+
+---
+
+## v0.31 — In scope, but not yet phrasable
+
+Same source as v0.30 and the same method. Wayfinder's map carries a **Not yet specified** section — its *fog of war* — for decisions you can tell are coming but cannot yet phrase, and the test that separates it from a ticket is sharp: **can you state the question precisely now?** — explicitly not *can you answer it now*. A sharp-but-unanswerable question is a ticket. A question you cannot yet phrase is fog.
+
+### The two homes it had, and why both were wrong
+
+- `deferred` is **out of scope now** — a decision taken, with a settlement event behind it. Not this.
+- An unwritten pin is nothing at all.
+
+So a decision the interview can sense — the funnel compresses pins into decisions, and an experienced reader can often tell a whole area will need one — had two available homes and both misreport it. Written as a pin now it is a badly-phrased fork the human must answer, which is precisely the *"tell me about your app"* open-chat failure the interview funnel was built to prevent: an under-specified question invites the model to fill it in, and the filling-in is the decision. Left unwritten, it is gone.
+
+The funnel's whole thesis is that the enemy is the number of **decisions**, not the number of pins. A fog register is the other half of that thesis: some decisions are not decisions yet, and forcing them into the pin shape early grows an interview nobody can answer.
+
+### The shape elected, and the two that were not
+
+Three were on the table, cheapest first. **A top-level `fog` collection** won; the other two are recorded here so the argument is not re-run:
+
+- *A pin state `unspecifiable`* reuses the pin shape, so graduation would be a transition rather than a move — tempting, and wrong: the entry has no `question`, and the whole pin schema is organised around one. It would put an empty fork on every entry and every surface that selects on presence would render it.
+- *A map/interview surface only*, no schema, is cheapest of all and fails this package's own rule: a thing no carrier holds is a claim.
+
+```jsonc
+{
+  "id": "fog_0001",
+  "area": "billing",                       // WHERE the decision is coming from. Coarse on purpose.
+  "sensed": "three call sites already special-case trials",   // what made you think one is coming
+  "noticed_at": "2026-08-11T21:00:00+00:00",
+  "provenance": [{ "source": "interview", "detail": "phase 2" }],
+  "cluster_hint": "billing"                // optional; where it probably lands in the catalog
+}
+```
+
+**There is no `question` field, and that is enforcement rather than omission.** Detecting a premature question by inspecting prose would be the keyword-guessing this repo forbids its own linters; giving the record nowhere to put one is structural.
+
+### Graduation is the load-bearing half
+
+When a patch becomes phrasable it becomes a pin **and is deleted from the register**, so it lives in exactly one place. Without the deletion the register is a second home for something that already exists on a pin — the divergence this package exists to find, built by the feature meant to prevent premature specification.
+
+**The phrasing is the human's.** Phrasing the question *is* framing the decision, and framing is where the answer gets smuggled in: an agent that writes the fork writes which answers are thinkable. So the agent proposes and the human elects, exactly as with any other fork, and `graduate_fog` refuses without their words — the same rule `record_decision`, `record_policy` and `defer` are held to, through the same single refusal.
+
+The trail lives on the new pin's `provenance` (`source: "fog_graduation"`, carrying the patch id, what was sensed, and the human's words) rather than in `decision_log`. The log records what happened to a pin's **state**; this **creates** the pin, and creation has always been recorded in provenance — `add_pin` appends nothing to the log either.
+
+### The other exit, and the trail it does not leave
+
+`clear_fog` drops a patch that turned out not to be a decision, or that the elected scope moved past. It is held to `defer`'s discipline for `defer`'s reason: clearing stops the register asking about something, so an agent doing it alone is an agent deciding not to decide.
+
+**A cleared patch leaves no trail, and that is the design.** The register's whole claim is that it holds what is *still* fog; an append-only history of things that stopped being fog would be a second collection with the first one's failure mode. What keeps it honest is that the human said the words.
+
+### The backlog trap, and the one number that shows it
+
+Fog gathers only **toward** the elected scope. Work past it is `deferred` on a pin and never graduates. A register that only grows is a to-do list wearing a doctrine's name.
+
+Nothing refuses that — a cap would just move the dishonesty — so it is made visible instead: `summary()` reports `fog` beside `fog_oldest_days`, and the age is the signal. A count that rises while the oldest patch keeps getting older is the failure, and it is on the call an agent makes before acting.
+
+Nor is a patch sized like a ticket. One patch may become three pins or none, and pre-slicing it into pin-shaped pieces is the same premature specification the register exists to avoid.
+
+### An older file has no `fog`, and that is not a nonconformance
+
+`OPTIONAL_COLLECTIONS` is the new distinction and it is a real one. `pins`, `decision_log` and `policies` have been in every file since v0.3, so an absent one means a broken file and the reader must say so. `fog` arrived here, so an absent one means an older file and nothing more — reporting it would make every ledger written before this version permanently nonconforming, freezing its `version` stamp forever on a rule about a collection it could not have carried. Present-and-wrong is still reported, for all four; the exemption is about **absence** only. The write path materialises it with `setdefault`, which is the one case where the write path and the read path agree about what an absent key means.
+
+### The general shape
+
+A register for things you cannot yet say is only honest if it has an **exit** and a **ceiling**. This one has two exits, both of which delete, and a ceiling that is reported rather than enforced. Every earlier round of this document turned on a carrier with no reader; this one is the inverse risk — a carrier with no way out, which is how a doctrine becomes a backlog.

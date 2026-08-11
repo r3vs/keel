@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
-SCHEMA_VERSION = "0.30"
+SCHEMA_VERSION = "0.31"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -132,7 +132,8 @@ SCHEMA_VERSION = "0.30"
 # now, and this line makes the failure unreachable rather than merely tested.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
                      "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22",
-                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", "0.29", SCHEMA_VERSION)
+                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", "0.29", "0.30",
+                     SCHEMA_VERSION)
 
 KINDS = {
     "contract_mismatch",
@@ -970,7 +971,18 @@ def _check_event(event: dict) -> None:
 # The three lists a ledger is made of, named because the guarded read is about all three and so are
 # both shape rules. `summary` read each one as `self.data[…]` and died the same way on each; fixing
 # the one that was reported would have left the file's other two halves for the next reviewer.
-LEDGER_COLLECTIONS = ("pins", "decision_log", "policies")
+LEDGER_COLLECTIONS = ("pins", "decision_log", "policies", "fog")
+
+# Which of them an OLDER file is allowed not to have (v0.31). The distinction is real and not a
+# convenience: `pins`, `decision_log` and `policies` have been in every file since v0.3, so an
+# absent one means a broken file and the reader must say so — that is what `collection_shape`
+# reports and why a reader walking a missing `pins` as an empty one is the worst thing a ledger can
+# say. `fog` arrived at v0.31, so an absent one means an older file and nothing else, and reporting
+# it would make every ledger written before this version permanently nonconforming — which would
+# freeze its `version` stamp forever, on a rule about a collection it could not have carried.
+#
+# Present-and-wrong is still reported, for all four. The exemption is about ABSENCE only.
+OPTIONAL_COLLECTIONS = ("fog",)
 
 
 # -- THE SHAPE TABLE: the one carrier the read path, the rules and the corpus all derive from -----
@@ -1077,6 +1089,23 @@ PIN_SHAPES = {
 #: The same table for the ledger's other record. Three paths, and all three were already rules.
 POLICY_SHAPES = {"id": "str", "rule": "str", "applies_to": "object"}
 
+#: And for the FOG register (v0.31). Four paths, and the interesting thing about this table is what
+#: is NOT in it: there is no `question`, and there cannot be one.
+#:
+#: That absence is the whole design. The test that separates fog from a ticket is *can you state the
+#: question precisely now* — explicitly not *can you answer it now* — so a patch that carries a
+#: question is not fog, it is a pin. Enforcing that by inspecting prose would be exactly the
+#: keyword-guessing this repo forbids its own linters; enforcing it by giving the record nowhere to
+#: put one is structural, and it is the reason the "pin state `unspecifiable`" shape was rejected:
+#: the whole pin schema is organised around a fork, and a state that means *no fork yet* would put
+#: an empty one on every entry.
+#:
+#: `noticed_at` is here for `claimed_at`'s reason — the summary parses it to report how old the
+#: oldest patch is, which is the one mechanical signal that the register has stopped being a sensing
+#: surface and become a backlog.
+FOG_SHAPES = {"id": "str", "area": "str", "sensed": "str", "noticed_at": "str",
+              "provenance": "list[object]"}
+
 #: Where a path's rule is STRONGER than its shape, the stronger one is the rule — one name, one
 #: verdict, no second entry saying a weaker version of the same thing. Each is `(holds, message)`
 #: and each implies the declared shape, which
@@ -1100,6 +1129,15 @@ PIN_STRONGER = {
                  lambda v: f"severity must be one of {SEVERITIES}; got {v!r} — the threshold rule "
                            f"and the interview's ordering both read it"),
 }
+FOG_STRONGER = {
+    "id": (lambda v: isinstance(v, str) and bool(v),
+           lambda v: "a fog patch carries no `id`, so nothing can graduate it and nothing can "
+                     "clear it — it is an entry that can only ever be added to"),
+    "area": (lambda v: isinstance(v, str) and bool(v.strip()),
+             lambda v: f"area must be a non-empty string; got {v!r} — it is the only thing that "
+                       f"says WHERE the decision is coming, and a patch that names no area is "
+                       f"indistinguishable from a note"),
+}
 POLICY_STRONGER = {
     "id": (lambda v: isinstance(v, str) and bool(v),
            lambda v: "a policy carries no `id`, so no cascaded decision can name the rule it "
@@ -1118,6 +1156,8 @@ POLICY_STRONGER = {
 #: projection's.
 PIN_GUARANTEED = ("id", "state", "severity", "depends_on", "question", "title", "decision")
 POLICY_GUARANTEED = ("id", "rule", "applies_to")
+#: Every one of them, because a fog patch is four fields and every caller indexes all four.
+FOG_GUARANTEED = tuple(FOG_SHAPES)
 
 #: The declared paths a WRITE door may assume are on the pin, because `add_pin` composes every one
 #: of them on every pin it writes (v0.26).
@@ -1205,6 +1245,7 @@ PIN_RULES = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_", PIN_REQUIRED)
 #: `.items()` on `policy["applies_to"]`, so an elected standing rule whose scope is a string took
 #: down the projection every host loads. Same table, same derivation, one prefix apart.
 POLICY_RULES = _rules_from(POLICY_SHAPES, POLICY_STRONGER, "policy_")
+FOG_RULES = _rules_from(FOG_SHAPES, FOG_STRONGER, "fog_", tuple(FOG_SHAPES))
 
 
 def shape_note(rule: str) -> str:
@@ -1235,6 +1276,11 @@ def shape_notes() -> dict:
             name = prefix + path.replace(".", "_")
             out[name] = shape_note(name)
     return out
+
+
+def fog_violations(patch: dict) -> list:
+    """Which `FOG_RULES` this patch breaks — the same shape as its two siblings, one table over."""
+    return [name for name, holds, _message in FOG_RULES if not holds(patch)]
 
 
 def policy_violations(policy: dict) -> list:
@@ -1328,6 +1374,17 @@ def policy_read(policy: Any, fill: bool = True) -> dict:
     scope this runtime cannot read must not quietly narrow the radius a human is shown.
     """
     return _shape_guarded(policy, POLICY_SHAPES, POLICY_GUARANTEED, fill)
+
+
+def fog_read(patch: Any, fill: bool = True) -> dict:
+    """A fog patch as a reader may index it — `pin_read`'s third sibling, off the same machinery.
+
+    It exists for the reason the other two do rather than by symmetry: the register is rendered on
+    the map and counted in the summary, both of which an agent reaches on a file it did not write,
+    and an `area` that is a number would take those surfaces down exactly as a `severity` that is
+    a number used to.
+    """
+    return _shape_guarded(patch, FOG_SHAPES, FOG_GUARANTEED, fill)
 
 
 def severity_rank(severity: str) -> int:
@@ -1530,6 +1587,8 @@ def nonconforming(data: dict) -> dict:
     # before it could report anything at all.
     for name in LEDGER_COLLECTIONS:
         value = data.get(name)
+        if value is None and name in OPTIONAL_COLLECTIONS:
+            continue          # an older file, not a broken one — see `OPTIONAL_COLLECTIONS`
         if not isinstance(value, list):
             out.setdefault("collection_shape", []).append(f"{name}: {type(value).__name__}")
             continue
@@ -1548,6 +1607,12 @@ def nonconforming(data: dict) -> dict:
             continue
         for rule in event_violations(event):
             out.setdefault(rule, []).append(eid)
+    for index, patch in enumerate(entries("fog")):
+        if not isinstance(patch, dict):
+            continue                                    # already reported as `entry_shape`
+        named = fog_read(patch)["id"] or f"fog[{index}]"
+        for rule in fog_violations(patch):
+            out.setdefault(rule, []).append(named)
     for index, pin in enumerate(entries("pins")):
         if not isinstance(pin, dict):
             continue                                    # already reported as `entry_shape`
@@ -1674,7 +1739,8 @@ class Ledger:
             if not self.pre_rule:
                 self.data["version"] = SCHEMA_VERSION
         else:
-            self.data = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [], "policies": []}
+            self.data = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [],
+                         "policies": [], "fog": []}
             self.pre_rule = {}
 
     # -- persistence -------------------------------------------------------
@@ -1807,6 +1873,14 @@ class Ledger:
         """
         _require(name in LEDGER_COLLECTIONS,
                  f"{name!r} is not one of this file's collections {LEDGER_COLLECTIONS}")
+        # An absent OPTIONAL collection is materialised rather than refused (v0.31), and that is
+        # not the substitution the paragraph above rules out. What it rules out is inventing an
+        # empty list over a value the file carries — `save()` would write the invention back and
+        # lose it. There is nothing to lose here: the key is absent because the file predates the
+        # collection, and `setdefault` is the one case where the write path and the read path agree
+        # on what the file means.
+        if name in OPTIONAL_COLLECTIONS and self.data.get(name) is None:
+            self.data.setdefault(name, [])
         value = self.data.get(name)
         _require(isinstance(value, list),
                  f"`{name}` cannot be written to: a ledger's `{name}` is a list, and this file "
@@ -3667,6 +3741,137 @@ class Ledger:
 
     # -- views (the surfaces hold no state of their own) ------------------------
 
+    # -- v0.31: the fog register ---------------------------------------------------------------
+
+    def add_fog(self, area: str, sensed: str, provenance: list[dict],
+                cluster_hint: Optional[str] = None) -> dict:
+        """Record a decision you can tell is coming and cannot yet phrase. Deliberately coarser
+        than a pin.
+
+        The test that separates this from a ticket is sharp and it is not *can you answer it now*:
+        it is **can you state the question precisely now**. A sharp-but-unanswerable question is a
+        ticket, and belongs on a pin. A question you cannot yet phrase is fog.
+
+        There is nowhere here to put a question, and that is enforcement rather than omission — see
+        `FOG_SHAPES`. Writing an unphrasable fork as a pin is the *"tell me about your app"*
+        open-chat failure `core/interview-funnel.md` exists to prevent: an under-specified question
+        invites the model to fill it in, and the filling-in is the decision.
+
+        Nothing here settles, elects or schedules. A fog patch is not a work item and carries no
+        state: the two exits are `graduate_fog` (the human phrased it, so it is a pin now) and
+        `clear_fog` (there was no fork here after all).
+        """
+        _require(isinstance(area, str) and area.strip(),
+                 "a fog patch names the AREA the decision is coming from; a patch with no area is "
+                 "a note, and the register is not a notebook")
+        _require(isinstance(sensed, str) and sensed.strip(),
+                 "say what made you think a decision is coming. An entry that records only that "
+                 "you had a feeling cannot be graduated by anybody but you, and you will not be "
+                 "the session that reads it")
+        _require_objects(provenance, "provenance",
+                         "each entry names who sensed this and how")
+        _require(len(provenance) > 0, "provenance is required (who sensed this, how)")
+        patch = {
+            "id": self._next_id("fog_", self.writable_collection("fog")),
+            "area": area,
+            "sensed": sensed,
+            "noticed_at": _now(),
+            "provenance": provenance,
+        }
+        if cluster_hint:
+            patch["cluster_hint"] = cluster_hint
+        self.writable_collection("fog").append(patch)
+        return patch
+
+    def fog(self, fog_id: str) -> dict:
+        for patch in self.readable("fog"):
+            if fog_read(patch)["id"] == fog_id:
+                return patch
+        raise LedgerError(f"unknown fog patch {fog_id!r}")
+
+    def graduate_fog(self, fog_id: str, question: dict, human_answer: str, *,
+                     kind: str = "open_decision", title: str = "", severity: str = "medium",
+                     confidence: str = "inferred",
+                     depends_on: Optional[list[str]] = None) -> dict:
+        """The patch became phrasable: it becomes a pin, **and it leaves the register**.
+
+        Graduation is the load-bearing half of the whole design. Without the deletion, the register
+        is a second home for something that already lives on a pin — which is the divergence this
+        package exists to find, built by the feature meant to prevent premature specification.
+
+        **The phrasing is the human's, and that is not ceremony.** Phrasing the question IS framing
+        the decision, and framing is where the answer gets smuggled in: an agent that writes the
+        fork also writes which answers are thinkable. So the agent proposes and the human elects,
+        exactly as with any other fork, and `human_answer` is their words. The doors above take a
+        quote for the same reason and refuse without one.
+
+        The trail lives on the pin's `provenance` rather than in the log, because the log records
+        what happened to a pin's STATE and this creates the pin — creation has always been recorded
+        in provenance, and `add_pin` appends nothing to the log either.
+        """
+        patch = fog_read(self.fog(fog_id))
+        _require(isinstance(human_answer, str) and human_answer.strip(),
+                 "graduating a patch means the HUMAN phrased the question — pass their words. "
+                 "An agent that phrases the fork has framed the decision, which is the one thing "
+                 "no door here may do")
+        _validate_question(question)
+        _require(bool(question), "a graduation with no question is a move, not a graduation: the "
+                                 "patch is only a pin once somebody can state the fork")
+        pin = self.add_pin(
+            kind=kind,
+            title=title or patch["area"],
+            severity=severity,
+            confidence=confidence,
+            provenance=[{"source": "fog_graduation", "detail": f"{patch['id']}: {patch['sensed']}",
+                         "human_answer": human_answer}],
+            question=question,
+            depends_on=depends_on,
+        )
+        collection = self.writable_collection("fog")
+        collection[:] = [e for e in collection if fog_read(e)["id"] != patch["id"]]
+        return pin
+
+    def clear_fog(self, fog_id: str, rationale: str, human_answer: str) -> dict:
+        """The other exit: there was no fork here, or the scope moved past it. The patch is deleted.
+
+        Held to `defer`'s discipline and for `defer`'s reason: clearing stops the register asking
+        about something, so an agent doing it alone is an agent deciding not to decide. Fog gathers
+        only TOWARD the elected scope — work past it is `deferred` on a pin and never graduates —
+        and this is the door that says so.
+
+        **A cleared patch leaves no trail, and that is the design rather than an oversight.** The
+        register's whole claim is that it holds what is still fog; an append-only history of things
+        that stopped being fog would be a second collection with the first one's failure mode. What
+        keeps it honest is that the human said the words.
+        """
+        _require(isinstance(rationale, str) and rationale.strip(),
+                 "say why this is not a decision after all — a clearance with no reason is a "
+                 "deletion with better manners")
+        _require(isinstance(human_answer, str) and human_answer.strip(),
+                 "clearing stops the register asking about this, which is a settlement; pass the "
+                 "human's words, exactly as `defer` does")
+        patch = fog_read(self.fog(fog_id))
+        collection = self.writable_collection("fog")
+        collection[:] = [e for e in collection if fog_read(e)["id"] != patch["id"]]
+        return {"fog_id": patch["id"], "area": patch["area"], "cleared": True,
+                "rationale": rationale}
+
+    def fog_view(self, now: Optional[datetime] = None) -> dict:
+        """The register, plus the one number that says whether it is still a register.
+
+        `oldest_days` is the mechanical form of the backlog trap. A fog register is bounded by the
+        elected scope, so patches should graduate or clear as the scope firms up; one that only ever
+        grows, whose oldest patch keeps getting older, is a to-do list wearing a doctrine's name.
+        Nothing refuses that — a rule that capped the register would just move the dishonesty — but
+        the number is on the surface an agent reads before acting.
+        """
+        patches = [fog_read(e) for e in self.readable("fog")]
+        moment = now or datetime.now(timezone.utc)
+        ages = [(moment - stamped).days for stamped in
+                (_stamp(p["noticed_at"]) for p in patches) if stamped is not None]
+        return {"patches": patches, "count": len(patches),
+                "oldest_days": max(ages) if ages else 0}
+
     # -- v0.30: the claim, and the frontier it makes readable ----------------------------------
 
     def _claim_on_disk(self, pin_id: str) -> dict:
@@ -3954,6 +4159,11 @@ class Ledger:
             # would let a session read "nine open" and take the one a peer is already on, which is
             # the duplication the field exists to remove; reporting only the frontier would let a
             # queue shrink silently, which reads as progress and is its opposite.
+            # v0.31 — the register, and how old its oldest patch is. The count alone would say
+            # nothing about the trap: a fog register that only grows is a backlog, and the age is
+            # what makes that visible on the call an agent makes before acting.
+            "fog": self.fog_view()["count"],
+            "fog_oldest_days": self.fog_view()["oldest_days"],
             "frontier": len(self.frontier()),
             "claimed": {c["pin_id"]: c["holder"] for c in self.claims()},
         }

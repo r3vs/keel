@@ -21,7 +21,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **61** | the deterministic engine, typed and discoverable |
+| MCP tools | **65** | the deterministic engine, typed and discoverable |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
 | Skills | **2** | `using-the-ledger`, `run-workflow` |
@@ -30,13 +30,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 61 MCP tools
+## The 65 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (24)
+### Ledger — the single source of truth (28)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -67,6 +67,10 @@ holds no state of its own; it projects this file.
 | `ledger_frontier` | what is takeable right now — open, unblocked **and unclaimed** — beside who is holding the rest, because a list that silently omits the claimed pins reads as *there is less work* | — |
 | `ledger_claim` | take a pin **before** doing the work. Compare-and-set against the file, writes nothing else, and expires on its own so a dead session parks nothing | ✎ |
 | `ledger_release` | you stopped without finishing. Settling a pin releases it already, so this is the other ending — and with no holder it clears up after a session that died | ✎ |
+| `ledger_fog` | the register of decisions this project can **sense** and cannot yet phrase, plus how old its oldest patch is — the one number that says whether it is still a register or has become a backlog | — |
+| `ledger_add_fog` | record one, without inventing a question for it. The entry has nowhere to put a fork, which is the enforcement: if you can phrase it, it is a pin | ✎ |
+| `ledger_graduate_fog` | the human phrased it — it becomes a pin **and leaves the register**, so it lives in exactly one place. Phrasing the fork is framing the decision, so the words must be theirs | ✎ |
+| `ledger_clear_fog` | there was no fork here after all. Held to what `ledger_defer` is held to, because clearing stops the register asking | ✎ |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview
 answer. The write tools record; they do not decide.
@@ -282,7 +286,7 @@ needs a container and a key, so it stays opt-in.
 
 ## Shared doctrine
 
-`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.30), the interview
+`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.31), the interview
 funnel, the brainstorm protocol, the field-shape engine, contract testing, the feedback loop, the
 static-analysis and knowledge-source doctrines, the assumption-surfacing rule, the agent roster, the
 model tiers, and the self-model.
