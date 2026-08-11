@@ -220,8 +220,14 @@ Still open (code — each its own PR; effort S/M/L per the study):
       or Rust's `impl` block, so a query may name the owner with an optional `@owner` capture. A
       third fell out of that: a method capture with no owner is emitted as a **function**, which is
       the only structural way to tell them apart in Kotlin, Swift and Scala.
-- [ ] **D5** container sub-grouping *within* a layer (folder-LCP + Louvain fallback) for very large
-      layers — the map is legible now; this is a refinement for huge repos (M).
+- [x] **D5** container sub-grouping *within* a layer — folder-LCP in `graphmap._subgroups`, above a
+      declared threshold, with the groups partitioning the layer (files at the shared prefix are the
+      `.` group, so nothing is dropped). **The Louvain fallback is refused**, and not only because it
+      needs a non-stdlib graph library: a detected community has no name a reader can check, and
+      `community 3` is exactly the un-nameable grouping this package refuses everywhere else — drawn
+      on the surface a human opens to find out what the code is. The folder tree is a grouping the
+      repo's own authors already named, and where it says nothing (one bucket) the layer renders flat,
+      which is the honest reading of a flat directory.
 - [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
       design-system alignment becomes an explicit goal (L).
 
