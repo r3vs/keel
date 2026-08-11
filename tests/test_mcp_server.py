@@ -68,6 +68,9 @@ EXPECTED_TOOLS = {
     "policy_preview", "ledger_record_policy",
     # design contract (DTCG) + the frontend/design scanner
     "generate_tokens", "tokens_diff", "extract_tokens", "design_scan",
+    # reference-image evidence: the computed half of "build me this screenshot". Read-only over
+    # an image the user supplied — the one claim about a reference picture that is a fact.
+    "image_palette", "palette_verify",
     # cost & token telemetry — the measurer's surface
     "spend_report",
     # landing-zone readiness: D0 evidence (read-only) + the D2 verdict (write)

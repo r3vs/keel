@@ -1253,6 +1253,48 @@ def tokens_diff(contract: str, css: str) -> dict:
     return tools.tokens_diff(contract, css)
 
 
+@mcp.tool(annotations={"title": "Image Palette (a reference image's computed facts)", **_RO})
+def image_palette(image: str) -> dict:
+    """What a screenshot/mockup IS, computed from its pixels. WRITES NO FILE.
+
+    Geometry plus the real color histogram with per-color coverage — a stdlib PNG decode, no model
+    and no network, so every value carries `confidence: extracted` and skips fp-check. This is the
+    only claim about a reference image that is a fact; everything semantic (that a band is a nav,
+    that a blue *means* primary) is a model inference and belongs in a vetoable pin instead.
+
+    An unreadable format returns `status: "unchecked"` with the reason — a palette that could not be
+    read is not a palette that was clean. Non-PNG input is converted through ImageMagick / sips /
+    ffmpeg when one is on PATH.
+
+    Args:
+        image: path to the reference screenshot, mockup, design export or extracted video frame.
+    """
+    return tools.image_palette(image)
+
+
+@mcp.tool(annotations={"title": "Palette Verify (fact-check claimed colors against the image)", **_RO})
+def palette_verify(image: str, claimed: list | None = None, contract: str = "",
+                   tolerance: float = 0.0, contrast_pairs: list | None = None) -> dict:
+    """Do the colors a model read off this image actually occur in it? WRITES NO FILE.
+
+    Coverage is summed over every histogram bucket within a perceptual (CIE Lab ΔE) radius, so
+    anti-aliasing and lossy re-encoding count toward a claim rather than against it. A claim that
+    covers nothing comes back `absent` — a hallucinated token, refuted at the contract instead of
+    after it has been propagated into tokens.css, a Tailwind theme, a DESIGN.md and every component
+    built on them. Set membership over decoded pixels, so `confidence: extracted`.
+
+    Args:
+        image: path to the reference image the colors are claimed to come from.
+        claimed: hex strings, or {name, value} objects to keep the token names in the verdict.
+        contract: a DTCG token JSON to check instead — its color tokens become the claim set.
+        tolerance: override the ΔE radius; 0 uses the declared default.
+        contrast_pairs: optional {fg, bg, label?} pairs to grade against WCAG 2.x at the same time —
+            the one moment a contrast check is possible before any code exists to scan.
+    """
+    return tools.palette_verify(image, claimed=claimed, contract=contract, tolerance=tolerance,
+                                contrast_pairs=contrast_pairs)
+
+
 @mcp.tool(annotations={"title": "Extract Design Tokens (as-is → candidate DTCG)", **_RO})
 def extract_tokens(css: str) -> dict:
     """Harvest the de-facto design tokens a codebase DECLARES as CSS custom properties into a

@@ -1,0 +1,105 @@
+{
+  "schema_version": "0.1",
+  "note": "Source of truth for this skill's module catalog. `step` is the position in SKILL.md's procedure, not a phase of a multi-invocation workflow — this skill runs inside one. Every deterministic module names an `engine` (an `mcp:<tool>` validated against src/mcp/server.py by check_consistency.py, an `external:<tool>`, or an `agent:<how>`), so none free-rides on a sibling's mechanism. The catalog's own shape carries the skill's one idea: the modules split by TRUST, not by topic — `image-evidence` and `palette-fact-check` are D0 over decoded pixels, `visual-inference` and `pixel-comparison` are D2 over the same image, and reading one as the other is the failure this skill exists to prevent.",
+  "modules": [
+    {
+      "id": "image-evidence",
+      "step": 1,
+      "kind": "core",
+      "type": "deterministic",
+      "engine": "mcp:image_palette",
+      "tools": ["stdlib PNG decode", "ImageMagick", "sips", "ffmpeg"],
+      "produces": [],
+      "notes": "Geometry + the real color histogram with per-color coverage. Produces no pin: it produces FACTS, which constrain and refute the inference modules. An unreadable format returns `unchecked` with the reason — a coverage gap, never a clean bill.",
+      "reference": "references/reading-an-image.md"
+    },
+    {
+      "id": "visual-inference",
+      "step": 2,
+      "kind": "core",
+      "type": "judgment",
+      "engine": "mcp:ledger_surface_assumption",
+      "tools": ["vision model"],
+      "produces": ["design_concern", "ambiguity"],
+      "notes": "Component identity, color ROLE, layout system, type roles. D2 whatever the confidence sounds like, so each lands as a pin carrying provenance agent_assumption — visible on the map, vetoable in the interview, attackable by the challenger. Naming the engine is what makes this a workflow rather than a description of one.",
+      "reference": "references/reading-an-image.md"
+    },
+    {
+      "id": "palette-fact-check",
+      "step": 3,
+      "kind": "core",
+      "type": "deterministic",
+      "engine": "mcp:palette_verify",
+      "tools": ["CIE Lab / delta-E76", "WCAG 2.x relative luminance"],
+      "produces": ["contract_mismatch"],
+      "notes": "The proposed colors against the pixels they claim to come from, plus WCAG on the claimed pairs. A claimed token covering nothing is a hallucinated color, refuted at the contract instead of after propagation. Set membership and arithmetic, so confidence extracted — it skips fp-check like a type error.",
+      "reference": "references/image-to-contract.md"
+    },
+    {
+      "id": "absent-elicitation",
+      "step": 4,
+      "kind": "core",
+      "type": "judgment",
+      "engine": "mcp:ledger_add_pin",
+      "tools": ["interview funnel"],
+      "produces": ["ambiguity", "open_decision", "incompleteness", "acceptance_criterion"],
+      "notes": "The state matrix, breakpoints, theme, real-vs-placeholder data, behavior, a11y semantics, motion, assets, i18n — everything one still frame structurally cannot show. This is the module that distinguishes the skill from a generator: the invented answers are the ones that cause rework, and here they are asked instead.",
+      "reference": "references/reading-an-image.md"
+    },
+    {
+      "id": "existing-system-reconciliation",
+      "step": 4,
+      "kind": "contract",
+      "type": "deterministic",
+      "engine": "mcp:extract_tokens",
+      "tools": ["CSS custom properties"],
+      "produces": ["contract_mismatch"],
+      "notes": "When the project already declares a design system, harvest it and check the reference against it rather than authoring a second palette. A screenshot that disagrees with the house system is a decision, not a license.",
+      "reference": "references/image-to-contract.md"
+    },
+    {
+      "id": "design-capture",
+      "step": 5,
+      "kind": "contract",
+      "type": "deterministic",
+      "engine": "mcp:generate_tokens",
+      "tools": ["DTCG"],
+      "produces": [],
+      "notes": "The elected values become a DTCG contract projected into tokens.css / theme.css / DESIGN.md. This is the carrier greenfield's design-propagation named for 'captured from an approved visual direction' and never had: the screenshot the user chose IS the approved direction.",
+      "reference": "references/image-to-contract.md"
+    },
+    {
+      "id": "token-drift-guard",
+      "step": 5,
+      "kind": "contract",
+      "type": "deterministic",
+      "engine": "mcp:tokens_diff",
+      "tools": ["CI"],
+      "produces": ["contract_mismatch"],
+      "notes": "Re-extract the generated CSS variables and diff them against the DTCG contract; a correct generator round-trips to zero drift. Catches an edit to the token DEFINITIONS, where design_scan catches a component USING an off-contract value.",
+      "reference": "references/image-to-contract.md"
+    },
+    {
+      "id": "render-membership",
+      "step": 6,
+      "kind": "core",
+      "type": "deterministic",
+      "engine": "mcp:design_scan",
+      "tools": ["impeccable", "playwright"],
+      "produces": ["contract_mismatch", "design_concern"],
+      "notes": "The blocking half of the look-again loop, run against the running URL at every elected breakpoint: token membership against the generated DESIGN.md, plus the computable a11y subset. Deterministic, so it gates the merge.",
+      "reference": "references/visual-loop.md"
+    },
+    {
+      "id": "pixel-comparison",
+      "step": 6,
+      "kind": "core",
+      "type": "judgment",
+      "engine": "agent:name the difference in words, then route it as defect-or-undecided for a human",
+      "tools": ["playwright", "visual regression"],
+      "produces": ["design_concern"],
+      "notes": "Does it LOOK like the picture — a deterministic mechanism over a noisy signal (anti-aliasing, font hinting, GPU/OS rendering, an unknown capture density), so it is a human-reviewed pin and never a gate. Differences are stated in words, not as a diff percentage: a named difference is decidable, a score is not.",
+      "reference": "references/visual-loop.md"
+    }
+  ]
+}
