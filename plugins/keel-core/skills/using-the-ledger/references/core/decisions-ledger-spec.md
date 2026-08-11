@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.29
+# Decisions Ledger — Spec v0.30
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -60,7 +60,9 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
                                  // written only for a STANDING property of the pin (v0.18)
   "premortem": null,             // v0.9 — { failure_modes[], guardrails[], abort_criteria[], paper_tigers[] } | null
   "depends_on": [],              // DECISION 6
-  "remediation": []              // [ RemediationItem ]
+  "remediation": [],             // [ RemediationItem ]
+  "claimed_by": null,            // v0.30 — who is working this pin right now | null
+  "claimed_at": null             // v0.30 — ISO-8601, when they took it. Expires; see below
 }
 ```
 
@@ -1407,3 +1409,59 @@ Found in the same pass, one field over, and the same defect: a **sentinel that a
 ### The general shape
 
 A rung is a **claim about which path ran**, and every earlier round of this register turned on claims with no carrier. This one adds the case where the carrier exists, is honest, and answers a *different question than the one being asked*: `check_client_capability` answers *can you?*, and the failure was *will you?*. When a carrier is one question off, the fix is not a better default on the answer it gives — it is a path where the question does not arise.
+
+---
+
+## v0.30 — Two sessions can take the same pin
+
+Found by reading another package rather than by an incident here, which is worth saying plainly: `mattpocock/skills`'s wayfinder gives every unit of work an assignee **taken before any work starts**, and calls the takeable set the *frontier* — open, unblocked, unclaimed. This ledger had the first two and no name for the third.
+
+### What already existed, and what it protects
+
+`branch-lifecycle` declares a scope's **file globs**, and the ledger distinguishes `depends_on` (B needs A's result — ordering) from `conflicts_with` (B and A touch the same files — mutual exclusion). Worktrees make that enforceable: two agents in two trees cannot corrupt each other's files.
+
+All of it is about **files**. None of it is about the **item**, and the two come apart exactly where it matters: two sessions resolving the same pin may legitimately touch **disjoint** files — one writes the fix, one writes the test — so `conflicts_with` correctly reports no conflict while both do the same work. The overlap is in the work item, which is the one thing the ledger owns and the filesystem does not. Nothing corrupts; they discover it at the merge. On a pin carrying a question the failure is worse than waste: the second session asks the human something the first already answered, because sessions share no context.
+
+### `claimed_by` + `claimed_at`, and why they are not a state
+
+Both `null` by default. A malformed value reads as **no claim** (`pin_read` substitutes the empty string, which is falsy) and is reported under `pre_rule_events` like every other guarded field — never as a plausible invented holder, and never as a live claim nobody can release.
+
+The claim is **orthogonal to the lifecycle**: a pin can be `needs_input` and claimed, or `decided` and claimed. Folding it into `state` would multiply every state by two and break every transition table above. It also does not reuse `depends_on` or `conflicts_with` — those are the ordering/exclusion pair, deliberately separated, and a third meaning on either is how a schedule deadlocks.
+
+### One door takes it, and it writes nothing else
+
+`claim(pin_id, holder)` is compare-and-set. Claiming a pin somebody else holds live **fails and names the holder**; it never overwrites. Claiming your own re-stamps it. Claiming a stale one succeeds and reports `reclaimed`, because a silent takeover is how two sessions come to believe the same thing about different work.
+
+It writes nothing but the claim, and that is the property: the claim has to land **before** the work, so a door that also did something is a door somebody calls second — and a claim taken afterwards is a receipt, not a reservation.
+
+The compare-and-set is decided against **the file**, not against the caller's in-memory copy: two sessions each hold their own, so a check against the copy answers *did I claim this* rather than *has anybody*. Only the two claim carriers are re-read; a wholesale reload would discard whatever else the caller has in flight.
+
+### It expires, because there is no daemon to reap it
+
+An agent that dies holding a claim must not park a pin forever, and this ledger has no process to notice. So staleness is computed **at read time** from `claimed_at` against a declared TTL (`CLAIM_TTL_SECONDS`, one hour — a tuned number, and therefore declared as a hypothesis where the gate can see it). `claim_state` answers three ways rather than two: `unclaimed` · `live` · `stale`. A scheduler must treat *a peer is on it* and *a session died holding it* differently, and "claimed" alone cannot.
+
+A claim whose timestamp cannot be parsed is **stale**, not live: a claim this runtime cannot date cannot be shown to be live, and treating it as live would park a pin behind a timestamp nobody can fix.
+
+### The reader that makes it worth having
+
+The **frontier** — open ∧ unblocked ∧ unclaimed — is what the interview and the wave scheduler select over, and what the surfaces report. A claim nothing reads is a decoration, and `check_schema_fields` is the gate that would refuse it.
+
+"Unblocked" is genuinely two questions and this package already answers both: the interview asks whether anything upstream is still in play (`OPEN_STATES`), the wave scheduler asks whether the upstream **work** is done — which a `decided`-but-unbuilt dependency fails and the first passes. So the claim filter lives in one function and the candidate set is the caller's. One filter, two schedulers, no third notion.
+
+**Both halves are always reported.** `summary()` carries `frontier` and `claimed`; `buildloop.plan()` carries `ready_now` and `held_by_peers`. A queue that just returns fewer items reads as *there is less work*, and the difference between that and *your peers have taken it all* is the whole reason anyone is reading the number.
+
+### Releasing, and the door that does it for you
+
+Releasing is explicit (`release`), and it is also the **settlement doors' business**: `_settle` clears the claim on every door that lands the pin in `SETTLED_STATES`, off the same destination test that clears the dispute mark, because a settled pin is not held. `correctness_unknown` does not clear — the pin comes back to the human still open, and the session that could not verify it is the one most likely to still be on it.
+
+`decided` **does** clear, which reads oddly for a beat and is right: the interview's work on that pin is over and the build's has not started, and the property being bought is that a claim spans one unit of work rather than two.
+
+### It is advisory, and that is the design
+
+A claim **never gates a write**. An agent that legitimately needs to write a claimed pin — the human said so — must not be stopped by it. The failure it prevents is duplicated **work**, not concurrent **access**: the ledger's existing write discipline covers the latter, and conflating the two would put a lock in a file nobody can unlock.
+
+That sets the strength honestly. Between the compare-and-set's read and the caller's save there is a window, so this is best-effort, and it is the same window every other field on the record already has. Buying more would mean the lock this design exists to avoid.
+
+### The general shape
+
+Two mechanisms can look like they cover the same risk and cover **different halves of it**, and the gap is invisible while both are described in the same sentence. Worktrees and `conflicts_with` protect the *files*; nothing protected the *item*. When a guarantee is stated as "we already handle concurrency", the question that finds the hole is *concurrency of what* — and the answer is usually a noun nobody named.

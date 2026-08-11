@@ -30,6 +30,14 @@ judgment. It is advisory by construction: it does not shrink the queue, it hands
 back to a named owner (`needs_interview` / `needs_research` / `needs_hardening` / `needs_challenge` /
 `human_only`). Take the route; do not start the item and discover the gap at the evidence gate.
 
+**And unblocked is not the same as unclaimed.** `build_waves` reports `ready_now` beside
+`held_by_peers` — a queue that just returns fewer items reads as *there is less work*, and the
+difference between that and *another session has it* is the whole reason you are reading the
+number. When more than one session runs this loop, take the item as well as the tree: `ledger_claim`
+before you start on a pin, and `ledger_release` if you stop without finishing. The worktree stops
+two sessions corrupting the same file; it says nothing about two sessions doing the same item, and
+the second one legitimately touches different files.
+
 Where it reports a premortem **owed**, that is the challenger's second mode and it is written with
 `ledger_premortem`: grant the plan, assume it already failed, and name what killed it — each failure
 mode answered by a guardrail or an abort criterion (the tool refuses a failure with no response), and

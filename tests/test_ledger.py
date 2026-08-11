@@ -81,6 +81,10 @@ def walk_every_pin_writer() -> tuple:
         written.update(pin)
         shots.append(copy.deepcopy(pin))
 
+    # v0.30 — first, because that is the rule the door exists to make true: the claim lands BEFORE
+    # the work. It is also the only order that exercises it, since `_settle` clears the carriers and
+    # this walk ends at `resolved`.
+    door(led.claim, pin["id"], "sess_walk")
     door(led.add_proposals, pin["id"], [{"summary": "s"}])
     door(led.set_readiness, pin["id"], "ready", zone={"files": ["a.py"]}, evidence={})
     door(led.premortem, pin["id"], [{"class": "environment", "description": "d"}],

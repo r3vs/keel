@@ -28,6 +28,28 @@ Distinguish two relations, because conflating them is how a schedule deadlocks o
 
 Independent scopes go in parallel worktrees. Conflicting scopes serialize, whatever the DAG says.
 
+### The tree protects the files. It does not protect the item.
+
+Both relations above are about **files**, and so is the worktree: two agents in two trees cannot
+corrupt each other's work. Neither says anything about who is doing the *item*. Two sessions
+resolving the same pin may legitimately touch disjoint files — one writes the fix, one writes the
+test — so `conflicts_with` correctly reports no conflict while both do the same work, and nobody
+finds out until the merge. On a pin that carries a question it is worse than waste: the second
+session asks the human something the first already answered.
+
+So take the item as well as the tree:
+
+1. `ledger_frontier` — what is open, unblocked **and unclaimed**, beside who holds the rest. Pick
+   from the first list.
+2. `ledger_claim` — take the pin **before** you start. A claim taken afterwards is a receipt.
+   `claimed: false` names the holder: that is a normal answer, so pick something else.
+3. `ledger_release` — you stopped without finishing. Settling the pin releases it for you, so this
+   is only for the other ending; with no holder it also clears up after a session that died.
+
+A claim expires on its own, so nothing is parked forever, and it never blocks a write: if the human
+tells you to work a pin somebody holds, work it. It stops two sessions doing one job — the tree
+stops them doing it to the same file.
+
 ## During — commit against pins
 
 - Commit at each green step, referencing the pin: the ledger says *why*, the commit says *what*.

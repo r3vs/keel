@@ -82,6 +82,10 @@ EXPECTED_TOOLS = {
     "generator_observe", "generator_screen",
     # learning that only ever produces checks, never stored beliefs
     "learning_report",
+    # v0.30 — the claim. Two sessions reading one ledger see the same unblocked pins and take the
+    # same one; worktrees stop them corrupting each other's files and say nothing about the item.
+    # `ledger_frontier` is the reader that makes the two writers worth having.
+    "ledger_frontier", "ledger_claim", "ledger_release",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
@@ -92,6 +96,7 @@ WRITE_TOOLS = {
     "ledger_premortem", "ledger_label_failure", "ledger_cross_derive", "doc_register",
     "generator_observe", "interview_expand", "ledger_record_decision", "ledger_record_policy",
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
+    "ledger_claim", "ledger_release",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
 

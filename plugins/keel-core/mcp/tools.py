@@ -759,6 +759,54 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return agentready.card(led, pin_id) if pin_id else agentready.gate(led)
 
 
+def ledger_claim(ledger: str, pin_id: str, holder: str) -> dict:
+    """Take a pin before working it. Compare-and-set; writes nothing else.
+
+    It writes nothing else on purpose. The property being bought is that the claim lands BEFORE the
+    work, so a door that also recorded something is a door somebody calls second, and a claim taken
+    afterwards is a receipt rather than a reservation.
+
+    The refusal is not an error, and the return shape says so: `claimed: false` with the holder
+    named is the normal, expected answer when a peer is on it. An exception there would make every
+    caller wrap the one outcome that is neither a bug nor a surprise.
+    """
+    led = _open_existing(ledger)
+    out = led.claim(pin_id, holder)
+    if out.get("claimed"):
+        _saved(ledger, led)
+    return out
+
+
+def ledger_release(ledger: str, pin_id: str, holder: str = "") -> dict:
+    """Put a pin back on the frontier without settling it. The other way a claim ends.
+
+    A settlement releases too, so this is for the session that stops without finishing — and for the
+    human cleaning up after one that died, which is why `holder` is optional: passing it releases
+    only your own claim, omitting it releases whatever is there.
+    """
+    led = _open_existing(ledger)
+    out = led.release(pin_id, holder)
+    if out.get("released"):
+        _saved(ledger, led)
+    return out
+
+
+def ledger_frontier(ledger: str) -> dict:
+    """What is takeable right now — open, unblocked, unclaimed — and what your peers are holding.
+
+    Both halves, never one. A list that silently omits the claimed pins reads as *there is less
+    work*, and the difference between that and *somebody else has it* is the whole reason anyone is
+    looking.
+    """
+    from ledger import pin_read
+    led = _open_existing(ledger)
+    return {
+        "frontier": [{"pin_id": pin_read(p)["id"], "title": pin_read(p)["title"],
+                      "state": pin_read(p)["state"]} for p in led.frontier()],
+        "claimed": led.claims(),
+    }
+
+
 def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
                  human_answer: str = "") -> dict:
     """Record the human's election to put this pin out of scope for now. It does not elect.

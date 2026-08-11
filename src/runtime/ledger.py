@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
-SCHEMA_VERSION = "0.29"
+SCHEMA_VERSION = "0.30"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -132,7 +132,7 @@ SCHEMA_VERSION = "0.29"
 # now, and this line makes the failure unreachable rather than merely tested.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
                      "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22",
-                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", SCHEMA_VERSION)
+                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", "0.29", SCHEMA_VERSION)
 
 KINDS = {
     "contract_mismatch",
@@ -282,6 +282,9 @@ LEAVE_AS_IS_STATES = ("accepted", "deferred")
 #   * `records_only` — an observation ABOUT the pin that changes no state a builder reads.
 #     `label_failure` is the honest case and the reason this is a table rather than a blanket: a
 #     failure in production is exactly what you label on a `resolved` pin, and then you `reopen`.
+#     `release` (v0.30) is the second: on finished work there is no claim left to drop — `_settle`
+#     already took it — so the door is a no-op that reports `released: false`, and refusing it would
+#     make cleaning up after a dead session a thing you have to check before doing.
 CLOSED_WORK_DISPOSITIONS = ("refuse", "settlement", "arc", "records_only")
 PIN_WRITE_DOORS = {
     "set_question": "refuse",
@@ -299,6 +302,11 @@ PIN_WRITE_DOORS = {
     "challenge": "arc",
     "cross_derive": "arc",
     "label_failure": "records_only",
+    # v0.30. `claim` refuses for the plain reason: taking finished work reserves a unit of work
+    # nobody is going to do, and the pin would sit off the frontier held by a session that will
+    # never release it. It is the one door here whose refusal is not about un-finishing anything.
+    "claim": "refuse",
+    "release": "records_only",
 }
 
 # Pins awaiting something. The complement of `SETTLED_STATES`, named rather than derived because
@@ -542,6 +550,46 @@ UNASKED_BUCKETS = ("would_decide", "held_back", "must_be_asked", "not_offered", 
 # applied to the thing the predicate's answer is written INTO rather than to the answer itself.
 STANDING_REFUSALS = ("held_back", "must_be_asked")
 
+# -- v0.30: the claim -----------------------------------------------------------------------------
+#
+# Who is working on this pin RIGHT NOW, and since when. Both `null` by default, and neither is a
+# state: a pin can be `needs_input` and claimed, or `decided` and claimed, and folding ownership
+# into the lifecycle would multiply every state in `STATES` by two and break every transition table
+# in the spec.
+#
+# It exists because the concurrency this package already invites — *"the user may run unblocked
+# items in parallel"* — was safe against corruption and unprotected against DUPLICATION.
+# `branch-lifecycle` declares a scope's file globs and `conflicts_with` excludes two scopes that
+# touch the same files, so two worktrees cannot corrupt each other. All of that is about files. Two
+# sessions resolving the same pin may legitimately touch DISJOINT files — one writes the fix, one
+# writes the test — so `conflicts_with` correctly reports no conflict while both do the same work.
+# The overlap is in the work ITEM, which is the one thing the ledger owns and the filesystem does
+# not. On a `grilling`-shaped pin it is worse than waste: the second session asks the human a
+# question the first already answered, because sessions share no context.
+#
+# **It is advisory, and that is a design choice rather than a shortcut.** A claim never gates a
+# write: an agent that legitimately needs to write a claimed pin (the human said so) must not be
+# stopped by it. The failure it prevents is duplicated WORK, not concurrent ACCESS — the ledger's
+# existing write discipline covers the latter, and conflating the two would put a lock in a file
+# nobody can unlock.
+CLAIM_CARRIERS = ("claimed_by", "claimed_at")
+
+# What a reader may conclude about a pin's ownership. Three answers, because "claimed" alone cannot
+# distinguish the two cases a scheduler must treat differently: a peer is on it, versus a session
+# died holding it. There is no daemon here to reap the second, so staleness is computed at READ time
+# from `claimed_at` — which is why the TTL below is a number this file has to declare.
+CLAIM_STATES = ("unclaimed", "live", "stale")
+
+# HYPOTHESIS: how long a claim stays live without being renewed. One hour is a guess about how long
+# a session works one pin before it either settles it or dies, and it is tuned from one side only:
+# too short re-offers a pin somebody is still on (duplicated work, the thing this prevents), too
+# long parks a pin nobody is on (a frontier that shrinks and never grows back). The asymmetry says
+# which way to err — a stale claim is reclaimed with a note, and a claim that expires under a live
+# session is silently the bug this field was added to remove — so it errs long. Renewing is free
+# (`claim` by the same holder re-stamps it), so a session that outlives an hour is expected to say
+# so rather than to be assumed dead.
+CLAIM_TTL_SECONDS = 3600
+
 # Every id prefix a `decision_log` entry may carry, and therefore every kind of entry a reader may
 # dispatch on (v0.18). Declared because `summary()` dispatches on the prefix: an entry carrying no
 # id at all made it die with a bare `KeyError`, on the one call an agent makes BEFORE acting, on a
@@ -567,7 +615,7 @@ PIN_FIELDS = (
     "id", "kind", "kind_detail", "title", "severity", "confidence", "provenance", "anchors",
     "state", "substate", "as_is", "to_be", "question", "brainstorm", "decision", "depends_on",
     "remediation", "cluster_id", "resolution_mode", "verification", "readiness", "premortem",
-    "cross_derivations", "evidence",
+    "cross_derivations", "evidence", "claimed_by", "claimed_at",
 )
 
 
@@ -1013,6 +1061,17 @@ PIN_SHAPES = {
     "premortem.abort_criteria": "list",
     "premortem.paper_tigers": "list[object]",
     "cross_derivations": "list[object]",
+    # v0.30 — two top-level scalars a reader COERCES, which is the half of the membership rule that
+    # is not about indexing. `claimed_at` is parsed (`datetime.fromisoformat`), and a value that is
+    # not a string raises inside `claim_state`, which `frontier` calls for every pin — so one
+    # hand-edited timestamp would take the scheduler down for the whole file. `claimed_by` is
+    # coerced to a bool by the same predicate and printed by the map: `{"who": "a"}` is truthy, so
+    # an unreadable value would render a pin as held by a holder no surface can name. Both read as
+    # the EMPTY string where the file's value does not hold, and `""` is falsy, so the honest
+    # reading of a claim this runtime cannot read is *not claimed* — never an invented holder, and
+    # never a live claim nobody can release.
+    "claimed_by": "str",
+    "claimed_at": "str",
 }
 
 #: The same table for the ledger's other record. Three paths, and all three were already rules.
@@ -1325,6 +1384,46 @@ def downstream_of(pin_id: str, reads: Iterable[dict]) -> set[str]:
                 out.add(nxt)
                 frontier.append(nxt)
     return out
+
+
+def _stamp(value: Any) -> Optional[datetime]:
+    """An ISO timestamp as a tz-aware moment, or `None` where it is not one this runtime can read.
+
+    Naive stamps are read as UTC, because that is what `_now` writes and a naive value here can only
+    have come from a hand edit or an older writer. Returning `None` rather than raising is the same
+    rule the shape table follows one section up: reading a ledger is never the operation that fails
+    on it, and a timestamp nobody can parse is an absence, not an exception.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def claim_state(read: dict, now: Optional[datetime] = None) -> str:
+    """Is anybody working on this pin — `unclaimed` | `live` | `stale` (v0.30).
+
+    Takes a `pin_read` result, so a malformed `claimed_by` has already become `""` and reads as
+    unclaimed. Three answers rather than two, because a scheduler must treat *a peer is on it* and
+    *a session died holding it* differently, and there is no daemon here to tell them apart: the
+    difference is computed at read time from `claimed_at` against `CLAIM_TTL_SECONDS`.
+
+    An unparseable or absent `claimed_at` under a present holder is **stale**, not live. That is the
+    conservative reading in the only direction that matters: a claim this runtime cannot date cannot
+    be shown to be live, and treating it as live would park a pin behind a timestamp nobody can fix.
+    The pin stays reclaimable, the reclaim says it reclaimed one, and `nonconforming` names the
+    field on every surface that reports it.
+    """
+    if not read.get("claimed_by"):
+        return "unclaimed"
+    stamped = _stamp(read.get("claimed_at"))
+    if stamped is None:
+        return "stale"
+    moment = now or datetime.now(timezone.utc)
+    return "live" if (moment - stamped).total_seconds() < CLAIM_TTL_SECONDS else "stale"
 
 
 def read_collection(data: Any, name: str) -> list[dict]:
@@ -2602,6 +2701,16 @@ class Ledger:
         — `correctness_unknown` — has not, because it hands the pin back to the human still carrying
         the outcome that was disputed. Deriving it from the state table is what stops that
         distinction from being a name someone has to remember to add.
+
+        **The claim goes the same way (v0.30), off the same destination test.** A settled pin is not
+        held: releasing is explicit and it is also the settlement doors' business, because the
+        failure a claim prevents is a second session taking work that is already being done, and work
+        that is finished is not being done. `correctness_unknown` again does not clear, and again for
+        its own reason rather than by omission — the pin comes back to the human still open, and the
+        session that could not verify it is the one most likely to still be on it. `decided` DOES
+        clear, which reads oddly for a beat and is right: the interview's work on that pin is over
+        and the build's has not started, and the property being bought is that a claim lands before a
+        unit of work rather than spanning two of them.
         """
         self._gate_settlement(pin, door)
         event = None
@@ -2619,6 +2728,8 @@ class Ledger:
             self.writable_collection("decision_log").append(event)
         if _STATE_BY_DOOR[door] in SETTLED_STATES:
             pin.pop("substate", None)
+            for carrier in CLAIM_CARRIERS:
+                pin.pop(carrier, None)
         pin["state"] = _STATE_BY_DOOR[door]
         return event
 
@@ -3556,6 +3667,141 @@ class Ledger:
 
     # -- views (the surfaces hold no state of their own) ------------------------
 
+    # -- v0.30: the claim, and the frontier it makes readable ----------------------------------
+
+    def _claim_on_disk(self, pin_id: str) -> dict:
+        """What the FILE says about this one pin's claim, right now. Never raises.
+
+        The compare-and-set below is decided against this and not against `self.data`, and that is
+        the whole mechanism: two sessions each hold their own in-memory copy, so a check against the
+        copy answers *did I claim this* rather than *has anybody*. Only the two claim carriers are
+        re-read — a wholesale reload would drop whatever else this session has in flight, and a door
+        that silently discards a caller's other work to answer a scheduling question is a worse bug
+        than the one it fixes.
+
+        The residual is real and is named rather than papered over: between this read and the
+        caller's `save()` there is a window, so this is best-effort and not a lock. That is the
+        strength the field is specified at — a claim never gates a write, and the ledger's existing
+        write discipline is what covers concurrent access. Buying more would mean a lock file
+        nobody can unlock, which is the trap this design was written to avoid.
+        """
+        if not os.path.exists(self.path):
+            return {}
+        try:
+            with open(self.path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return {}
+        for entry in read_collection(data, "pins"):
+            read = pin_read(entry)
+            if read["id"] == pin_id:
+                return {c: read.get(c) for c in CLAIM_CARRIERS}
+        return {}
+
+    def claim(self, pin_id: str, holder: str, now: Optional[datetime] = None) -> dict:
+        """Take this pin before doing the work. Compare-and-set; writes nothing else.
+
+        **It writes nothing but the claim, and that is the property.** The whole point is that the
+        claim lands BEFORE the work, so a door that also did something is a door somebody calls
+        second — and a claim taken after the work is a receipt, not a reservation.
+
+        Claiming a pin somebody else holds LIVE fails and names the holder; it never overwrites.
+        Claiming one whose holder is yourself re-stamps it, which is how a session that outlives the
+        TTL says so rather than being assumed dead. Claiming a stale one succeeds and reports
+        `reclaimed` with the holder it took it from, because a silent takeover is how two sessions
+        end up believing the same thing about different work.
+
+        It goes through `writable_pin` and `_gate_closed` like every other per-pin write door, and
+        the second one is what makes finished work unclaimable: a reservation on work that is over
+        would park a pin off the frontier, held by a session that is never going to release it.
+        That refusal is the plain kind — it is the one door on the roster whose refusal is not about
+        un-finishing anything.
+        """
+        _require(isinstance(holder, str) and holder.strip(),
+                 "a claim carries the holder that took it; an anonymous claim is a pin nobody can "
+                 "be asked about and nobody can release")
+        pin = self.writable_pin(pin_id)
+        self._gate_closed(pin, "claim")
+        held = self._claim_on_disk(pin_id)
+        current = claim_state(held, now)
+        incumbent = held.get("claimed_by") or ""
+        if current == "live" and incumbent != holder:
+            return {"pin_id": pin_id, "claimed": False, "holder": incumbent,
+                    "claimed_at": held.get("claimed_at"), "claim_state": "live",
+                    "why": f"{incumbent} holds this pin and the claim is still live; "
+                           f"work something else, or ask them"}
+        pin["claimed_by"] = holder
+        pin["claimed_at"] = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+        return {"pin_id": pin_id, "claimed": True, "holder": holder,
+                "claimed_at": pin["claimed_at"], "claim_state": "live",
+                "reclaimed": incumbent if (current == "stale" and incumbent
+                                           and incumbent != holder) else None,
+                "renewed": current != "unclaimed" and incumbent == holder}
+
+    def release(self, pin_id: str, holder: str = "") -> dict:
+        """Put the pin back on the frontier. Explicit, and the mirror of the door above.
+
+        A settlement releases too (`_settle`), so this is for the other ending: a session that stops
+        without finishing. Passing `holder` releases only your own claim — the honest default for an
+        agent — and omitting it releases whatever is there, which is what a human clearing up after a
+        dead session needs. Releasing an unheld pin is not an error: the post-condition a caller
+        wants is *nobody holds this*, and refusing when it is already true would make cleanup a
+        thing you have to check before doing.
+        """
+        pin = self.writable_pin(pin_id)
+        incumbent = pin_read(pin).get("claimed_by") or ""
+        if holder and incumbent and incumbent != holder:
+            return {"pin_id": pin_id, "released": False, "holder": incumbent,
+                    "why": f"{incumbent} holds this pin, not {holder}; release it as its holder or "
+                           f"with no holder at all"}
+        for carrier in CLAIM_CARRIERS:
+            pin.pop(carrier, None)
+        return {"pin_id": pin_id, "released": bool(incumbent), "holder": incumbent}
+
+    def claims(self, now: Optional[datetime] = None) -> list[dict]:
+        """Every pin somebody is holding, and how that claim reads — the set `frontier` drops.
+
+        It exists so a queue never shrinks silently. A frontier that just returns fewer pins reads
+        as *there is less work*, and the difference between *nothing to do* and *your peers have it
+        all* is the whole reason a human is looking at the number.
+        """
+        out = []
+        for pin in self.readable_pins():
+            read = pin_read(pin)
+            state = claim_state(read, now)
+            if state == "unclaimed":
+                continue
+            out.append({"pin_id": read["id"], "title": read["title"],
+                        "holder": read.get("claimed_by") or "",
+                        "claimed_at": read.get("claimed_at"), "claim_state": state,
+                        "state": read["state"]})
+        return out
+
+    def frontier(self, candidates: Optional[Iterable[dict]] = None,
+                 now: Optional[datetime] = None) -> list[dict]:
+        """Open, unblocked and unclaimed — what a session may take right now.
+
+        The claim filter is here and only here, and the candidate set is the caller's, because
+        "unblocked" is genuinely two questions and this package already answers both. The interview
+        asks whether anything is still in play upstream (`OPEN_STATES`); the wave scheduler asks
+        whether the upstream WORK is done (`buildloop._DONE_STATES`), which a `decided`-but-unbuilt
+        dependency fails and this one passes. Those are different questions with different right
+        answers, so `buildloop.frontier` passes its own candidates in rather than a third notion
+        being invented here — one claim filter, two schedulers.
+
+        A stale claim does NOT exclude a pin: that is the whole difference between the two claimed
+        readings, and a frontier that hid pins behind dead sessions would be the outage this field
+        was added to prevent, wearing the fix's name.
+        """
+        if candidates is None:
+            reads = [(p, pin_read(p)) for p in self.readable_pins()]
+            by_id = {r["id"]: r for _, r in reads}
+            candidates = [p for p, r in reads
+                          if r["state"] in OPEN_STATES
+                          and not any(by_id[d]["state"] in OPEN_STATES
+                                      for d in r["depends_on"] if d in by_id)]
+        return [p for p in candidates if claim_state(pin_read(p), now) != "live"]
+
     def interview_view(self) -> list[dict]:
         """The interview IS the filtered view of pins awaiting a human answer, ordered by
         information gain: the ones that collapse the most downstream pins come first.
@@ -3703,6 +3949,13 @@ class Ledger:
             "decisions_by_evidence": by_evidence,
             "settlements_by_door": by_door,
             "premortems": sum(1 for p in pins if p.get("premortem")),
+            # v0.30 — the two halves of the same number, never one. `open_questions` says how much
+            # is unanswered; these say how much is TAKEABLE and by whom. Reporting only the first
+            # would let a session read "nine open" and take the one a peer is already on, which is
+            # the duplication the field exists to remove; reporting only the frontier would let a
+            # queue shrink silently, which reads as progress and is its opposite.
+            "frontier": len(self.frontier()),
+            "claimed": {c["pin_id"]: c["holder"] for c in self.claims()},
         }
 
 

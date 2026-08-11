@@ -744,6 +744,7 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
     #: stays with the server, and only the payload is declared.
     MINIMAL_CALL = {
         "ledger_summary": {},
+        "ledger_frontier": {},
         "interview_next": {},
         "interview_seed_policies": {},
         "policy_preview": {"rule": "the DB wins on nullability",
@@ -1173,6 +1174,10 @@ class TestFinishedWorkIsRefusedAtEveryWriteDoorAnAgentCanReach(unittest.TestCase
                                                          {"id": "api", "label": "api"}],
                                              "allow_freeform": True}},
         "ledger_add_proposals": {"proposals": [{"summary": "token bucket at the edge"}]},
+        "ledger_claim": {"holder": "sess_a"},
+        # No holder: `release` with one releases only that holder's claim, and this fixture's pin
+        # carries none — so passing a holder would make the run answer a different question.
+        "ledger_release": {},
     }
 
     @staticmethod

@@ -86,10 +86,34 @@ def ready(ledger) -> list[dict]:
     return out
 
 
+def frontier(ledger) -> list[dict]:
+    """`ready()` minus what a peer session is holding live — open, unblocked AND unclaimed (v0.30).
+
+    `ready()` answers the dependency question and keeps answering exactly it; the claim filter lives
+    in `Ledger.frontier`, which this hands its own candidates to. That split is deliberate: this
+    scheduler's "unblocked" means the upstream WORK is done, and the interview's means nothing
+    upstream is still in play — a `decided`-but-unbuilt dependency fails the first and passes the
+    second. Two schedulers, two right answers, one claim filter.
+    """
+    return ledger.frontier(candidates=ready(ledger))
+
+
+def held(ledger) -> list[dict]:
+    """What `frontier` dropped and who holds it — so a shrinking queue never reads as a finished one.
+
+    A scheduler that returns fewer items says *there is less to do*. The difference between that and
+    *your peers have taken it all* is the whole reason a human is reading the number, so the two are
+    reported side by side and never fused.
+    """
+    ids = {pin_read(p)["id"] for p in ready(ledger)}
+    return [c for c in ledger.claims() if c["pin_id"] in ids and c["claim_state"] == "live"]
+
+
 def next_item(ledger) -> Optional[tuple]:
-    """The single next (pin, remediation_item) to work — the first todo item on the first ready
-    pin. Returns None when nothing is ready (loop done, or blocked on upstream waves)."""
-    for pin in ready(ledger):
+    """The single next (pin, remediation_item) to work — the first todo item on the first pin on the
+    frontier. Returns None when nothing is takeable (loop done, blocked upstream, or every ready
+    item is live-claimed by a peer — `held()` is what tells those last two apart)."""
+    for pin in frontier(ledger):
         for item in (pin_read(pin).get("remediation") or []):
             if not isinstance(item, dict) or item.get("status") != "done":
                 return pin, item
@@ -99,11 +123,12 @@ def next_item(ledger) -> Optional[tuple]:
 
 
 def iter_ready(ledger) -> Iterator[dict]:
-    """Yield ready pins until none remain — re-evaluated each step so newly-unblocked pins appear
-    as their dependencies close. Caller must actually resolve items or this never terminates."""
+    """Yield takeable pins until none remain — re-evaluated each step so newly-unblocked pins appear
+    as their dependencies close, and so a pin a peer releases comes back. Caller must actually
+    resolve items or this never terminates."""
     seen_blocked = 0
     while True:
-        r = ready(ledger)
+        r = frontier(ledger)
         if not r:
             return
         before = _open_count(ledger)
@@ -137,11 +162,19 @@ def _label(pin: dict) -> str:
 
 
 def plan(ledger) -> dict:
-    """A renderable summary of the Phase-4 plan: the waves, and what is ready right now."""
+    """A renderable summary of the Phase-4 plan: the waves, what is takeable now, and who has the rest.
+
+    `ready_now` is the frontier and `held_by_peers` is what the claim filter removed from it, side by
+    side (v0.30). Fusing them would be the failure the claim was added to prevent, inverted: a plan
+    that shows six items where nine are ready reads as *the work is nearly done* when it means *your
+    peers are on three of them*, and the caller cannot tell which without the second list.
+    """
     wv = waves(ledger)
     # `title` is prose for a human and is not one of `pin_read`'s five, so absence falls back to
     # the id: a wave listing with a blank row names nothing, which is worse than naming the pin.
     return {"waves": [[_label(ledger.pin(pid)) for pid in w] for w in wv],
             "wave_count": len(wv),
-            "ready_now": [_label(p) for p in ready(ledger)],
+            "ready_now": [_label(p) for p in frontier(ledger)],
+            "held_by_peers": [{"pin": c["title"] or c["pin_id"], "holder": c["holder"]}
+                              for c in held(ledger)],
             "open": _open_count(ledger)}
