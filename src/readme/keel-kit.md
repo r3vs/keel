@@ -92,6 +92,21 @@ pins; and a finish sequence for the point where discipline usually collapses —
 
 *Use when: starting a unit of work, running agents in parallel, or finishing a branch.*
 
+### `prototype`
+The weakest evidence this package accepts is conversation, and a fork about how something *behaves*
+or *looks* is exactly where two people agree in words and picture different things. A prototype is
+**throwaway code that answers one question** — a runnable state/logic demo you can drive by hand, or
+several radically different UI variations, because one variation is a proposal wearing the costume
+of an experiment.
+
+It is evidence, never an outcome: it does not resolve the pin, it gives you something real to elect
+against. Building the variations and then picking one itself is the failure this skill is most
+likely to commit, and the skill says so. The validated decision folds into the code; the artifact is
+kept as a **primary source** on a branch out of main, pointed at from the pin — so six months later
+the pin says what was chosen and the branch says what it was chosen *against*.
+
+*Use when: a decision turns on behaviour or appearance and arguing on paper has stopped converging.*
+
 ---
 
 ## The supporting four

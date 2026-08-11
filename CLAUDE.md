@@ -57,10 +57,17 @@ package exists to find, sitting in its own front door.
   `defect` pin, not the commit message), `code-review` (reopens, never decides — the reviewer is
   read-only by design), `verification-before-completion` (a pin resolves when the behavior was
   *observed*, not when the code was written), `branch-lifecycle` (a worktree per scope makes the
-  executor's "one scope at a time" enforceable instead of promised).
+  executor's "one scope at a time" enforceable instead of promised), `prototype` (a fork about how
+  something behaves or looks is settled against a runnable artifact, and the human still elects).
+- **The map, and the one user-invoked skill** — `which-skill` routes over everything above. It sets
+  `disable-model-invocation: true`, which is authored once and read by Claude Code **and Pi**; the
+  build derives Codex's `agents/openai.yaml` from it, and opencode is a stated residual (its only
+  door is the model's `skill` tool, so denying it removes the skill from the human too). The choice
+  and its two costs live in `src/core/writing-for-agents.md`; the per-host mechanism in
+  `docs/packaging.md`.
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
   `static-first-analysis`, `project-memory`, `learning-layer`, `documentation-lifecycle`,
-  `maintainer-assist`), a memory subsystem (ledger +
+  `maintainer-assist`, `which-skill`), a memory subsystem (ledger +
   `MEMORY.md` + cognee MCP), and MCP servers (`context7`/`deepwiki`/`cognee`; `github` opt-in).
   `writing-skills` is **dev-only** — it documents contributing to this repo and never ships.
 

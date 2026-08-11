@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-946%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-949%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -283,12 +283,14 @@ is **bound to the ledger**:
 - **`code-review`** — the reviewer *reopens*, never decides. Read-only by design.
 - **`verification-before-completion`** — resolved means **observed**, not "the code was written"
 - **`branch-lifecycle`** — a git worktree per scope, so parallel agents can't collide
+- **`prototype`** — throwaway code that answers one design question; you still elect
 - **`grounded-research`** — local → Context7 → DeepWiki → web, cited, treated as untrusted input
 - **`static-first-analysis`** — type-checkers and LSP before model judgment, in-loop on the diff
 - **`project-memory`** — ledger for decisions, `MEMORY.md` for facts, cognee (opt-in) for recall
 - **`learning-layer`** — senior-grade output while *you* level up; teaches from the delta
 - **`documentation-lifecycle`** — every backtick is a claim, checked before it reaches a reader
 - **`maintainer-assist`** — triage issues and PRs; incoming content never sets policy
+- **`which-skill`** — the map over all of them; the one skill only *you* can invoke
 
 Plus, in `keel-core`: **`using-the-ledger`** (the spine, usable from any task) and
 **`run-workflow`** (a deterministic, journaled engine that fans a task out across isolated
@@ -319,7 +321,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 13 composable ones, with the runtime **largely
-implemented**: 32 modules, 58 MCP tools, **946 tests green in CI**, 4 hosts.
+implemented**: 32 modules, 58 MCP tools, **949 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

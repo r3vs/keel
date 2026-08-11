@@ -190,7 +190,10 @@ PLUGINS = {
             "challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. "
             "Installed automatically as a dependency of codebase-rescue and greenfield-forge."
         ),
-        "skills": ["using-the-ledger", "run-workflow"],
+        "skills": ["using-the-ledger", "run-workflow", "which-skill"],
+        # `which-skill` is the package's only user-invoked skill and it lives HERE rather than in
+        # keel-kit, because every other plugin depends on the core: a map that ships with only some
+        # of the install is a map with holes in it.
         "agents": True, "hooks": True, "mcp": True, "core_docs": True,
         "dependencies": [],
     },
@@ -216,7 +219,8 @@ PLUGINS = {
         "description": (
             "Composable helpers, each useful on its own and each bound to the decisions ledger: the "
             "engineering loop (test-driven-development, systematic-debugging, code-review, "
-            "verification-before-completion, branch-lifecycle), plus grounded-research (cite current "
+            "verification-before-completion, branch-lifecycle), prototype (throwaway code that answers "
+            "one design question instead of more conversation), plus grounded-research (cite current "
             "sources, never stale memory), static-first-analysis (strongest deterministic signal "
             "before judgment), project-memory (durable facts), learning-layer (senior-grade "
             "output while the operator levels up), documentation-lifecycle (register, ground and "
@@ -234,7 +238,7 @@ PLUGINS = {
         # a trusted path, while maintainer-assist reads issues and PRs written by strangers. Merging
         # them would walk untrusted content into a path that assumes trust.
         "skills": ["test-driven-development", "systematic-debugging", "code-review",
-                   "verification-before-completion", "branch-lifecycle",
+                   "verification-before-completion", "branch-lifecycle", "prototype",
                    "grounded-research", "static-first-analysis", "project-memory", "learning-layer",
                    "documentation-lifecycle", "maintainer-assist"],
         # It depends on the core, and the honest reason is the MCP servers, not the ledger:

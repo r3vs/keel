@@ -227,6 +227,20 @@ How to read and write the ledger from *any* task: read pins, add a finding, run 
 interview, record a decision with its `flip_criteria`, and never let an agent commit a decision you
 did not elect. This is the spine both methodology skills run on, usable on its own.
 
+### `which-skill`
+The map over everything the package installs — which skill fits the situation in front of you, how
+the engineering loop chains, and the two things people reach for that are not skills (the phase
+boundary, and what to do with a forced assumption).
+
+It is the package's **only user-invoked** skill, and the reason is the axis rather than taste: a
+router has nothing to tell the model that the skills' own descriptions do not already carry, so
+paying permanent context load for it would buy nothing. `disable-model-invocation: true` is authored
+once — Claude Code and Pi both read that key, and the build derives Codex's `agents/openai.yaml`
+from it. It lives in the core rather than the kit because every other plugin depends on the core, and
+a map that ships with only part of the install is a map with holes.
+
+*Use when: you cannot remember what is here. Type it; nothing else can.*
+
 ### `run-workflow`
 A deterministic, journaled orchestration engine (a TypeScript fork of `pi-dynamic-workflows`, MIT)
 that fans a task out across isolated sub-agents and returns findings. Three flagship topologies:
