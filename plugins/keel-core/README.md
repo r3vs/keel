@@ -118,6 +118,14 @@ because a decision written into the projection belongs in the ledger.
 A **tree-sitter native** structural graph — a real grammar per language, not regex. Files, symbols
 and tables are nodes; imports and calls are edges.
 
+Python goes through the standard library's own parser; TS/JS/TSX, **Go, Rust, Java, C#, Ruby, PHP, C, C++, Kotlin,
+Swift and Scala** each go through one query table per grammar, so adding a language is adding a
+table rather than writing a parser. Two things the table has to know, both learned by running the
+queries rather than reasoning about them: a method whose grammar does not nest it inside its type
+(Go's receiver, Rust's `impl`) names its owner in the query itself, and a method capture with no
+owner is emitted as a **function**, which is the only structural way to tell them apart in Kotlin,
+Swift and Scala.
+
 | Tool | Does |
 |---|---|
 | `build_graph` | build the structural graph |

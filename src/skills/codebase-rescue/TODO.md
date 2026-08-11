@@ -210,8 +210,16 @@ Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its b
       Domain → Flow → Step. `tests/test_domain.py`.
 
 Still open (code — each its own PR; effort S/M/L per the study):
-- [ ] **A1 (more languages)** additional tree-sitter query sets beyond JS/TS (Go, Rust, Java, …) —
-      each is one additive entry in `graph_build._TS_QUERIES`, no engine change (S each).
+- [x] **A1 (more languages)** — eleven grammars beyond JS/TS: Go, Rust, Java, C#, Ruby, PHP, C,
+      C++, Kotlin, Swift, Scala. Each is one entry in `graph_build._TS_QUERIES`, every query written
+      by running it against the real grammar (`tests/test_graph_languages.py` keeps that run).
+      The estimate said *no engine change* and was wrong about two things, both found by running it:
+      the import query was module-level and unconditional, so on a grammar with no `import_statement`
+      it raised and the one `except` threw away every symbol already extracted from the file — it is
+      per-grammar now; and the method-owner rule is range-based, which cannot work for Go's receiver
+      or Rust's `impl` block, so a query may name the owner with an optional `@owner` capture. A
+      third fell out of that: a method capture with no owner is emitted as a **function**, which is
+      the only structural way to tell them apart in Kotlin, Swift and Scala.
 - [ ] **D5** container sub-grouping *within* a layer (folder-LCP + Louvain fallback) for very large
       layers — the map is legible now; this is a refinement for huge repos (M).
 - [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
