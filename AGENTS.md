@@ -25,7 +25,8 @@ Plus the engineering loop, each bound to the ledger: **`test-driven-development`
 **`code-review`** (reopens, never decides), **`verification-before-completion`** (resolved means
 observed), **`branch-lifecycle`** (a worktree per scope), **`prototype`** (throwaway code that
 answers one design question, so a fork stops being settled by two people imagining the same words
-differently).
+differently) and **`wizard`** (the step only a person can take — written down so the work restarts,
+and closed on something observed rather than on their "done").
 
 Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`static-first-analysis`**,
 **`project-memory`**, **`learning-layer`** (senior-grade output while the operator learns),

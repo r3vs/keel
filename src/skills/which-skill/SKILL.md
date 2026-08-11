@@ -54,6 +54,9 @@ Roughly in order, though only the first and last are fixed:
   cited, treated as untrusted input — never your training memory.
 - **`using-the-ledger`** — the mechanics of pins, policies and the interview, when the *tool* rather
   than the decision is what you are stuck on.
+- **`wizard`** — nothing is stuck about the deciding: the next step is one only a person can take.
+  An API key, a console click, an approval, a machine you cannot reach. It writes the block down so
+  the work restarts, and closes it on something *you observed* rather than on their "done".
 
 ## Keeping the place habitable
 

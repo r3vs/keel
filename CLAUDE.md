@@ -58,7 +58,9 @@ package exists to find, sitting in its own front door.
   read-only by design), `verification-before-completion` (a pin resolves when the behavior was
   *observed*, not when the code was written), `branch-lifecycle` (a worktree per scope makes the
   executor's "one scope at a time" enforceable instead of promised), `prototype` (a fork about how
-  something behaves or looks is settled against a runnable artifact, and the human still elects).
+  something behaves or looks is settled against a runnable artifact, and the human still elects),
+  `wizard` (the inverse of the assumptions doctrine — not what an agent does when it must guess, but
+  what it does when it must wait, and why "I did it" is `self_check` rather than an observation).
 - **The map, and the one user-invoked skill** — `which-skill` routes over everything above. It sets
   `disable-model-invocation: true`, which is authored once and read by Claude Code **and Pi**; the
   build derives Codex's `agents/openai.yaml` from it, and opencode is a stated residual (its only

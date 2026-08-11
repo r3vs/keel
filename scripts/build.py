@@ -220,7 +220,8 @@ PLUGINS = {
             "Composable helpers, each useful on its own and each bound to the decisions ledger: the "
             "engineering loop (test-driven-development, systematic-debugging, code-review, "
             "verification-before-completion, branch-lifecycle), prototype (throwaway code that answers "
-            "one design question instead of more conversation), plus grounded-research (cite current "
+            "one design question instead of more conversation), wizard (the steps only a human can "
+            "take, closed on something observed rather than on \"done\"), plus grounded-research (cite current "
             "sources, never stale memory), static-first-analysis (strongest deterministic signal "
             "before judgment), project-memory (durable facts), learning-layer (senior-grade "
             "output while the operator levels up), documentation-lifecycle (register, ground and "
@@ -238,7 +239,7 @@ PLUGINS = {
         # a trusted path, while maintainer-assist reads issues and PRs written by strangers. Merging
         # them would walk untrusted content into a path that assumes trust.
         "skills": ["test-driven-development", "systematic-debugging", "code-review",
-                   "verification-before-completion", "branch-lifecycle", "prototype",
+                   "verification-before-completion", "branch-lifecycle", "prototype", "wizard",
                    "grounded-research", "static-first-analysis", "project-memory", "learning-layer",
                    "documentation-lifecycle", "maintainer-assist"],
         # It depends on the core, and the honest reason is the MCP servers, not the ledger:

@@ -290,6 +290,7 @@ is **bound to the ledger**:
 - **`verification-before-completion`** — resolved means **observed**, not "the code was written"
 - **`branch-lifecycle`** — a git worktree per scope, so parallel agents can't collide
 - **`prototype`** — throwaway code that answers one design question; you still elect
+- **`wizard`** — the step only a person can take, closed on what you *observed*, never on their "done"
 - **`grounded-research`** — local → Context7 → DeepWiki → web, cited, treated as untrusted input
 - **`static-first-analysis`** — type-checkers and LSP before model judgment, in-loop on the diff
 - **`project-memory`** — ledger for decisions, `MEMORY.md` for facts, cognee (opt-in) for recall
