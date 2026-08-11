@@ -1,6 +1,6 @@
 ---
 name: writing-skills
-description: Author or edit a skill in this package correctly — the Agent Skills spec frontmatter, the references/core path convention, keeping the drift-linter and roster parity green, and staying agent-agnostic (Claude Code + opencode + AGENTS.md). Use when adding, renaming, or editing a skill, module, or agent.
+description: Author or edit a skill in this package correctly — how the prose itself has to be written for an agent to act on it, the Agent Skills spec frontmatter, the invocation axis, the references/core path convention, keeping the drift-linter and roster parity green, and staying agent-agnostic (Claude Code + Codex + opencode + Pi). Use when adding, renaming, or editing a skill, module, or agent.
 license: MIT
 ---
 
@@ -8,11 +8,28 @@ license: MIT
 
 How this package stays self-extending without drifting. Authority: `CONTRIBUTING.md` + `CLAUDE.md`.
 
+## Write it as prose an agent acts on — read this first
+The deliverable of this repo is prose, so **how it is written is the product**, not its presentation.
+`references/core/writing-for-agents.md` is the authority: context pointers (a `description` IS one,
+and its wording is what decides whether the body is ever reached), the two loads, the information
+hierarchy, completion criteria, leading words, and the pruning tests. Read it before authoring, and
+apply the no-op test to every sentence you add here.
+
 ## A skill is
 `skills/<name>/SKILL.md` with Agent-Skills frontmatter: `name` (lowercase-with-hyphens, **matching
 the directory**) and `description` (≥ 20 chars, saying what it does AND when to use it), optional
 `license`. Bundle `references/*.md` (skill-relative) alongside; shared docs live in `core/*.md`
 (repo-root-relative).
+
+**Choose the invocation deliberately.** Omitting `disable-model-invocation` is a choice, not a
+default: it spends permanent context load on the description in exchange for the agent being able to
+reach the skill itself. Add `disable-model-invocation: true` only when the honest answer to *could
+the agent usefully reach for this on its own?* is no — and remember what it also costs, because both
+are verified rather than assumed: the skill becomes unreachable **by another skill**, and on Claude
+Code it is **no longer preloaded into a subagent**, which this package's six-role roster depends on.
+Author the key once in the frontmatter; Claude Code and Pi both read it, and the build derives
+Codex's `agents/openai.yaml` from it. opencode has no mechanism that keeps the human's reach — see
+the packaging notes for the residual.
 
 ## Keep the invariants green (they run in CI)
 **Run every gate — the list is the Commands block in `CLAUDE.md`**, complete against

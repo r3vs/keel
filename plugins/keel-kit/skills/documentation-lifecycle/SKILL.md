@@ -31,6 +31,13 @@ The failure mode is writing first and looking things up to justify it. Collect t
 external API is involved, get its **current** shape (`references/core/knowledge-sources.md`) rather
 than its training-cutoff shape.
 
+**A doc an agent will read is written under different rules than one only a human reads**, and this
+is where they apply: `references/core/writing-for-agents.md` holds them — the pointer's wording is
+what decides whether the material is ever reached, always-loaded prose is a correctness constraint
+and not just a cost, and an instruction the model already obeys by default pays load to say nothing.
+The user's own `AGENTS.md` is the sharpest case: it is loaded on every turn, so a line that fails
+the no-op test there is charged for on every turn.
+
 **Never bootstrap truth from generated docs.** An agent-written doc is a *derived* artifact: it may
 feed retrieval afterwards, it may never be the path by which the system learns what the code does.
 A pipeline that writes docs and then re-ingests them to answer questions has built a loop that

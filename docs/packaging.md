@@ -326,6 +326,41 @@ finds them — and add the MCP servers from `plugins/keel-core/.mcp.json` throug
 own settings UI. The distinction that matters: you are pointing your agent at **your** project and
 giving it our skills, not opening our repo and working inside it.
 
+## The invocation axis — who may fire a skill
+
+Every skill is **model-invoked** (the host may fire it, and so may the human) or **user-invoked**
+(only the human, by name). It is a packaging fact because each host expresses it differently, and a
+correctness fact because it decides whether the skill's `description` is in the model's context at
+all. The choice itself — and the test for making it — lives in `src/core/writing-for-agents.md`.
+
+Authored **once**, as `disable-model-invocation: true` in the skill's own frontmatter. Everything
+below was read at the code or table that consumes the value:
+
+| Host | Mechanism | The human keeps a door | Consumer |
+|---|---|---|---|
+| **Claude Code** | the authored frontmatter key | yes — `/name` | its own behaviour table: `disable-model-invocation: true` → **"Description not in context"**; the docs also state it stops the skill being preloaded into a subagent, and that the model's call is *blocked*, not warned |
+| **Pi** | **the same authored key** | yes — `/skill:name` | `dist/core/skills.js`: `disableModelInvocation: frontmatter["disable-model-invocation"] === true`, then `formatSkillsForPrompt` does `skills.filter(s => !s.disableModelInvocation)` |
+| **Codex** | `agents/openai.yaml` beside `SKILL.md`, `policy.allow_implicit_invocation: false` | yes — explicit `$skill` | documented as *"Codex won't implicitly invoke the skill based on user prompt; explicit `$skill` invocation still works"*; frontmatter's floor there is still `name` + `description`, so the sidecar is the only shape available |
+| **opencode** | **none that preserves the human's reach** | **no** | `packages/opencode/src/tool/skill.ts` — the only door is the model's `skill` tool, and `ctx.ask({permission: "skill", …})` fires *inside* its `execute`. Denying the permission removes the skill from everyone |
+
+Two consequences, and the second is the one that pays:
+
+- **Only Codex is generated.** `build.py` derives its sidecar from the frontmatter key; nothing is
+  hand-kept, and `tests/test_invocation_axis.py` asserts the derivation in both directions plus the
+  absence of any authored sidecar. Emitting nothing for opencode is deliberate — a permission `deny`
+  there is a *disabled* skill, and shipping it under this name would give one word three meanings.
+- **Pi reading Claude's key is why the axis is cheap here.** Two of four hosts are served by one
+  authored line, one by a generated file, and the fourth is a stated residual. The nearest thing
+  opencode offers is `ask`, which leaves the description in the model's context — so it buys the
+  human a prompt and buys the context budget nothing.
+
+The value for this package is mostly **discipline, not tokens.** Its skills overwhelmingly *should*
+be model-invoked — the whole design is that an agent meeting a broken build reaches
+`systematic-debugging` itself — so the axis is not an invitation to convert them. What it fixes is
+that model-invocation stops being the shape a skill has because nobody chose, and the two costs of
+the other branch (unreachable by another skill; not preloaded into a subagent) are now written down
+where the choice is made.
+
 ## Shared-core resolution
 
 `src/core/*.md` is the single **authoring source** for the shared doctrine, and each skill is
