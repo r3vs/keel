@@ -31,10 +31,10 @@ cui parla la §6 ①.
 | ③ router | **fatto** | `src/skills/which-skill/` (in `keel-core`), con `tests/test_router_completeness.py` |
 | ④ pagine per umani | **non fatto** | vedi la nota qui sotto |
 | ⑤ Fase 1 di debugging | **fatto** | `src/skills/systematic-debugging/SKILL.md`, riscritta attorno al loop rosso |
-| ⑥ fog of war | **specificato, non implementato** | `docs/open-gaps.md` §30 — tre forme candidate, da eleggere in intervista |
-| ⑦ reclamo sulla frontiera | **specificato, non implementato** | `docs/open-gaps.md` §29 — sarebbe ledger v0.30 |
+| ⑥ fog of war | **fatto** (secondo giro) | ledger **v0.31** — collezione `fog` top-level, forma 1 eletta; `docs/open-gaps.md` §30 CHIUSA |
+| ⑦ reclamo sulla frontiera | **fatto** (secondo giro) | ledger **v0.30** — `claimed_by`/`claimed_at`, frontiera, TTL; `docs/open-gaps.md` §29 CHIUSA |
 | ⑧ vocabolario dei moduli profondi | **fatto** | `src/core/module-design.md` |
-| ⑨ le prese piccole | **quasi tutte fatte** | vedi la tabella della §6 ⑨, ora annotata |
+| ⑨ le prese piccole | **tutte fatte** | l'ultima, `wizard`, è `src/skills/wizard/` |
 
 **Due correzioni a ciò che questo studio affermava**, entrambe scoperte verificando invece di
 ricordare:
@@ -53,6 +53,17 @@ ricordare:
   non user-invocation).
 - **Una presa della §6 ⑨ era un buco inventato.** *"Riferisci per nome, mai per id"* è già vero qui:
   `map.py` rende `p.title` sulle card e nell'intestazione del pin. Verificato, non corretto.
+
+**Secondo giro (2026-08-11): ⑥ ⑦ ⑨ sono stati chiusi.** Lo studio li aveva lasciati specificati
+perché entrambi cambiano cosa *significa* il ledger, e questa repo lo decide in intervista. Sono
+stati poi eseguiti su richiesta esplicita, e costruirli ha corretto tre cose che la specifica non
+sapeva: il compare-and-set del reclamo deve confrontare **il file** e non la copia in memoria (un
+controllo sulla copia risponde *l'ho preso io?*, che è vero di nessun altro); il registro della
+nebbia aveva bisogno di **due** uscite e non di una (senza `clear_fog` l'unica via d'uscita è
+diventare un pin, che è la trappola del backlog che entra dalla porta marcata *graduazione*); e
+aggiungere una collezione al ledger rende non-conforme per sempre ogni file scritto prima —
+`OPTIONAL_COLLECTIONS` è la distinzione che serviva. Il dettaglio sta nelle due sezioni chiuse di
+`docs/open-gaps.md`.
 
 **Perché ④ non è stato fatto**, dichiarato invece che taciuto: la regola che rende quelle pagine
 valide è che `Common questions` sia **cacciata, non inventata**, e che il conteggio resti onesto
@@ -543,7 +554,7 @@ l'istinto di un agente a generare astrazioni. Va scritto come test, non come con
 | ✅ **Le richieste rifiutate hanno una casa** — come pin `deferred`, non come file separato | `maintainer-assist` | lega agli stati `deferred`/`accepted`; impedisce di ri-litigare |
 | ✅ **Controllo di ridondanza per concetto di dominio**, e dire dove hai cercato | `maintainer-assist` | il "è già implementato?" fatto bene |
 | ✅ **`prototype` come fonte primaria** su ramo fuori da main | `src/skills/prototype/` | fa salire di rung un `open_decision` su "come si comporta" |
-| ⬜ **`wizard`** per i passi solo-umani | nuova skill | l'inverso di `assumptions.md`: non un'assunzione dell'agente, un'azione a gate umano |
+| ✅ **`wizard`** per i passi solo-umani | `src/skills/wizard/` | l'inverso di `assumptions.md`: non un'assunzione dell'agente, un'azione a gate umano — e il vincolo che la lega al ledger è che *"l'ho fatto"* è `self_check`, non un'osservazione |
 | — **Riferisci per nome, mai per id** | *già vero*: `map.py` rende `p.title` | verificato dopo aver scritto la riga; era un buco inventato |
 | ✅ **Albero dei confini di fase** (continue / clear / handoff / subagent / compact) | `src/core/phase-boundaries.md` | la tabella fonte-primaria-vs-secondaria è un frame che Keel non ha, e il reset di contesto fra fasi è già la sua architettura |
 

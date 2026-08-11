@@ -3512,7 +3512,7 @@ with zero page errors, the standing refutations still warning and the answered o
 
 ---
 
-## 29. Two sessions can take the same pin — **OPEN** (schema, would be ledger v0.30)
+## 29. Two sessions can take the same pin — **CLOSED 2026-08-11** (ledger v0.30)
 
 ### Verified
 
@@ -3583,9 +3583,31 @@ stale one rather than silently taking it.
   it prevents is duplicated *work*, not concurrent *access* — the ledger's existing write discipline
   covers the latter, and conflating the two would put a lock in a file nobody can unlock.
 
+### Closed as specified — and the one thing the spec did not know
+
+`claimed_by` + `claimed_at`, `CLAIM_STATES`, `CLAIM_TTL_SECONDS` (declared as a hypothesis),
+`Ledger.claim` / `release` / `claims` / `frontier`, `buildloop.frontier` / `held`, three MCP tools,
+the map badge, and `tests/test_claim.py` — including the two-session reproduction this section
+asked for, which is the only test here that would have caught the gap.
+
+**What the writing found: the compare-and-set has to read the FILE.** "Compare-and-set" was stated
+above as if the comparison target were obvious, and the obvious one is wrong: two sessions each hold
+their own `self.data`, so a check against the in-memory pin answers *did I claim this* — true of
+nobody else, therefore always passing. `_claim_on_disk` re-reads the two carriers for the one pin
+and nothing else, because a wholesale reload would discard whatever the caller has in flight. The
+residual is named in its docstring rather than papered over: between that read and the caller's
+`save()` there is a window, which is the same window every other field on the record already has,
+and buying more would mean the lock this design exists to avoid.
+
+Two smaller ones, both from the derived gates rather than from reading. `claim` is a per-pin write
+door, so it joins `PIN_WRITE_DOORS` (`refuse` — a reservation on finished work parks a pin a session
+will never release) and goes through `writable_pin` + `_gate_closed` like every other one; `release`
+is `records_only`, because on finished work `_settle` has already taken the claim and refusing
+cleanup would make it a thing you check before doing.
+
 ---
 
-## 30. In-scope, but not yet phrasable — the register that does not exist — **OPEN** (design question)
+## 30. In-scope, but not yet phrasable — the register that does not exist — **CLOSED 2026-08-11** (ledger v0.31)
 
 ### Verified
 
@@ -3650,6 +3672,37 @@ it.
   pin-sized pieces is the same premature specification the register exists to avoid.
 - **Do not let it become a backlog.** It is bounded by the elected scope. A fog register that grows
   monotonically is a to-do list wearing a doctrine's name.
+
+### Closed — shape 1 elected, and what electing it settled
+
+**A top-level `fog` collection.** The other two are recorded in `core/decisions-ledger-spec.md`
+§v0.31 so the argument is not re-run, and both fail on their own terms: a pin state `unspecifiable`
+reuses a schema organised around a fork the entry does not have, and a surface-only register is a
+claim no carrier holds.
+
+Three things fell out of building it that this section did not know:
+
+1. **The absent `question` is the enforcement.** The sharp test — *can you state the question
+   precisely now* — cannot be checked by reading prose without becoming the keyword-guessing this
+   repo forbids its own linters. Giving the record nowhere to put a fork is structural, and it is
+   the same fact that killed shape 2 rather than a second argument.
+2. **The register needs an EXIT as much as a ceiling, and it needed two.** Graduation was already
+   named as load-bearing; `clear_fog` was not, and without it the only way out is to become a pin,
+   which is the backlog trap arriving through the door marked *graduation*. It is held to `defer`'s
+   discipline for `defer`'s reason, and it leaves no trail on purpose — a history of things that
+   stopped being fog would be a second collection with the first one's failure mode.
+3. **`OPTIONAL_COLLECTIONS`, which is a new distinction and a real one.** Adding `fog` to
+   `LEDGER_COLLECTIONS` made every ledger written before v0.31 permanently nonconforming — absent
+   collection, `collection_shape`, version stamp frozen forever on a rule about a collection the
+   file could not have carried. An absent `pins` means a broken file; an absent `fog` means an older
+   one. Present-and-wrong is still reported for all four; the exemption is absence only.
+
+The backlog trap is reported rather than enforced, because a cap would move the dishonesty rather
+than remove it: `ledger_summary` carries `fog` beside `fog_oldest_days`, and a count that rises
+while the oldest patch keeps getting older is the failure, on the call an agent makes before acting.
+
+`tests/test_fog.py` holds the graduation-with-deletion, the negative (a patch that is still fog is
+still fog, and nothing invented a question for it), all three traps, and the older-file case.
 
 ---
 

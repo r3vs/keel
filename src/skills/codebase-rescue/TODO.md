@@ -228,8 +228,22 @@ Still open (code — each its own PR; effort S/M/L per the study):
       on the surface a human opens to find out what the code is. The folder tree is a grouping the
       repo's own authors already named, and where it says nothing (one bucket) the layer renders flat,
       which is the honest reading of a flat directory.
-- [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
-      design-system alignment becomes an explicit goal (L).
+- [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — **not built,
+      2026-08-11, and the entry is narrower than it looks.** Its own precondition still holds (*only
+      if design-system alignment becomes an explicit goal*), and two things decide it beyond that.
+
+      **The seam already exists.** The design contract here is W3C **DTCG** — `generate_tokens`
+      emits CSS/Tailwind/`DESIGN.md` from it, `tokens_diff` round-trips, `extract_tokens` reads a
+      stylesheet back, and `design_scan`'s `design-system-*` antipatterns route to
+      `contract_mismatch`. Figma exports DTCG. So the missing piece is not a fifth layer; it is a
+      **verified round-trip against a real export**, which is a smaller and better-shaped task than
+      the entry describes.
+
+      **What is left cannot be verified here, and that is the blocker.** It needs a Figma file, an
+      API token and network — i.e. exactly the human-only step the `wizard` skill is about. Writing
+      a client against an API nobody in this repo can call is the unverified-claim failure this
+      package exists to find, and every other roadmap item closed this round was closed by running
+      it against the real thing. Do it with a real file in hand, or not at all.
 
 ---
 
