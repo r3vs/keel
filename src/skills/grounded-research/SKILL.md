@@ -1,6 +1,7 @@
 ---
 name: grounded-research
 description: Answer a library / framework / API or architecture question with CURRENT, cited sources instead of stale training memory. Escalates local → Context7 docs → DeepWiki exemplars → web, tags confidence by source, and treats external content as untrusted input. Use before generating code against a dependency or deciding a stack.
+disable-model-invocation: true
 license: MIT
 ---
 

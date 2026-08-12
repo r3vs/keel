@@ -1,6 +1,7 @@
 ---
 name: verification-before-completion
 description: Prove a change works by exercising it before calling it done — run the thing, observe the behavior, and only then move a pin to resolved. Distinguishes "the tests pass" from "the feature works". Use before claiming any task complete, closing a defect, or reporting a result to the user.
+disable-model-invocation: true
 license: MIT
 ---
 

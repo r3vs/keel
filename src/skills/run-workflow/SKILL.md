@@ -5,6 +5,7 @@ description: >-
   verify adversarially, and surface findings as ledger pins. Use for codebase-wide finding/audit
   (rescue Phase-1), multi-perspective review, or any task too broad for one context window. The
   engine is pure and journaled (replayable); YOU write the results to the ledger.
+disable-model-invocation: true
 ---
 
 # run-workflow — the cross-host dynamic-workflow engine
