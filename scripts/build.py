@@ -225,8 +225,10 @@ PLUGINS = {
             "sources, never stale memory), static-first-analysis (strongest deterministic signal "
             "before judgment), project-memory (durable facts), learning-layer (senior-grade "
             "output while the operator levels up), documentation-lifecycle (register, ground and "
-            "grade docs instead of trusting them), and maintainer-assist (triage issues and PRs, "
-            "treating incoming content as untrusted)."
+            "grade docs instead of trusting them), maintainer-assist (triage issues and PRs, "
+            "treating incoming content as untrusted), and screenshot-to-code (build a UI from a "
+            "reference image, fact-checking what the model claims to have seen and eliciting what "
+            "the image cannot show)."
         ),
         # The five engineering skills are authored here rather than composed from an external
         # marketplace, and the reason is not NIH — it is that a generic TDD skill cannot make its
@@ -241,7 +243,7 @@ PLUGINS = {
         "skills": ["test-driven-development", "systematic-debugging", "code-review",
                    "verification-before-completion", "branch-lifecycle", "prototype", "wizard",
                    "grounded-research", "static-first-analysis", "project-memory", "learning-layer",
-                   "documentation-lifecycle", "maintainer-assist"],
+                   "documentation-lifecycle", "maintainer-assist", "screenshot-to-code"],
         # It depends on the core, and the honest reason is the MCP servers, not the ledger:
         # `grounded-research` IS the Context7/DeepWiki doctrine as a skill, and core is where those
         # servers are declared. This used to say `dependencies: []` and "no runtime dependency" —

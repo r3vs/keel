@@ -1266,6 +1266,49 @@ def extract_tokens(css: str) -> dict:
     return {"candidate": DT.harvest_tokens(text)}
 
 
+# -- reference-image evidence (the deterministic half of "build me this screenshot") -----------
+# Read-only over an image the user supplied. The split these two tools exist to hold open: what is
+# computed from pixels is D0, what a model says about the picture is D2, and only the first one is
+# allowed to refute the second.
+
+def _claimed_colors(claimed, contract: str = ""):
+    """Normalize the claim set: a DTCG contract's color group, a list of `{name, value}`, or bare
+    hex strings. A contract wins when both are given — checking the artifact that will actually be
+    generated from is the stronger question."""
+    if contract:
+        import design_tokens as DT
+        return {t["path"]: t["value"] for t in DT.TokenSet.load(contract).of_type("color")
+                if isinstance(t["value"], str)}
+    seq = list(claimed or [])
+    if any(isinstance(item, dict) for item in seq):
+        named = {}
+        for i, item in enumerate(seq, 1):
+            if isinstance(item, dict):
+                value = item.get("value") or item.get("hex") or item.get("color")
+                named[item.get("name") or item.get("token") or f"claim_{i}"] = value
+            else:
+                named[f"claim_{i}"] = item
+        return named
+    return seq
+
+
+def image_palette(image: str) -> dict:
+    import visual
+    return visual.image_facts(image)
+
+
+def palette_verify(image: str, claimed: list | None = None, contract: str = "",
+                   tolerance: float = 0.0, contrast_pairs: list | None = None) -> dict:
+    import visual
+    out = visual.verify_palette(image, _claimed_colors(claimed, contract),
+                                tolerance=tolerance or None)
+    if contract:
+        out["contract"] = contract
+    if contrast_pairs:
+        out["contrast"] = visual.check_contrast(contrast_pairs)
+    return out
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 # These read/write the graph.json + its projections on disk. The graph is the foundational
 # artifact the rest of the family consumes (phases communicate through disk, never a session).

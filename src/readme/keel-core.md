@@ -21,16 +21,16 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **65** | the deterministic engine, typed and discoverable |
+| MCP tools | **67** | the deterministic engine, typed and discoverable |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
-| Skills | **2** | `using-the-ledger`, `run-workflow` |
+| Skills | **3** | `using-the-ledger`, `which-skill`, `run-workflow` |
 | Shared doctrine | **16 docs** | the ledger spec, the interview funnel, the shape engine, … |
 | MCP servers declared | **4** | `keel` · `context7` · `deepwiki` · `playwright` |
 
 ---
 
-## The 65 MCP tools
+## The 67 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
@@ -97,6 +97,18 @@ Django · SQLAlchemy · GraphQL · TypeScript · Pydantic**. What comes back is 
 
 Generating the layers is how `greenfield-forge` makes drift structurally impossible instead of
 merely detectable.
+
+### Reference image (2)
+
+| Tool | Does |
+|---|---|
+| `image_palette` | a screenshot's geometry and real color histogram, with per-color coverage |
+| `palette_verify` | do the colors a model read off that image actually occur in it? (+ WCAG on the claimed pairs) |
+
+A stdlib PNG decode — no model, no network — so these are the only claims about a reference image
+that are facts. They exist to refute the other half: a token a vision model *says* it saw, which
+covers no pixels, is caught at the contract rather than after it has been propagated into every
+generated layer. Used by `screenshot-to-code`.
 
 ### Instruction carrier (2)
 

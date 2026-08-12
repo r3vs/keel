@@ -69,7 +69,7 @@ package exists to find, sitting in its own front door.
   `docs/packaging.md`.
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
   `static-first-analysis`, `project-memory`, `learning-layer`, `documentation-lifecycle`,
-  `maintainer-assist`, `which-skill`), a memory subsystem (ledger +
+  `maintainer-assist`, `screenshot-to-code`, `which-skill`), a memory subsystem (ledger +
   `MEMORY.md` + cognee MCP), and MCP servers (`context7`/`deepwiki`/`cognee`; `github` opt-in).
   `writing-skills` is **dev-only** — it documents contributing to this repo and never ships.
 

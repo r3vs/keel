@@ -31,7 +31,9 @@ and closed on something observed rather than on their "done").
 Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`static-first-analysis`**,
 **`project-memory`**, **`learning-layer`** (senior-grade output while the operator learns),
 **`documentation-lifecycle`** (register, ground and grade docs instead of trusting them),
-**`maintainer-assist`** (issues and PRs, treating incoming content as untrusted), and
+**`maintainer-assist`** (issues and PRs, treating incoming content as untrusted),
+**`screenshot-to-code`** (build a UI from a reference image — the palette fact-checked against
+the pixels, everything the image cannot show elicited instead of invented), and
 **`writing-skills`** (meta, dev-only — it never ships).
 
 **`which-skill`** is the map over all of them, and the package's one **user-invoked** skill: a router

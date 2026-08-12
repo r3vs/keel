@@ -9,7 +9,7 @@ license: MIT
 
 This package ships enough skills that nobody remembers all of them, and the cost of forgetting is
 not a missing feature — it is doing by hand something the package already does properly. This file
-is the index, so you have one thing to remember instead of eighteen.
+is the index, so you have one thing to remember instead of nineteen.
 
 **It is user-invoked on purpose.** A router has nothing to tell the model that the skills'
 own descriptions do not already carry, so paying permanent context load for it would buy nothing.
@@ -22,6 +22,7 @@ It costs you the memory of one name instead (`references/core/writing-for-agents
 | An existing codebase that has drifted, is misaligned, or was largely AI-built | **`codebase-rescue`** — the diff run backward: the as-is exists, derive the to-be, close the gap |
 | A new project, nothing built yet | **`greenfield-forge`** — elect the design first, then build until the gap is zero |
 | A codebase you need to *understand* before deciding anything | `codebase-rescue` in **`understand` mode** — comprehension without committing to a rescue |
+| A screenshot or mockup someone has already approved, and the job is to build it | **`screenshot-to-code`** — the image is evidence, not a spec: its palette is checked against the pixels, and what it cannot show is asked rather than invented |
 | One well-scoped change on a project already under the ledger | skip both. Go straight to the loop below |
 
 Rescue and forge are the two methodology skills, and they are model-invoked precisely because they

@@ -5,6 +5,32 @@ spine has started; versions track design + packaging + runtime together.
 
 ## [Unreleased]
 
+### Added
+- **`screenshot-to-code` (in `keel-kit`) — a reference image as evidence, not as a specification.**
+  The prior art (`abi/screenshot-to-code`, MIT) answers a picture with a file, and everything the
+  picture withheld — breakpoints, the hover and error states, which strings were placeholder, what a
+  control does — gets supplied silently by a model at high confidence. Those are `agent_assumption`s
+  wearing the costume of a deliverable, and they survive review because the render matches the
+  picture, which is the one thing they were optimized to do. So the skill sorts every claim about an
+  image into three buckets and treats each at its own trust: **computed** from the pixels (D0),
+  **inferred** by a model looking at them (D2 → a vetoable pin), and **absent** — the things one
+  still frame structurally cannot show (→ elicited, never filled in).
+- **`runtime/visual.py` + the `image_palette` / `palette_verify` MCP tools** — the deterministic
+  floor that makes the split enforceable rather than merely stated. A stdlib PNG decode (converting
+  through ImageMagick / sips / ffmpeg when present, `unchecked` **with the reason** when not) yields
+  the image's geometry and real color histogram with per-color coverage; `palette_verify` then asks
+  the picture whether the colors a model claims to have seen are in it, summing coverage inside a
+  CIE Lab ΔE radius so anti-aliasing and lossy re-encoding count *toward* a claim. A claimed token
+  covering nothing is a hallucinated color, refuted at the contract for the price of one pin instead
+  of after propagation into `tokens.css`, a Tailwind theme, a `DESIGN.md` and every component built
+  on them. WCAG contrast of a *claimed* pair is graded in the same call — the one moment a contrast
+  check is possible before any code exists for `design_scan` to scan.
+- This also supplies a carrier greenfield's `design-propagation` had named and never had. Its rule
+  is that a token set is *captured from an approved visual direction or imported, never invented by
+  a text-only agent* — and of the three capture paths it named, only "import an existing brand" had
+  a mechanism. A screenshot the user chose and handed over **is** an approved visual direction, and
+  this is how it becomes a DTCG contract.
+
 ### Removed
 - **The root `.claude-plugin/plugin.json` is gone.** It declared the repository itself to be a
   plugin — which it stopped being on 2026-07-16, when the architecture became four plugins under

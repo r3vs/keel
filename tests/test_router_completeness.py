@@ -1,6 +1,6 @@
 """A router that omits a shipped skill, or routes to one that is gone, is a router that lies.
 
-`which-skill` exists to pay down cognitive load: the human remembers one name instead of eighteen.
+`which-skill` exists to pay down cognitive load: the human remembers one name instead of nineteen.
 That only works while the map is complete. The failure is quiet and asymmetric — a skill the router
 never mentions is a capability the operator does not know they installed, and it stays invisible
 precisely because the router is where they would have looked.
