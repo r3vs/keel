@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.29
+# Decisions Ledger — Spec v0.31
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -18,6 +18,7 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
 - **`DecisionEvent`** — append-only, immutable log of the *why*; now with `flip_criteria`.
 - **`SettlementEvent`** (v0.16) — append-only record of a pin leaving the open set through a door that carries **no election**: `resolve` (its authority is an observation) and `correctness_unknown` (its authority is the recorded absence of one). The three elected doors — `decide` · `accept` · `defer` — are recorded by the `DecisionEvent` they already write, which now states which state it produced (`settles_as`). One entry per settlement, never two.
 - **`RemediationItem`** — the bridge to Phase 4; records the ponytail ladder rung.
+- **`Fog`** (v0.31) — a decision this project can *sense* is coming and **cannot yet phrase**. Deliberately coarser than a `Pin`, and it carries **no question**, because the test that separates it from a ticket is *can you state the question precisely now*. It lives in its own top-level `fog` collection, and it leaves that collection the moment it becomes a pin.
 
 ---
 
@@ -60,7 +61,9 @@ On-disk form: one `ledger.json` in the audit's output directory (portable, git-v
                                  // written only for a STANDING property of the pin (v0.18)
   "premortem": null,             // v0.9 — { failure_modes[], guardrails[], abort_criteria[], paper_tigers[] } | null
   "depends_on": [],              // DECISION 6
-  "remediation": []              // [ RemediationItem ]
+  "remediation": [],             // [ RemediationItem ]
+  "claimed_by": null,            // v0.30 — who is working this pin right now | null
+  "claimed_at": null             // v0.30 — ISO-8601, when they took it. Expires; see below
 }
 ```
 
@@ -1407,3 +1410,124 @@ Found in the same pass, one field over, and the same defect: a **sentinel that a
 ### The general shape
 
 A rung is a **claim about which path ran**, and every earlier round of this register turned on claims with no carrier. This one adds the case where the carrier exists, is honest, and answers a *different question than the one being asked*: `check_client_capability` answers *can you?*, and the failure was *will you?*. When a carrier is one question off, the fix is not a better default on the answer it gives — it is a path where the question does not arise.
+
+---
+
+## v0.30 — Two sessions can take the same pin
+
+Found by reading another package rather than by an incident here, which is worth saying plainly: `mattpocock/skills`'s wayfinder gives every unit of work an assignee **taken before any work starts**, and calls the takeable set the *frontier* — open, unblocked, unclaimed. This ledger had the first two and no name for the third.
+
+### What already existed, and what it protects
+
+`branch-lifecycle` declares a scope's **file globs**, and the ledger distinguishes `depends_on` (B needs A's result — ordering) from `conflicts_with` (B and A touch the same files — mutual exclusion). Worktrees make that enforceable: two agents in two trees cannot corrupt each other's files.
+
+All of it is about **files**. None of it is about the **item**, and the two come apart exactly where it matters: two sessions resolving the same pin may legitimately touch **disjoint** files — one writes the fix, one writes the test — so `conflicts_with` correctly reports no conflict while both do the same work. The overlap is in the work item, which is the one thing the ledger owns and the filesystem does not. Nothing corrupts; they discover it at the merge. On a pin carrying a question the failure is worse than waste: the second session asks the human something the first already answered, because sessions share no context.
+
+### `claimed_by` + `claimed_at`, and why they are not a state
+
+Both `null` by default. A malformed value reads as **no claim** (`pin_read` substitutes the empty string, which is falsy) and is reported under `pre_rule_events` like every other guarded field — never as a plausible invented holder, and never as a live claim nobody can release.
+
+The claim is **orthogonal to the lifecycle**: a pin can be `needs_input` and claimed, or `decided` and claimed. Folding it into `state` would multiply every state by two and break every transition table above. It also does not reuse `depends_on` or `conflicts_with` — those are the ordering/exclusion pair, deliberately separated, and a third meaning on either is how a schedule deadlocks.
+
+### One door takes it, and it writes nothing else
+
+`claim(pin_id, holder)` is compare-and-set. Claiming a pin somebody else holds live **fails and names the holder**; it never overwrites. Claiming your own re-stamps it. Claiming a stale one succeeds and reports `reclaimed`, because a silent takeover is how two sessions come to believe the same thing about different work.
+
+It writes nothing but the claim, and that is the property: the claim has to land **before** the work, so a door that also did something is a door somebody calls second — and a claim taken afterwards is a receipt, not a reservation.
+
+The compare-and-set is decided against **the file**, not against the caller's in-memory copy: two sessions each hold their own, so a check against the copy answers *did I claim this* rather than *has anybody*. Only the two claim carriers are re-read; a wholesale reload would discard whatever else the caller has in flight.
+
+### It expires, because there is no daemon to reap it
+
+An agent that dies holding a claim must not park a pin forever, and this ledger has no process to notice. So staleness is computed **at read time** from `claimed_at` against a declared TTL (`CLAIM_TTL_SECONDS`, one hour — a tuned number, and therefore declared as a hypothesis where the gate can see it). `claim_state` answers three ways rather than two: `unclaimed` · `live` · `stale`. A scheduler must treat *a peer is on it* and *a session died holding it* differently, and "claimed" alone cannot.
+
+A claim whose timestamp cannot be parsed is **stale**, not live: a claim this runtime cannot date cannot be shown to be live, and treating it as live would park a pin behind a timestamp nobody can fix.
+
+### The reader that makes it worth having
+
+The **frontier** — open ∧ unblocked ∧ unclaimed — is what the interview and the wave scheduler select over, and what the surfaces report. A claim nothing reads is a decoration, and `check_schema_fields` is the gate that would refuse it.
+
+"Unblocked" is genuinely two questions and this package already answers both: the interview asks whether anything upstream is still in play (`OPEN_STATES`), the wave scheduler asks whether the upstream **work** is done — which a `decided`-but-unbuilt dependency fails and the first passes. So the claim filter lives in one function and the candidate set is the caller's. One filter, two schedulers, no third notion.
+
+**Both halves are always reported.** `summary()` carries `frontier` and `claimed`; `buildloop.plan()` carries `ready_now` and `held_by_peers`. A queue that just returns fewer items reads as *there is less work*, and the difference between that and *your peers have taken it all* is the whole reason anyone is reading the number.
+
+### Releasing, and the door that does it for you
+
+Releasing is explicit (`release`), and it is also the **settlement doors' business**: `_settle` clears the claim on every door that lands the pin in `SETTLED_STATES`, off the same destination test that clears the dispute mark, because a settled pin is not held. `correctness_unknown` does not clear — the pin comes back to the human still open, and the session that could not verify it is the one most likely to still be on it.
+
+`decided` **does** clear, which reads oddly for a beat and is right: the interview's work on that pin is over and the build's has not started, and the property being bought is that a claim spans one unit of work rather than two.
+
+### It is advisory, and that is the design
+
+A claim **never gates a write**. An agent that legitimately needs to write a claimed pin — the human said so — must not be stopped by it. The failure it prevents is duplicated **work**, not concurrent **access**: the ledger's existing write discipline covers the latter, and conflating the two would put a lock in a file nobody can unlock.
+
+That sets the strength honestly. Between the compare-and-set's read and the caller's save there is a window, so this is best-effort, and it is the same window every other field on the record already has. Buying more would mean the lock this design exists to avoid.
+
+### The general shape
+
+Two mechanisms can look like they cover the same risk and cover **different halves of it**, and the gap is invisible while both are described in the same sentence. Worktrees and `conflicts_with` protect the *files*; nothing protected the *item*. When a guarantee is stated as "we already handle concurrency", the question that finds the hole is *concurrency of what* — and the answer is usually a noun nobody named.
+
+---
+
+## v0.31 — In scope, but not yet phrasable
+
+Same source as v0.30 and the same method. Wayfinder's map carries a **Not yet specified** section — its *fog of war* — for decisions you can tell are coming but cannot yet phrase, and the test that separates it from a ticket is sharp: **can you state the question precisely now?** — explicitly not *can you answer it now*. A sharp-but-unanswerable question is a ticket. A question you cannot yet phrase is fog.
+
+### The two homes it had, and why both were wrong
+
+- `deferred` is **out of scope now** — a decision taken, with a settlement event behind it. Not this.
+- An unwritten pin is nothing at all.
+
+So a decision the interview can sense — the funnel compresses pins into decisions, and an experienced reader can often tell a whole area will need one — had two available homes and both misreport it. Written as a pin now it is a badly-phrased fork the human must answer, which is precisely the *"tell me about your app"* open-chat failure the interview funnel was built to prevent: an under-specified question invites the model to fill it in, and the filling-in is the decision. Left unwritten, it is gone.
+
+The funnel's whole thesis is that the enemy is the number of **decisions**, not the number of pins. A fog register is the other half of that thesis: some decisions are not decisions yet, and forcing them into the pin shape early grows an interview nobody can answer.
+
+### The shape elected, and the two that were not
+
+Three were on the table, cheapest first. **A top-level `fog` collection** won; the other two are recorded here so the argument is not re-run:
+
+- *A pin state `unspecifiable`* reuses the pin shape, so graduation would be a transition rather than a move — tempting, and wrong: the entry has no `question`, and the whole pin schema is organised around one. It would put an empty fork on every entry and every surface that selects on presence would render it.
+- *A map/interview surface only*, no schema, is cheapest of all and fails this package's own rule: a thing no carrier holds is a claim.
+
+```jsonc
+{
+  "id": "fog_0001",
+  "area": "billing",                       // WHERE the decision is coming from. Coarse on purpose.
+  "sensed": "three call sites already special-case trials",   // what made you think one is coming
+  "noticed_at": "2026-08-11T21:00:00+00:00",
+  "provenance": [{ "source": "interview", "detail": "phase 2" }],
+  "cluster_hint": "billing"                // optional; where it probably lands in the catalog
+}
+```
+
+**There is no `question` field, and that is enforcement rather than omission.** Detecting a premature question by inspecting prose would be the keyword-guessing this repo forbids its own linters; giving the record nowhere to put one is structural.
+
+### Graduation is the load-bearing half
+
+When a patch becomes phrasable it becomes a pin **and is deleted from the register**, so it lives in exactly one place. Without the deletion the register is a second home for something that already exists on a pin — the divergence this package exists to find, built by the feature meant to prevent premature specification.
+
+**The phrasing is the human's.** Phrasing the question *is* framing the decision, and framing is where the answer gets smuggled in: an agent that writes the fork writes which answers are thinkable. So the agent proposes and the human elects, exactly as with any other fork, and `graduate_fog` refuses without their words — the same rule `record_decision`, `record_policy` and `defer` are held to, through the same single refusal.
+
+The trail lives on the new pin's `provenance` (`source: "fog_graduation"`, carrying the patch id, what was sensed, and the human's words) rather than in `decision_log`. The log records what happened to a pin's **state**; this **creates** the pin, and creation has always been recorded in provenance — `add_pin` appends nothing to the log either.
+
+### The other exit, and the trail it does not leave
+
+`clear_fog` drops a patch that turned out not to be a decision, or that the elected scope moved past. It is held to `defer`'s discipline for `defer`'s reason: clearing stops the register asking about something, so an agent doing it alone is an agent deciding not to decide.
+
+**A cleared patch leaves no trail, and that is the design.** The register's whole claim is that it holds what is *still* fog; an append-only history of things that stopped being fog would be a second collection with the first one's failure mode. What keeps it honest is that the human said the words.
+
+### The backlog trap, and the one number that shows it
+
+Fog gathers only **toward** the elected scope. Work past it is `deferred` on a pin and never graduates. A register that only grows is a to-do list wearing a doctrine's name.
+
+Nothing refuses that — a cap would just move the dishonesty — so it is made visible instead: `summary()` reports `fog` beside `fog_oldest_days`, and the age is the signal. A count that rises while the oldest patch keeps getting older is the failure, and it is on the call an agent makes before acting.
+
+Nor is a patch sized like a ticket. One patch may become three pins or none, and pre-slicing it into pin-shaped pieces is the same premature specification the register exists to avoid.
+
+### An older file has no `fog`, and that is not a nonconformance
+
+`OPTIONAL_COLLECTIONS` is the new distinction and it is a real one. `pins`, `decision_log` and `policies` have been in every file since v0.3, so an absent one means a broken file and the reader must say so. `fog` arrived here, so an absent one means an older file and nothing more — reporting it would make every ledger written before this version permanently nonconforming, freezing its `version` stamp forever on a rule about a collection it could not have carried. Present-and-wrong is still reported, for all four; the exemption is about **absence** only. The write path materialises it with `setdefault`, which is the one case where the write path and the read path agree about what an absent key means.
+
+### The general shape
+
+A register for things you cannot yet say is only honest if it has an **exit** and a **ceiling**. This one has two exits, both of which delete, and a ceiling that is reported rather than enforced. Every earlier round of this document turned on a carrier with no reader; this one is the inverse risk — a carrier with no way out, which is how a doctrine becomes a backlog.

@@ -220,21 +220,135 @@ def _extract_python(rel: str, src: str, index: dict[str, list[str]]) -> tuple[li
 _TS_GRAMMAR_BY_EXT = {
     ".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
     ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+    # A1 — the additive half. Each of these is a `_TS_QUERIES` entry below and nothing else: the
+    # engine did not learn a language, it was handed one more table.
+    ".go": "go", ".rs": "rust", ".java": "java", ".cs": "csharp", ".rb": "ruby", ".php": "php",
+    ".c": "c", ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp",
+    ".kt": "kotlin", ".kts": "kotlin", ".swift": "swift", ".scala": "scala",
 }
 _JS_EXTS = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 _IMPORT_QUERY = "(import_statement source: (string) @src)"
+
+# Per-grammar extraction, as DATA. Four optional keys — `class`, `function`, `method`, `imports` —
+# and adding a language is adding one entry, which is what makes the breadth cheap.
+#
+# Three things are worth knowing before adding the next one, all of them learned by running the
+# queries against real grammars rather than by reasoning about them:
+#
+#   * **`imports` is per-grammar and defaults to none.** It used to be one module-level query run
+#     unconditionally, and `(import_statement …)` is not a node type in the Go, Rust or Java
+#     grammars — so the query raises, the single `try` around the whole extraction catches it, and
+#     the function returns `[], []`. Every symbol already extracted from that file would have been
+#     thrown away by an import query that could never have matched. The resolver is JS-specific
+#     anyway (`_resolve_js_import`), so the key travels with the grammars it is true of.
+#   * **`@owner` is optional, and it is what makes Go and Rust work.** The method-owner rule is
+#     RANGE-based — the tightest `class` capture whose lines contain the method — which is right for
+#     every language that nests methods inside the type, and wrong for the two that do not: a Go
+#     method sits beside its struct carrying a receiver, and a Rust method sits in an `impl` block
+#     that is a separate item from the `struct`. Both grammars can name the owner in the query
+#     itself, so the query does, and the range rule stays for everyone else.
+#   * **A `method` capture with no owner is emitted as a `function`.** Kotlin, Swift and Scala use
+#     one node type for both, so the honest reading is structural: a method nobody owns is a
+#     function. It also corrects a pre-existing case — a TS `method_definition` inside an object
+#     literal or a class expression was typed `method` and attached to the file.
+#
+# Named limits, because a table that hides one is worse than a smaller table: Rust's top-level
+# function query is anchored to `source_file`, so functions inside a `mod` block are not captured
+# (unanchored, it captured every `impl` method a second time as a free function). Go type aliases
+# and non-struct/interface `type_spec`s are not classes. C++ picks up both the in-class declaration
+# and the out-of-line definition, which are two real declarations at two real lines.
 _TS_QUERIES = {
     "typescript": {
         "function": ["(function_declaration name: (identifier) @name) @node",
                      "(variable_declarator name: (identifier) @name value: (arrow_function)) @node"],
         "class": ["(class_declaration name: (type_identifier) @name) @node"],
         "method": ["(method_definition name: (property_identifier) @name) @node"],
+        "imports": [_IMPORT_QUERY],
     },
     "javascript": {
         "function": ["(function_declaration name: (identifier) @name) @node",
                      "(variable_declarator name: (identifier) @name value: (arrow_function)) @node"],
         "class": ["(class_declaration name: (identifier) @name) @node"],
         "method": ["(method_definition name: (property_identifier) @name) @node"],
+        "imports": [_IMPORT_QUERY],
+    },
+    "go": {
+        "class": [
+            "(type_declaration (type_spec name: (type_identifier) @name type: (struct_type))) @node",
+            "(type_declaration (type_spec name: (type_identifier) @name "
+            "type: (interface_type))) @node"],
+        "function": ["(source_file (function_declaration name: (identifier) @name) @node)"],
+        "method": ["(method_declaration receiver: (parameter_list (parameter_declaration "
+                   "type: [(pointer_type (type_identifier) @owner) (type_identifier) @owner])) "
+                   "name: (field_identifier) @name) @node"],
+    },
+    "rust": {
+        "class": ["(struct_item name: (type_identifier) @name) @node",
+                  "(trait_item name: (type_identifier) @name) @node",
+                  "(enum_item name: (type_identifier) @name) @node"],
+        "function": ["(source_file (function_item name: (identifier) @name) @node)"],
+        "method": ["(impl_item type: (type_identifier) @owner body: (declaration_list "
+                   "(function_item name: (identifier) @name) @node))"],
+    },
+    "java": {
+        "class": ["(class_declaration name: (identifier) @name) @node",
+                  "(interface_declaration name: (identifier) @name) @node",
+                  "(enum_declaration name: (identifier) @name) @node",
+                  "(record_declaration name: (identifier) @name) @node"],
+        "method": ["(method_declaration name: (identifier) @name) @node"],
+    },
+    "csharp": {
+        "class": ["(class_declaration name: (identifier) @name) @node",
+                  "(interface_declaration name: (identifier) @name) @node",
+                  "(struct_declaration name: (identifier) @name) @node",
+                  "(record_declaration name: (identifier) @name) @node"],
+        "method": ["(method_declaration name: (identifier) @name) @node"],
+    },
+    "ruby": {
+        "class": ["(class name: (constant) @name) @node", "(module name: (constant) @name) @node"],
+        "method": ["(method name: (identifier) @name) @node",
+                   "(singleton_method name: (identifier) @name) @node"],
+    },
+    "php": {
+        "class": ["(class_declaration name: (name) @name) @node",
+                  "(interface_declaration name: (name) @name) @node",
+                  "(trait_declaration name: (name) @name) @node"],
+        "function": ["(function_definition name: (name) @name) @node"],
+        "method": ["(method_declaration name: (name) @name) @node"],
+    },
+    "c": {
+        "class": ["(struct_specifier name: (type_identifier) @name "
+                  "body: (field_declaration_list)) @node"],
+        "function": ["(function_definition declarator: (function_declarator "
+                     "declarator: (identifier) @name)) @node"],
+    },
+    "cpp": {
+        "class": ["(class_specifier name: (type_identifier) @name "
+                  "body: (field_declaration_list)) @node",
+                  "(struct_specifier name: (type_identifier) @name "
+                  "body: (field_declaration_list)) @node"],
+        "function": ["(function_definition declarator: (function_declarator "
+                     "declarator: (identifier) @name)) @node"],
+        "method": ["(function_definition declarator: (function_declarator declarator: "
+                   "(qualified_identifier scope: (namespace_identifier) @owner "
+                   "name: (identifier) @name))) @node",
+                   "(field_declaration declarator: (function_declarator "
+                   "declarator: (field_identifier) @name)) @node"],
+    },
+    "kotlin": {
+        "class": ["(class_declaration (type_identifier) @name) @node"],
+        "method": ["(function_declaration (simple_identifier) @name) @node"],
+    },
+    "swift": {
+        "class": ["(class_declaration name: (type_identifier) @name) @node",
+                  "(protocol_declaration name: (type_identifier) @name) @node"],
+        "method": ["(function_declaration name: (simple_identifier) @name) @node"],
+    },
+    "scala": {
+        "class": ["(class_definition name: (identifier) @name) @node",
+                  "(object_definition name: (identifier) @name) @node",
+                  "(trait_definition name: (identifier) @name) @node"],
+        "method": ["(function_definition name: (identifier) @name) @node"],
     },
 }
 _TS_QUERIES["tsx"] = _TS_QUERIES["typescript"]  # tsx reuses the TS queries, on the tsx grammar
@@ -316,28 +430,46 @@ def _extract_treesitter(rel: str, src: str, ext: str, fileset: set) -> tuple[lis
                 nnode, nm = _cap(caps)
                 if nnode is not None and nm is not None:
                     _add("function", tse._txt(nm), nnode, file_id)
+        by_name = {cname: cid for _s, _e, cid, cname in classes}
         for q in queries.get("method", []):
             for _i, caps in tse._matches(grammar, q, root_node):
                 nnode, nm = _cap(caps)
                 if nnode is None or nm is None:
                     continue
-                mstart = nnode.start_point[0] + 1
-                owner_id, owner_name, best = file_id, None, None
-                for s, e, cid, cname in classes:
-                    if s <= mstart <= e and (best is None or (e - s) < best):
-                        best, owner_id, owner_name = (e - s), cid, cname
-                mname = f"{owner_name}.{tse._txt(nm)}" if owner_name else tse._txt(nm)
-                _add("method", mname, nnode, owner_id)
+                # The owner, from the query where the grammar can name it and from the enclosing
+                # range where it cannot. Go's receiver and Rust's `impl` type are the two that
+                # cannot be found by range at all: the method sits BESIDE its type, not inside it.
+                onode = tse._cap1(caps, "owner")
+                owner_name = tse._txt(onode) if onode is not None else None
+                owner_id = by_name.get(owner_name, file_id) if owner_name else file_id
+                if owner_name is None:
+                    mstart, best = nnode.start_point[0] + 1, None
+                    for s, e, cid, cname in classes:
+                        if s <= mstart <= e and (best is None or (e - s) < best):
+                            best, owner_id, owner_name = (e - s), cid, cname
+                # A method nobody owns IS a function, and saying so is structural rather than a
+                # guess. Kotlin, Swift and Scala spell both with one node type, so the distinction
+                # can only come from whether an owner was found — and this also corrects a TS case
+                # that predates the other languages: a `method_definition` in an object literal or
+                # a class expression was typed `method` and hung off the file.
+                if owner_name is None:
+                    _add("function", tse._txt(nm), nnode, file_id)
+                    continue
+                _add("method", f"{owner_name}.{tse._txt(nm)}", nnode, owner_id)
+        # Per grammar, and absent for most of them. An import query that names a node type this
+        # grammar does not have RAISES, and the one `except` below would then throw away every
+        # symbol already extracted from the file — see `_TS_QUERIES`.
         seen_imp = set()
-        for _i, caps in tse._matches(grammar, _IMPORT_QUERY, root_node):
-            snode = tse._cap1(caps, "src")
-            if snode is None:
-                continue
-            tgt = _resolve_js_import(tse._txt(snode), rel, fileset)
-            if tgt and tgt != rel and tgt not in seen_imp:
-                seen_imp.add(tgt)
-                edges.append({"source": file_id, "target": f"file:{tgt}", "type": "imports",
-                              "confidence": "extracted"})
+        for q in queries.get("imports", []):
+            for _i, caps in tse._matches(grammar, q, root_node):
+                snode = tse._cap1(caps, "src")
+                if snode is None:
+                    continue
+                tgt = _resolve_js_import(tse._txt(snode), rel, fileset)
+                if tgt and tgt != rel and tgt not in seen_imp:
+                    seen_imp.add(tgt)
+                    edges.append({"source": file_id, "target": f"file:{tgt}", "type": "imports",
+                                  "confidence": "extracted"})
     except Exception:
         return [], []  # any grammar/query mismatch degrades to file-only rather than half-data
 

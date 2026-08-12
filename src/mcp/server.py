@@ -867,6 +867,144 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return tools.agent_ready(ledger, pin_id)
 
 
+@mcp.tool(annotations={"title": "Ledger — Fog (decisions you cannot yet phrase)", **_RO})
+def ledger_fog(ledger: str) -> dict:
+    """What this project can tell is coming and cannot yet state as a question.
+
+    Read it at the start of an interview round. A fog patch is deliberately coarser than a pin: it
+    has an area and what made you sense it, and **no question**, because the test that separates fog
+    from a ticket is *can you state the question precisely now* — not *can you answer it now*.
+
+    `oldest_days` is the number that matters. The register is bounded by the elected scope, so
+    patches should graduate or clear as the scope firms up; one that only grows is a backlog.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.ledger_fog(ledger)
+
+
+@mcp.tool(annotations={"title": "Ledger — Record Fog", **_RW_CREATE})
+def ledger_add_fog(ledger: str, area: str, sensed: str, provenance: list,
+                   cluster_hint: str = "") -> dict:
+    """Record a decision you can tell is coming and cannot yet phrase. Do not invent a question.
+
+    Use it when the interview can *sense* that a whole area will need a fork but nobody can state it
+    yet. Writing it as a pin now produces a badly-phrased question the human has to answer, which is
+    the open-chat failure the funnel exists to prevent: an under-specified question invites you to
+    fill it in, and the filling-in is the decision.
+
+    There is nowhere here to put a question. If you can phrase one, this is not fog — record a pin.
+
+    Args:
+        ledger: Path to ledger.json.
+        area: Where the decision is coming from. Coarse on purpose.
+        sensed: What made you think a decision is coming. Concrete, in your own words.
+        provenance: [{source, detail}] — who sensed this and how.
+        cluster_hint: Optional catalog cluster, if you can already guess where it lands.
+    """
+    return tools.ledger_add_fog(ledger, area, sensed, provenance, cluster_hint)
+
+
+@mcp.tool(annotations={"title": "Ledger — Graduate Fog into a Pin the Human Phrased", **_RW})
+def ledger_graduate_fog(ledger: str, fog_id: str, question: dict, human_answer: str,
+                        kind: str = "open_decision", title: str = "", severity: str = "medium",
+                        confidence: str = "inferred") -> dict:
+    """The patch became phrasable. It becomes a pin **and leaves the register** — one home, always.
+
+    You may propose the phrasing. You may not elect it: phrasing the question is framing the
+    decision, and framing is where the answer gets smuggled in. So `human_answer` is the user's own
+    words about how the fork should be put, and this tool refuses without them.
+
+    Args:
+        ledger: Path to ledger.json.
+        fog_id: The patch that became phrasable.
+        question: The fork, as the human put it — prompt + options, freeform left open.
+        human_answer: The user's words on how to phrase it. Required.
+        kind: The pin kind. `open_decision` for a greenfield fork; something else if it fits better.
+        title: Defaults to the patch's area.
+        severity: blocker | high | medium | low.
+        confidence: extracted | inferred | ambiguous.
+    """
+    return tools.ledger_graduate_fog(ledger, fog_id, question, human_answer, kind, title,
+                                     severity, confidence)
+
+
+@mcp.tool(annotations={"title": "Ledger — Clear Fog (there was no fork here)", **_RW})
+def ledger_clear_fog(ledger: str, fog_id: str, rationale: str, human_answer: str) -> dict:
+    """Drop a patch that turned out not to be a decision, or that the scope moved past.
+
+    Held to what `ledger_defer` is held to, and for the same reason: clearing stops the register
+    asking about something, so doing it on your own authority is deciding not to decide.
+
+    Args:
+        ledger: Path to ledger.json.
+        fog_id: The patch to drop.
+        rationale: Why there is no fork here — a clearance with no reason is a deletion.
+        human_answer: The user's words. Required.
+    """
+    return tools.ledger_clear_fog(ledger, fog_id, rationale, human_answer)
+
+
+@mcp.tool(annotations={"title": "Ledger — Frontier (what is takeable, and who holds the rest)",
+                       **_RO})
+def ledger_frontier(ledger: str) -> dict:
+    """What you may take right now: open, unblocked, and claimed by nobody. Plus who holds the rest.
+
+    Read this before picking an item. Two sessions reading the same ledger see the same unblocked
+    pins and take the same one — nothing corrupts, they just do the work twice and find out at the
+    merge, and on a pin that carries a question the second session asks the human something the
+    first already answered.
+
+    `claimed` is never folded into the count: a shorter list means *your peers have it*, not *there
+    is less to do*.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.ledger_frontier(ledger)
+
+
+@mcp.tool(annotations={"title": "Ledger — Claim a Pin (before doing the work)", **_RW})
+def ledger_claim(ledger: str, pin_id: str, holder: str) -> dict:
+    """Take a pin before you start on it. Compare-and-set — it writes nothing but the claim.
+
+    Call it FIRST, before any other write on that pin. A claim taken afterwards is a receipt, not a
+    reservation, and the duplicated work has already happened.
+
+    `claimed: false` with a holder named is a normal answer, not an error: somebody is on it, so
+    take something else off `ledger_frontier`. A claim goes stale on its own after an hour, so a
+    session that dies holding one does not park the pin — and a session still working after an hour
+    says so by claiming again, which re-stamps it.
+
+    The claim is advisory. It never blocks a write: if the human tells you to work a pin somebody
+    holds, work it. What it prevents is two sessions doing the same thing, not two sessions touching
+    the same file — that is what a worktree and a declared scope are for.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin you are taking.
+        holder: Who is taking it — a stable session or agent identifier, not a person's name.
+    """
+    return tools.ledger_claim(ledger, pin_id, holder)
+
+
+@mcp.tool(annotations={"title": "Ledger — Release a Claim", **_RW})
+def ledger_release(ledger: str, pin_id: str, holder: str = "") -> dict:
+    """Put a pin back on the frontier without settling it — you stopped, and did not finish.
+
+    Settling a pin releases it already, so this is for the other ending. Pass your own `holder` to
+    release only your claim; omit it to clear whatever is there, which is what cleaning up after a
+    dead session needs.
+
+    Args:
+        ledger: Path to ledger.json.
+        pin_id: The pin you are letting go of.
+        holder: Your identifier — release only your own claim. Omit to clear any claim.
+    """
+    return tools.ledger_release(ledger, pin_id, holder)
+
+
 @mcp.tool(annotations={"title": "Ledger — Record a Deferral the Human Elected", **_RW})
 def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
                  human_answer: str) -> dict:

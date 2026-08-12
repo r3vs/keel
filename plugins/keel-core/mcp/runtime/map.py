@@ -244,6 +244,9 @@ const REOPENED = new Set(__REOPENED__);
 // alone, which is how the funnel's countdown came to be printed on `detected` pins the funnel does
 // not carry. See `modeLine`.
 const ASKABLE = new Set(__ASKABLE__);
+// How long a claim stays live, from `ledger.CLAIM_TTL_SECONDS`. Inlined for the reason the three
+// sets above are: a tuned number typed twice is two surfaces disagreeing about one pin.
+const CLAIM_TTL = __CLAIM_TTL__;
 let view='as_is', sel=null, selPol=null;
 const ENT={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>ENT[c]);
@@ -763,7 +766,30 @@ function renderList(){
     <div class="t">${p.title}</div>
     <div class="m">${sevBadge(p.severity)}
     <span>${p.kind}</span><span>· ${p.state}</span>
+    ${claimNote(p)}
     ${weak?h`<span class="rung weak">${m.label}</span>`:''}</div></div>`;})]);
+}
+// -- who is on it right now (`claimed_by`/`claimed_at`, spec v0.30) --------------------------
+// A human opening this page while two sessions are running needs to know which pins are already
+// taken, and the answer is time-dependent — a claim expires — so it cannot be a stored flag. The
+// TTL is passed in from the runtime (`CLAIM_TTL_SECONDS`) rather than re-typed here: two copies of
+// a tuned number is how one surface says live and another says stale about the same pin.
+//
+// A claim this page cannot date reads as STALE, exactly as the runtime reads it, and says so. The
+// alternative — rendering it as held — would park a pin behind a timestamp nobody can fix, on the
+// one surface where a human could otherwise notice and clear it.
+function claimState(p){
+  if(!p.claimed_by) return null;
+  const at=Date.parse(p.claimed_at||'');
+  if(Number.isNaN(at)) return 'stale';
+  return (Date.now()-at)/1000 < CLAIM_TTL ? 'live' : 'stale';
+}
+function claimNote(p){
+  const st=claimState(p);
+  if(!st) return '';
+  return st==='live'
+    ? h`<span class="rung weak">held by ${p.claimed_by}</span>`
+    : h`<span class="rung weak">stale claim (${p.claimed_by})</span>`;
 }
 // -- the same claim, re-derived by a DIFFERENT provider (`cross_derivations`, spec v0.9) ------
 // Written by `Ledger.cross_derive` and, until this reader existed, read by NOTHING: not this page,
@@ -1318,7 +1344,8 @@ def _inline(value) -> str:
 #: Every placeholder the template carries. `render` substitutes them in ONE pass over the template,
 #: so no substitution can ever run over content a previous one inlined.
 _PLACEHOLDER_RE = re.compile(
-    r"__(?:DATA|NONCONF|SHAPE_WHY|DERIVED|WEAK_POLICIES|REFUTED|SETTLED|REOPENED|ASKABLE|TITLE"
+    r"__(?:DATA|NONCONF|SHAPE_WHY|DERIVED|WEAK_POLICIES|REFUTED|SETTLED|REOPENED|ASKABLE|CLAIM_TTL"
+    r"|TITLE"
     r"|LIVE_STYLE|LIVE_BADGE|LIVE_SCRIPT)__")
 
 
@@ -1341,7 +1368,8 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
     the order of the lines around it. An unknown placeholder raises `KeyError` here rather than
     surviving into the page as literal text.
     """
-    from ledger import (INTERVIEW_STATES, REOPENED_SUBSTATES, SETTLED_STATES, nonconforming,
+    from ledger import (CLAIM_TTL_SECONDS, INTERVIEW_STATES, REOPENED_SUBSTATES,
+                        SETTLED_STATES, nonconforming,
                         readable_ledger, shape_notes)
     # v0.23 — the page is rendered from the GUARDED view, never from the file. Two things follow,
     # and they are the whole of this round's map half:
@@ -1380,6 +1408,9 @@ def render(ledger_data: dict, title: str = "", live: bool = False) -> str:
         # the states `interview_view` selects, so the page cannot say what the interview will do
         # with a pin the interview never sees (v0.21)
         "__ASKABLE__": _inline(list(INTERVIEW_STATES)),
+        # the TTL the runtime computes staleness against, so this page and `claim_state` cannot
+        # disagree about whether the same claim is still live (v0.30)
+        "__CLAIM_TTL__": _inline(CLAIM_TTL_SECONDS),
         "__TITLE__": html.escape(title or "ledger"),
         "__LIVE_STYLE__": _LIVE_STYLE if live else "",
         "__LIVE_BADGE__": _LIVE_BADGE if live else "",

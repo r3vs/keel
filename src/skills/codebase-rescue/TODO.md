@@ -210,12 +210,40 @@ Implemented (code, stdlib-only, tested — the `understand`-mode runtime + its b
       Domain → Flow → Step. `tests/test_domain.py`.
 
 Still open (code — each its own PR; effort S/M/L per the study):
-- [ ] **A1 (more languages)** additional tree-sitter query sets beyond JS/TS (Go, Rust, Java, …) —
-      each is one additive entry in `graph_build._TS_QUERIES`, no engine change (S each).
-- [ ] **D5** container sub-grouping *within* a layer (folder-LCP + Louvain fallback) for very large
-      layers — the map is legible now; this is a refinement for huge repos (M).
-- [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — only if
-      design-system alignment becomes an explicit goal (L).
+- [x] **A1 (more languages)** — eleven grammars beyond JS/TS: Go, Rust, Java, C#, Ruby, PHP, C,
+      C++, Kotlin, Swift, Scala. Each is one entry in `graph_build._TS_QUERIES`, every query written
+      by running it against the real grammar (`tests/test_graph_languages.py` keeps that run).
+      The estimate said *no engine change* and was wrong about two things, both found by running it:
+      the import query was module-level and unconditional, so on a grammar with no `import_statement`
+      it raised and the one `except` threw away every symbol already extracted from the file — it is
+      per-grammar now; and the method-owner rule is range-based, which cannot work for Go's receiver
+      or Rust's `impl` block, so a query may name the owner with an optional `@owner` capture. A
+      third fell out of that: a method capture with no owner is emitted as a **function**, which is
+      the only structural way to tell them apart in Kotlin, Swift and Scala.
+- [x] **D5** container sub-grouping *within* a layer — folder-LCP in `graphmap._subgroups`, above a
+      declared threshold, with the groups partitioning the layer (files at the shared prefix are the
+      `.` group, so nothing is dropped). **The Louvain fallback is refused**, and not only because it
+      needs a non-stdlib graph library: a detected community has no name a reader can check, and
+      `community 3` is exactly the un-nameable grouping this package refuses everywhere else — drawn
+      on the surface a human opens to find out what the code is. The folder tree is a grouping the
+      repo's own authors already named, and where it says nothing (one bucket) the layer renders flat,
+      which is the honest reading of a flat directory.
+- [ ] **F1** (greenfield-forge) Figma design→frontend as a **5th contract layer** — **not built,
+      2026-08-11, and the entry is narrower than it looks.** Its own precondition still holds (*only
+      if design-system alignment becomes an explicit goal*), and two things decide it beyond that.
+
+      **The seam already exists.** The design contract here is W3C **DTCG** — `generate_tokens`
+      emits CSS/Tailwind/`DESIGN.md` from it, `tokens_diff` round-trips, `extract_tokens` reads a
+      stylesheet back, and `design_scan`'s `design-system-*` antipatterns route to
+      `contract_mismatch`. Figma exports DTCG. So the missing piece is not a fifth layer; it is a
+      **verified round-trip against a real export**, which is a smaller and better-shaped task than
+      the entry describes.
+
+      **What is left cannot be verified here, and that is the blocker.** It needs a Figma file, an
+      API token and network — i.e. exactly the human-only step the `wizard` skill is about. Writing
+      a client against an API nobody in this repo can call is the unverified-claim failure this
+      package exists to find, and every other roadmap item closed this round was closed by running
+      it against the real thing. Do it with a real file in hand, or not at all.
 
 ---
 

@@ -28,6 +28,28 @@ Distinguish two relations, because conflating them is how a schedule deadlocks o
 
 Independent scopes go in parallel worktrees. Conflicting scopes serialize, whatever the DAG says.
 
+### The tree protects the files. It does not protect the item.
+
+Both relations above are about **files**, and so is the worktree: two agents in two trees cannot
+corrupt each other's work. Neither says anything about who is doing the *item*. Two sessions
+resolving the same pin may legitimately touch disjoint files — one writes the fix, one writes the
+test — so `conflicts_with` correctly reports no conflict while both do the same work, and nobody
+finds out until the merge. On a pin that carries a question it is worse than waste: the second
+session asks the human something the first already answered.
+
+So take the item as well as the tree:
+
+1. `ledger_frontier` — what is open, unblocked **and unclaimed**, beside who holds the rest. Pick
+   from the first list.
+2. `ledger_claim` — take the pin **before** you start. A claim taken afterwards is a receipt.
+   `claimed: false` names the holder: that is a normal answer, so pick something else.
+3. `ledger_release` — you stopped without finishing. Settling the pin releases it for you, so this
+   is only for the other ending; with no holder it also clears up after a session that died.
+
+A claim expires on its own, so nothing is parked forever, and it never blocks a write: if the human
+tells you to work a pin somebody holds, work it. It stops two sessions doing one job — the tree
+stops them doing it to the same file.
+
 ## During — commit against pins
 
 - Commit at each green step, referencing the pin: the ledger says *why*, the commit says *what*.
@@ -36,6 +58,28 @@ Independent scopes go in parallel worktrees. Conflicting scopes serialize, whate
   hoping two agents edit it politely.
 - Rebase on the base branch often. Never auto-resolve a conflict in code you did not write — a
   conflict is a finding about overlapping scope, and resolving it silently destroys that signal.
+
+## The wide refactor — the scope no vertical slice can hold
+
+One mechanical change whose **blast radius** fans across the whole codebase — rename a column,
+retype a shared symbol, move a package — cannot be a normal scope. Every slice of it breaks
+thousands of call sites at once, so no slice lands green, and forcing it into one produces a branch
+that is red for days and conflicts with everything.
+
+Sequence it **expand → migrate → contract** instead, and let the DAG carry the ordering:
+
+1. **Expand.** Add the new form *beside* the old one. Nothing breaks, because nothing has moved.
+2. **Migrate**, in batches sized by blast radius — per package, per directory. Each batch is its own
+   scope, each `depends_on` the expand, and CI stays green batch to batch because the old form is
+   still there. Batches that touch disjoint trees run in parallel worktrees; batches that share a
+   file are `conflicts_with` and serialize, exactly as any other scope.
+3. **Contract.** Delete the old form once no caller remains, in a scope that `depends_on` every
+   migrate batch.
+
+Where even a batch cannot stay green alone, keep the sequence but give the batches a shared
+integration branch that they all block, and promise green **only there** — declared up front, so a
+red batch is the plan rather than a surprise. *Make the change easy, then make the easy change*: the
+expand step is the "make it easy" half, and it is the half that gets skipped.
 
 ## Finish — and this is where discipline usually collapses
 

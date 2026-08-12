@@ -94,6 +94,40 @@ pins; and a finish sequence for the point where discipline usually collapses —
 
 *Use when: starting a unit of work, running agents in parallel, or finishing a branch.*
 
+### `prototype`
+The weakest evidence this package accepts is conversation, and a fork about how something *behaves*
+or *looks* is exactly where two people agree in words and picture different things. A prototype is
+**throwaway code that answers one question** — a runnable state/logic demo you can drive by hand, or
+several radically different UI variations, because one variation is a proposal wearing the costume
+of an experiment.
+
+It is evidence, never an outcome: it does not resolve the pin, it gives you something real to elect
+against. Building the variations and then picking one itself is the failure this skill is most
+likely to commit, and the skill says so. The validated decision folds into the code; the artifact is
+kept as a **primary source** on a branch out of main, pointed at from the pin — so six months later
+the pin says what was chosen and the branch says what it was chosen *against*.
+
+*Use when: a decision turns on behaviour or appearance and arguing on paper has stopped converging.*
+
+### `wizard`
+The exact inverse of the assumptions doctrine. That one governs what an agent does when it must
+**guess**; this one governs what it does when it must **wait** — the API key, the console click, the
+card on file, the approval, the machine it cannot reach.
+
+Three routes look like progress and are not: the stub that stays, the silent downgrade to the free
+tier, and the optimistic pass that leaves the first real run for somebody else. Each produces a green
+build over a step nobody took. So the block is written down as a pin **before** the human is asked —
+with the dependent pins wired, the claim released, and the observation decided while you still
+remember what you were trying to do — and the instruction is written to be followed and checked,
+one action per line, ending on a command the human can run.
+
+Then the part that makes it this package's rather than generic: **"I did it" is `self_check`.** A
+human-only step closes on something *you* observed — the call that now returns 200, the resource
+that now enumerates, the operation that used to be denied — and where you cannot observe it, the pin
+is `correctness_unknown` rather than resolved.
+
+*Use when: the next step is blocked on a person rather than on code.*
+
 ---
 
 ## The supporting four

@@ -23,7 +23,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **58** | the deterministic engine, typed and discoverable |
+| MCP tools | **65** | the deterministic engine, typed and discoverable |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
 | Skills | **2** | `using-the-ledger`, `run-workflow` |
@@ -32,13 +32,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 58 MCP tools
+## The 65 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (21)
+### Ledger — the single source of truth (28)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -66,6 +66,13 @@ holds no state of its own; it projects this file.
 | `ledger_set_question` | give a pin recorded without a fork the one that puts it to the human. Write-if-absent, and the composed menu must leave freeform open | ✎ |
 | `ledger_add_proposals` | the brainstorm's options on one pin. Neutral by schema — a proposal carrying a decision is refused — and the pin stays in the funnel while it is explored | ✎ |
 | `agent_ready` | is this item *handable*, or merely unblocked? Preconditions (D0) and quality (D2), reported apart, routed to a named owner | — |
+| `ledger_frontier` | what is takeable right now — open, unblocked **and unclaimed** — beside who is holding the rest, because a list that silently omits the claimed pins reads as *there is less work* | — |
+| `ledger_claim` | take a pin **before** doing the work. Compare-and-set against the file, writes nothing else, and expires on its own so a dead session parks nothing | ✎ |
+| `ledger_release` | you stopped without finishing. Settling a pin releases it already, so this is the other ending — and with no holder it clears up after a session that died | ✎ |
+| `ledger_fog` | the register of decisions this project can **sense** and cannot yet phrase, plus how old its oldest patch is — the one number that says whether it is still a register or has become a backlog | — |
+| `ledger_add_fog` | record one, without inventing a question for it. The entry has nowhere to put a fork, which is the enforcement: if you can phrase it, it is a pin | ✎ |
+| `ledger_graduate_fog` | the human phrased it — it becomes a pin **and leaves the register**, so it lives in exactly one place. Phrasing the fork is framing the decision, so the words must be theirs | ✎ |
+| `ledger_clear_fog` | there was no fork here after all. Held to what `ledger_defer` is held to, because clearing stops the register asking | ✎ |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview
 answer. The write tools record; they do not decide.
@@ -110,6 +117,14 @@ because a decision written into the projection belongs in the ledger.
 
 A **tree-sitter native** structural graph — a real grammar per language, not regex. Files, symbols
 and tables are nodes; imports and calls are edges.
+
+Python goes through the standard library's own parser; TS/JS/TSX, **Go, Rust, Java, C#, Ruby, PHP, C, C++, Kotlin,
+Swift and Scala** each go through one query table per grammar, so adding a language is adding a
+table rather than writing a parser. Two things the table has to know, both learned by running the
+queries rather than reasoning about them: a method whose grammar does not nest it inside its type
+(Go's receiver, Rust's `impl`) names its owner in the query itself, and a method capture with no
+owner is emitted as a **function**, which is the only structural way to tell them apart in Kotlin,
+Swift and Scala.
 
 | Tool | Does |
 |---|---|
@@ -229,6 +244,20 @@ How to read and write the ledger from *any* task: read pins, add a finding, run 
 interview, record a decision with its `flip_criteria`, and never let an agent commit a decision you
 did not elect. This is the spine both methodology skills run on, usable on its own.
 
+### `which-skill`
+The map over everything the package installs — which skill fits the situation in front of you, how
+the engineering loop chains, and the two things people reach for that are not skills (the phase
+boundary, and what to do with a forced assumption).
+
+It is the package's **only user-invoked** skill, and the reason is the axis rather than taste: a
+router has nothing to tell the model that the skills' own descriptions do not already carry, so
+paying permanent context load for it would buy nothing. `disable-model-invocation: true` is authored
+once — Claude Code and Pi both read that key, and the build derives Codex's `agents/openai.yaml`
+from it. It lives in the core rather than the kit because every other plugin depends on the core, and
+a map that ships with only part of the install is a map with holes.
+
+*Use when: you cannot remember what is here. Type it; nothing else can.*
+
 ### `run-workflow`
 A deterministic, journaled orchestration engine (a TypeScript fork of `pi-dynamic-workflows`, MIT)
 that fans a task out across isolated sub-agents and returns findings. Three flagship topologies:
@@ -267,7 +296,7 @@ needs a container and a key, so it stays opt-in.
 
 ## Shared doctrine
 
-`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.29), the interview
+`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.31), the interview
 funnel, the brainstorm protocol, the field-shape engine, contract testing, the feedback loop, the
 static-analysis and knowledge-source doctrines, the assumption-surfacing rule, the agent roster, the
 model tiers, and the self-model.

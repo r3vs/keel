@@ -74,6 +74,35 @@ pins  →  clusters  →  policies  →  real questions (asked)  →  proposed d
 Result: **200 pins → ~20 clusters → ~5 policies → ~10 real questions → the rest as skimmable
 proposed defaults.**
 
+## The other half of the thesis: decisions that are not decisions yet
+
+The funnel exists because the enemy is the number of **decisions**. The same thesis has a second
+edge: some decisions are not decisions yet, and forcing them into the pin shape early is how an
+interview grows questions nobody can answer.
+
+The test is sharp, and it is not the one people reach for: **can you state the question precisely
+now?** — explicitly not *can you answer it now*. A sharp-but-unanswerable question is a pin: write
+it, put it to the human, and let them defer it if they want. A question you cannot yet phrase is
+**fog**, and it has exactly one home:
+
+- `mcp:ledger_add_fog` — the area, and what made you sense a decision is coming. There is nowhere
+  to put a question, which is the point: if you can phrase one, this is not fog, it is a pin.
+- `mcp:ledger_graduate_fog` — it became phrasable. It becomes a pin **and leaves the register**, so
+  it lives in one place. You may propose the phrasing; you may not elect it, because phrasing the
+  question is framing the decision and framing is where the answer gets smuggled in. The tool takes
+  the human's words and refuses without them.
+- `mcp:ledger_clear_fog` — there was no fork here after all, or the scope moved past it. Held to
+  what deferring is held to, for the same reason: it stops the register asking.
+
+Writing an unphrasable fork as a pin now produces exactly the open chat this funnel exists to
+replace, one pin at a time — an under-specified question invites the model to fill it in, and the
+filling-in *is* the decision. Leaving it unwritten loses it.
+
+Two rules keep the register from becoming a backlog, and only the second is mechanical. Fog gathers
+only **toward** the elected scope: work past it is deferred on a pin and never graduates. And
+`ledger_summary` reports the register's size beside the age of its oldest patch — a count that rises
+while the oldest keeps getting older is a to-do list wearing a doctrine's name.
+
 ## Question shape (both skills)
 
 Keep each question short: `prompt` + 2–3 `options` (+ freeform escape). All detail — divergent

@@ -18,7 +18,8 @@
   ],
   "skills": [
     "./skills/using-the-ledger",
-    "./skills/run-workflow"
+    "./skills/run-workflow",
+    "./skills/which-skill"
   ],
   "mcpServers": "./.mcp.json",
   "hooks": "./hooks/hooks.json"

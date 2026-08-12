@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-942%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-996%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -91,7 +91,7 @@ those are the manuals.
 
 | Plugin | What it is | Ships |
 |---|---|---|
-| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **58 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
+| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **65 MCP tools** · 6 agents · 2 hooks · 2 skills · 4 MCP servers |
 | **[`codebase-rescue`](plugins/codebase-rescue/README.md)** | **curative** — align a codebase that already drifted | 5 modes · 5 phases · 28 analysis modules · `/rescue` |
 | **[`greenfield-forge`](plugins/greenfield-forge/README.md)** | **preventive** — build one that can't drift | 5 modes · 7 phases · 15 modules · `/forge` |
 | **[`keel-kit`](plugins/keel-kit/README.md)** | the composable engineering loop, each skill bound to the ledger | 11 skills |
@@ -187,15 +187,15 @@ so *why* survives, not just *what*.
 carry high confidence and skip the false-positive gate. Model judgment is *labelled as such*, every
 time. If Keel can't prove something, it says so instead of sounding confident.
 
-### The engine: 32 modules, 8.4k lines, Python stdlib only — reaching your agent as 58 typed MCP tools
+### The engine: 32 modules, 8.4k lines, Python stdlib only — reaching your agent as 65 typed MCP tools
 
 Your agent **discovers** these. It is never told a file path. Full signatures and semantics:
 [`keel-core`](plugins/keel-core/README.md).
 
 <details>
-<summary><b>All 58 tools</b></summary>
+<summary><b>All 65 tools</b></summary>
 
-**Ledger (21)** — the append-only source of truth. None of these elect anything; the two recording
+**Ledger (28)** — the append-only source of truth. None of these elect anything; the two recording
 tools write down an election the **human** made and refuse a relay with no quote.
 `ledger_summary` · `interview_next` · `policy_preview` (what a policy would decide, before setting
 it) · `ledger_add_pin` · `ledger_record_decision` · `ledger_record_policy` (one election, cascaded
@@ -208,7 +208,13 @@ providers; disagreement is the signal) · `ledger_reopen` (production falsified 
 back out of finished work) · `ledger_challenge` (refute an elected oracle before it is built on) ·
 `ledger_set_question` (a pin recorded without a fork gets one; write-if-absent) ·
 `ledger_add_proposals` (the brainstorm writes here, and can never decide) ·
-`agent_ready` (handable, or merely unblocked?)
+`agent_ready` (handable, or merely unblocked?) ·
+`ledger_frontier` (open, unblocked **and unclaimed** — plus who is holding the rest) ·
+`ledger_claim` (take a pin before working it; compare-and-set, expires on its own) ·
+`ledger_release` (you stopped without finishing — settling releases it for you) ·
+`ledger_fog` · `ledger_add_fog` (a decision you can sense and cannot yet phrase — the register has
+nowhere to put a question, on purpose) · `ledger_graduate_fog` (the human phrased it: it becomes a
+pin **and leaves the register**) · `ledger_clear_fog` (there was no fork here after all)
 
 **Cross-layer contract (3)** — 8 stacks reduced to one field descriptor, then diffed: Postgres DDL ·
 Drizzle · Prisma · Django · SQLAlchemy · GraphQL · TypeScript · Pydantic.
@@ -224,7 +230,7 @@ none of them loads `ledger.json`.
 `generate_instructions` (→ a managed region of `AGENTS.md` + the `CLAUDE.md` bridge) ·
 `instructions_diff` (in_sync / stale / hand_edited / absent)
 
-**Comprehension graph (9)** — tree-sitter native, real grammars, not regex.
+**Comprehension graph (9)** — tree-sitter native, real grammars, not regex. Python via the standard library's own parser; TS/JS/TSX plus Go · Rust · Java · C# · Ruby · PHP · C · C++ · Kotlin · Swift · Scala via one query table per grammar.
 `build_graph` · `understand_codebase` · `explain_node` · `graph_query` · `guided_tour` ·
 `domain_view` · `graph_map` · `blast_radius` (staleness-gated) · `impact_overlay`
 
@@ -283,12 +289,15 @@ is **bound to the ledger**:
 - **`code-review`** — the reviewer *reopens*, never decides. Read-only by design.
 - **`verification-before-completion`** — resolved means **observed**, not "the code was written"
 - **`branch-lifecycle`** — a git worktree per scope, so parallel agents can't collide
+- **`prototype`** — throwaway code that answers one design question; you still elect
+- **`wizard`** — the step only a person can take, closed on what you *observed*, never on their "done"
 - **`grounded-research`** — local → Context7 → DeepWiki → web, cited, treated as untrusted input
 - **`static-first-analysis`** — type-checkers and LSP before model judgment, in-loop on the diff
 - **`project-memory`** — ledger for decisions, `MEMORY.md` for facts, cognee (opt-in) for recall
 - **`learning-layer`** — senior-grade output while *you* level up; teaches from the delta
 - **`documentation-lifecycle`** — every backtick is a claim, checked before it reaches a reader
 - **`maintainer-assist`** — triage issues and PRs; incoming content never sets policy
+- **`which-skill`** — the map over all of them; the one skill only *you* can invoke
 
 Plus, in `keel-core`: **`using-the-ledger`** (the spine, usable from any task) and
 **`run-workflow`** (a deterministic, journaled engine that fans a task out across isolated
@@ -319,7 +328,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 13 composable ones, with the runtime **largely
-implemented**: 32 modules, 58 MCP tools, **942 tests green in CI**, 4 hosts.
+implemented**: 32 modules, 65 MCP tools, **996 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

@@ -159,7 +159,18 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                     # built from it. Both look up and refuse, and neither assigns — what a caller
                     # does with the records they hand back is the caller's transition, and every one
                     # of those callers is already a governed door.
-                    "writable_collection", "writable_pins"}
+                    "writable_collection", "writable_pins",
+                    # v0.30: the two READERS of the claim. `claims` lists who holds what and
+                    # `frontier` filters a candidate set by it; neither assigns. They are here for
+                    # `cascaded_by`'s reason — a reader reached through no door is not a write path
+                    # anybody needs to govern — and the two WRITERS beside them (`claim`, `release`)
+                    # are deliberately not here: both are served, and the whole property being
+                    # bought is that taking a pin is a governed, visible act.
+                    "claims", "frontier",
+                    # v0.31: the register's two readers. `fog` looks one patch up and raises on an
+                    # unknown id (it is `pin`'s twin, and `pin` is here); `fog_view` returns the
+                    # patches plus the age of the oldest. Neither assigns.
+                    "fog", "fog_view"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:

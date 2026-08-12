@@ -28,6 +28,39 @@ enforces. Do both, in that order.
 6. **Only now** may the pin move toward `resolved` — and `verification-before-completion` decides
    whether it actually gets there.
 
+## Seams — where the test goes, agreed before it is written
+
+A **seam** is the public boundary the test observes behavior at, without reaching inside
+(`references/core/module-design.md` for the full vocabulary — module, interface, depth, adapter).
+Tests live at seams, never against internals.
+
+**No test is written at a seam nobody confirmed.** Before the first test of a scope, write the seams
+down and put them to the human: *what is the public interface here, and which seams should we test?*
+You cannot test everything, and agreeing the seams up front is what puts the effort on the critical
+path instead of spreading it thin over every edge case. Prefer an existing seam to a new one, and
+prefer the highest one that can still see the behavior — the fewer seams a codebase has, the less
+there is to keep honest.
+
+When the shape of the interface is itself in question — how deep the module is, where the seam
+belongs — that is a design fork, and it is elected, not inferred. Surface it as an `open_decision`
+rather than picking one and testing against your pick.
+
+## Three ways a test passes without proving anything
+
+- **Implementation-coupled** — it mocks internal collaborators, tests private functions, or verifies
+  through a side channel (querying the database instead of asking the interface). The tell: it breaks
+  under a refactor that changed no behavior.
+- **Tautological** — the expected value is recomputed the way the code computes it, so it passes by
+  construction and can never disagree with the code. `expect(total(items)).toBe(items.reduce(sum))`
+  is not a test, it is the implementation written twice. Expected values come from an independent
+  source: a known-good literal, a worked example, the criterion's own words. **This is the anti-pattern
+  to hunt first on generated code**, because a model asked to test its own output reaches for it by
+  default.
+- **Horizontal slicing** — all the tests first, then all the implementation. Bulk tests verify
+  *imagined* behavior: you commit to a test structure before understanding the implementation, and
+  the suite goes insensitive to real change. Work in vertical slices — one criterion, one test, one
+  minimal implementation, then let what you learned reshape the next one.
+
 ## The rule this skill exists to enforce
 
 **A test written after the code is a description; a test written before it is a specification.**

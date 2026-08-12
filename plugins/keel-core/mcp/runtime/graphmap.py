@@ -26,6 +26,56 @@ _TYPE_COLORS = {"file": "#8892a6", "class": "#a64fc9", "function": "#4f8cc9",
                 "method": "#6aa84f", "module": "#c9a24f"}
 
 
+# HYPOTHESIS: the number of files in one layer above which the card stops being scannable and gets
+# sub-grouped. 24 is roughly a screenful of 13px rows in the 340px scroll box the CSS gives a card,
+# so it is the point at which the reader starts scrolling to find out what is in a layer rather than
+# seeing it. Erring low costs a heading over a list that did not need one; erring high is the
+# original complaint — a layer you have to scroll to read is a layer you do not read.
+_SUBGROUP_AT = 24
+
+
+def _common_dir(paths: list[str]) -> list[str]:
+    """The longest directory prefix every path shares, as segments. `[]` where they share none."""
+    if not paths:
+        return []
+    split = [pth.split("/")[:-1] for pth in paths]
+    prefix: list[str] = []
+    for step in zip(*split):
+        if len(set(step)) != 1:
+            break
+        prefix.append(step[0])
+    return prefix
+
+
+def _subgroups(files: list[dict]) -> list[dict]:
+    """One level of folder structure inside a layer — `[]` where the folders say nothing (D5).
+
+    **Folder-LCP, and deliberately not community detection.** The roadmap entry proposed a Louvain
+    fallback for layers whose folders give no signal, and it is refused for a reason that outlives
+    the dependency question (it needs a non-stdlib graph library, and this module is stdlib-only):
+    a detected community has **no name a reader can check**. `community 3` is precisely the
+    un-nameable grouping this package refuses everywhere else, and it would be drawn on the surface
+    a human opens to find out what the code is. The folder tree is a grouping the repo's own authors
+    already named, and where it says nothing the honest answer is to say nothing — a flat layer
+    renders flat, and the count on the card already tells the reader it is large.
+
+    Files sitting directly in the shared prefix are grouped under `.`, so nothing is dropped and the
+    groups always partition the layer.
+    """
+    if len(files) <= _SUBGROUP_AT:
+        return []
+    paths = [str(f.get("loc") or f.get("name") or "") for f in files]
+    depth = len(_common_dir(paths))
+    grouped: dict[str, list[dict]] = {}
+    for entry, pth in zip(files, paths):
+        parts = pth.split("/")[:-1]
+        grouped.setdefault(parts[depth] if len(parts) > depth else ".", []).append(entry)
+    if len(grouped) < 2:
+        return []            # one bucket is not a grouping; render it flat and say so by omission
+    return [{"name": name, "files": sorted(group, key=lambda f: f["name"]), "count": len(group)}
+            for name, group in sorted(grouped.items())]
+
+
 def build_view(data: dict, tour: Optional[dict] = None) -> dict:
     """Precompute the view model the page renders: layers → files, per-node neighbourhood, and the
     inter-layer coupling counts. Deterministic (sorted throughout)."""
@@ -64,7 +114,7 @@ def build_view(data: dict, tour: Optional[dict] = None) -> dict:
     for i, name in enumerate(sorted(layer_files)):
         files = sorted(layer_files[name], key=lambda f: f["name"])
         layers.append({"name": name, "color": _LAYER_COLORS[i % len(_LAYER_COLORS)],
-                       "files": files, "count": len(files)})
+                       "files": files, "count": len(files), "groups": _subgroups(files)})
 
     tour_steps = []
     if tour:
@@ -79,6 +129,7 @@ def build_view(data: dict, tour: Optional[dict] = None) -> dict:
         "tour": tour_steps,
         "type_colors": _TYPE_COLORS,
         "stats": {"files": sum(l["count"] for l in layers), "layers": len(layers),
+                  "subgrouped": sum(1 for l in layers if l["groups"]),
                   "built_at_commit": (data.get("graph") or {}).get("built_at_commit")},
     }
 
@@ -106,7 +157,9 @@ main{display:grid;grid-template-columns:1fr minmax(280px,360px);gap:0;min-height
 .card>.head:hover{background:rgba(127,127,127,.06)}
 .card .files{display:none;border-top:1px solid #ededed;max-height:340px;overflow:auto}
 .card.open .files{display:block}
-.file{padding:5px 12px 5px 16px;cursor:pointer;display:flex;gap:7px;align-items:center;border-top:1px solid #f3f3f3;font-size:13px}
+.ghead{padding:4px 12px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;background:rgba(127,127,127,.05);border-top:1px solid #ededed;display:flex;justify-content:space-between;gap:8px}
+.grp.hidden{display:none}
+.file{padding:5px 12px 5px 22px;cursor:pointer;display:flex;gap:7px;align-items:center;border-top:1px solid #f3f3f3;font-size:13px}
 .file:hover{background:rgba(127,127,127,.06)}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .count{font-size:12px;color:#8a8a8a}
@@ -155,16 +208,22 @@ function render(){
       <div class="head" onclick="toggle(${li})">
         <span><b>${esc(L.name)}</b></span><span class="count">${L.count} file${L.count===1?'':'s'}</span>
       </div>
-      <div class="files">${L.files.map(f=>{FILES[f.id]=f;return `
-        <div class="file" data-id="${esc(f.id)}" data-name="${esc(f.name).toLowerCase()}" onclick="pick('${esc(f.id)}')">
-          <i class="dot" style="background:${tc(f.type)}"></i><span>${esc(f.name)}</span>
-        </div>`}).join('')}</div>
+      <div class="files">${L.groups && L.groups.length
+        ? L.groups.map(G=>`<div class="grp"><div class="ghead">${esc(G.name)}<span class="count">${G.count}</span></div>${G.files.map(row).join('')}</div>`).join('')
+        : L.files.map(row).join('')}</div>
     </div>`).join('');
   const t=VIEW.tour||[];
   document.getElementById('tour').innerHTML = t.length? `<div class="k">Guided tour</div>`+
     t.map((s,i)=>`<div class="step" onclick="playStep(${i})"><b>${s.order+1}. ${esc(s.title)}</b>
       <div class="muted">${s.files.length} file(s)</div></div>`).join('') : '';
 }
+// One row, one place, because the layer body now has two shapes — flat, and grouped by folder
+// (D5). Two copies of this markup is two answers to what a file row is, and the search below
+// selects on the classes it sets.
+function row(f){FILES[f.id]=f;return `
+  <div class="file" data-id="${esc(f.id)}" data-name="${esc(f.name).toLowerCase()}" onclick="pick('${esc(f.id)}')">
+    <i class="dot" style="background:${tc(f.type)}"></i><span>${esc(f.name)}</span>
+  </div>`;}
 function toggle(i){board.children[i].classList.toggle('open');}
 function toggleAll(open){[...board.children].forEach(c=>c.classList.toggle('open',open));}
 function pick(id){
@@ -191,6 +250,10 @@ document.getElementById('q').addEventListener('input',e=>{
     let any=false;
     [...card.querySelectorAll('.file')].forEach(fl=>{
       const hit=!q||fl.dataset.name.includes(q); fl.classList.toggle('hidden',!hit); any=any||hit;
+    });
+    // A folder heading over nothing is a group that reads as empty rather than as filtered out.
+    [...card.querySelectorAll('.grp')].forEach(gr=>{
+      gr.classList.toggle('hidden', !gr.querySelector('.file:not(.hidden)'));
     });
     card.classList.toggle('hidden',!any); if(q&&any)card.classList.add('open');
   });

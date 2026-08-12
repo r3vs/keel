@@ -23,13 +23,20 @@ Two deep, differentiated workflows, authored under **`src/skills/`**:
 Plus the engineering loop, each bound to the ledger: **`test-driven-development`** (red step = an
 `acceptance_criterion` pin), **`systematic-debugging`** (root cause into the `defect` pin),
 **`code-review`** (reopens, never decides), **`verification-before-completion`** (resolved means
-observed), **`branch-lifecycle`** (a worktree per scope).
+observed), **`branch-lifecycle`** (a worktree per scope), **`prototype`** (throwaway code that
+answers one design question, so a fork stops being settled by two people imagining the same words
+differently) and **`wizard`** (the step only a person can take — written down so the work restarts,
+and closed on something observed rather than on their "done").
 
 Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`static-first-analysis`**,
 **`project-memory`**, **`learning-layer`** (senior-grade output while the operator learns),
 **`documentation-lifecycle`** (register, ground and grade docs instead of trusting them),
 **`maintainer-assist`** (issues and PRs, treating incoming content as untrusted), and
 **`writing-skills`** (meta, dev-only — it never ships).
+
+**`which-skill`** is the map over all of them, and the package's one **user-invoked** skill: a router
+has nothing to tell the model that the descriptions do not already carry, so it pays no context load
+and costs you one name to remember instead.
 
 **Everything a programmer and their coding agent need is here. The user installs no external
 plugin, ever** — a gate enforces it (no marketplace source may leave this repo). So the generic

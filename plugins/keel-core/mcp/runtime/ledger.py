@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
-SCHEMA_VERSION = "0.29"
+SCHEMA_VERSION = "0.31"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -132,7 +132,8 @@ SCHEMA_VERSION = "0.29"
 # now, and this line makes the failure unreachable rather than merely tested.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
                      "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22",
-                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", SCHEMA_VERSION)
+                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", "0.29", "0.30",
+                     SCHEMA_VERSION)
 
 KINDS = {
     "contract_mismatch",
@@ -282,6 +283,9 @@ LEAVE_AS_IS_STATES = ("accepted", "deferred")
 #   * `records_only` — an observation ABOUT the pin that changes no state a builder reads.
 #     `label_failure` is the honest case and the reason this is a table rather than a blanket: a
 #     failure in production is exactly what you label on a `resolved` pin, and then you `reopen`.
+#     `release` (v0.30) is the second: on finished work there is no claim left to drop — `_settle`
+#     already took it — so the door is a no-op that reports `released: false`, and refusing it would
+#     make cleaning up after a dead session a thing you have to check before doing.
 CLOSED_WORK_DISPOSITIONS = ("refuse", "settlement", "arc", "records_only")
 PIN_WRITE_DOORS = {
     "set_question": "refuse",
@@ -299,6 +303,11 @@ PIN_WRITE_DOORS = {
     "challenge": "arc",
     "cross_derive": "arc",
     "label_failure": "records_only",
+    # v0.30. `claim` refuses for the plain reason: taking finished work reserves a unit of work
+    # nobody is going to do, and the pin would sit off the frontier held by a session that will
+    # never release it. It is the one door here whose refusal is not about un-finishing anything.
+    "claim": "refuse",
+    "release": "records_only",
 }
 
 # Pins awaiting something. The complement of `SETTLED_STATES`, named rather than derived because
@@ -542,6 +551,46 @@ UNASKED_BUCKETS = ("would_decide", "held_back", "must_be_asked", "not_offered", 
 # applied to the thing the predicate's answer is written INTO rather than to the answer itself.
 STANDING_REFUSALS = ("held_back", "must_be_asked")
 
+# -- v0.30: the claim -----------------------------------------------------------------------------
+#
+# Who is working on this pin RIGHT NOW, and since when. Both `null` by default, and neither is a
+# state: a pin can be `needs_input` and claimed, or `decided` and claimed, and folding ownership
+# into the lifecycle would multiply every state in `STATES` by two and break every transition table
+# in the spec.
+#
+# It exists because the concurrency this package already invites — *"the user may run unblocked
+# items in parallel"* — was safe against corruption and unprotected against DUPLICATION.
+# `branch-lifecycle` declares a scope's file globs and `conflicts_with` excludes two scopes that
+# touch the same files, so two worktrees cannot corrupt each other. All of that is about files. Two
+# sessions resolving the same pin may legitimately touch DISJOINT files — one writes the fix, one
+# writes the test — so `conflicts_with` correctly reports no conflict while both do the same work.
+# The overlap is in the work ITEM, which is the one thing the ledger owns and the filesystem does
+# not. On a `grilling`-shaped pin it is worse than waste: the second session asks the human a
+# question the first already answered, because sessions share no context.
+#
+# **It is advisory, and that is a design choice rather than a shortcut.** A claim never gates a
+# write: an agent that legitimately needs to write a claimed pin (the human said so) must not be
+# stopped by it. The failure it prevents is duplicated WORK, not concurrent ACCESS — the ledger's
+# existing write discipline covers the latter, and conflating the two would put a lock in a file
+# nobody can unlock.
+CLAIM_CARRIERS = ("claimed_by", "claimed_at")
+
+# What a reader may conclude about a pin's ownership. Three answers, because "claimed" alone cannot
+# distinguish the two cases a scheduler must treat differently: a peer is on it, versus a session
+# died holding it. There is no daemon here to reap the second, so staleness is computed at READ time
+# from `claimed_at` — which is why the TTL below is a number this file has to declare.
+CLAIM_STATES = ("unclaimed", "live", "stale")
+
+# HYPOTHESIS: how long a claim stays live without being renewed. One hour is a guess about how long
+# a session works one pin before it either settles it or dies, and it is tuned from one side only:
+# too short re-offers a pin somebody is still on (duplicated work, the thing this prevents), too
+# long parks a pin nobody is on (a frontier that shrinks and never grows back). The asymmetry says
+# which way to err — a stale claim is reclaimed with a note, and a claim that expires under a live
+# session is silently the bug this field was added to remove — so it errs long. Renewing is free
+# (`claim` by the same holder re-stamps it), so a session that outlives an hour is expected to say
+# so rather than to be assumed dead.
+CLAIM_TTL_SECONDS = 3600
+
 # Every id prefix a `decision_log` entry may carry, and therefore every kind of entry a reader may
 # dispatch on (v0.18). Declared because `summary()` dispatches on the prefix: an entry carrying no
 # id at all made it die with a bare `KeyError`, on the one call an agent makes BEFORE acting, on a
@@ -567,7 +616,7 @@ PIN_FIELDS = (
     "id", "kind", "kind_detail", "title", "severity", "confidence", "provenance", "anchors",
     "state", "substate", "as_is", "to_be", "question", "brainstorm", "decision", "depends_on",
     "remediation", "cluster_id", "resolution_mode", "verification", "readiness", "premortem",
-    "cross_derivations", "evidence",
+    "cross_derivations", "evidence", "claimed_by", "claimed_at",
 )
 
 
@@ -922,7 +971,18 @@ def _check_event(event: dict) -> None:
 # The three lists a ledger is made of, named because the guarded read is about all three and so are
 # both shape rules. `summary` read each one as `self.data[…]` and died the same way on each; fixing
 # the one that was reported would have left the file's other two halves for the next reviewer.
-LEDGER_COLLECTIONS = ("pins", "decision_log", "policies")
+LEDGER_COLLECTIONS = ("pins", "decision_log", "policies", "fog")
+
+# Which of them an OLDER file is allowed not to have (v0.31). The distinction is real and not a
+# convenience: `pins`, `decision_log` and `policies` have been in every file since v0.3, so an
+# absent one means a broken file and the reader must say so — that is what `collection_shape`
+# reports and why a reader walking a missing `pins` as an empty one is the worst thing a ledger can
+# say. `fog` arrived at v0.31, so an absent one means an older file and nothing else, and reporting
+# it would make every ledger written before this version permanently nonconforming — which would
+# freeze its `version` stamp forever, on a rule about a collection it could not have carried.
+#
+# Present-and-wrong is still reported, for all four. The exemption is about ABSENCE only.
+OPTIONAL_COLLECTIONS = ("fog",)
 
 
 # -- THE SHAPE TABLE: the one carrier the read path, the rules and the corpus all derive from -----
@@ -1013,10 +1073,38 @@ PIN_SHAPES = {
     "premortem.abort_criteria": "list",
     "premortem.paper_tigers": "list[object]",
     "cross_derivations": "list[object]",
+    # v0.30 — two top-level scalars a reader COERCES, which is the half of the membership rule that
+    # is not about indexing. `claimed_at` is parsed (`datetime.fromisoformat`), and a value that is
+    # not a string raises inside `claim_state`, which `frontier` calls for every pin — so one
+    # hand-edited timestamp would take the scheduler down for the whole file. `claimed_by` is
+    # coerced to a bool by the same predicate and printed by the map: `{"who": "a"}` is truthy, so
+    # an unreadable value would render a pin as held by a holder no surface can name. Both read as
+    # the EMPTY string where the file's value does not hold, and `""` is falsy, so the honest
+    # reading of a claim this runtime cannot read is *not claimed* — never an invented holder, and
+    # never a live claim nobody can release.
+    "claimed_by": "str",
+    "claimed_at": "str",
 }
 
 #: The same table for the ledger's other record. Three paths, and all three were already rules.
 POLICY_SHAPES = {"id": "str", "rule": "str", "applies_to": "object"}
+
+#: And for the FOG register (v0.31). Four paths, and the interesting thing about this table is what
+#: is NOT in it: there is no `question`, and there cannot be one.
+#:
+#: That absence is the whole design. The test that separates fog from a ticket is *can you state the
+#: question precisely now* — explicitly not *can you answer it now* — so a patch that carries a
+#: question is not fog, it is a pin. Enforcing that by inspecting prose would be exactly the
+#: keyword-guessing this repo forbids its own linters; enforcing it by giving the record nowhere to
+#: put one is structural, and it is the reason the "pin state `unspecifiable`" shape was rejected:
+#: the whole pin schema is organised around a fork, and a state that means *no fork yet* would put
+#: an empty one on every entry.
+#:
+#: `noticed_at` is here for `claimed_at`'s reason — the summary parses it to report how old the
+#: oldest patch is, which is the one mechanical signal that the register has stopped being a sensing
+#: surface and become a backlog.
+FOG_SHAPES = {"id": "str", "area": "str", "sensed": "str", "noticed_at": "str",
+              "provenance": "list[object]"}
 
 #: Where a path's rule is STRONGER than its shape, the stronger one is the rule — one name, one
 #: verdict, no second entry saying a weaker version of the same thing. Each is `(holds, message)`
@@ -1041,6 +1129,15 @@ PIN_STRONGER = {
                  lambda v: f"severity must be one of {SEVERITIES}; got {v!r} — the threshold rule "
                            f"and the interview's ordering both read it"),
 }
+FOG_STRONGER = {
+    "id": (lambda v: isinstance(v, str) and bool(v),
+           lambda v: "a fog patch carries no `id`, so nothing can graduate it and nothing can "
+                     "clear it — it is an entry that can only ever be added to"),
+    "area": (lambda v: isinstance(v, str) and bool(v.strip()),
+             lambda v: f"area must be a non-empty string; got {v!r} — it is the only thing that "
+                       f"says WHERE the decision is coming, and a patch that names no area is "
+                       f"indistinguishable from a note"),
+}
 POLICY_STRONGER = {
     "id": (lambda v: isinstance(v, str) and bool(v),
            lambda v: "a policy carries no `id`, so no cascaded decision can name the rule it "
@@ -1059,6 +1156,8 @@ POLICY_STRONGER = {
 #: projection's.
 PIN_GUARANTEED = ("id", "state", "severity", "depends_on", "question", "title", "decision")
 POLICY_GUARANTEED = ("id", "rule", "applies_to")
+#: Every one of them, because a fog patch is four fields and every caller indexes all four.
+FOG_GUARANTEED = tuple(FOG_SHAPES)
 
 #: The declared paths a WRITE door may assume are on the pin, because `add_pin` composes every one
 #: of them on every pin it writes (v0.26).
@@ -1146,6 +1245,7 @@ PIN_RULES = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_", PIN_REQUIRED)
 #: `.items()` on `policy["applies_to"]`, so an elected standing rule whose scope is a string took
 #: down the projection every host loads. Same table, same derivation, one prefix apart.
 POLICY_RULES = _rules_from(POLICY_SHAPES, POLICY_STRONGER, "policy_")
+FOG_RULES = _rules_from(FOG_SHAPES, FOG_STRONGER, "fog_", tuple(FOG_SHAPES))
 
 
 def shape_note(rule: str) -> str:
@@ -1176,6 +1276,11 @@ def shape_notes() -> dict:
             name = prefix + path.replace(".", "_")
             out[name] = shape_note(name)
     return out
+
+
+def fog_violations(patch: dict) -> list:
+    """Which `FOG_RULES` this patch breaks — the same shape as its two siblings, one table over."""
+    return [name for name, holds, _message in FOG_RULES if not holds(patch)]
 
 
 def policy_violations(policy: dict) -> list:
@@ -1271,6 +1376,17 @@ def policy_read(policy: Any, fill: bool = True) -> dict:
     return _shape_guarded(policy, POLICY_SHAPES, POLICY_GUARANTEED, fill)
 
 
+def fog_read(patch: Any, fill: bool = True) -> dict:
+    """A fog patch as a reader may index it — `pin_read`'s third sibling, off the same machinery.
+
+    It exists for the reason the other two do rather than by symmetry: the register is rendered on
+    the map and counted in the summary, both of which an agent reaches on a file it did not write,
+    and an `area` that is a number would take those surfaces down exactly as a `severity` that is
+    a number used to.
+    """
+    return _shape_guarded(patch, FOG_SHAPES, FOG_GUARANTEED, fill)
+
+
 def severity_rank(severity: str) -> int:
     """Where a severity sorts — `SEVERITIES`' own order, and a value it does not carry sorts last.
 
@@ -1325,6 +1441,46 @@ def downstream_of(pin_id: str, reads: Iterable[dict]) -> set[str]:
                 out.add(nxt)
                 frontier.append(nxt)
     return out
+
+
+def _stamp(value: Any) -> Optional[datetime]:
+    """An ISO timestamp as a tz-aware moment, or `None` where it is not one this runtime can read.
+
+    Naive stamps are read as UTC, because that is what `_now` writes and a naive value here can only
+    have come from a hand edit or an older writer. Returning `None` rather than raising is the same
+    rule the shape table follows one section up: reading a ledger is never the operation that fails
+    on it, and a timestamp nobody can parse is an absence, not an exception.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def claim_state(read: dict, now: Optional[datetime] = None) -> str:
+    """Is anybody working on this pin — `unclaimed` | `live` | `stale` (v0.30).
+
+    Takes a `pin_read` result, so a malformed `claimed_by` has already become `""` and reads as
+    unclaimed. Three answers rather than two, because a scheduler must treat *a peer is on it* and
+    *a session died holding it* differently, and there is no daemon here to tell them apart: the
+    difference is computed at read time from `claimed_at` against `CLAIM_TTL_SECONDS`.
+
+    An unparseable or absent `claimed_at` under a present holder is **stale**, not live. That is the
+    conservative reading in the only direction that matters: a claim this runtime cannot date cannot
+    be shown to be live, and treating it as live would park a pin behind a timestamp nobody can fix.
+    The pin stays reclaimable, the reclaim says it reclaimed one, and `nonconforming` names the
+    field on every surface that reports it.
+    """
+    if not read.get("claimed_by"):
+        return "unclaimed"
+    stamped = _stamp(read.get("claimed_at"))
+    if stamped is None:
+        return "stale"
+    moment = now or datetime.now(timezone.utc)
+    return "live" if (moment - stamped).total_seconds() < CLAIM_TTL_SECONDS else "stale"
 
 
 def read_collection(data: Any, name: str) -> list[dict]:
@@ -1431,6 +1587,8 @@ def nonconforming(data: dict) -> dict:
     # before it could report anything at all.
     for name in LEDGER_COLLECTIONS:
         value = data.get(name)
+        if value is None and name in OPTIONAL_COLLECTIONS:
+            continue          # an older file, not a broken one — see `OPTIONAL_COLLECTIONS`
         if not isinstance(value, list):
             out.setdefault("collection_shape", []).append(f"{name}: {type(value).__name__}")
             continue
@@ -1449,6 +1607,12 @@ def nonconforming(data: dict) -> dict:
             continue
         for rule in event_violations(event):
             out.setdefault(rule, []).append(eid)
+    for index, patch in enumerate(entries("fog")):
+        if not isinstance(patch, dict):
+            continue                                    # already reported as `entry_shape`
+        named = fog_read(patch)["id"] or f"fog[{index}]"
+        for rule in fog_violations(patch):
+            out.setdefault(rule, []).append(named)
     for index, pin in enumerate(entries("pins")):
         if not isinstance(pin, dict):
             continue                                    # already reported as `entry_shape`
@@ -1575,7 +1739,8 @@ class Ledger:
             if not self.pre_rule:
                 self.data["version"] = SCHEMA_VERSION
         else:
-            self.data = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [], "policies": []}
+            self.data = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [],
+                         "policies": [], "fog": []}
             self.pre_rule = {}
 
     # -- persistence -------------------------------------------------------
@@ -1708,6 +1873,14 @@ class Ledger:
         """
         _require(name in LEDGER_COLLECTIONS,
                  f"{name!r} is not one of this file's collections {LEDGER_COLLECTIONS}")
+        # An absent OPTIONAL collection is materialised rather than refused (v0.31), and that is
+        # not the substitution the paragraph above rules out. What it rules out is inventing an
+        # empty list over a value the file carries — `save()` would write the invention back and
+        # lose it. There is nothing to lose here: the key is absent because the file predates the
+        # collection, and `setdefault` is the one case where the write path and the read path agree
+        # on what the file means.
+        if name in OPTIONAL_COLLECTIONS and self.data.get(name) is None:
+            self.data.setdefault(name, [])
         value = self.data.get(name)
         _require(isinstance(value, list),
                  f"`{name}` cannot be written to: a ledger's `{name}` is a list, and this file "
@@ -2602,6 +2775,16 @@ class Ledger:
         — `correctness_unknown` — has not, because it hands the pin back to the human still carrying
         the outcome that was disputed. Deriving it from the state table is what stops that
         distinction from being a name someone has to remember to add.
+
+        **The claim goes the same way (v0.30), off the same destination test.** A settled pin is not
+        held: releasing is explicit and it is also the settlement doors' business, because the
+        failure a claim prevents is a second session taking work that is already being done, and work
+        that is finished is not being done. `correctness_unknown` again does not clear, and again for
+        its own reason rather than by omission — the pin comes back to the human still open, and the
+        session that could not verify it is the one most likely to still be on it. `decided` DOES
+        clear, which reads oddly for a beat and is right: the interview's work on that pin is over
+        and the build's has not started, and the property being bought is that a claim lands before a
+        unit of work rather than spanning two of them.
         """
         self._gate_settlement(pin, door)
         event = None
@@ -2619,6 +2802,8 @@ class Ledger:
             self.writable_collection("decision_log").append(event)
         if _STATE_BY_DOOR[door] in SETTLED_STATES:
             pin.pop("substate", None)
+            for carrier in CLAIM_CARRIERS:
+                pin.pop(carrier, None)
         pin["state"] = _STATE_BY_DOOR[door]
         return event
 
@@ -3556,6 +3741,272 @@ class Ledger:
 
     # -- views (the surfaces hold no state of their own) ------------------------
 
+    # -- v0.31: the fog register ---------------------------------------------------------------
+
+    def add_fog(self, area: str, sensed: str, provenance: list[dict],
+                cluster_hint: Optional[str] = None) -> dict:
+        """Record a decision you can tell is coming and cannot yet phrase. Deliberately coarser
+        than a pin.
+
+        The test that separates this from a ticket is sharp and it is not *can you answer it now*:
+        it is **can you state the question precisely now**. A sharp-but-unanswerable question is a
+        ticket, and belongs on a pin. A question you cannot yet phrase is fog.
+
+        There is nowhere here to put a question, and that is enforcement rather than omission — see
+        `FOG_SHAPES`. Writing an unphrasable fork as a pin is the *"tell me about your app"*
+        open-chat failure `core/interview-funnel.md` exists to prevent: an under-specified question
+        invites the model to fill it in, and the filling-in is the decision.
+
+        Nothing here settles, elects or schedules. A fog patch is not a work item and carries no
+        state: the two exits are `graduate_fog` (the human phrased it, so it is a pin now) and
+        `clear_fog` (there was no fork here after all).
+        """
+        _require(isinstance(area, str) and area.strip(),
+                 "a fog patch names the AREA the decision is coming from; a patch with no area is "
+                 "a note, and the register is not a notebook")
+        _require(isinstance(sensed, str) and sensed.strip(),
+                 "say what made you think a decision is coming. An entry that records only that "
+                 "you had a feeling cannot be graduated by anybody but you, and you will not be "
+                 "the session that reads it")
+        _require_objects(provenance, "provenance",
+                         "each entry names who sensed this and how")
+        _require(len(provenance) > 0, "provenance is required (who sensed this, how)")
+        patch = {
+            "id": self._next_id("fog_", self.writable_collection("fog")),
+            "area": area,
+            "sensed": sensed,
+            "noticed_at": _now(),
+            "provenance": provenance,
+        }
+        if cluster_hint:
+            patch["cluster_hint"] = cluster_hint
+        self.writable_collection("fog").append(patch)
+        return patch
+
+    def fog(self, fog_id: str) -> dict:
+        for patch in self.readable("fog"):
+            if fog_read(patch)["id"] == fog_id:
+                return patch
+        raise LedgerError(f"unknown fog patch {fog_id!r}")
+
+    def graduate_fog(self, fog_id: str, question: dict, human_answer: str, *,
+                     kind: str = "open_decision", title: str = "", severity: str = "medium",
+                     confidence: str = "inferred",
+                     depends_on: Optional[list[str]] = None) -> dict:
+        """The patch became phrasable: it becomes a pin, **and it leaves the register**.
+
+        Graduation is the load-bearing half of the whole design. Without the deletion, the register
+        is a second home for something that already lives on a pin — which is the divergence this
+        package exists to find, built by the feature meant to prevent premature specification.
+
+        **The phrasing is the human's, and that is not ceremony.** Phrasing the question IS framing
+        the decision, and framing is where the answer gets smuggled in: an agent that writes the
+        fork also writes which answers are thinkable. So the agent proposes and the human elects,
+        exactly as with any other fork, and `human_answer` is their words. The doors above take a
+        quote for the same reason and refuse without one.
+
+        The trail lives on the pin's `provenance` rather than in the log, because the log records
+        what happened to a pin's STATE and this creates the pin — creation has always been recorded
+        in provenance, and `add_pin` appends nothing to the log either.
+        """
+        patch = fog_read(self.fog(fog_id))
+        _require(isinstance(human_answer, str) and human_answer.strip(),
+                 "graduating a patch means the HUMAN phrased the question — pass their words. "
+                 "An agent that phrases the fork has framed the decision, which is the one thing "
+                 "no door here may do")
+        _validate_question(question)
+        _require(bool(question), "a graduation with no question is a move, not a graduation: the "
+                                 "patch is only a pin once somebody can state the fork")
+        pin = self.add_pin(
+            kind=kind,
+            title=title or patch["area"],
+            severity=severity,
+            confidence=confidence,
+            provenance=[{"source": "fog_graduation", "detail": f"{patch['id']}: {patch['sensed']}",
+                         "human_answer": human_answer}],
+            question=question,
+            depends_on=depends_on,
+        )
+        collection = self.writable_collection("fog")
+        collection[:] = [e for e in collection if fog_read(e)["id"] != patch["id"]]
+        return pin
+
+    def clear_fog(self, fog_id: str, rationale: str, human_answer: str) -> dict:
+        """The other exit: there was no fork here, or the scope moved past it. The patch is deleted.
+
+        Held to `defer`'s discipline and for `defer`'s reason: clearing stops the register asking
+        about something, so an agent doing it alone is an agent deciding not to decide. Fog gathers
+        only TOWARD the elected scope — work past it is `deferred` on a pin and never graduates —
+        and this is the door that says so.
+
+        **A cleared patch leaves no trail, and that is the design rather than an oversight.** The
+        register's whole claim is that it holds what is still fog; an append-only history of things
+        that stopped being fog would be a second collection with the first one's failure mode. What
+        keeps it honest is that the human said the words.
+        """
+        _require(isinstance(rationale, str) and rationale.strip(),
+                 "say why this is not a decision after all — a clearance with no reason is a "
+                 "deletion with better manners")
+        _require(isinstance(human_answer, str) and human_answer.strip(),
+                 "clearing stops the register asking about this, which is a settlement; pass the "
+                 "human's words, exactly as `defer` does")
+        patch = fog_read(self.fog(fog_id))
+        collection = self.writable_collection("fog")
+        collection[:] = [e for e in collection if fog_read(e)["id"] != patch["id"]]
+        return {"fog_id": patch["id"], "area": patch["area"], "cleared": True,
+                "rationale": rationale}
+
+    def fog_view(self, now: Optional[datetime] = None) -> dict:
+        """The register, plus the one number that says whether it is still a register.
+
+        `oldest_days` is the mechanical form of the backlog trap. A fog register is bounded by the
+        elected scope, so patches should graduate or clear as the scope firms up; one that only ever
+        grows, whose oldest patch keeps getting older, is a to-do list wearing a doctrine's name.
+        Nothing refuses that — a rule that capped the register would just move the dishonesty — but
+        the number is on the surface an agent reads before acting.
+        """
+        patches = [fog_read(e) for e in self.readable("fog")]
+        moment = now or datetime.now(timezone.utc)
+        ages = [(moment - stamped).days for stamped in
+                (_stamp(p["noticed_at"]) for p in patches) if stamped is not None]
+        return {"patches": patches, "count": len(patches),
+                "oldest_days": max(ages) if ages else 0}
+
+    # -- v0.30: the claim, and the frontier it makes readable ----------------------------------
+
+    def _claim_on_disk(self, pin_id: str) -> dict:
+        """What the FILE says about this one pin's claim, right now. Never raises.
+
+        The compare-and-set below is decided against this and not against `self.data`, and that is
+        the whole mechanism: two sessions each hold their own in-memory copy, so a check against the
+        copy answers *did I claim this* rather than *has anybody*. Only the two claim carriers are
+        re-read — a wholesale reload would drop whatever else this session has in flight, and a door
+        that silently discards a caller's other work to answer a scheduling question is a worse bug
+        than the one it fixes.
+
+        The residual is real and is named rather than papered over: between this read and the
+        caller's `save()` there is a window, so this is best-effort and not a lock. That is the
+        strength the field is specified at — a claim never gates a write, and the ledger's existing
+        write discipline is what covers concurrent access. Buying more would mean a lock file
+        nobody can unlock, which is the trap this design was written to avoid.
+        """
+        if not os.path.exists(self.path):
+            return {}
+        try:
+            with open(self.path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return {}
+        for entry in read_collection(data, "pins"):
+            read = pin_read(entry)
+            if read["id"] == pin_id:
+                return {c: read.get(c) for c in CLAIM_CARRIERS}
+        return {}
+
+    def claim(self, pin_id: str, holder: str, now: Optional[datetime] = None) -> dict:
+        """Take this pin before doing the work. Compare-and-set; writes nothing else.
+
+        **It writes nothing but the claim, and that is the property.** The whole point is that the
+        claim lands BEFORE the work, so a door that also did something is a door somebody calls
+        second — and a claim taken after the work is a receipt, not a reservation.
+
+        Claiming a pin somebody else holds LIVE fails and names the holder; it never overwrites.
+        Claiming one whose holder is yourself re-stamps it, which is how a session that outlives the
+        TTL says so rather than being assumed dead. Claiming a stale one succeeds and reports
+        `reclaimed` with the holder it took it from, because a silent takeover is how two sessions
+        end up believing the same thing about different work.
+
+        It goes through `writable_pin` and `_gate_closed` like every other per-pin write door, and
+        the second one is what makes finished work unclaimable: a reservation on work that is over
+        would park a pin off the frontier, held by a session that is never going to release it.
+        That refusal is the plain kind — it is the one door on the roster whose refusal is not about
+        un-finishing anything.
+        """
+        _require(isinstance(holder, str) and holder.strip(),
+                 "a claim carries the holder that took it; an anonymous claim is a pin nobody can "
+                 "be asked about and nobody can release")
+        pin = self.writable_pin(pin_id)
+        self._gate_closed(pin, "claim")
+        held = self._claim_on_disk(pin_id)
+        current = claim_state(held, now)
+        incumbent = held.get("claimed_by") or ""
+        if current == "live" and incumbent != holder:
+            return {"pin_id": pin_id, "claimed": False, "holder": incumbent,
+                    "claimed_at": held.get("claimed_at"), "claim_state": "live",
+                    "why": f"{incumbent} holds this pin and the claim is still live; "
+                           f"work something else, or ask them"}
+        pin["claimed_by"] = holder
+        pin["claimed_at"] = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+        return {"pin_id": pin_id, "claimed": True, "holder": holder,
+                "claimed_at": pin["claimed_at"], "claim_state": "live",
+                "reclaimed": incumbent if (current == "stale" and incumbent
+                                           and incumbent != holder) else None,
+                "renewed": current != "unclaimed" and incumbent == holder}
+
+    def release(self, pin_id: str, holder: str = "") -> dict:
+        """Put the pin back on the frontier. Explicit, and the mirror of the door above.
+
+        A settlement releases too (`_settle`), so this is for the other ending: a session that stops
+        without finishing. Passing `holder` releases only your own claim — the honest default for an
+        agent — and omitting it releases whatever is there, which is what a human clearing up after a
+        dead session needs. Releasing an unheld pin is not an error: the post-condition a caller
+        wants is *nobody holds this*, and refusing when it is already true would make cleanup a
+        thing you have to check before doing.
+        """
+        pin = self.writable_pin(pin_id)
+        incumbent = pin_read(pin).get("claimed_by") or ""
+        if holder and incumbent and incumbent != holder:
+            return {"pin_id": pin_id, "released": False, "holder": incumbent,
+                    "why": f"{incumbent} holds this pin, not {holder}; release it as its holder or "
+                           f"with no holder at all"}
+        for carrier in CLAIM_CARRIERS:
+            pin.pop(carrier, None)
+        return {"pin_id": pin_id, "released": bool(incumbent), "holder": incumbent}
+
+    def claims(self, now: Optional[datetime] = None) -> list[dict]:
+        """Every pin somebody is holding, and how that claim reads — the set `frontier` drops.
+
+        It exists so a queue never shrinks silently. A frontier that just returns fewer pins reads
+        as *there is less work*, and the difference between *nothing to do* and *your peers have it
+        all* is the whole reason a human is looking at the number.
+        """
+        out = []
+        for pin in self.readable_pins():
+            read = pin_read(pin)
+            state = claim_state(read, now)
+            if state == "unclaimed":
+                continue
+            out.append({"pin_id": read["id"], "title": read["title"],
+                        "holder": read.get("claimed_by") or "",
+                        "claimed_at": read.get("claimed_at"), "claim_state": state,
+                        "state": read["state"]})
+        return out
+
+    def frontier(self, candidates: Optional[Iterable[dict]] = None,
+                 now: Optional[datetime] = None) -> list[dict]:
+        """Open, unblocked and unclaimed — what a session may take right now.
+
+        The claim filter is here and only here, and the candidate set is the caller's, because
+        "unblocked" is genuinely two questions and this package already answers both. The interview
+        asks whether anything is still in play upstream (`OPEN_STATES`); the wave scheduler asks
+        whether the upstream WORK is done (`buildloop._DONE_STATES`), which a `decided`-but-unbuilt
+        dependency fails and this one passes. Those are different questions with different right
+        answers, so `buildloop.frontier` passes its own candidates in rather than a third notion
+        being invented here — one claim filter, two schedulers.
+
+        A stale claim does NOT exclude a pin: that is the whole difference between the two claimed
+        readings, and a frontier that hid pins behind dead sessions would be the outage this field
+        was added to prevent, wearing the fix's name.
+        """
+        if candidates is None:
+            reads = [(p, pin_read(p)) for p in self.readable_pins()]
+            by_id = {r["id"]: r for _, r in reads}
+            candidates = [p for p, r in reads
+                          if r["state"] in OPEN_STATES
+                          and not any(by_id[d]["state"] in OPEN_STATES
+                                      for d in r["depends_on"] if d in by_id)]
+        return [p for p in candidates if claim_state(pin_read(p), now) != "live"]
+
     def interview_view(self) -> list[dict]:
         """The interview IS the filtered view of pins awaiting a human answer, ordered by
         information gain: the ones that collapse the most downstream pins come first.
@@ -3703,6 +4154,18 @@ class Ledger:
             "decisions_by_evidence": by_evidence,
             "settlements_by_door": by_door,
             "premortems": sum(1 for p in pins if p.get("premortem")),
+            # v0.30 — the two halves of the same number, never one. `open_questions` says how much
+            # is unanswered; these say how much is TAKEABLE and by whom. Reporting only the first
+            # would let a session read "nine open" and take the one a peer is already on, which is
+            # the duplication the field exists to remove; reporting only the frontier would let a
+            # queue shrink silently, which reads as progress and is its opposite.
+            # v0.31 — the register, and how old its oldest patch is. The count alone would say
+            # nothing about the trap: a fog register that only grows is a backlog, and the age is
+            # what makes that visible on the call an agent makes before acting.
+            "fog": self.fog_view()["count"],
+            "fog_oldest_days": self.fog_view()["oldest_days"],
+            "frontier": len(self.frontier()),
+            "claimed": {c["pin_id"]: c["holder"] for c in self.claims()},
         }
 
 

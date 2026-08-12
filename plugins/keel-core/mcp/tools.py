@@ -759,6 +759,105 @@ def agent_ready(ledger: str, pin_id: str = "") -> dict:
     return agentready.card(led, pin_id) if pin_id else agentready.gate(led)
 
 
+def ledger_fog(ledger: str) -> dict:
+    """The fog register: decisions you can tell are coming and cannot yet phrase.
+
+    `oldest_days` is the number to read, not the count. A register bounded by the elected scope
+    graduates or clears as the scope firms up; one whose oldest patch keeps getting older is a
+    backlog wearing a doctrine's name.
+    """
+    return _open_existing(ledger).fog_view()
+
+
+def ledger_add_fog(ledger: str, area: str, sensed: str, provenance: list,
+                   cluster_hint: str = "") -> dict:
+    """Record an unphrasable decision without inventing a question for it."""
+    led = _open_or_create(ledger)
+    patch = led.add_fog(area, sensed, provenance, cluster_hint or None)
+    out = {"fog_id": patch["id"], "area": patch["area"]}
+    _saved(ledger, led)
+    return out
+
+
+def ledger_graduate_fog(ledger: str, fog_id: str, question: dict, human_answer: str,
+                        kind: str = "open_decision", title: str = "", severity: str = "medium",
+                        confidence: str = "inferred") -> dict:
+    """The human phrased it: the patch becomes a pin and leaves the register.
+
+    The quote is unconditional and is not the usual relay rule wearing a new hat. Phrasing the
+    question IS framing the decision — an agent that writes the fork writes which answers are
+    thinkable — so this door records a phrasing the human elected and can record no other kind.
+    """
+    led = _open_existing(ledger)
+    _require_quote(human_answer, "transcribed", writes="graduate_fog",
+                   because="phrasing the fork is framing the decision, and a fork an agent framed "
+                           "is a decision an agent has already half-made")
+    pin = led.graduate_fog(fog_id, question=question, human_answer=human_answer, kind=kind,
+                           title=title, severity=severity, confidence=confidence)
+    out = {"fog_id": fog_id, "pin_id": pin["id"], "state": pin["state"]}
+    _saved(ledger, led)
+    return out
+
+
+def ledger_clear_fog(ledger: str, fog_id: str, rationale: str, human_answer: str) -> dict:
+    """There was no fork here after all, or the scope moved past it. The patch is deleted."""
+    led = _open_existing(ledger)
+    _require_quote(human_answer, "transcribed", writes="clear_fog",
+                   because="clearing stops the register asking about this, which settles it — and "
+                           "an agent settling it alone is an agent deciding not to decide")
+    out = led.clear_fog(fog_id, rationale=rationale, human_answer=human_answer)
+    _saved(ledger, led)
+    return out
+
+
+def ledger_claim(ledger: str, pin_id: str, holder: str) -> dict:
+    """Take a pin before working it. Compare-and-set; writes nothing else.
+
+    It writes nothing else on purpose. The property being bought is that the claim lands BEFORE the
+    work, so a door that also recorded something is a door somebody calls second, and a claim taken
+    afterwards is a receipt rather than a reservation.
+
+    The refusal is not an error, and the return shape says so: `claimed: false` with the holder
+    named is the normal, expected answer when a peer is on it. An exception there would make every
+    caller wrap the one outcome that is neither a bug nor a surprise.
+    """
+    led = _open_existing(ledger)
+    out = led.claim(pin_id, holder)
+    if out.get("claimed"):
+        _saved(ledger, led)
+    return out
+
+
+def ledger_release(ledger: str, pin_id: str, holder: str = "") -> dict:
+    """Put a pin back on the frontier without settling it. The other way a claim ends.
+
+    A settlement releases too, so this is for the session that stops without finishing — and for the
+    human cleaning up after one that died, which is why `holder` is optional: passing it releases
+    only your own claim, omitting it releases whatever is there.
+    """
+    led = _open_existing(ledger)
+    out = led.release(pin_id, holder)
+    if out.get("released"):
+        _saved(ledger, led)
+    return out
+
+
+def ledger_frontier(ledger: str) -> dict:
+    """What is takeable right now — open, unblocked, unclaimed — and what your peers are holding.
+
+    Both halves, never one. A list that silently omits the claimed pins reads as *there is less
+    work*, and the difference between that and *somebody else has it* is the whole reason anyone is
+    looking.
+    """
+    from ledger import pin_read
+    led = _open_existing(ledger)
+    return {
+        "frontier": [{"pin_id": pin_read(p)["id"], "title": pin_read(p)["title"],
+                      "state": pin_read(p)["state"]} for p in led.frontier()],
+        "claimed": led.claims(),
+    }
+
+
 def ledger_defer(ledger: str, pin_id: str, rationale: str, flip_criteria: str,
                  human_answer: str = "") -> dict:
     """Record the human's election to put this pin out of scope for now. It does not elect.

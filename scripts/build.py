@@ -152,6 +152,31 @@ CLAUDE_EFFORTS = {"low", "medium", "high", "xhigh"}
 # `model_reasoning_effort` + `developer_instructions`, and only these effort values.
 CODEX_EFFORTS = {"minimal", "low", "medium", "high"}
 
+# --- the invocation axis, generated for the one host that spells it differently -----------------
+# A skill is model-invoked (host may fire it) or user-invoked (only the human, by name). The choice
+# is authored ONCE, as `disable-model-invocation: true` in the skill's own frontmatter — and that is
+# not a Claude-ism: Pi reads the SAME key and filters the skill out of the prompt
+# (`dist/core/skills.js`: `formatSkillsForPrompt` -> `skills.filter(s => !s.disableModelInvocation)`),
+# so two of the four hosts are served by the authored line with nothing generated.
+#
+# Codex expresses it in a sidecar instead — `agents/openai.yaml` beside SKILL.md, whose
+# `policy.allow_implicit_invocation: false` stops implicit invocation while explicit `$skill` still
+# works. So the build derives that file rather than having anyone hand-keep a second copy of the
+# fact; same rule as the roster and the MCP table.
+#
+# opencode is the residual, and it is stated rather than papered over: a skill there is reachable
+# ONLY through the model's `skill` tool (`packages/opencode/src/tool/skill.ts` — the permission ask
+# fires INSIDE that tool's execute), so there is no human-only door to preserve. Denying the skill
+# permission removes it from everyone, which is a disabled skill, not a user-invoked one. Nothing is
+# emitted for opencode, deliberately.
+CODEX_POLICY = re.compile(r"^disable-model-invocation:\s*true\s*$", re.M)
+CODEX_POLICY_YAML = (
+    "# GENERATED FILE - do not edit. Source: `disable-model-invocation` in this skill's SKILL.md;\n"
+    "# regenerate with: python scripts/build.py\n"
+    "policy:\n"
+    "  allow_implicit_invocation: false\n"
+)
+
 # The MCP servers the doctrine REQUIRES, parsed from its own table (src/core/knowledge-sources.md).
 # `- `name` → **http** `url` — …`  is required; `→ **opt-in**` is named there and deliberately left
 # undeclared. Same shape as the roster: the doc that states the rule is the source the build reads.
@@ -165,7 +190,10 @@ PLUGINS = {
             "challenger/measurer roster, the enforcement hooks, and the using-the-ledger skill. "
             "Installed automatically as a dependency of codebase-rescue and greenfield-forge."
         ),
-        "skills": ["using-the-ledger", "run-workflow"],
+        "skills": ["using-the-ledger", "run-workflow", "which-skill"],
+        # `which-skill` is the package's only user-invoked skill and it lives HERE rather than in
+        # keel-kit, because every other plugin depends on the core: a map that ships with only some
+        # of the install is a map with holes in it.
         "agents": True, "hooks": True, "mcp": True, "core_docs": True,
         "dependencies": [],
     },
@@ -191,7 +219,9 @@ PLUGINS = {
         "description": (
             "Composable helpers, each useful on its own and each bound to the decisions ledger: the "
             "engineering loop (test-driven-development, systematic-debugging, code-review, "
-            "verification-before-completion, branch-lifecycle), plus grounded-research (cite current "
+            "verification-before-completion, branch-lifecycle), prototype (throwaway code that answers "
+            "one design question instead of more conversation), wizard (the steps only a human can "
+            "take, closed on something observed rather than on \"done\"), plus grounded-research (cite current "
             "sources, never stale memory), static-first-analysis (strongest deterministic signal "
             "before judgment), project-memory (durable facts), learning-layer (senior-grade "
             "output while the operator levels up), documentation-lifecycle (register, ground and "
@@ -209,7 +239,7 @@ PLUGINS = {
         # a trusted path, while maintainer-assist reads issues and PRs written by strangers. Merging
         # them would walk untrusted content into a path that assumes trust.
         "skills": ["test-driven-development", "systematic-debugging", "code-review",
-                   "verification-before-completion", "branch-lifecycle",
+                   "verification-before-completion", "branch-lifecycle", "prototype", "wizard",
                    "grounded-research", "static-first-analysis", "project-memory", "learning-layer",
                    "documentation-lifecycle", "maintainer-assist"],
         # It depends on the core, and the honest reason is the MCP servers, not the ledger:
@@ -347,6 +377,9 @@ def skill_payload(skill: str) -> dict:
         text = read(f) if f.suffix in (".md", ".json", ".yml", ".txt") else None
         # A skill's own pointers move from the authoring form to the vendored form.
         out[f"skills/{skill}/{rel}"] = REWRITE_CORE.sub(r"`references/core/\1`", text) if text else f
+    fm = FRONTMATTER.match(read(sdir / "SKILL.md")) if (sdir / "SKILL.md").exists() else None
+    if fm and CODEX_POLICY.search(fm.group(1)):
+        out[f"skills/{skill}/agents/openai.yaml"] = CODEX_POLICY_YAML
     for doc in sorted(core_closure(skill)):
         src = CORE / doc
         if src.exists():
