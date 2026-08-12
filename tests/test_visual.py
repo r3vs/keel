@@ -257,6 +257,46 @@ class TestDegradation(unittest.TestCase):
         self.assertEqual([c["verdict"] for c in out["claims"]], ["unchecked", "unchecked"])
         self.assertNotIn("refuted", out)
 
+    def test_an_empty_claim_set_is_unchecked_rather_than_a_clean_bill(self):
+        """The other way of examining nothing, and the one that answered wrongly.
+
+        With no claims the verdict loop ran zero times and the result was `status: "checked"`,
+        `absent: []`, `refuted: false` — a pass issued by a check that inspected no color. It is
+        reachable with no mistake on the caller's part (`palette_verify(image)` before any color has
+        been proposed; a DTCG contract whose color group is empty), and `refuted` is precisely the
+        field a caller reads to decide the palette may be propagated into tokens.css and everything
+        generated from it.
+        """
+        with TempImage(_button_screenshot()) as path:
+            for empty in ([], {}):
+                with self.subTest(claimed=empty):
+                    out = visual.verify_palette(path, empty)
+                    self.assertEqual(out["status"], "unchecked")
+                    self.assertEqual(out["claims"], [])
+                    self.assertNotIn("refuted", out,
+                                     "a check of nothing may not report itself unrefuted")
+                    self.assertIn("claimed", out["reason"])
+
+    def test_the_readable_image_does_not_rescue_an_empty_claim_set(self):
+        """Ordering, asserted rather than assumed: the claim set is checked BEFORE the pixels,
+        because no image makes an empty claim set checkable. Reading first would have produced
+        `status: "checked"` on a perfectly good screenshot, which is the vacuous pass again."""
+        with TempImage(_button_screenshot()) as path:
+            self.assertEqual(visual.image_facts(path)["status"], "read")
+            self.assertEqual(visual.verify_palette(path, [])["status"], "unchecked")
+
+    def test_the_coverage_floor_override_reaches_the_verdict(self):
+        """The parameter existed and nothing could pass it. It decides `present` vs `absent`, so a
+        floor above the accent's own coverage must flip that claim — which is what makes the
+        override real rather than accepted-and-ignored."""
+        with TempImage(_button_screenshot()) as path:
+            accent = visual.to_hex(ACCENT)
+            default = visual.verify_palette(path, [accent])
+            raised = visual.verify_palette(path, [accent], coverage_floor=0.5)
+        self.assertEqual(default["claims"][0]["verdict"], "present")
+        self.assertEqual(raised["claims"][0]["verdict"], "absent")
+        self.assertEqual(raised["coverage_floor"], 0.5)
+
     def test_a_missing_file_says_so(self):
         facts = visual.image_facts("/nonexistent/never-captured.png")
         self.assertEqual(facts["status"], "unchecked")

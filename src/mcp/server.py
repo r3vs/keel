@@ -47,6 +47,7 @@ go **silently missing** — no error reaches the agent. There is no CLI floor to
 bundled CLI was removed), so ``uv`` is a hard prerequisite: `bootstrap.sh` installs it and **aborts
 loudly** if it cannot, turning a silent absence into a fail-fast the operator can act on.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -56,6 +57,36 @@ from fastmcp.server.elicitation import AcceptedElicitation
 
 import tools
 from ledger import FREEFORM_OUTCOME
+
+
+def _plugin_version() -> str:
+    """What this server reports as its OWN version, read from the manifest that ships beside it.
+
+    **The bug this closes, observed on the wire rather than reasoned about.** `FastMCP(name=…)` with
+    no `version` does not leave `serverInfo.version` empty — it fills it with **FastMCP's own**
+    version, so an `initialize` against this server answered `{"name": "keel", "version": "3.4.4"}`.
+    Every host that shows a server's version was showing the library's. That is this repo's
+    signature failure in its most literal form: an artifact stating a number that is true of
+    something else, with nothing checking the correspondence, and `tests/test_plugin_version.py`
+    could not see it because the value never came from the manifest it guards.
+
+    One source at runtime, never a string kept here: `build.py` vendors this file to
+    `plugins/keel-core/mcp/server.py`, so the plugin manifest is exactly `../.claude-plugin/
+    plugin.json` from `__file__` — the same relative-to-`__file__` anchoring `_human_door` uses, and
+    for the same reason (the cwd is the user's project, so nothing may be resolved against it).
+
+    In the authoring tree that path does not exist, and the honest answer there is `"dev"` rather
+    than a number: `src/mcp/server.py` is not a release, and reporting the last built plugin's
+    version from an unbuilt working copy is the drift the manifest gate exists to catch. Never
+    raises — a server that refuses to start because it could not read its own label would trade a
+    cosmetic gap for the silent-absence failure mode `uv` already owns.
+    """
+    manifest = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+    try:
+        version = json.loads(manifest.read_text(encoding="utf-8")).get("version")
+    except Exception:
+        return "dev"
+    return version if isinstance(version, str) and version else "dev"
 
 
 def _human_door() -> str:
@@ -119,6 +150,36 @@ def _warm_grammars_async() -> None:
     except Exception:
         pass  # warming is best-effort; the backend still works, fetching each grammar lazily
 
+
+async def _step(ctx, done: float, total: float, message: str) -> None:
+    """Say where a long call has got to — progress for the bar, a log line for the transcript.
+
+    Both are best-effort by construction, and the guard is not defensive padding: `report_progress`
+    is a no-op unless the client sent a `progressToken` with the call (`fastmcp/server/context.py`
+    reads `request_context.meta.progressToken` and returns when it is None), while `ctx.info` sends
+    a `notifications/message` unconditionally — a client that never registered a handler simply
+    drops it. Neither is a capability this server may make a call depend on, so a failure in either
+    must not become a failure of `build_graph`. `ctx` itself is None whenever a tool is called in
+    process (every `tests/test_mcp_tools.py` case), which is why that is the first thing checked.
+
+    Worth knowing before leaning on the log half: the **2026-07-28** revision deprecates Logging
+    outright (SEP-2577, "log to `stderr` (stdio) or use OpenTelemetry instead"), and already
+    forbids `notifications/message` for any request that did not carry
+    `io.modelcontextprotocol/logLevel` in `_meta`. Progress is untouched. So when the pin moves,
+    the `ctx.info` half of this helper is the line that goes, and it goes from one place.
+    """
+    if ctx is None:
+        return
+    try:
+        await ctx.report_progress(done, total, message)
+    except Exception:
+        pass
+    try:
+        await ctx.info(message)
+    except Exception:
+        pass
+
+
 mcp = FastMCP(
     name="keel",
     instructions=(
@@ -127,6 +188,12 @@ mcp = FastMCP(
         "human's committed interview answer elects a decision: these tools find, record, propose, "
         "and verify, and never decide — electing an outcome stays the human interview's job."
     ),
+    # Identity, because a host shows it and a user reads it. Both were wrong by omission: with no
+    # `version` FastMCP reports its OWN (`serverInfo.version: "3.4.4"`), and with no `website_url`
+    # a user who wants to know what just wrote to their ledger has nowhere to go from the server
+    # list. `_plugin_version` holds the whole rule for where the number comes from.
+    version=_plugin_version(),
+    website_url="https://github.com/r3vs/keel",
 )
 
 _RO = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
@@ -1133,7 +1200,7 @@ def ledger_add_proposals(ledger: str, pin_id: str, proposals: list, notes: str =
 
 
 @mcp.tool(annotations={"title": "Contract Diff (cross-layer drift)", **_RO})
-def contract_diff(
+async def contract_diff(
     contract: str,
     ddl: str = "",
     sqlalchemy: str = "",
@@ -1144,6 +1211,7 @@ def contract_diff(
     django: str = "",
     graphql: str = "",
     backend: str = "auto",
+    ctx: Context = None,
 ) -> dict:
     """Field-shape drift of each layer against the contract carrier — the core cross-layer engine.
 
@@ -1163,10 +1231,22 @@ def contract_diff(
         graphql: Optional path to GraphQL SDL.
         backend: Extraction backend — "auto" prefers a real grammar, degrading to stdlib parsers.
     """
-    return tools.contract_diff(
+    # The one place in this tool where the wait is not the analysis: on a cold machine the "auto"
+    # backend fetches a tree-sitter grammar per layer before it can parse anything, and
+    # `_warm_grammars_async` is best-effort — no network at startup and it is still all in front of
+    # you here. A silent minute reads as a hang, and the honest thing to say is which half it is in.
+    named = [layer for layer, path in (("ddl", ddl), ("sqlalchemy", sqlalchemy),
+                                       ("pydantic", pydantic), ("typescript", typescript),
+                                       ("drizzle", drizzle), ("prisma", prisma),
+                                       ("django", django), ("graphql", graphql)) if path]
+    await _step(ctx, 0, 2, f"extracting {len(named)} layer(s) ({', '.join(named) or 'none'}) — "
+                           f"backend {backend!r} fetches a grammar per language on first use")
+    result = tools.contract_diff(
         contract, backend=backend, ddl=ddl, sqlalchemy=sqlalchemy, pydantic=pydantic,
         typescript=typescript, drizzle=drizzle, prisma=prisma, django=django, graphql=graphql,
     )
+    await _step(ctx, 2, 2, f"{len(result.get('findings', []))} finding(s)")
+    return result
 
 
 @mcp.tool(annotations={"title": "Reconcile Two Layers (no carrier)", **_RO})
@@ -1412,7 +1492,8 @@ def image_palette(image: str) -> dict:
 
 @mcp.tool(annotations={"title": "Palette Verify (fact-check claimed colors against the image)", **_RO})
 def palette_verify(image: str, claimed: list | None = None, contract: str = "",
-                   tolerance: float = 0.0, contrast_pairs: list | None = None) -> dict:
+                   tolerance: float = 0.0, contrast_pairs: list | None = None,
+                   coverage_floor: float = 0.0) -> dict:
     """Do the colors a model read off this image actually occur in it? WRITES NO FILE.
 
     Coverage is summed over every histogram bucket within a perceptual (CIE Lab ΔE) radius, so
@@ -1421,6 +1502,10 @@ def palette_verify(image: str, claimed: list | None = None, contract: str = "",
     after it has been propagated into tokens.css, a Tailwind theme, a DESIGN.md and every component
     built on them. Set membership over decoded pixels, so `confidence: extracted`.
 
+    With no claim set — neither `claimed` nor a `contract` carrying color tokens — the answer is
+    `status: "unchecked"` with the reason, never a clean `refuted: false`. Nothing was examined, and
+    a check of nothing is a gap, not a pass.
+
     Args:
         image: path to the reference image the colors are claimed to come from.
         claimed: hex strings, or {name, value} objects to keep the token names in the verdict.
@@ -1428,9 +1513,12 @@ def palette_verify(image: str, claimed: list | None = None, contract: str = "",
         tolerance: override the ΔE radius; 0 uses the declared default.
         contrast_pairs: optional {fg, bg, label?} pairs to grade against WCAG 2.x at the same time —
             the one moment a contrast check is possible before any code exists to scan.
+        coverage_floor: override the fraction of sampled pixels a color must cover to count as
+            present; 0 uses the declared default. Raise it to ask a stricter question of a
+            re-encoded capture; it is an artifact filter, never a prominence test.
     """
     return tools.palette_verify(image, claimed=claimed, contract=contract, tolerance=tolerance,
-                                contrast_pairs=contrast_pairs)
+                                contrast_pairs=contrast_pairs, coverage_floor=coverage_floor)
 
 
 @mcp.tool(annotations={"title": "Extract Design Tokens (as-is → candidate DTCG)", **_RO})
@@ -1453,7 +1541,7 @@ def extract_tokens(css: str) -> dict:
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 
 @mcp.tool(annotations={"title": "Build Structural Graph", **_RW})
-def build_graph(root: str, out: str, commit: str = "") -> dict:
+async def build_graph(root: str, out: str, commit: str = "", ctx: Context = None) -> dict:
     """Build the deterministic structural graph (files/symbols/tables as nodes, imports/calls as
     edges) and WRITE it as graph.json — the foundational artifact the rest of the family reads.
 
@@ -1464,11 +1552,19 @@ def build_graph(root: str, out: str, commit: str = "") -> dict:
         out: Output path for graph.json.
         commit: Optional commit to stamp as built_at_commit (omit to leave unstamped).
     """
-    return tools.build_graph(root, out, commit)
+    # The walk is one call into the runtime and cannot be subdivided from out here without a
+    # callback the engine does not offer — so what is reported is the boundary, not fake
+    # granularity. Two steps that are true beat ten that are invented: this is the tool most likely
+    # to run for minutes on a real repo, and "started, on <root>" is what distinguishes a slow build
+    # from a dead server.
+    await _step(ctx, 0, 2, f"walking {root} — one pass per file, then edge validation")
+    result = tools.build_graph(root, out, commit)
+    await _step(ctx, 2, 2, f"{result.get('nodes')} nodes, {result.get('edges')} edges → {out}")
+    return result
 
 
 @mcp.tool(annotations={"title": "Understand Codebase (understand mode)", **_RW})
-def understand_codebase(root: str, out: str, commit: str = "") -> dict:
+async def understand_codebase(root: str, out: str, commit: str = "", ctx: Context = None) -> dict:
     """Build the whole understand-mode bundle — graph + layered overview + guided tour + navigable
     HTML map — and WRITE it to a directory. Comprehension as the deliverable; never elects a to_be.
 
@@ -1477,7 +1573,10 @@ def understand_codebase(root: str, out: str, commit: str = "") -> dict:
         out: Output directory for the bundle (graph.json, overview.json, tour.json, graph-map.html).
         commit: Optional commit to stamp.
     """
-    return tools.understand_codebase(root, out, commit)
+    await _step(ctx, 0, 2, f"building the understand bundle for {root} — graph, overview, tour, map")
+    result = tools.understand_codebase(root, out, commit)
+    await _step(ctx, 2, 2, f"wrote {len(result.get('written') or {})} artifact(s) → {out}")
+    return result
 
 
 @mcp.tool(annotations={"title": "Explain a Node", **_RO})
@@ -1648,6 +1747,140 @@ def instructions_diff(ledger: str, root: str = ".", generated: list[str] | None 
             `not_requested` rather than flagging a deliberate choice as `missing`.
     """
     return tools.instructions_diff(ledger, root, generated, max_lines, bridge)
+
+
+# -- RESOURCES: the ledger addressed as a thing, for the reader a tool cannot serve ---------------
+#
+# Why resources at all, when `ledger_summary` already answers this
+# ----------------------------------------------------------------
+# A tool is a thing the MODEL decides to call. A resource is a thing a PERSON attaches: in Claude
+# Code you type `@` and pick one (`@keel:ledger://summary//abs/path/ledger.json`), and it arrives as
+# an attachment on the turn — verified in the host's own docs (*"Type `@` in your prompt to see
+# available resources… Use the format `@server:protocol://resource/path`… Resources are
+# automatically fetched and included as attachments when referenced"*). That is a different door,
+# not a duplicate one, and it is the door for the case the tool surface handles worst: the user who
+# wants the agent to reason *about* the ledger this turn, without hoping it decides to look.
+#
+# Read-only, and therefore carrier-free by rule rather than by omission: `check_tool_carriers.py::
+# write_tools` walks the decorations, `continue`s past any whose attribute is not `tool`, and keeps
+# only those whose `readOnlyHint` is falsy — so a `@mcp.resource` is outside its scope by
+# construction and nothing here needs a playbook to name it. That is the correct scope: a read costs
+# nothing, is visible in its own output, and the gate's own docstring says so.
+#
+# Why a TEMPLATE, and why the path is a wildcard
+# ----------------------------------------------
+# Every tool here takes the ledger path as an explicit argument, because the server has no notion of
+# "the current project" and inventing one would be the working-directory bug this whole adapter
+# exists to close. A resource has no arguments — its URI *is* the argument — so the path lives in
+# the URI, and the segment must be `{path*}`: FastMCP's `build_regex` compiles a bare `{path}` to
+# `(?P<path>[^/]+)`, which cannot match `/home/me/proj/ledger.json`, while the RFC 6570 wildcard
+# form compiles to `(?P<path>.+)` and spans segments. Captured groups are `unquote`d, so a
+# percent-encoded path works identically — read at `fastmcp/resources/template.py::build_regex` and
+# `match_uri_template`, the two functions that consume the template.
+#
+# The suffix leads and the path trails for the same reason: with the wildcard last, a leading `/`
+# on an absolute path simply becomes the second `/` in `summary//home/...`, and nothing has to be
+# escaped by the person typing it.
+
+@mcp.resource("ledger://summary/{path*}", name="ledger-summary", mime_type="application/json",
+              description="Counts of pins by state, of events, and of the rung each decision "
+                          "reached — the same projection `ledger_summary` returns. URI carries the "
+                          "path: ledger://summary//abs/path/to/ledger.json")
+def ledger_summary_resource(path: str) -> dict:
+    return tools.ledger_summary(path)
+
+
+@mcp.resource("ledger://pins/{path*}", name="ledger-pins", mime_type="application/json",
+              description="The pin index — id, kind, state, severity, title — for every pin in the "
+                          "ledger at the URI's path. Attach it to reason about the whole ledger; "
+                          "drill into one with ledger://pin/{pin_id}/{path}.")
+def ledger_pins_resource(path: str) -> dict:
+    return tools.ledger_pins(path)
+
+
+@mcp.resource("ledger://pin/{pin_id}/{path*}", name="ledger-pin", mime_type="application/json",
+              description="One whole pin — its as_is, to_be, question, provenance and events — "
+                          "read through the same guarded path every write door uses. An unknown id "
+                          "is refused, never answered as an empty pin.")
+def ledger_pin_resource(pin_id: str, path: str) -> dict:
+    return tools.ledger_pin(path, pin_id)
+
+
+# -- PROMPTS: the phase entries, as commands a human can type -------------------------------------
+#
+# Claude Code surfaces a served prompt as `/mcp__keel__<name>` (*"Type `/` to see all available
+# commands, including those from MCP servers"*), so these are the one surface in this package a
+# **person** drives directly rather than asking an agent to. That is why each is a phase ENTRY and
+# nothing else: the deep instruction lives in the skill's `SKILL.md` and its `references/`, and a
+# prompt that restated any of it would be the stateless twin this repo refuses to author — a second
+# copy of a playbook, drifting from the first, with no gate between them.
+#
+# What each therefore contains: the ledger to read, the phase to enter, the pointer to the prose
+# that governs it, and the discipline that is easiest to skip. The prompt hands the agent a
+# starting position; the skill still decides what happens.
+
+@mcp.prompt(name="interview-kickoff",
+            description="Open the interview on a ledger: read the funnel, ask the compressed "
+                        "question, record only what the human answers.")
+def interview_kickoff(ledger: str) -> str:
+    """Start (or resume) the decisions interview against one ledger."""
+    return (
+        f"Run the decisions interview against the ledger at `{ledger}`.\n\n"
+        f"1. Read `interview_next('{ledger}')` first. It returns the view AFTER the compression "
+        f"funnel (cluster → policy → exception → proposed default), best-first by information "
+        f"gain. Do not walk the pin list yourself and do not ask one question per finding — that "
+        f"is the failure mode the funnel exists to collapse.\n"
+        f"2. Offer the human the question as the pin poses it, with its own options. Where the "
+        f"funnel offers a policy, use `policy_preview` to show the radius BEFORE anything is "
+        f"written, so they see how many pins one answer settles.\n"
+        f"3. Record the answer with `ledger_record_decision` (one pin) or `ledger_record_policy` "
+        f"(a rule and its cascade). If this host supports elicitation the server asks the user "
+        f"directly and your relayed arguments are ignored; if it does not, quote the human "
+        f"verbatim, and it is recorded as the weaker `transcribed` rung.\n"
+        f"4. You never elect. A blocker or high pin never goes to a silent default, an outcome the "
+        f"pin's `question` did not offer cannot be written, and every decision needs "
+        f"`flip_criteria` — a decision with no reopen condition fossilizes.\n\n"
+        f"Attach `ledger://summary/{ledger}` if you want the current counts in front of you."
+    )
+
+
+@mcp.prompt(name="rescue-phase",
+            description="Enter one phase of codebase-rescue on an existing repo, with the ledger "
+                        "and the phase's own playbook in hand.")
+def rescue_phase(ledger: str, phase: str = "1", repo: str = ".") -> str:
+    """Phase entry for `codebase-rescue` — the curative skill (as-is exists; derive the to-be)."""
+    return (
+        f"Enter phase {phase} of **codebase-rescue** on the repo at `{repo}`, ledger `{ledger}`.\n\n"
+        f"Read that phase's section of the skill's `SKILL.md` and the `references/*.md` it points "
+        f"at, in full, before doing anything — the playbooks carry detail SKILL.md deliberately "
+        f"omits, and working from memory is what this skill exists to stop.\n\n"
+        f"The direction is backward: the as-is already exists and is EXTRACTED from the code (it "
+        f"may faithfully describe a mess); the to-be is never extracted, only elected by the human "
+        f"in the interview. Everything you find is `gap = diff(to-be, as-is)`.\n\n"
+        f"Phases communicate only through disk — this ledger, the graph, the map. Nothing you hold "
+        f"in this session survives into the next phase, so write it down or it did not happen. "
+        f"Where under-specified input forces you to assume, surface the assumption as a vetoable "
+        f"pin (`provenance: agent_assumption`) rather than encoding it silently."
+    )
+
+
+@mcp.prompt(name="forge-phase",
+            description="Enter one phase of greenfield-forge on a new project, with the ledger and "
+                        "the phase's own playbook in hand.")
+def forge_phase(ledger: str, phase: str = "1", root: str = ".") -> str:
+    """Phase entry for `greenfield-forge` — the preventive twin (elect the to-be, then build to it)."""
+    return (
+        f"Enter phase {phase} of **greenfield-forge** for the project at `{root}`, ledger "
+        f"`{ledger}` (Frame → Interview → Contract → Build → Validate → Release → Operate).\n\n"
+        f"Read that phase's section of the skill's `SKILL.md` and the `references/*.md` it points "
+        f"at, in full, before doing anything.\n\n"
+        f"The direction is forward: the as-is starts EMPTY and grows as slices are built, so the "
+        f"to-be is elected first and `gap → 0` is the finish line. `interview_expand` materializes "
+        f"the catalog as `open_decision` and `acceptance_criterion` pins; the criteria root the "
+        f"dependency DAG the build loop schedules over.\n\n"
+        f"Do not start coding before the interview has elected what you would be coding to. Where a "
+        f"fork is not yet phrasable, record it as fog rather than as a badly-worded pin."
+    )
 
 
 if __name__ == "__main__":

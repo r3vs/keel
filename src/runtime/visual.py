@@ -409,10 +409,26 @@ def verify_palette(path, claimed, tolerance: Optional[float] = None,
     ΔE — so anti-aliasing and lossy re-encoding count *toward* the claim. A claim under the coverage
     floor comes back `absent`: it is a color the model produced that the picture does not contain,
     which is a refutation to raise before the token is propagated anywhere.
+
+    **An empty claim set is `unchecked`, never `checked`.** This is the same degradation rule the
+    unreadable-image branch below already follows, applied to the other way of examining nothing —
+    and it was the one case that answered wrongly. With no claims the loop ran zero times and the
+    verdict came back `status: "checked"`, `absent: []`, `refuted: false`: a clean bill from a check
+    that inspected no color at all. It is reachable without any mistake on the caller's part —
+    `palette_verify(image)` with neither `claimed` nor `contract`, and `contract=` pointing at a
+    DTCG file whose color group is empty, which is exactly the pre-election state the tool exists to
+    be run in. A vacuous pass is worse than a gap: `refuted: false` is what a caller reads to decide
+    it may propagate the palette, so this shape is checked BEFORE the pixels, since no image makes
+    an empty claim set checkable.
     """
     tol = DELTA_E_TOLERANCE if tolerance is None else float(tolerance)
     floor = COVERAGE_FLOOR if coverage_floor is None else float(coverage_floor)
     pairs = list(claimed.items()) if isinstance(claimed, dict) else [(None, c) for c in claimed]
+    if not pairs:
+        return {"status": "unchecked", "source": str(path), "claims": [],
+                "reason": "no colors were claimed, so nothing was fact-checked against the image. "
+                          "Pass `claimed` (hex strings, or {name, value} objects) or a `contract` "
+                          "whose color tokens carry values."}
     try:
         img = read_image(path)
     except ImageUnreadable as exc:
