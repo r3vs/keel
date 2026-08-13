@@ -96,7 +96,7 @@ The distribution is what matters:
 
 | kind | count | share | what it actually is |
 |---|---:|---:|---|
-| `extra_entity` | 1,263 | 71.4% | **almost entirely structural.** 43 distinct type names × 61 apps. 123 are the operation roots (`Query`, `Mutation`); 1,098 are generated input/filter/admin-meta types (`*WhereInput`, `*OrderByInput`, `Keystone*Meta`). A GraphQL SDL contains these **by construction** and no database has a counterpart. 1,221 of 1,263 (96.7%) fall in those two buckets. |
+| `extra_entity` | 1,263 | 71.4% | **almost entirely structural.** 43 distinct type names × 61 apps. 123 are the operation roots (`Query`, `Mutation`); 1,098 are generated input/filter/admin-meta types (`*WhereInput`, `*OrderByInput`, `Keystone*Meta`) — **see Correction 2 below: the counts hold, this attribution does not.** No `*WhereInput`/`*OrderByInput` name appears in any finding; the 1,098 are one vendor's admin-UI meta tier alone. A GraphQL SDL contains these **by construction** and no database has a counterpart. 1,221 of 1,263 (96.7%) fall in those two buckets. |
 | `nullability_mismatch` | 194 | 11.0% | **one class, one direction, 194 of 194**: `prisma nullable=False vs graphql nullable=True`. This is Keystone's access-control convention — an output field may resolve to `null` when read access is denied — so the DB column is `NOT NULL` and the API type is nullable on purpose. |
 | `type_mismatch` | 130 | 7.3% | 117 (90%) are `string→uuid` (113) and `int→uuid` (4): a Prisma `String @id`/`Int @id` against a GraphQL `ID!`. The remaining 13 are `string→enum`, which are real. |
 | `extra_field` | 100 | 5.6% | the relation object and the virtual counters that exist only in the API (`author`, `tagsCount`). |
@@ -490,9 +490,10 @@ python scripts/measure_public.py --repo <dispatch> --label Netflix/dispatch \
 ```
 
 Two conditions are stated because both weaken the claim: the proposal floor was **moved from 0.5 to
-0.3** (a new `--min-overlap` flag on the measurement script, which is why the JSON records it), and
-the proposals were **elected by the script rather than by a human**, which `core/shape-engine.md`
-says is the human's move. Under those conditions, 70 pairings across 61 file-pairs, and the first
+0.3** (a new `--min-overlap` flag on the measurement script — see Correction 3), and the proposals
+were **elected by the script rather than by a human**, which `core/shape-engine.md` says is the
+human's move. Under
+those conditions, 70 pairings across 61 file-pairs, and the first
 field-level reading this engine has ever produced on this repository:
 
 | kind | count | what it is |
@@ -542,3 +543,51 @@ verified and are not claimed as true positives; they are recorded as the largest
   dispatch: 879 / 5,360 / 8,616, identical, in **2.69 s** against 3.05 s. The deterministic half is
   deterministic; the timings are n=1 on a shared container and the first run's *"treat wall times as
   an order of magnitude"* was, if anything, understated.
+
+# Postscript 2, 2026-08-13 — two claims on this page that a review falsified
+
+Same rule as the postscript above: nothing earlier is edited to look better in hindsight. The one
+change made up there is a **forward marker** on the `extra_entity` row of Repo 1's distribution
+table, pointing at Correction 2 — because that row is what the section README links to, and a reader
+who lands on it had nothing telling them the attribution beside the count had already been refuted.
+The count is untouched.
+
+## Correction 3 — the JSON did not record the floor the prose said it recorded
+
+The re-run above states its conditions and said of one of them *"which is why the JSON records
+it"*. It did not. `--min-overlap` was forwarded into `propose_correspondence` and then dropped:
+`main`'s report carried `label`, `repo_path`, `commit`, `measured_at`, `runtime_commit`, and each
+pair entry carried `seconds`/`entities`/`fields`/`findings`/`by_kind`/`by_marker`/
+`elected_correspondence`/`proposals`/`examples` — no floor, and no flag. So a re-derivation from the
+JSON (which `CLAUDE.md` describes as the thing this page is derived from) silently lost the one
+condition the prose flags as weakening the result, and the prose asserted a carrier that did not
+exist. That is this repo's signature defect — a claim with no carrier — on the page written to end
+it.
+
+`scripts/measure_public.py` now writes a `conditions` block: whether proposals were elected by the
+script, the `proposal_floor` **in force** (read off `propose_correspondence`'s own signature when
+the flag is absent, so the field answers *what the floor was* rather than *was a flag passed*),
+where that floor came from, and the examples budget. The run reported above predates the field; its
+conditions are the two stated there in prose, which is exactly the weakness this closes for the
+next run.
+
+## Correction 4 — the empty-extraction refusal reached two of the three doors
+
+The gap this page measured on `Netflix/dispatch` — 65 model files, 0 entities, 0 findings, nothing
+in the output saying the extractor had not read a thing — was closed on `reconcile_layers` and
+`propose_correspondence`, and the postscript above says so accurately: *"`drift_check` refuses a
+carrier that declares no entities"*. That sentence is exact, and the exactness hid the hole.
+`drift_check` refused **only** the carrier. Every layer below it is matched by a membership test
+(`if table in shapes`, `if entity in shapes`) that fails closed and silently, so the carrier-anchored
+door — the one rescue's Phase 5 reaches for first, and the one `mcp:contract_diff` wraps under a
+description calling an empty `findings` the evidence of zero drift — went on answering `[]` over a
+`models.py` nothing could read. The measured failure, arriving through the other door.
+
+Every side is now extracted before any is diffed, and one refusal names all the empty ones. Three
+smaller extraction defects were fixed with it, each reproduced before it was believed: a
+non-literal `__tablename__` (`PREFIX + "users"`) was keyed as an entity under its own unparsed
+expression text, which also gave the refusal a fabricated entity to count; `Field(max_length=CONST)`
+and `Field(validation_alias=AliasChoices(…))` raised out of the pydantic extractor, newly reachable
+from a base one import hop away; and both inheritance mergers let the **last** base win a name two
+declare, where Python's MRO gives it to the first. None of these changes a number on this page — all
+four were found by reading the code this page's postscript wrote, not by re-running it.

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import inspect
 import json
 import pathlib
 import subprocess
@@ -86,6 +87,30 @@ def comprehension(repo: pathlib.Path) -> dict:
 #: now labels — the raw counts stay in `by_kind`, which is the point of classifying rather than
 #: filtering.
 MARKERS = ("structural_tier", "relation_pair", "entity_key_source")
+
+
+def conditions(args) -> dict:
+    """The conditions of the run that WEAKEN its result, carried in the JSON beside the numbers.
+
+    `docs/measurements.md` states two for the reconcile pass — the proposals were elected by this
+    script rather than by a human, and the Jaccard floor was moved below the engine's own default —
+    and said the JSON records the second. It did not: `--min-overlap` was forwarded into
+    `propose_correspondence` and then forgotten, so a re-derivation from the report lost the one
+    condition the prose flags as weakening the result. A condition stated only in prose is a
+    condition the next reader has to take on trust, which is the shape this page exists to refuse.
+
+    `proposal_floor` is the floor actually IN FORCE, read off the engine's own signature when the
+    flag is absent, so the field answers "what was the floor" rather than "was a flag passed".
+    """
+    floor = inspect.signature(shapes.propose_correspondence).parameters["min_overlap"].default
+    return {
+        "propose": bool(args.propose),
+        "proposal_floor": args.min_overlap if args.min_overlap is not None else floor,
+        "proposal_floor_source": "--min-overlap" if args.min_overlap is not None
+                                 else "propose_correspondence default",
+        "correspondence_elected_by": "script" if args.propose else "none",
+        "examples_per_pair": args.examples,
+    }
 
 
 def reconcile_one(a_layer: str, a_path: pathlib.Path, b_layer: str, b_path: pathlib.Path,
@@ -173,7 +198,7 @@ def main() -> int:
 
     report: dict = {"label": args.label or repo.name, "repo_path": str(repo),
                     "commit": head(repo), "measured_at": time.strftime("%Y-%m-%d"),
-                    "runtime_commit": head(ROOT)}
+                    "runtime_commit": head(ROOT), "conditions": conditions(args)}
     if args.comprehension:
         report["comprehension"] = comprehension(repo)
 

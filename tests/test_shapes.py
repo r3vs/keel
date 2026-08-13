@@ -365,6 +365,72 @@ class TestRefusesToDiffNothing(unittest.TestCase):
         with self.assertRaises(shapes.EmptyExtraction):
             shapes.drift_check(carrier, ddl=str(FIXTURES / "001_initial.sql"))
 
+    def test_a_layer_that_read_nothing_refuses_even_with_a_good_carrier(self):
+        """The half that was missing, and it was the half the playbooks reach for FIRST.
+
+        `drift_check` refused an empty CARRIER and nothing else, while every layer below it is
+        matched by `if table in shapes` / `if entity in shapes` — a membership test that fails
+        closed and silently over an extractor that returned `{}`. So the carrier-anchored tool
+        answered `[]`, and `mcp:contract_diff` answered `{"findings": []}` under a description that
+        calls an empty list the evidence of zero drift, over a layer nothing had read: the measured
+        `Netflix/dispatch` failure arriving through the other door.
+        """
+        carrier = str(FIXTURES / "contract.json")
+        unreadable = {
+            "sqlalchemy": write(".py", "# no models here\nX = 1\n"),
+            "pydantic": write(".py", "# no DTOs here\nX = 1\n"),
+            "typescript": write(".ts", "// only a comment\n"),
+            "graphql": write(".graphql", "input UserWhereInput { id: ID }\n"),
+            "drizzle": write(".ts", "// no pgTable here\n"),
+        }
+        for layer, path in unreadable.items():
+            with self.subTest(layer=layer):
+                with self.assertRaises(shapes.EmptyExtraction) as caught:
+                    shapes.drift_check(carrier, **{layer: path})
+                sides = [s["layer"] for s in caught.exception.sides]
+                self.assertEqual(sides, [layer], f"the refusal must name {layer}, not the carrier")
+                self.assertIn(path, str(caught.exception))
+
+    def test_one_refusal_names_every_empty_layer_it_was_handed(self):
+        """Extraction happens up front for exactly this: an operator fixing extraction wants the
+        whole list, not whichever branch happened to run first."""
+        with self.assertRaises(shapes.EmptyExtraction) as caught:
+            shapes.drift_check(str(FIXTURES / "contract.json"),
+                               sqlalchemy=write(".py", "X = 1\n"),
+                               typescript=write(".ts", "// nothing\n"))
+        self.assertEqual(sorted(s["layer"] for s in caught.exception.sides),
+                         ["sqlalchemy", "typescript"])
+
+    def test_a_populated_layer_still_diffs(self):
+        """The refusal must not swallow the case it exists to separate from — the carrier door's
+        own version of `test_a_real_clean_diff_still_returns_no_findings`."""
+        findings = shapes.drift_check(str(FIXTURES / "contract.json"),
+                                      ddl=str(FIXTURES / "001_initial.sql"))
+        self.assertIsInstance(findings, list)
+
+    def test_a_file_that_does_not_parse_is_not_an_idiom_we_do_not_read(self):
+        """`_ModuleBatch` degrades over a NEIGHBOUR, and that guarantee used to cover the file the
+        caller named too — so an unparsable models.py surfaced as `0 entities (expected: declarative
+        classes with a __tablename__ …)`, which is a true sentence about the wrong problem. Same
+        flattening as an empty diff read as agreement, one level down."""
+        garbage = write(".py", "this is ((( not python\n")
+        for extractor in (shapes.extract_sqlalchemy, shapes.extract_pydantic):
+            with self.subTest(extractor=extractor.__name__):
+                with self.assertRaises(SyntaxError):
+                    extractor(garbage)
+
+    def test_a_neighbour_that_does_not_parse_still_degrades(self):
+        """The other side of the same line: somebody else's syntax error one import hop away must
+        not take down the file the operator actually asked about."""
+        root = pathlib.Path(write(".py", "")).parent / f"nb_{os.getpid()}"
+        root.mkdir(exist_ok=True)
+        (root / "__init__.py").write_text("", encoding="utf-8")
+        (root / "broken.py").write_text("not ((( python\n", encoding="utf-8")
+        main = root / "dto.py"
+        main.write_text("from pydantic import BaseModel\nfrom .broken import Missing\n\n"
+                        "class UserRead(BaseModel):\n    id: str\n", encoding="utf-8")
+        self.assertEqual(list(shapes.extract_pydantic(main)), ["UserRead"])
+
     def test_every_extractor_states_its_preconditions(self):
         """An enumeration that asserts a completeness it does not have is this repo's signature
         defect. A stack in EXTRACTORS with no `_EXTRACTOR_EXPECTS` entry refuses with a generic
@@ -449,6 +515,69 @@ class JustADTO(SomethingElse):
         self.assertNotIn("JustADTO", self.out)
         self.assertNotIn("NotATable", self.out)                     # __abstract__ = True
 
+    def test_a_computed_tablename_is_not_a_declared_one(self):
+        """`__tablename__ = PREFIX + "users"` is an expression, and `ast.unparse(...).strip("'\\"")`
+        turned it into the entity key `PREFIX + 'users` — mangled by the strip, carrying no
+        `entity_meta`, i.e. presented as a name this extractor READ. It also made the extraction
+        non-empty, so a models file whose classes all compute their table name defeated the
+        `EmptyExtraction` refusal with one fabricated entity per class."""
+        out = shapes.extract_sqlalchemy(write(".py", """
+from sqlalchemy import Column, String
+PREFIX = "app_"
+TABLES = {"thing": "things"}
+
+
+class User(Base):
+    __tablename__ = PREFIX + "users"
+    name = Column(String)
+
+
+class Order(Base):
+    __tablename__ = f"{PREFIX}orders"
+    ref = Column(String)
+
+
+class Thing(Base):
+    __tablename__ = TABLES["thing"]
+    label = Column(String)
+"""))
+        self.assertEqual(sorted(out), ["Order", "Thing", "User"], "keyed by class name, not by the "
+                                                                  "text of an expression")
+        for entity in out:
+            with self.subTest(entity=entity):
+                self.assertEqual(out.entity_meta[entity]["key_source"], "class_name")
+                self.assertIn("EXPRESSION", out.entity_meta[entity]["why"])
+        self.assertFalse([k for k in out if "+" in k or "'" in k or "{" in k],
+                         "an unparsed expression reached the caller as an entity name")
+
+    def test_a_file_of_only_computed_tablenames_does_not_defeat_the_refusal(self):
+        models = write(".py", "class User(Base):\n    __tablename__ = PREFIX + 'users'\n")
+        with self.assertRaises(shapes.EmptyExtraction):
+            shapes.reconcile_layers("sqlalchemy", models, "ddl", str(FIXTURES / "001_initial.sql"))
+
+    def test_the_leftmost_base_wins_a_column_two_of_them_declare(self):
+        """Python resolves `Thing(TimestampMixin, SoftDeleteMixin)` by MRO and MRO is leftmost-first;
+        merging the bases left-to-right with `dict.update` let the LAST one win, so the diff was
+        keyed on the type SQLAlchemy does not use. If mixin columns are the table's columns because
+        that is SQLAlchemy's own semantics, the order is part of the semantics."""
+        out = shapes.extract_sqlalchemy(write(".py", """
+from sqlalchemy import Column, Integer, String
+
+
+class TimestampMixin:
+    tag = Column(String)
+
+
+class SoftDeleteMixin:
+    tag = Column(Integer)
+
+
+class Thing(TimestampMixin, SoftDeleteMixin, Base):
+    __tablename__ = "things"
+    id = Column(Integer, primary_key=True)
+"""))
+        self.assertEqual(out["things"]["tag"]["type"], "string")
+
     def test_the_two_idioms_agree_on_the_same_schema(self):
         """A 1.x model and its 2.0 rewrite must extract to the same shapes, or the new path is a
         second engine rather than a second spelling."""
@@ -516,6 +645,66 @@ class UserRead(SomethingBase):
     email: str
 """))
         self.assertEqual(dict(out), {})
+
+    def test_a_field_argument_that_is_not_a_literal_does_not_kill_the_file(self):
+        """`Field(validation_alias=AliasChoices(...))` is what pydantic's own docs write and
+        `Field(max_length=MAX_LEN)` is what a project with a constants module writes. Both are
+        non-literal nodes, and `ast.literal_eval` raises `ValueError` on every one of them — so
+        reading a constraint used to take the whole file down, from a message naming no file and a
+        line number in a module the caller never passed. An unreadable constraint is simply not
+        reported; the field still is."""
+        out = shapes.extract_pydantic(write(".py", """
+from pydantic import AliasChoices, BaseModel, Field
+
+MAX_LEN = 40
+
+
+class UserRead(BaseModel):
+    email: str = Field(validation_alias=AliasChoices("email", "emailAddress"))
+    name: str = Field(max_length=MAX_LEN)
+    slug: str = Field(max_length=12)
+"""))
+        self.assertEqual(sorted(out["UserRead"]), ["email", "name", "slug"])
+        self.assertEqual(out["UserRead"]["slug"]["constraints"], {"max_length": 12},
+                         "a literal one is still read")
+        self.assertIsNone(out["UserRead"]["name"].get("constraints"))
+
+    def test_an_unreadable_constraint_in_a_BASE_does_not_kill_the_file_either(self):
+        """The base-chain resolver made this reachable from a neighbour the operator never named:
+        the crash came out of a file that is not the one on the command line."""
+        root = pathlib.Path(tempfile.mkdtemp())
+        (root / "app").mkdir()
+        (root / "app" / "__init__.py").write_text("", encoding="utf-8")
+        (root / "app" / "base.py").write_text(
+            "from pydantic import AliasChoices, BaseModel, Field\n\n\n"
+            "class ProjectBase(BaseModel):\n"
+            '    email: str = Field(validation_alias=AliasChoices("email", "emailAddress"))\n',
+            encoding="utf-8")
+        dto = root / "app" / "schemas.py"
+        dto.write_text("from app.base import ProjectBase\n\n\nclass UserRead(ProjectBase):\n"
+                       "    id: str\n", encoding="utf-8")
+        out = shapes.extract_pydantic(dto)
+        self.assertEqual(sorted(out["UserRead"]), ["email", "id"])
+
+    def test_the_leftmost_base_wins_a_field_two_of_them_declare(self):
+        """`typing.get_type_hints` on the equivalent classes answers `Left`'s annotation, because
+        pydantic builds its fields off the MRO. Merging bases left-to-right answered `Right`'s."""
+        out = shapes.extract_pydantic(write(".py", """
+from pydantic import BaseModel
+
+
+class Left(BaseModel):
+    status: int
+
+
+class Right(BaseModel):
+    status: str
+
+
+class Child(Left, Right):
+    pass
+"""))
+        self.assertEqual(out["Child"]["status"]["type"], "int")
 
     def test_a_collection_field_is_undecided_rather_than_a_sentinel(self):
         """`relationship` is an internal marker, not one of CANONICAL. It used to reach the diff as

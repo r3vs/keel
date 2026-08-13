@@ -27,7 +27,11 @@ not a hole this gate can close, and it is written down rather than left implied.
 """
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -101,6 +105,18 @@ class TestCollidingSkillsTeachTheQualifiedName(unittest.TestCase):
             with self.subTest(skill=skill):
                 self.assertIn(skill, packaging)
 
+    def _install(self, target: Path, *flags: str, env: dict | None = None):
+        """Run the real installer at `target`, with every host directory it writes to redirected
+        into the same throwaway tree. Nothing here may touch the developer's own `~`."""
+        home = target.parent
+        environment = dict(os.environ,
+                           HOME=str(home), OPENCODE_DIR=str(home / "opencode"),
+                           PI_DIR=str(home / "pi"), CODEX_DIR=str(home / "codex"), **(env or {}))
+        return subprocess.run([shutil.which("bash") or "bash",
+                               str(ROOT / "scripts" / "install.sh"), str(target), *flags],
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              env=environment)
+
     def test_the_installer_itself_refuses_the_override_by_default(self):
         """The other half of the same residual, and the half that reaches somebody.
 
@@ -109,21 +125,40 @@ class TestCollidingSkillsTeachTheQualifiedName(unittest.TestCase):
         hand. So the script says it too, and — because a warning that scrolls past is a warning an
         unattended run cannot read — it **refuses** unless told otherwise.
 
-        Asserted as behaviour rather than as wording: a target with a `.claude` component, an
-        explicit opt-in flag, and a default that is refusal. What the message says is prose and may
-        be improved; that there is a branch at all is the gate.
+        Asserted by RUNNING it, which this test claimed to do while matching three substrings of the
+        script's source: `.claude/`, `--claude-personal`, `-t 0`. Turning `exit 3` into `exit 0`, or
+        inverting the guard's own condition, leaves all three present and the test green — a gate
+        that passes on a guard someone disarmed is the source-text anti-pattern
+        `tests/test_app_javascript.py` quotes `test_map.py` about (*"would pass on a renderer that
+        never runs"*). Two legs, because the guard is two facts: with no tty and no flag it refuses
+        and places nothing, and the opt-in is a real door rather than a documented one.
         """
-        script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-        self.assertIn(".claude/", script,
-                      "scripts/install.sh does not look at its target at all — pointing it at "
-                      "~/.claude/skills replaces the bundled /code-review with no warning from "
-                      "any host, and now from us either")
-        self.assertIn("--claude-personal", script,
-                      "there is no way to mean it: a guard with no opt-in is a guard someone "
-                      "removes rather than satisfies")
-        self.assertRegex(script, r"-t 0",
-                         "the guard does not distinguish a person from a script; a non-interactive "
-                         "run must refuse rather than fall through to the override")
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "home" / ".claude" / "skills"
+            r = self._install(target)
+            self.assertEqual(r.returncode, 3,
+                             f"install.sh did not refuse an override target — it exited "
+                             f"{r.returncode}.\n{r.stdout}\n{r.stderr}")
+            self.assertFalse(target.exists() and any(target.iterdir()),
+                             "install.sh refused and placed something anyway; 'nothing was placed' "
+                             "is the sentence it prints and the property that matters")
+            self.assertIn(".claude", r.stderr, "the refusal never says what it objected to")
+
+    def test_the_opt_in_is_a_door_and_not_only_a_documented_one(self):
+        """`--claude-personal` must actually get through, or the guard is a wall with a sign on it.
+
+        The same run proves the other half of the refusal above: the skills DO land when somebody
+        means it, so the empty directory in that test is the guard's doing and not a broken script.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "home" / ".claude" / "skills"
+            r = self._install(target, "--claude-personal")
+            self.assertEqual(r.returncode, 0, f"{r.stdout}\n{r.stderr}")
+            placed = sorted(p.name for p in target.iterdir()) if target.exists() else []
+            self.assertTrue(placed, "the opt-in got through and placed no skill at all")
+            self.assertIn("code-review", placed,
+                          "the skill whose bundled twin this whole guard is about did not land, so "
+                          "the run proves nothing about the override it warns of")
 
 
 if __name__ == "__main__":

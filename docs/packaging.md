@@ -178,8 +178,8 @@ docstring is not the payload**: FastMCP splits a tool's docstring, sending the p
 as `description` and moving each `Args:` entry into the matching property's `description` inside
 `inputSchema` — checked on the wire against `ledger_summary`, whose `ledger: Path to ledger.json.`
 arrives inside the schema and not in the description. So counting docstrings sees about half the
-truth: ~51 k characters of docstring against ~98 k on the wire. And **the schema is most of the
-cost**: median description 372 characters inside a median tool object of ~1,410.
+truth: ~54 k characters of docstring against ~98 k on the wire. And **the schema is most of the
+cost**: median description 410 characters inside a median tool object of ~1,410.
 
 **Per host, and only the first row is a verified mechanism:**
 
@@ -501,8 +501,9 @@ an unsupported result.
 over on request was half a fix: the person about to fire it is at a terminal, not in this file. Any
 target with a `.claude` component now prints the consequence above and stops — interactively it asks
 for the word `override`, and with no tty on stdin it exits 3 having placed nothing, so an unattended
-run cannot take the branch nobody would be there to read. `--claude-personal` is how someone who
-means it says so, and it is the only way through.
+run cannot take the branch nobody would be there to read. There are exactly two ways through and
+both require somebody to mean it: `--claude-personal` up front, or typing `override` at the prompt
+— which only exists when a person is there to type it. Nothing gets through by scrolling past.
 
 `tests/test_name_collision.py` holds this shut, and its subject is the class rather than the
 instance: the colliding set is **derived** — `build.shipped_skills()` intersected with Claude Code's

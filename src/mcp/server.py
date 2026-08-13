@@ -260,6 +260,17 @@ def _no_question_was_put() -> tuple:
         class to `MCPError` there and leaves no alias, so a single name would go quietly blind at
         the pin this whole fix is aimed at.
 
+        **The admission this class carries, stated because it is latent rather than absent:**
+        `BaseSession.send_request` raises `McpError` from a second site — expiry of
+        `anyio.fail_after(timeout)` — and *that* case is a question that WAS put, possibly with a
+        human looking at it, which degrading would answer on the agent's behalf. It cannot fire in
+        the shipped configuration and that was checked at the constructor, not assumed:
+        `ServerSession.__init__` calls `super().__init__` with no `read_timeout_seconds`, and every
+        call site that passes one in `mcp/` is client-side or the in-memory test harness, so the
+        timeout is `None` and `fail_after(None)` never expires. If a future SDK gives a server
+        session a default read timeout, this allowlist stops being safe and the timeout has to be
+        told apart from the error reply — by message or by a narrower class — before it is admitted.
+
     **What is deliberately NOT here — found by running the suite, not by reasoning about it.** A
     reply that arrived and cannot be attributed. A `list[str]` response type compiles to an enum
     schema, so an answer outside it raises pydantic's `ValidationError` out of
@@ -568,10 +579,14 @@ async def ledger_record_decision(
     remediation, its dependents, and the reopen loop.
 
     Two paths, and the tool chooses — you do not:
-      * If the host supports elicitation, THIS SERVER asks the user directly, and whatever you
-        passed as option_id/human_answer is ignored. The answer never travels through you.
-      * Otherwise you must relay: option_id from the pin's own offered options (or "freeform" where
-        allowed), and human_answer quoting the user verbatim. Recorded as the weaker rung.
+      * If the host supports elicitation AND the door opens, THIS SERVER asks the user and the
+        answer REPLACES whatever you passed. Recorded as `elicited`.
+      * Otherwise you are relaying: option_id from the pin's own offered options (or "freeform"
+        where allowed), and human_answer quoting the user verbatim. Recorded as `transcribed`.
+
+    "Otherwise" includes a host that declares elicitation on a connection carrying no back-channel
+    for it: the question is never put, so what you passed is what gets written. Nothing discards it
+    — never compose an answer the user did not give.
 
     Either way the outcome must be one the pin's `question` actually offered. Read it first with
     `interview_next`, or `ledger_summary` for the pin list.
@@ -585,8 +600,8 @@ async def ledger_record_decision(
         pin_id: The pin being decided.
         rationale: Why this outcome — the reasoning, not the restatement.
         flip_criteria: What would reopen this. Required: a decision with no reopen condition fossilizes.
-        option_id: Id of the elected option, or "freeform". Ignored on the elicitation path.
-        human_answer: The user's answer, verbatim. Required when relaying.
+        option_id: Id of the elected option, or "freeform". Replaced by the user's answer when the elicitation door opens; used as passed when it does not.
+        human_answer: The user's answer, verbatim. Required when relaying — and a declared elicitation capability does not mean you are not.
         accept_as_is: Leave a design_concern as it is (state `accepted`).
     """
     prompt = tools.decision_prompt(ledger, pin_id)
@@ -759,11 +774,13 @@ async def ledger_record_policy(
     that does not offer it comes back in `not_offered`, still open, and you ask it.
 
     Two paths, and the tool chooses — you do not:
-      * If the host supports elicitation, THIS SERVER puts the rule, the outcome it will write, and
-        the pins it would decide to the user, and writes only if they accept. The answer never
-        travels through you.
-      * Otherwise you must relay, quoting the user verbatim in `human_answer`. Recorded as the
-        weaker rung.
+      * If the host supports elicitation AND the door opens, THIS SERVER puts the rule, the outcome
+        it will write, and the pins it would decide to the user, and writes only if they accept.
+        Recorded as `elicited`.
+      * Otherwise you are relaying, quoting the user verbatim in `human_answer`. Recorded as
+        `transcribed` — and "otherwise" includes a host that declares elicitation on a connection
+        with no back-channel: the offer is never put, and your `human_answer` is what gets
+        written. Do not compose one.
 
     Take a catalog offer with `offer_id` alone (read them from `interview_seed_policies`); its rule,
     scope and outcome are copied verbatim and restating them is refused. For a policy the catalog
@@ -1470,7 +1487,8 @@ async def contract_diff(
 
     Deterministic and tech-stack agnostic: each layer is read only through its own type system,
     never guessed from names or comments. Returns `{"findings": [...]}`; an empty `findings` is
-    zero drift, and IS the evidence — so a carrier with no entities ERRORS instead.
+    zero drift, and IS the evidence — so any side that read NOTHING errors instead, carrier and
+    layer alike, naming it and the idiom its extractor needed to see.
 
     Args:
         contract: Path to the contract carrier (the source of truth for correspondence).

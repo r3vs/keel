@@ -862,6 +862,34 @@ class TestADeclaredDoorThatDoesNotOpen(_Session):
         with open(path, encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["policies"][-1]["evidence"], "transcribed")
 
+    def test_the_surface_does_not_promise_the_relayed_answer_is_discarded(self):
+        """The description an agent picks by, held against what this very class proves happens.
+
+        Both decision tools told the agent: *"If the host supports elicitation, THIS SERVER asks the
+        user directly, and whatever you passed as option_id/human_answer is ignored. The answer
+        never travels through you."* This client declares elicitation, the door does not open, and
+        the test above shows the agent's own `option_id`/`human_answer` written into the ledger. So
+        the promise was false on a path the suite exercises — and the harm is not wording: an agent
+        that believes its arguments are discarded has no reason to have actually ASKED before
+        filling them in, and the string it composed is then recorded verbatim as `human_answer`.
+
+        Prose is the artifact under test here, because the description IS the surface: it travels on
+        the wire, and it is all the agent has when choosing what to pass. Asserted on both halves
+        FastMCP splits a docstring into — the prose before `Args:` becomes `description`, each
+        `Args:` entry moves into the matching property of `inputSchema`.
+        """
+        for name in ("ledger_record_decision", "ledger_record_policy"):
+            with self.subTest(tool=name):
+                served = (self.tools[name].get("description") or "") + json.dumps(
+                    self.tools[name]["inputSchema"])
+                for promise in ("is ignored", "never travels through you", "are ignored"):
+                    self.assertNotIn(
+                        promise, served,
+                        f"{name} still promises the relayed answer is discarded, on a connection "
+                        f"where this class just watched it be written")
+                self.assertIn("transcribed", served,
+                              "the surface must name the rung a relayed answer lands on")
+
     def test_a_caller_that_relayed_nothing_is_told_what_to_relay_and_where_the_door_is(self):
         """Degrading is not the same as writing. With the door shut AND nothing relayed, the only
         outcome available would be one the agent composed, so this refuses — and a refusal an agent

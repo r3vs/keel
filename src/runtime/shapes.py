@@ -20,7 +20,10 @@ projections. The three honesty rules are enforced:
   1. uncertain equivalence → `confidence: ambiguous`, downgraded to a note, never asserted;
   2. a field absent on one side IS the finding (missing_field) — never papered over;
   3. a side that extracted NOTHING is a refusal (`EmptyExtraction`), never an empty finding list —
-     "I parsed neither layer" and "these layers agree" must not be the same value.
+     "I parsed neither layer" and "these layers agree" must not be the same value. Enforced at
+     every entry point that extracts: `drift_check` (carrier AND each layer it was handed),
+     `reconcile_layers`, `propose_correspondence`. `diff_shapes` takes two dicts somebody else
+     extracted and cannot tell an empty one from an empty file, so it is not one of them.
 Structural noise is classified rather than filtered: a finding may carry `structural_tier`,
 `relation_pair`/`relation_role` or `entity_key_source`, and carries its own kind and count either
 way, so a clustering pass can fold it and a measurement can still count it.
@@ -268,30 +271,46 @@ class _ModuleBatch:
     ancestors, so `from dispatch.models import X` inside `<root>/src/dispatch/incident/models.py`
     finds `<root>/src/dispatch/models.py`); a name that does not resolve stays unresolved.
 
-    Degrades rather than fails: an unreadable or unparsable neighbour yields no classes, never an
-    exception, because a extractor that dies on somebody else's syntax error reads nothing at all.
+    Degrades rather than fails: an unreadable or unparsable NEIGHBOUR yields no classes, never an
+    exception, because an extractor that dies on somebody else's syntax error reads nothing at all.
+    The file the caller HANDED IN is not a neighbour — see `module(primary=True)`.
     """
 
     def __init__(self, hops: int = _MAX_IMPORT_HOPS):
         self.hops = hops
         self._cache: dict[pathlib.Path, tuple] = {}
 
-    def module(self, path: str | pathlib.Path) -> tuple[Optional[ast.Module], dict]:
-        """`(tree, {class name: ClassDef})` for a file, parsed at most once per batch."""
+    def module(self, path: str | pathlib.Path,
+               primary: bool = False) -> tuple[Optional[ast.Module], dict]:
+        """`(tree, {class name: ClassDef})` for a file, parsed at most once per batch.
+
+        `primary=True` for the file the CALLER named: its own failure to read or parse is re-raised
+        instead of degrading to no classes. The two answers are different findings and the operator
+        acts on them differently — *this file does not parse* versus *this file uses an idiom the
+        extractor does not read* — and the degradation flattened the first onto the second, because
+        an empty extraction now surfaces as `EmptyExtraction`, whose message states the idiom it
+        expected and says nothing about syntax. Same flattening as an empty diff read as agreement,
+        one level down. A realistic trigger, not a hypothetical: a PEP 695 `type` statement read by
+        an older interpreter on a matrix leg.
+        """
         path = pathlib.Path(path)
         try:
             key = path.resolve()
         except OSError:
             key = path
         if key not in self._cache:
+            failure = None
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError, SyntaxError, UnicodeDecodeError):
-                tree = None
+            except (OSError, ValueError, SyntaxError, UnicodeDecodeError) as exc:
+                tree, failure = None, exc
             classes = ({n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
                        if tree is not None else {})
-            self._cache[key] = (tree, classes)
-        return self._cache[key]
+            self._cache[key] = (tree, classes, failure)
+        tree, classes, failure = self._cache[key]
+        if primary and failure is not None:
+            raise failure
+        return tree, classes
 
     def _import_target(self, path: pathlib.Path, tree: ast.Module,
                        name: str) -> Optional[pathlib.Path]:
@@ -428,6 +447,29 @@ def _kw_true(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is True
 
 
+def _literal(node: ast.expr):
+    """The constant an argument spells, or None when it does not spell one.
+
+    `ast.literal_eval` raises `ValueError` on every node that is not a literal — a `Name`, an
+    `Attribute`, a `Call`, even a `"a" + "b"` (verified on 3.11) — and idiomatic code spells all of
+    them at exactly the keywords this module reads: `Field(max_length=MAX_LEN)`,
+    `Field(validation_alias=AliasChoices("email", "emailAddress"))`, `Column(String(SIZE))`. A
+    constraint this extractor cannot read is a constraint it does not report — the same degradation
+    every other unresolved value here takes — and never a reason for the whole file to fail, which
+    would take the module's other classes down with it (`_ModuleBatch`'s stated guarantee, which
+    covered the parse and not the class-body walk that follows it).
+
+    The exception list is the documented one rather than the one observed once: *"Raises ValueError,
+    TypeError, SyntaxError, MemoryError and RecursionError depending on the malformed input"*
+    (`ast.literal_eval`). Catching only the `ValueError` this repo happened to reproduce is how the
+    SQLAlchemy side got its guard and how the Pydantic side got none.
+    """
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return None
+
+
 def _sqla_arg_type(arg: ast.expr, enums: dict[str, list]) -> tuple[Optional[str], Optional[list],
                                                                    dict]:
     """One positional argument of a `Column(...)`/`mapped_column(...)` call →
@@ -441,16 +483,14 @@ def _sqla_arg_type(arg: ast.expr, enums: dict[str, list]) -> tuple[Optional[str]
         return None, None, cons
     fn = ast.unparse(arg.func).split(".")[-1]
     if fn == "ForeignKey" and arg.args:
-        try:
-            cons["foreign_key"] = ast.literal_eval(arg.args[0])
-        except ValueError:
-            pass
+        target = _literal(arg.args[0])
+        if target is not None:
+            cons["foreign_key"] = target
         return None, None, cons
     if fn in _SQLA_SIZED and arg.args:
-        try:
-            cons["max_length"] = ast.literal_eval(arg.args[0])
-        except ValueError:
-            pass
+        size = _literal(arg.args[0])
+        if size is not None:
+            cons["max_length"] = size
     if fn == "Enum":
         values = [a.value for a in arg.args
                   if isinstance(a, ast.Constant) and isinstance(a.value, str)]
@@ -509,14 +549,31 @@ def _class_flag_true(node: ast.ClassDef, name: str) -> bool:
     return False
 
 
-def _declares_tablename(node: ast.ClassDef) -> Optional[str]:
-    """The literal `__tablename__ = "x"`, or None. A `@declared_attr` FUNCTION named
-    `__tablename__` is not a literal: it computes the name at class-definition time, which this
-    extractor does not execute — see `_base_computes_tablename`."""
+def _assigns_tablename(node: ast.ClassDef) -> Optional[ast.expr]:
+    """The right-hand side of this class's own `__tablename__ = …`, or None if it has none."""
     for stmt in node.body:
         if isinstance(stmt, ast.Assign) \
                 and any(getattr(t, "id", "") == "__tablename__" for t in stmt.targets):
-            return ast.unparse(stmt.value).strip("'\"")
+            return stmt.value
+    return None
+
+
+def _declares_tablename(node: ast.ClassDef) -> Optional[str]:
+    """The **string literal** `__tablename__ = "x"`, or None. A `@declared_attr` FUNCTION named
+    `__tablename__` is not a literal: it computes the name at class-definition time, which this
+    extractor does not execute — see `_base_computes_tablename`.
+
+    Neither is `__tablename__ = PREFIX + "users"`, `f"{PREFIX}orders"` or `TABLES["thing"]`, and
+    that case used to reach the caller as `ast.unparse(...).strip("'\\"")` — the *expression text*,
+    mangled by the strip (`PREFIX + 'users`), keyed as an entity and carrying no `entity_meta`, i.e.
+    indistinguishable from a table name this extractor actually read. It also made the extraction
+    non-empty, so a models file whose classes all compute their table name defeated the
+    `EmptyExtraction` refusal with one fabricated zero-field entity. Returning None sends such a
+    class down the honest path: keyed by CLASS NAME, with `key_source` saying so.
+    """
+    value = _assigns_tablename(node)
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return value.value
     return None
 
 
@@ -578,6 +635,14 @@ def _sqla_columns(node: ast.ClassDef, tree: ast.Module, path: pathlib.Path,
     so `Incident(Base, TimeStampMixin)` carries `created_at`. Resolution is the batch's: same file,
     then bounded static import hops. What stays out of reach and is NOT guessed at: a
     `@declared_attr` method returning a `Column` (the column exists only after the function runs).
+
+    Bases are merged **rightmost first** so that the LEFTMOST one wins a name both declare, which is
+    the same semantics: Python resolves `Thing(TimestampMixin, SoftDeleteMixin)` by MRO, and MRO
+    puts the leftmost base first. Merging left-to-right — the obvious loop, and what this did — let
+    the LAST base win, so a column the ORM actually resolves to `TimestampMixin` was extracted with
+    `SoftDeleteMixin`'s type and the diff was keyed on the wrong side of the conflict. If the
+    justification for merging at all is "that is SQLAlchemy's own semantics", the order is part of
+    the semantics rather than a free choice. Own body last, so a class's own column beats any base.
     """
     _seen = set() if _seen is None else _seen
     ident = (str(path), node.name)
@@ -585,7 +650,7 @@ def _sqla_columns(node: ast.ClassDef, tree: ast.Module, path: pathlib.Path,
         return {}
     _seen.add(ident)
     fields: dict[str, dict] = {}
-    for base in _base_names(node):
+    for base in reversed(_base_names(node)):
         found = batch.resolve(path, tree, base)
         if not found:
             continue
@@ -641,9 +706,7 @@ def extract_sqlalchemy(path: str | pathlib.Path) -> Extraction:
     """
     path = pathlib.Path(path)
     batch = _ModuleBatch()
-    tree, _ = batch.module(path)
-    if tree is None:
-        return Extraction()
+    tree, _ = batch.module(path, primary=True)   # this file's own syntax error is not a null result
     enums = _collect_py_enums(tree)
     out = Extraction()
     for node in tree.body:
@@ -659,14 +722,18 @@ def extract_sqlalchemy(path: str | pathlib.Path) -> Extraction:
         if not fields or not _is_mapped_class(node, tree, path, batch):
             continue                       # no table name and no columns: not a mapped class
         out[node.name] = fields
-        out.entity_meta[node.name] = {
-            "key_source": "class_name",
-            "why": ("no `__tablename__` here; a base class declares it and SQLAlchemy computes the "
-                    "real table name at class-definition time, which this extractor does not "
-                    "execute" if _base_computes_tablename(node, tree, path, batch) else
-                    "no `__tablename__` anywhere inside the parse batch; a declarative class with "
-                    "columns and no table name either inherits one or is a mixin"),
-        }
+        if _assigns_tablename(node) is not None:
+            why = ("`__tablename__` here is an EXPRESSION, not a literal (`PREFIX + \"users\"`, an "
+                   "f-string, a table registry lookup); the real name exists only once that "
+                   "expression runs, which this extractor does not do")
+        elif _base_computes_tablename(node, tree, path, batch):
+            why = ("no `__tablename__` here; a base class declares it and SQLAlchemy computes the "
+                   "real table name at class-definition time, which this extractor does not "
+                   "execute")
+        else:
+            why = ("no `__tablename__` anywhere inside the parse batch; a declarative class with "
+                   "columns and no table name either inherits one or is a mixin")
+        out.entity_meta[node.name] = {"key_source": "class_name", "why": why}
     return out
 
 
@@ -725,6 +792,10 @@ def _pydantic_fields(node: ast.ClassDef, tree: ast.Module, path: pathlib.Path,
                      _seen: Optional[set] = None) -> dict[str, dict]:
     """A DTO's fields, its inherited ones included — bases resolved across the same parse batch,
     each base read with ITS OWN module's `Literal` aliases (an enum is defined where it is written).
+
+    Bases are merged **rightmost first**, so the leftmost wins a field two of them declare — what
+    `typing.get_type_hints` answers for the same classes, because pydantic builds its fields off the
+    MRO and the MRO is leftmost-first. See `_sqla_columns` for the same rule and the same reason.
     """
     _seen = set() if _seen is None else _seen
     ident = (str(path), node.name)
@@ -732,7 +803,7 @@ def _pydantic_fields(node: ast.ClassDef, tree: ast.Module, path: pathlib.Path,
         return {}
     _seen.add(ident)
     fields: dict[str, dict] = {}
-    for base in _base_names(node):
+    for base in reversed(_base_names(node)):
         found = batch.resolve(path, tree, base)
         if not found:
             continue
@@ -757,10 +828,14 @@ def _pydantic_fields(node: ast.ClassDef, tree: ast.Module, path: pathlib.Path,
         constraints = {}
         if isinstance(stmt.value, ast.Call) and ast.unparse(stmt.value.func) == "Field":
             for kw in stmt.value.keywords:
-                if kw.arg == "max_length":
-                    constraints["max_length"] = ast.literal_eval(kw.value)
-                if kw.arg == "validation_alias":
-                    constraints["validation_alias"] = ast.literal_eval(kw.value)
+                # `_literal`, not a bare `literal_eval`: `validation_alias=AliasChoices(…)` is what
+                # pydantic v2's own docs write, and `max_length=MAX_LEN` is what a project with a
+                # constants module writes. Both are non-literal nodes, and reading them as one used
+                # to raise out of here — naming no file, from a neighbour the caller never passed.
+                if kw.arg in ("max_length", "validation_alias"):
+                    value = _literal(kw.value)
+                    if value is not None:
+                        constraints[kw.arg] = value
         conf = "extracted" if t != "unknown" else "ambiguous"
         fields[name] = descriptor(name, t, nullable, ev, constraints or None, conf)
     return fields
@@ -770,9 +845,7 @@ def extract_pydantic(path: str | pathlib.Path) -> Extraction:
     """Returns per-CLASS shapes (UserRead, UserCreate, …); mapping to entities is diff's job."""
     path = pathlib.Path(path)
     batch = _ModuleBatch()
-    tree, _ = batch.module(path)
-    if tree is None:
-        return Extraction()
+    tree, _ = batch.module(path, primary=True)   # this file's own syntax error is not a null result
     enums = _literal_aliases(tree)
     out = Extraction()
     for node in tree.body:
@@ -1245,7 +1318,12 @@ def _tag_relation_pairs(findings: list[dict]) -> None:
 
     A DB keeps the foreign key as a scalar column (`author_id`); an API exposes the related object
     (`author`). The diff is right about both — the scalar is on one side only and so is the object —
-    but a reader counting findings counts the same fact twice. Measured on keystone: 159 of 1,770.
+    but a reader counting findings counts the same fact twice. Measured on keystone, and the count
+    is `docs/measurements.md`'s to state: this docstring carried a bare figure that the same page's
+    postscript had already replaced with a smaller and better-founded one, because the old figure
+    was the whole of `missing_field` + `extra_field` while the virtual counters (`postsCount`) are
+    not relation pairs at all. A measured number restated away from its provenance stamp goes stale
+    exactly like that, which is why that page forbids it.
 
     This CLASSIFIES; it does not suppress. Both findings survive with their kinds and details
     intact, each carrying `relation_pair` (the shared stem) and `relation_role`, so a clustering or
@@ -1467,14 +1545,40 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
     and rescue's contract-reconciliation core, pointed at a shared-types-style carrier.
 
     `backend` routes the TS/GraphQL layers to the tree-sitter parse when "auto"/"treesitter"
-    (the other layers already use `ast`/robust parsers); default "regex" keeps it stdlib-only."""
+    (the other layers already use `ast`/robust parsers); default "regex" keeps it stdlib-only.
+
+    **Honesty rule 3 applies to every side, not only to the carrier**, and that is the whole reason
+    the extraction happens up front here instead of inside each branch. Each layer below is matched
+    against the carrier by a membership test — `if table in shapes`, `if entity in shapes` — which
+    fails closed and *silently* over an extractor that returned `{}`, so this function answered
+    `[]`, and `mcp:contract_diff` answered `{"findings": []}` with "an empty findings is zero drift,
+    and IS the evidence" written on the tool, over a layer nothing had read. That is the measured
+    `Netflix/dispatch` failure (`docs/measurements.md`) arriving through the carrier door — the door
+    the playbooks reach for FIRST — while `reconcile_layers` and `propose_correspondence` refused it.
+    Every side is extracted before any is diffed so one `EmptyExtraction` can name them all: an
+    operator fixing extraction wants the whole list, not the first one."""
     contract = extract_contract(contract_path)
-    _refuse_if_empty(("contract", contract_path, contract))   # an empty carrier proves nothing
+    sides: list[tuple[str, str, dict]] = [("contract", contract_path, contract)]
+    read: dict[str, dict] = {}
+    for layer, path, extract in (
+            ("ddl", ddl, extract_ddl),
+            ("drizzle", drizzle, extract_drizzle),
+            ("prisma", prisma, extract_prisma),
+            ("django", django, extract_django),
+            ("graphql", graphql, lambda p: extract_graphql(p, backend=backend)),
+            ("sqlalchemy", sqlalchemy, extract_sqlalchemy),
+            ("pydantic", pydantic, extract_pydantic),
+            ("typescript", typescript, lambda p: extract_typescript(p, backend=backend))):
+        if not path:
+            continue
+        read[layer] = extract(path)
+        sides.append((layer, path, read[layer]))
+    _refuse_if_empty(*sides)          # an empty carrier proves nothing; nor does an empty layer
     tables = contract_tables(contract_path)
     findings: list[dict] = []
 
     if ddl:
-        shapes = extract_ddl(ddl)
+        shapes = read["ddl"]
         for table, entity in tables.items():
             if table not in shapes:
                 findings.append({"entity": entity, "field": "*", "kind": "missing_entity",
@@ -1483,29 +1587,28 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                 continue
             findings += diff_shapes(contract[entity], shapes[table], "contract", "db", entity)
     if drizzle:            # table-keyed, like DDL (an ORM layer)
-        shapes = extract_drizzle(drizzle)
+        shapes = read["drizzle"]
         for table, entity in tables.items():
             if table in shapes:
                 findings += diff_shapes(contract[entity], shapes[table],
                                         "contract", "orm:drizzle", entity)
-    for label, path, fn in (("orm:prisma", prisma, extract_prisma),
-                            ("orm:django", django, extract_django),
-                            ("api:graphql", graphql, extract_graphql)):
-        if not path:
+    for label, layer in (("orm:prisma", "prisma"), ("orm:django", "django"),
+                         ("api:graphql", "graphql")):
+        if layer not in read:
             continue
-        shapes = fn(path, backend=backend) if fn is extract_graphql else fn(path)
+        shapes = read[layer]
         for entity in contract:
             if entity in shapes:
                 findings += diff_shapes(contract[entity], shapes[entity],
                                         "contract", label, entity)
     if sqlalchemy:
-        shapes = extract_sqlalchemy(sqlalchemy)
+        shapes = read["sqlalchemy"]
         for table, entity in tables.items():
             if table in shapes:
                 findings += diff_shapes(contract[entity], shapes[table],
                                         "contract", "orm", entity)
     if pydantic:
-        classes = extract_pydantic(pydantic)
+        classes = read["pydantic"]
         for entity in contract:
             if f"{entity}Read" in classes:
                 findings += diff_shapes(contract[entity], classes[f"{entity}Read"],
@@ -1514,7 +1617,7 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
                 findings += diff_shapes(contract[entity], classes[f"{entity}Create"],
                                         "contract", "api:create", entity, partial=True)
     if typescript:
-        interfaces = extract_typescript(typescript, backend=backend)
+        interfaces = read["typescript"]
         for entity in contract:
             if entity in interfaces:
                 findings += diff_shapes(contract[entity], interfaces[entity],
