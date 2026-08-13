@@ -259,7 +259,8 @@ its consumer. **No host's `initialize` was captured on the wire**, so this is me
 | **Pi**, through our own bridge | **no** — the bridge sends `capabilities: {}` | not rendered |
 
 **What our own call puts on the wire** — the link both positive rows depend on, and the one the
-audits left open. Verified here by execution, not reading: `server.py:233` calls
+audits left open. Verified here by execution, not reading: `server.py::_ask` — the one function
+every elicitation on this server now goes through — calls
 `ctx.elicit(message, choices)` with a `list[str]`; under the pinned `fastmcp==3.4.4`,
 `fastmcp/server/elicitation.py::_parse_list_syntax` takes the list branch and returns an
 `ElicitConfig` whose `.schema` is
@@ -323,12 +324,15 @@ tool's return value.
   extra key from a future FastMCP silently degrades the rich Select to nothing — version coupling,
   not stability. And `exec/src/lib.rs::canceled_mcp_server_elicitation_response` makes headless
   `codex exec` answer `Cancel` while still declaring the capability: `_client_can_elicit` returns
-  True with no human present, `ctx.elicit` yields a non-`AcceptedElicitation`, and `server.py:237`
+  True with no human present, `ctx.elicit` yields a non-`AcceptedElicitation`, and
+  `ledger_record_decision`'s `not isinstance(result, AcceptedElicitation)` branch
   raises rather than writing one. That is the correct refusal to fabricate, but it means a
   non-interactive Codex run **errors instead of degrading to the transcribed rung** — a real
   behaviour, not detectable from the capability, and a decision to make deliberately if we want it
-  to relay. **Read at `main` with no release tag pinned**, so treat the line numbers as a moving
-  target and the facts as of the audit date.
+  to relay. This is deliberately **not** what the `_ask` backstop changed: a cancel is a *value*, so
+  it still hard-refuses; only a door that never opened degrades. **Read at `main` with no release tag
+  pinned**, so treat the facts as of the audit date — and note that both citations here were line
+  numbers until the code moved under them, which is why they are symbols now.
 - **opencode — does not declare it, and would not render it.** `packages/opencode/src/mcp/index.ts::
   createClient()` is the sole construction site for real connections; its `CLIENT_OPTIONS.capabilities`
   contains `roots: {}` only, with `// elicitation: {},` commented out beside an issue link. That value

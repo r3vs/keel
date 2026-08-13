@@ -167,6 +167,7 @@ python scripts/verify_commands.py      # every agent-facing COMMAND resolves aft
 python scripts/run_evals.py --validate # each skill's evals.json is well-formed (structure, not behaviour)
 python -m unittest discover -s tests   # ledger runtime, MCP tools + server, ledger gate, installed package
 (cd src/workflow && npm test)          # the 7 TypeScript suites that ship inside keel-core (node 22)
+node --experimental-strip-types src/workflow/__tests__/mcp-apps.ts  # the two MCP apps' JS: parsed, then RUN against a stub DOM (node 22 + a python)
 bash src/tools/bootstrap.sh            # toolchain + uv (idempotent, best-effort, never hard-fails)
 bash scripts/install.sh                # link the built skills into ~/.agents/skills (opencode + Pi)
 ```
@@ -191,12 +192,18 @@ runner's own words and a `::notice` saying NOT RUN — which is deliberately *no
 regression. Blocking `--validate` in `checks` is unchanged and is the line in the block above.
 
 Two shapes in that file are newer than the one-line-per-gate reading. The `checks` job is a
-**matrix** — Python 3.12/3.13/3.14 on ubuntu plus one macOS 3.12 leg, `fail-fast: false` — so a green
-run is a claim about four environments rather than one, and macOS is this repo's first non-Linux
-coverage ever (treat a first failure there as a finding about the code, not about the workflow). And
-`npm test` runs in its own **blocking** `workflow-engine` job on node 22, because `src/workflow/` is
-TypeScript that ships inside `keel-core`: it is product code with its own runner, and a suite nothing
-executes is the same object as no suite.
+**matrix** — Python 3.10 through 3.14 on ubuntu plus one macOS 3.12 leg, `fail-fast: false` — so a
+green run is a claim about six environments rather than one, and macOS is this repo's first
+non-Linux coverage ever (treat a first failure there as a finding about the code, not about the
+workflow). That interpreter list is **derived, not chosen** — it is the floor `src/mcp/server.py`'s
+PEP 723 header and `ruff.toml` both declare (`>=3.10` / `py310`) through to the newest, so the repo
+cannot lint a floor it never runs; this sentence said 3.12 for as long as the matrix had already
+started at 3.10, which is the restatement-drift class the gates below exist for. And the node work
+runs in its own **blocking** `workflow-engine` job on node 22 — now **two** steps, `npm test` and the
+MCP-apps gate — because `src/workflow/` is TypeScript that ships inside `keel-core`: it is product
+code with its own runner, and a suite nothing executes is the same object as no suite. That job also
+sets up a Python, because the apps gate renders the documents from `apps.py` and `map.py` rather
+than reading a constant out of a source file.
 
 The completeness claim matters because `docs/open-gaps.md` tells a cold session to "run every gate"
 by pointing at this list: an omission here is a gate nobody runs before committing, which is exactly

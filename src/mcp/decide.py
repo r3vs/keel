@@ -8,9 +8,13 @@
 Why this file exists
 --------------------
 `mcp:ledger_record_decision` picks its path from a capability the client DECLARES: `_client_can_elicit`
-asks `check_client_capability(ElicitationCapability())`, and on yes it sends `ctx.elicit` and treats
+asks `check_client_capability(ElicitationCapability())` on a connection whose negotiated era still
+has a back-channel, and on yes it sends `ctx.elicit` and treats
 anything but `AcceptedElicitation` as "no answer" — correctly, because declined and cancelled are not
-outcomes. A client that declares the capability and then declines every request reaches neither rung:
+outcomes. There is a third situation neither of those covers, and `server.py::_ask` is what separates
+it: a door that never opened at all. A refusal arrives as a *value* and keeps its hard refusal here;
+a missing door arrives as a *raise*, and since nobody was asked there is no answer to invert, so that
+one degrades to the relay rung instead. A client that declares the capability and then declines every request reaches neither rung:
 the strong one raises, and the relay below it is unreachable, because the `if` short-circuits it.
 On such a host no pin can reach `decided` and no policy can be set — the whole electing surface is
 gone, which is the state that removing the CLI floor left behind and that this file finally closes.

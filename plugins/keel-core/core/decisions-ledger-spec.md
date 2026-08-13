@@ -1411,6 +1411,12 @@ Found in the same pass, one field over, and the same defect: a **sentinel that a
 
 A rung is a **claim about which path ran**, and every earlier round of this register turned on claims with no carrier. This one adds the case where the carrier exists, is honest, and answers a *different question than the one being asked*: `check_client_capability` answers *can you?*, and the failure was *will you?*. When a carrier is one question off, the fix is not a better default on the answer it gives — it is a path where the question does not arise.
 
+### Amendment — a third situation, and why it degrades where a decline does not
+
+The section above rests on a two-way taxonomy: `Declined` flattens *no prompt was drawn* onto *the human refused*, so degrading on it would invert a refusal. A later reading found a **third** situation neither covers — the request could not be put at all, because the negotiated protocol era no longer carries a back-channel — and the protocol already distinguishes it: **a refusal arrives as a value, a missing door arrives as a raise.** `server.py::_ask` is the one function every elicitation now passes through, and it routes on exactly that. `DeclinedElicitation` / `CancelledElicitation` are returned untouched and keep the hard refusal this section argues for; a raise from a small allowlist means nobody was asked, so there is no answer to invert and the `transcribed` rung is the honest write. Where the caller relayed nothing, it refuses instead — naming `option_id`, `human_answer`, and the human door — because an outcome would otherwise have to come from the agent.
+
+The quoted `if ctx is not None and _client_can_elicit(ctx):` shape is unchanged; what widened is what the probe consults (the era the session negotiated, not only the capability it declared) and what happens when the probe was right about the declaration and wrong about the door. Nothing in the schema moves: no field, state or rung is added, which is why this is an amendment here rather than a new version number.
+
 ---
 
 ## v0.30 — Two sessions can take the same pin

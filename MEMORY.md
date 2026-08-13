@@ -20,7 +20,7 @@ gate written for exactly its failure shape.
 
 ## Facts
 - This repo is a **package of agent skills** — the deliverable is prose a future agent executes,
-  plus a runtime spine (`src/runtime/`, core stdlib-only, **1158 tests green in CI**),
+  plus a runtime spine (`src/runtime/`, core stdlib-only, **1201 tests green in CI**),
   `scripts/run_evals.py`, and the ast-grep rule pack. **Step-0 verdicts, both now on trustworthy
   data**: greenfield STRONG (full generation is Plan A); rescue's VibraFlow **re-run on a fresh
   graph 2026-07-14** → **WEAK** cross-layer correspondence, so standalone extraction is Plan A and
