@@ -129,20 +129,51 @@ class TestDecode(unittest.TestCase):
         self.assertEqual((facts["width"], facts["height"]), (200, 100))
 
     def test_grayscale_palette_and_16bit_all_decode(self):
+        """Every (color type × bit depth) combination a capture arrives in, decoded to the color a
+        second implementation encoded.
+
+        The matrix is the test. Its first version held four cases — gray@8, indexed@8, rgb@16,
+        gray@4 — and the one pair it left out is the one that was broken: **grayscale at depth 16**
+        multiplied its already-high-byte sample by 255/65535, so a white screenshot decoded to
+        `#010101` and `verify_palette` refuted a correct `#ffffff`. Neither axis alone finds it —
+        depth 16 was covered on the RGB path, grayscale was covered at depths 8 and 4 — which is why
+        the cases below are now the product of the two axes rather than a sample of it.
+        """
         cases = {
-            "gray": _png(20, 10, lambda x, y: (0x80,), ctype=0),
-            "indexed": _png(20, 10, lambda x, y: (1,), ctype=3,
-                            palette=bytes(BG) + bytes(ACCENT)),
-            "rgb16": _png(20, 10, lambda x, y: ACCENT, ctype=2, depth=16),
-            "gray4": _png(20, 10, lambda x, y: (0xF,), ctype=0, depth=4),
+            "gray": (_png(20, 10, lambda x, y: (0x80,), ctype=0), "#808080"),
+            "gray4": (_png(20, 10, lambda x, y: (0xF,), ctype=0, depth=4), "#ffffff"),
+            "gray2": (_png(20, 10, lambda x, y: (0x2,), ctype=0, depth=2), "#aaaaaa"),
+            "gray16": (_png(20, 10, lambda x, y: (0xFF,), ctype=0, depth=16), "#ffffff"),
+            "gray16_mid": (_png(20, 10, lambda x, y: (0x80,), ctype=0, depth=16), "#808080"),
+            "gray_alpha16": (_png(20, 10, lambda x, y: (0xFF, 0xFF), ctype=4, depth=16), "#ffffff"),
+            "indexed": (_png(20, 10, lambda x, y: (1,), ctype=3,
+                             palette=bytes(BG) + bytes(ACCENT)), visual.to_hex(ACCENT)),
+            "indexed4": (_png(20, 10, lambda x, y: (1,), ctype=3, depth=4,
+                              palette=bytes(BG) + bytes(ACCENT)), visual.to_hex(ACCENT)),
+            "rgb": (_png(20, 10, lambda x, y: ACCENT, ctype=2), visual.to_hex(ACCENT)),
+            "rgb16": (_png(20, 10, lambda x, y: ACCENT, ctype=2, depth=16), visual.to_hex(ACCENT)),
+            "rgba": (_png(20, 10, lambda x, y: (*ACCENT, 255), ctype=6), visual.to_hex(ACCENT)),
         }
-        expected = {"gray": "#808080", "indexed": visual.to_hex(ACCENT),
-                    "rgb16": visual.to_hex(ACCENT), "gray4": "#ffffff"}
-        for name, data in cases.items():
+        for name, (data, expected) in cases.items():
             with self.subTest(name), TempImage(data) as path:
                 facts = visual.image_facts(path)
                 self.assertEqual(facts["status"], "read")
-                self.assertEqual(facts["palette"][0]["hex"], expected[name])
+                self.assertEqual(facts["palette"][0]["hex"], expected)
+
+    def test_a_16bit_grayscale_capture_does_not_refute_the_color_it_contains(self):
+        """The decode bug's real cost, asserted where it was paid rather than where it happened.
+
+        `image_palette` is D0, `confidence: extracted`, and skips fp-check — so a fabricated palette
+        is not second-guessed by anything downstream. A white 16-bit grayscale that decodes to
+        `#010101` does not merely report a wrong fact; it makes the picture *refute* a correct claim
+        (`verdict: absent`, ΔE 99.7), which is the one output a caller reads to decide it may not
+        propagate the palette.
+        """
+        with TempImage(_png(20, 10, lambda x, y: (0xFF,), ctype=0, depth=16)) as path:
+            out = visual.verify_palette(path, ["#ffffff"])
+        self.assertFalse(out["refuted"])
+        self.assertEqual(out["claims"][0]["verdict"], "present")
+        self.assertEqual(out["claims"][0]["delta_e"], 0.0)
 
     def test_a_fully_transparent_region_contributes_no_color(self):
         """A transparent area of a mockup export is not a background decision. Compositing it over
@@ -211,6 +242,19 @@ class TestVerify(unittest.TestCase):
         with TempImage(_button_screenshot()) as path:
             out = visual.verify_palette(path, ["rebeccapurple"])
         self.assertEqual(out["claims"][0]["verdict"], "unparsed")
+
+    def test_a_claim_that_is_not_even_a_string_takes_the_same_unparsed_path(self):
+        """The claim set is a model's JSON arriving through an MCP tool whose schema is `list |
+        None`, so nothing upstream constrains the element type. `{"name": "primary"}` with the value
+        under a key nobody aliased normalizes to `None`, and `None.strip()` raised an
+        `AttributeError` **out of the tool** — a hard fail in the module whose stated contract is
+        *degrades, never hard-fails*, on the branch that already had the right answer one line away.
+        """
+        with TempImage(_button_screenshot()) as path:
+            out = visual.verify_palette(path, {"a": None, "b": 123, "c": ["#fff"], "d": "#faf9f7"})
+        verdicts = {c["name"]: c["verdict"] for c in out["claims"]}
+        self.assertEqual(verdicts, {"a": "unparsed", "b": "unparsed", "c": "unparsed",
+                                    "d": "present"})
 
 
 class TestColorMath(unittest.TestCase):

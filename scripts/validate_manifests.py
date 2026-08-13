@@ -78,6 +78,26 @@ SEMVER = re.compile(
     r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
 )
 
+#: A dependency's `version` is not a version — it is an **npm semver RANGE**, and the distinction is
+#: the whole reason this exists beside `SEMVER` above. *"A [semver range](…node-semver#ranges) such
+#: as `~2.1.0`, `^2.0`, `>=1.4`, or `=2.1.0`"* — note `^2.0` and `>=1.4`, which `SEMVER` rejects, so
+#: reusing that regex here would fail this repo's own manifest.
+#:
+#: Verified at the consumer rather than at the type: an unparseable range is a `range-conflict`,
+#: whose documented causes include *"a range is not valid semver syntax"*, and *"Claude Code disables
+#: the affected plugin until you resolve the error"* — a failure that happens on the user's machine,
+#: after install, silently as far as this repo is concerned. It is also the one string in any
+#: manifest we generate by **string surgery** (`f"^{'.'.join(VERSION.split('.')[:2])}"` in
+#: build.py), which is exactly the shape that produces `^0.` from a one-part version and passes
+#: every other gate. This is a conservative reader of node-semver's grammar: comparator sets over
+#: partial versions, hyphen ranges, `||` alternation, `*`/`x` wildcards. It accepts a superset of
+#: what we emit and rejects the syntaxes from other ecosystems that look plausible here (`~>2.0`).
+_PARTIAL = (r"v?(?:\d+|[xX*])(?:\.(?:\d+|[xX*]))?(?:\.(?:\d+|[xX*]))?"
+            r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?")
+_COMPARATOR = rf"(?:[<>]=?|=|\^|~)?\s*{_PARTIAL}"
+_RANGE_SET = rf"(?:\*|{_PARTIAL}\s+-\s+{_PARTIAL}|{_COMPARATOR}(?:\s+{_COMPARATOR})*)"
+SEMVER_RANGE = re.compile(rf"^\s*{_RANGE_SET}(?:\s*\|\|\s*{_RANGE_SET})*\s*$")
+
 #: Manifest keys whose STRING values Claude Code resolves as a path relative to the plugin root,
 #: read off the "Path behavior rules" section rather than off the subset we emit — the same
 #: discipline `tests/test_codex_manifest.py` arrived at after listing three of five.
@@ -263,6 +283,14 @@ def check_dependencies(name: str, data: dict, built: set[str]) -> None:
         if not isinstance(dep, str):
             fail(where, f"`dependencies` entry {entry!r} is neither a name nor an object with one")
             continue
+        constraint = entry.get("version") if isinstance(entry, dict) else None
+        if constraint is not None and not (isinstance(constraint, str)
+                                           and SEMVER_RANGE.match(constraint)):
+            fail(where, f"`{dep}` is constrained to {constraint!r}, which is not a semver RANGE. "
+                        f"An unparseable range is a `range-conflict` at load and Claude Code "
+                        f"*disables the plugin* until it is fixed — on the user's machine, after "
+                        f"install, where nothing here can see it. Ranges look like `^0.6`, "
+                        f"`~2.1.0`, `>=1.4`, `=2.1.0`")
         if dep not in built:
             fail(where, f"depends on `{dep}`, which this repo does not build. Everything a "
                         f"programmer and their agent need ships from here — a dependency we do "

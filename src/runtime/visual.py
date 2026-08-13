@@ -212,7 +212,13 @@ def decode_png(data: bytes) -> tuple:
     # to twice `MAX_SAMPLES` samples, so the declared ceiling would be a comment rather than a bound.
     step = max(1, -(-total // MAX_SAMPLES))
     alpha_index = {4: 1, 6: 3}.get(ctype_n)
-    scale = 1 if depth == 8 else (255 / ((1 << depth) - 1))
+    # Sub-byte depths are the ONLY ones rescaled, and the condition is `depth < 8` rather than
+    # `depth != 8` because depth 16 is reduced to its high byte at extraction below — it arrives
+    # here already in 0..255. Written as `!= 8` this computed 255/65535 and multiplied an
+    # already-8-bit sample by 0.00389, so a white 16-bit grayscale decoded to `#010101`: not a
+    # crash, a *fabricated palette*, on the one channel whose contract is `confidence: extracted`.
+    # `verify_palette` then refuted a correct `#ffffff` claim with the picture as its authority.
+    scale = 255 / ((1 << depth) - 1) if depth < 8 else 1
     samples = []
     for idx in range(0, total, step):
         y, x = divmod(idx, width)
@@ -238,12 +244,16 @@ def decode_png(data: bytes) -> tuple:
             continue
         if alpha_index is not None and px[alpha_index] < ALPHA_FLOOR:
             continue
+        # ONE rescale for both color paths. It used to be written twice with two different
+        # conditions (`depth != 8` for grayscale, `depth in (1, 2, 4)` for RGB), which is how the
+        # depth-16 grayscale bug lived beside a correct RGB path in the same loop: two spellings of
+        # one rule, only one of them right. Indexed is above and untouched — `px[0]` is a palette
+        # INDEX there, not a color sample, and scaling it would read the wrong palette entry.
+        if depth < 8:
+            px = [round(v * scale) for v in px]
         if ctype_n in (0, 4):
-            g = round(px[0] * scale) if depth != 8 else px[0]
-            samples.append((g, g, g))
+            samples.append((px[0], px[0], px[0]))
         else:
-            if depth in (1, 2, 4):
-                px = [round(v * scale) for v in px]
             samples.append((px[0], px[1], px[2]))
     return width, height, samples
 
@@ -276,8 +286,19 @@ def _to_png(path: Path) -> bytes:
 
 # --- color math (CIE Lab / ΔE76, WCAG 2.x relative luminance) ---------------------------------
 
-def parse_hex(value: str) -> tuple:
-    """`#rgb` / `#rrggbb` (with or without `#`) -> `(r, g, b)`. Raises ValueError otherwise."""
+def parse_hex(value) -> tuple:
+    """`#rgb` / `#rrggbb` (with or without `#`) -> `(r, g, b)`. Raises ValueError otherwise.
+
+    **Including for a non-string**, and that is the contract rather than defensiveness: every caller
+    here turns a `ValueError` into a per-claim `unparsed` verdict, so the type check is what routes
+    a malformed claim down the path the module already provides. The claim set arrives as a model's
+    JSON through an MCP tool whose schema is `list | None` — `{"name": "primary"}` with no value, or
+    `{"name": "p", "rgb": "#2563eb"}` spelling the value under a key nobody aliased, both yield
+    `None` — and `None.strip()` raised an `AttributeError` out of the tool. A module whose stated
+    rule is *degrades, never hard-fails* must not hard-fail on the shape of an argument.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"not a hex color: {value!r}")
     s = value.strip().lstrip("#")
     if len(s) == 3:
         s = "".join(c * 2 for c in s)

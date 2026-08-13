@@ -68,6 +68,7 @@ gate.
 from __future__ import annotations
 
 import ast
+import json
 import pathlib
 import re
 import sys
@@ -151,17 +152,45 @@ def spec_version() -> str:
     return ledger.SCHEMA_VERSION
 
 
+def _modules(skill: str):
+    """A skill's module count, read from the `modules.json` that CLAUDE.md calls *"authoritative for
+    its module catalog"*. `check_consistency.py` already validates every entry against a reference
+    that exists; nothing checked the number the READMEs print beside it, and both drifted together
+    at the commit that added `agent-instructions` — 28 vs 29 and 15 vs 16, in four places, for
+    months. Same class as the tool count that shipped as 37 against a server serving 54."""
+    def carrier() -> int:
+        path = ROOT / "src" / "skills" / skill / "modules.json"
+        mods = json.loads(path.read_text(encoding="utf-8")).get("modules")
+        if not mods:
+            raise SystemExit(f"ERROR {skill}/modules.json declares no modules — the catalog shape "
+                             f"changed and this gate just went vacuous")
+        return len(mods)
+    return carrier
+
+
+_CDB = None
+
+
+def _cdb():
+    """`check_description_budget.py`, loaded once. It is the authority on every number below that
+    concerns the listing — the total, the headroom, AND the budget those two are measured against."""
+    global _CDB
+    if _CDB is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_cdb", pathlib.Path(__file__).resolve().parent / "check_description_budget.py")
+        _CDB = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_CDB)
+    return _CDB
+
+
 def _budget():
     """`check_description_budget.py`'s own numbers, asked of the gate rather than recomputed here.
 
     Two copies of "how long are the model-invoked descriptions" would be the duplication this file
     exists to catch, committed by the file that catches it.
     """
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "_cdb", pathlib.Path(__file__).resolve().parent / "check_description_budget.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _cdb()
     total = sum(len(mod.description_of(s)) for s in mod.model_invoked())
     return total, mod.LISTING_BUDGET_CHARS - total
 
@@ -180,9 +209,26 @@ def listing_headroom() -> int:
     return _budget()[1]
 
 
+#: The budget the prose writes as the denominator — READ from the gate that declares it, never
+#: spelled here. It was spelled here, inside the pattern (`([\d,]+) / 1,200`), and that is a copy of
+#: the answer sitting in the file whose whole subject is copies of answers: re-deriving
+#: `LISTING_BUDGET_CHARS` (which the gate's error message invites) would leave the pattern matching
+#: nothing, so CLAUDE.md's restatement would stop being checked while the run still printed
+#: `0 stale`. `{:,}` because the prose groups it, like every other number in that sentence.
+LISTING_BUDGET = f"{_cdb().LISTING_BUDGET_CHARS:,}"
+
+
 #: Each fact: what it is, how the prose spells it, and the function that knows the answer. The
 #: patterns capture exactly one group, and each is annotated with the site it was written for, so a
 #: pattern that stops matching anything is visible as a pattern nobody uses rather than as coverage.
+#:
+#: That sentence used to be a hope. `main()` now ENFORCES it: a pattern matching nothing anywhere in
+#: SCOPE fails the run. The aggregate `if not checked` guard at the bottom could never see it — the
+#: live patterns keep that count above zero while one more quietly covers nothing — and the
+#: two ways a pattern dies are exactly the two this file exists to catch: prose rewritten out from
+#: under it, or a constant it hardcoded moving (see `LISTING_BUDGET` above). `(\d+) tests? passing
+#: in CI` was the one already dead when this was written; it is gone rather than kept as a shape
+#: nobody writes, and the badge + status-line patterns still cover the number in both spellings.
 FACTS = (
     {
         "label": "the size of the test suite",
@@ -190,7 +236,6 @@ FACTS = (
         "render": str,
         "patterns": (
             re.compile(r"\*?\*?(\d+) tests? green"),            # README.md's status line
-            re.compile(r"(\d+) tests? passing in CI"),
             # README.md's shields.io BADGE, added in 2026-08-06. It said `tests-592 passing` while
             # the status line 314 lines below it said 828 — two claims about one number, in one
             # file, disagreeing by 236. This gate was built for exactly that instance and its own
@@ -238,7 +283,8 @@ FACTS = (
         "carrier": listing_chars,
         "render": str,
         "patterns": (
-            re.compile(r"([\d,]+) / 1,200"),          # CLAUDE.md's invocation-axis bullet
+            # CLAUDE.md's invocation-axis bullet. The denominator is interpolated, not typed.
+            re.compile(rf"([\d,]+) / {re.escape(LISTING_BUDGET)}"),
         ),
     },
     {
@@ -247,6 +293,29 @@ FACTS = (
         "render": str,
         "patterns": (
             re.compile(r"~(\d+) to spare"),           # CLAUDE.md's invocation-axis bullet
+        ),
+    },
+    # Added 2026-08-13. Both counts had been wrong by one since `agent-instructions` was added, in
+    # README's install table AND in each plugin README's section heading, and the section bodies had
+    # never listed the module either — so the prose was internally consistent and collectively
+    # false, which is the shape no reader catches.
+    {
+        "label": "the number of analysis modules codebase-rescue runs",
+        "carrier": _modules("codebase-rescue"),
+        "render": str,
+        "patterns": (
+            # README.md's install table AND src/readme/codebase-rescue.md's section heading — one
+            # phrasing covers both, which is why the heading was worded to match the table.
+            re.compile(r"(\d+) analysis modules"),
+        ),
+    },
+    {
+        "label": "the number of modules greenfield-forge runs",
+        "carrier": _modules("greenfield-forge"),
+        "render": str,
+        "patterns": (
+            re.compile(r"(\d+) modules · `/forge`"),   # README.md's install table
+            re.compile(r"^## The (\d+) modules$", re.M),  # src/readme/greenfield-forge.md
         ),
     },
 )
@@ -267,14 +336,18 @@ def main() -> int:
     errors = 0
     checked = 0
     files = in_scope()
+    hits: dict[tuple[str, str], int] = {}
     for fact in FACTS:
         truth = fact["carrier"]()
         shown = fact["render"](truth)
+        for pattern in fact["patterns"]:
+            hits.setdefault((fact["label"], pattern.pattern), 0)
         for path in files:
             text = path.read_text(encoding="utf-8")
             for pattern in fact["patterns"]:
                 for match in pattern.finditer(text):
                     checked += 1
+                    hits[(fact["label"], pattern.pattern)] += 1
                     if match.group(1) == str(truth):
                         continue
                     errors += 1
@@ -282,8 +355,21 @@ def main() -> int:
                     print(f"ERROR {path.relative_to(ROOT).as_posix()}:{line}: says "
                           f"`{match.group(0).strip()}` — {fact['label']} is {shown}. The number is "
                           f"computed, not remembered; restate it or delete the claim.")
+    # A pattern nobody matches is not coverage, and the aggregate count below cannot see it: the
+    # other patterns keep `checked` positive while this one silently covers nothing. Both ways it
+    # happens are this file's own subject — the sentence was rewritten, or the pattern hardcoded a
+    # constant that moved — so it is an ERROR with the two honest remedies named.
+    for (label, pattern), n in sorted(hits.items()):
+        if n:
+            continue
+        errors += 1
+        print(f"ERROR pattern `{pattern}` ({label}) matched nothing in any file in SCOPE. It is "
+              f"annotated with the site it was written for, so either that sentence was rewritten "
+              f"— restate it or repoint the pattern — or the pattern spells a constant that has "
+              f"since moved. A pattern nobody matches reads as coverage and is not.")
     print(f"\n{len(files)} file(s) scanned, {len(FACTS)} computed fact(s), "
-          f"{checked} restatement(s) found — {errors} stale")
+          f"{checked} restatement(s) found across {sum(1 for n in hits.values() if n)}/{len(hits)} "
+          f"pattern(s) — {errors} stale")
     if not checked:
         print("ERROR no restatement matched any pattern at all — either the prose was rewritten or "
               "this gate is checking nothing")

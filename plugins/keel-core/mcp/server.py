@@ -1754,12 +1754,32 @@ def instructions_diff(ledger: str, root: str = ".", generated: list[str] | None 
 # Why resources at all, when `ledger_summary` already answers this
 # ----------------------------------------------------------------
 # A tool is a thing the MODEL decides to call. A resource is a thing a PERSON attaches: in Claude
-# Code you type `@` and pick one (`@keel:ledger://summary//abs/path/ledger.json`), and it arrives as
-# an attachment on the turn — verified in the host's own docs (*"Type `@` in your prompt to see
-# available resources… Use the format `@server:protocol://resource/path`… Resources are
-# automatically fetched and included as attachments when referenced"*). That is a different door,
-# not a duplicate one, and it is the door for the case the tool surface handles worst: the user who
-# wants the agent to reason *about* the ledger this turn, without hoping it decides to look.
+# Code you type `@` and pick one, and it arrives as an attachment on the turn (*"Use the format
+# `@server:protocol://resource/path`… Resources are automatically fetched and included as
+# attachments when referenced"*). That is a different door, not a duplicate one, and it is the door
+# for the case the tool surface handles worst: the user who wants the agent to reason *about* the
+# ledger this turn, without hoping it decides to look.
+#
+# **The picker does not offer these, and that is measured rather than assumed.** All three below
+# register as URI *templates*, and MCP splits the listing in two: `resources/list` returns concrete
+# resources, `resources/templates/list` returns templates. Probed on the shipped server under the
+# pinned wheel (fastmcp 3.4.4, in-memory `Client`): `resources → []`, `templates → [ledger-summary,
+# ledger-pins, ledger-pin]`. The host's listing surface behaves the same way — `ListMcpResourcesTool`
+# returned only entries carrying a concrete `uri` and none carrying a `uriTemplate`, while a URI
+# absent from that listing and reachable *only* through another server's template
+# (`repo://<owner>/<repo>/contents/README.md`) read successfully. So a template is **readable when
+# the URI is known and never offered in the menu**, and the doc sentence quoted above describes
+# reference, not discovery. The previous version of this comment cited *"Type `@` … to see available
+# resources"* as verification that the picker lists them; that sentence is about the listing, which
+# for this server is empty. Same failure as citing a type instead of the function that consumes it.
+#
+# It is kept anyway, and the honest reason is narrower than the old one: for the human who has the
+# path (they are working in that project), `@keel:ledger://summary//abs/path/ledger.json` is a
+# typed attachment that beats hoping the model calls a tool. What it is NOT is a discovery surface,
+# and nothing here should be written as though a user will find it by browsing. Making it one needs
+# a concrete URI, which needs a notion of "the current project" the server deliberately refuses to
+# invent — see the next section. On Pi it is unreachable outright: `src/adapters/pi/extensions/
+# mcp-bridge.ts` speaks `initialize` / `tools/list` / `tools/call` and nothing else.
 #
 # Read-only, and therefore carrier-free by rule rather than by omission: `check_tool_carriers.py::
 # write_tools` walks the decorations, `continue`s past any whose attribute is not `tool`, and keeps
@@ -1808,9 +1828,31 @@ def ledger_pin_resource(pin_id: str, path: str) -> dict:
 
 # -- PROMPTS: the phase entries, as commands a human can type -------------------------------------
 #
-# Claude Code surfaces a served prompt as `/mcp__keel__<name>` (*"Type `/` to see all available
-# commands, including those from MCP servers"*), so these are the one surface in this package a
-# **person** drives directly rather than asking an agent to. That is why each is a phase ENTRY and
+# Claude Code surfaces a served prompt as a slash command (*"Type `/` to see all available commands,
+# including those from MCP servers. MCP prompts appear with the format `/mcp__servername__
+# promptname`"*), so these are the one surface in this package a **person** drives directly rather
+# than asking an agent to.
+#
+# The `servername` is NOT the bare key. This server is bundled in a plugin, and the docs scope a
+# bundled server twice over: a tool becomes `mcp__plugin_<plugin-name>_<server-name>__<tool-name>`
+# — *"A hook matcher written against the bare server key, such as `mcp__database-tools__.*`, never
+# fires for a plugin-bundled server"* — and *"the server itself registers under the scoped name
+# `plugin:<plugin-name>:<server-name>`… Use that name where a configured server name is expected."*
+# Our key is `keel` inside `plugins/keel-core/.mcp.json`, so the command is expected to be
+# **`/mcp__plugin_keel-core_keel__interview-kickoff`**, not `/mcp__keel__interview-kickoff`, which is
+# what this comment asserted for as long as it existed — the generic form quoted without following
+# it through the scoping rule stated two sections earlier on the same page, which is the Codex `./`
+# bug's shape exactly.
+#
+# **UNVERIFIED, and named rather than smoothed over:** the docs give the scoped form for TOOLS and
+# for the registered SERVER NAME; they do not spell a prompt's slash command for a plugin-bundled
+# server anywhere, and this has not been observed in a running host. Composing the two rules is an
+# inference. Nothing in this package depends on the string — no gate, no playbook and no adapter
+# names it, and it is written down here only so a reader is not handed a form we know to be wrong.
+# The way to settle it is to install the plugin and type `/`, which is also how the rest of this
+# repo's host facts were settled.
+#
+# That a person drives them is why each prompt is a phase ENTRY and
 # nothing else: the deep instruction lives in the skill's `SKILL.md` and its `references/`, and a
 # prompt that restated any of it would be the stateless twin this repo refuses to author — a second
 # copy of a playbook, drifting from the first, with no gate between them.

@@ -103,10 +103,12 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
   is outside the Agent Skills spec, so claude.ai upload now hard-fails for fifteen skills instead of
   one; and a user-invoked skill is unreachable *by the model*, so no playbook may ever tell an agent
   to invoke a sibling skill.
-- **CI grew a matrix, a Node job, and manifest gates** — `checks` now runs Python 3.12/3.13/3.14 on
-  ubuntu plus a macOS leg, this repo's first non-Linux coverage ever. The tree-sitter backend is
-  installed before the suite (a missing backend used to skip 21 tests *green*), tolerated **only** on
-  3.14 where the pinned wheel may not exist yet — a blanket tolerance would make that silence normal.
+- **CI grew a matrix, a Node job, and manifest gates** — `checks` now runs Python
+  3.10/3.11/3.12/3.13/3.14 on ubuntu plus a macOS leg, this repo's first non-Linux coverage ever.
+  The interpreter list is *derived*: it is the floor the shipped server declares
+  (`requires-python = ">=3.10"`, which `ruff.toml` already targets) through the newest release, so
+  the repo no longer lints a floor it never runs. The tree-sitter backend is installed before the
+  suite (a missing backend used to skip 21 tests *green*), and blocking on every leg.
   `src/workflow/`'s 7 TypeScript suites ship inside `keel-core` and had been run by CI zero times;
   they are now a blocking job on node 22. Plus `ruff` as a measured floor and
   `validate_manifests.py`, which blocks on the subset of `claude plugin validate --strict` we can
@@ -119,6 +121,51 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
   git tags — the same tags `tests/test_plugin_version.py` already anchors on.
 
 ### Fixed
+- **A 16-bit grayscale screenshot decoded to near-black, so the palette channel fabricated facts
+  and *refuted* correct ones.** `visual.py` computed its rescale factor for the raw sample depth
+  (255/65535 at depth 16) but had already reduced the sample to its high byte, so a white capture
+  read `#010101` and `verify_palette` answered a correct `#ffffff` with `absent`, ΔE 99.7 — on the
+  one channel that is `confidence: extracted` and skips fp-check, i.e. the one nothing downstream
+  second-guesses. The rule was written twice with two different conditions, one per color path; it
+  is one rescale now, and the test is the full (color type × bit depth) product rather than a
+  sample of it — the missing pair was exactly the broken one.
+- **A claim that was not a string crashed the palette tool** instead of taking the `unparsed`
+  verdict the code already provides. The claim set is a model's JSON through an MCP tool whose
+  schema is `list | None`, so `{"name": "primary"}` (or a value spelled `rgb`) normalizes to `None`
+  and `None.strip()` raised out of the tool. `parse_hex` now rejects a non-string as a `ValueError`,
+  which is what every caller turns into a per-claim verdict.
+- **`/rescue` promised a learning-layer composition the model can no longer perform.** The command
+  said *"I compose it over the whole workflow"* while the same release set
+  `disable-model-invocation: true` on `learning-layer` — which blocks the model's call, and blocks
+  reaching it from another skill. The guardrails playbook contradicted itself on the same page. Both
+  now state the one real door (the operator types it) and say plainly that an uninvoked run is
+  uncoached.
+- **`code-review`'s only remaining door was a name Claude Code already owns.** `/code-review` is a
+  bundled skill; a plugin skill is namespaced and *"the bare `/fancy` also invokes the skill unless
+  another command already uses that name"*, so typing the bare name silently reached Anthropic's
+  reviewer, not the ledger-bound one — while `which-skill` told the operator every non-flagship
+  skill is "typed by name". The router and the kit README now give `/keel-kit:code-review`. Checked
+  name by name against the *enumerated* bundled set: it is the only collision among the nineteen.
+- **The 3.14 tolerance on the extraction-backend install rested on a false premise.**
+  `tree-sitter-language-pack==1.12.5` ships `cp310-abi3` wheels (plus an sdist), so it installs on
+  3.14 today — verified at PyPI and empirically on a clean 3.14. What the tolerance actually bought
+  was a leg where the 21 extraction tests skip green behind an annotated step, because
+  `TestASkipIsAClaimAboutOneInterpreter` cannot fire when no sibling interpreter has the backend.
+  Gone; the step blocks everywhere.
+- **`validate_manifests.py` validated a dependency's name and never its version RANGE**, in the same
+  release that introduced the repo's first constrained dependency — a string `build.py` builds by
+  string surgery. An unparseable range is a `range-conflict` that *disables the plugin* on the
+  user's machine. There is a range reader now, with both halves tested: the documented spellings are
+  accepted, `^0.` and friends are rejected.
+- **Two counts and two twins.** README and both plugin READMEs said 28 and 15 modules against 29 and
+  16 (`agent-instructions` was added to each catalog and listed in neither prose), and
+  `check_stated_facts.py` now carries a fact for each. Its `listing_chars` pattern hardcoded the
+  `1,200` budget it was checking against, so re-deriving `LISTING_BUDGET_CHARS` would have silently
+  un-covered CLAUDE.md's restatement — the budget is read from the gate that declares it, and a
+  pattern that matches nothing anywhere is now an ERROR rather than invisible coverage (one already
+  was). And `test_installed_package.py` still held the shape-check-as-name-check whose twin in
+  `test_mcp_declaration.py` was fixed this release: it would have failed on the *next* dependency to
+  gain a version range, with a message about MCP reachability.
 - **`MEMORY.md` was outside `check_stated_facts.py`'s `SCOPE`** while claiming a 179-test suite
   against 1017, and while listing `cognee` among the declared MCP servers when the build declares
   only the rows its own table marks `→ **http**`. That is the precise failure shape the gate was

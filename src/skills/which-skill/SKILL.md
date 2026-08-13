@@ -41,6 +41,18 @@ model-invoked on the same test — the trigger is a situation, not a name somebo
 `systematic-debugging`, because *"it's broken"* is a situation, and `screenshot-to-code`, whose
 trigger is not even text — a pasted image is not a command anyone types.
 
+**One name is not free, and it is the one you would type without checking.** A plugin skill
+installs as `/<plugin>:<name>`, and the bare `/<name>` also reaches it *"unless another command
+already uses that name"* — Claude Code's own words. `/code-review` is a **bundled** Claude Code
+skill, so on that host the bare name dispatches to Anthropic's reviewer, not to this package's
+ledger-bound one, with nothing to tell you it happened. Type **`/keel-kit:code-review`** when you
+want the one described below. The docs' own example for the override rule is a code-review skill,
+and it covers only the enterprise/personal/project levels; a plugin is namespaced instead, so no
+version of this package can win the bare name. It is the only collision among the nineteen shipped
+names — checked name by name against the *enumerated* bundled set in the host's commands reference
+(batch, claude-api, code-review, dataviz, debug, deep-research, design-sync, doctor,
+fewer-permission-prompts, loop, verify), not against the *"such as"* sample the skills page gives.
+
 ## The engineering loop
 
 Roughly in order, though only the first and last are fixed:
@@ -54,7 +66,8 @@ Roughly in order, though only the first and last are fixed:
 4. **`systematic-debugging`** — when something is broken. It refuses to theorise until it has a
    **tight** loop that goes **red** on *this* bug, which is also what earns the `rung="observed"`
    that closing the pin demands.
-5. **`code-review`** — findings reopen, they never decide. Read-only by design.
+5. **`code-review`** — findings reopen, they never decide. Read-only by design. Reach it as
+   **`/keel-kit:code-review`**; the bare name is a bundled Claude Code skill, per above.
 6. **`verification-before-completion`** — a pin resolves when the behavior was **observed**. This is
    the one that stops "the code is written" from being reported as "it works".
 

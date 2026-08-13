@@ -161,7 +161,7 @@ retry, not a global restart.
 
 ---
 
-## The 28 analysis modules
+## The 29 analysis modules
 
 Phase 1 runs a catalog, not an ad-hoc read. Each module declares its `type` — and `deterministic`
 is a **promise**: it names the engine that produces the finding.
@@ -183,6 +183,11 @@ are flagged).
 
 **Judgment layer** — `completeness` (stubbed vs missing vs done) · `fp-check` (the false-positive
 gate — which deterministic findings **skip**) · `interview-generator`.
+
+**Carrier** — `agent-instructions` (Phase 3: projects the elected to-be into your repo's
+`AGENTS.md`, plus the `CLAUDE.md` bridge, inside markers that leave the rest of the file word for
+word). No host loads `ledger.json`, so without this every later executor restarts from the blank
+slate that produced the mess.
 
 ---
 

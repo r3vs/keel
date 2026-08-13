@@ -97,9 +97,21 @@ LISTING_BUDGET_CHARS = 1_200
 # lines" of always-on instruction text, and a loaded skill body is always-on for the rest of the
 # session ("its content stays in context across turns"). Anthropic's published SKILL.md guidance is
 # 500 lines; this is stricter because the adherence fact bites before the token budget does, and the
-# two flagships are the only bodies in this repo long enough for it to matter. Progressive
-# disclosure is what pays for it: the detail moved to `references/*.md`, reached by a conditional
-# pointer, and costs nothing until the condition holds.
+# two flagships are the only bodies in this repo long enough for it to matter.
+#
+# **What this counts, stated because the honest version is narrower than the tempting one.** It
+# counts the lines of ONE file. Progressive disclosure is what is supposed to pay for the cap — the
+# detail moves to `references/*.md` behind a pointer, and a *conditional* pointer costs nothing
+# until its condition holds. That is true of most of each flagship's "Read this when" table and it
+# is NOT true of the file that absorbed most of the reduction that brought both bodies under the
+# cap: `references/guardrails.md`, whose own row states its condition as *"before acting, in any
+# mode"* — i.e. always. So `SKILL.md + guardrails.md` is what an executing agent actually carries,
+# and that sum fell by far less than the body numbers alone suggest. The cap is still the right
+# rule and the moved text is still better placed (a reference is read once and stays reachable, a
+# body line is re-read every turn), but this gate cannot tell a conditional pointer from an
+# unconditional one. Read it as "the body is capped", never as "the always-on load fell by 89
+# lines". Making the sum the measured quantity needs a reader for the "Read this when" table's
+# condition column, which nothing here has.
 FLAGSHIP_MAX_LINES = 200
 
 #: The bodies the cap applies to. Named individually rather than quantified over every skill,

@@ -36,25 +36,33 @@ on every turn is read from here, once, at the moment it applies.
 
 ## Learning layer (optional, orthogonal to the mode)
 
-Where the **learning-layer** is available, any mode runs with it composed over it — it wraps the
-interview, roadmap, test-first and review so each **explains the *why*** behind a choice, making the
-elected `to_be` better-informed. It runs at `guided` by default; `learn:<level>` on the command sets
-only the **intensity** (`essential` · `guided` · `deep`) — a volume, not an on/off, so no setting
-silently drops the coaching. The level is recorded in `learner.json` (which the agent maintains — no
-runtime behind it) and read by every phase, so one dial governs the whole workflow. The explanations
-*accompany* delivery and never replace or delay it — coaching, never a substitute for the fix
-(`references/core/self-model.md`: execute, don't advise). If the learning-layer isn't installed,
-rescue degrades and runs without it. Full mechanism and the three presets: the `learning-layer`
-skill and its `learner-model` reference.
+**The operator composes it; you may not.** The learning-layer sets `disable-model-invocation: true`,
+like every skill in this package except rescue, forge, `systematic-debugging` and
+`screenshot-to-code`. That key does three things at once, and the third is the one that decides this
+section: its description leaves your context, it is **not preloaded into a subagent** (where the
+roster runs six of them), and **it cannot be reached by another skill** — the host blocks the call
+and tells you not to reproduce the material another way. So there is exactly one door, and it is
+the human's: they type `/keel-kit:learning-layer` (or `/learning-layer`, which resolves to the same
+skill unless another command owns that name). This paragraph used to say *"any mode runs with it
+composed over it"*, which was true before the key and is now a promise nothing can keep — the
+failure would be silent, which is why it is written down here rather than corrected quietly.
 
-**It is user-invoked**, like every skill in this package except rescue, forge,
-`systematic-debugging` and `screenshot-to-code`, so composing it is an explicit act: the operator
-types `/learning-layer`, or passes `learn:<level>` on the rescue command. Nothing fires it off a
-description, because its description is deliberately no longer in the model's context — the host
-loads a listing of skill names and descriptions whose budget is 1% of the context window, and drops
-descriptions starting with the least-invoked skill, so a package that spends the whole budget on
-nineteen entries loses the two that must fire cold. The invocation axis and its two costs are written up in core's
-writing-for-agents doctrine; `which-skill` is the map the operator reaches for instead.
+Once they have invoked it, it wraps the interview, roadmap, test-first and review so each
+**explains the *why*** behind a choice, making the elected `to_be` better-informed. `learn:<level>`
+on the rescue command then sets only the **intensity** of a layer that is already loaded
+(`essential` · `guided` · `deep`, `guided` when unset) — a volume, not an on/off. The level is
+recorded in `learner.json` (which the agent maintains — no runtime behind it) and read by every
+phase, so one dial governs the whole workflow. The explanations *accompany* delivery and never
+replace or delay it — coaching, never a substitute for the fix (`references/core/self-model.md`:
+execute, don't advise). Uninvoked or uninstalled, rescue runs uncoached and **says so** rather than
+letting the operator believe they are being taught. Full mechanism and the three presets: the
+`learning-layer` skill and its `learner-model` reference.
+
+Why the key is on at all: the host loads a listing of skill names and descriptions whose budget is
+1% of the context window, and drops descriptions starting with the least-invoked skill, so a package
+that spends the whole budget on nineteen entries loses the two that must fire cold. The invocation
+axis and its two costs are written up in core's writing-for-agents doctrine; `which-skill` is the
+map the operator reaches for instead.
 
 ## Prerequisites, stated the way they actually fail
 

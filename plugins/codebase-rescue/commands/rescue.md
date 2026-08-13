@@ -9,10 +9,12 @@ Start at Phase 1 (comprehension + finding) and build the pinned map — do NOT j
 If the scope is unclear, pick a mode with me first: `rescue` (default) · `align` · `audit` ·
 `resume` · `understand`.
 
-With the **learning-layer** available, I compose it over the whole workflow so the interview and
-every later phase explain the *why* behind each choice — your decision is better-informed. It runs at
-`guided` by default; `learn:<level>` only sets the **intensity** — `essential` (terse) · `guided` ·
-`deep` (full). The dial is a **volume, not an on/off**: no setting silently drops the coaching. (If
-the learning-layer isn't installed, rescue degrades and runs without it.)
+The **learning-layer** is yours to compose, not mine: it is user-invoked, so its description is out
+of my context and the host blocks me from loading it even if I try. Type
+`/keel-kit:learning-layer` (or `/learning-layer`) yourself and it wraps everything after — the
+interview and every later phase explain the *why* behind each choice. `learn:<level>` here then
+sets only the **intensity** of a layer you already loaded: `essential` (terse) · `guided`
+(default) · `deep` (full), a volume rather than an on/off. Uninvoked, I run uncoached and tell you
+so rather than letting you think you are being taught.
 
 $ARGUMENTS

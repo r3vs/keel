@@ -60,7 +60,9 @@ when to abandon a hypothesis instead of defending it.
 *Use when: something is broken, a test fails mysteriously, or behavior differs between environments.*
 
 ### `code-review`
-**Reviewers reopen. The human elects.**
+**Reviewers reopen. The human elects.** *(Type `/keel-kit:code-review` — the bare `/code-review` is
+a bundled Claude Code skill and wins the name, so this is the one skill here whose namespaced form
+is not optional.)*
 
 That is not a limitation on thoroughness — it is the property that makes review safe to automate. A
 reviewer who can also change the code will fix what it *thinks* is wrong, and a wrong fix applied
@@ -206,7 +208,10 @@ you've already got, so it stops re-explaining it. Four hooks, one per existing s
 roadmap, test-first, review.
 
 Intensity is a dial: `essential` · `guided` (default) · `deep`. **A volume, not an on/off** — no
-setting silently drops the coaching.
+setting silently drops the coaching. What the dial does *not* control is whether the layer is there:
+it is user-invoked, so you type `/learning-layer` and it wraps everything after. `learn:<level>` on
+`/rescue` sets the volume of a layer you already loaded; it cannot load one, because a skill with
+`disable-model-invocation: true` is unreachable from the model and from another skill by design.
 
 *Use when: onboarding onto a codebase, "learn while shipping", "explain why, not just what", or
 wanting to be coached rather than handed answers.*
@@ -306,7 +311,8 @@ project-memory     → what was worth keeping
 ```
 
 `grounded-research` slots in anywhere a current external fact is needed; `learning-layer` wraps the
-whole thing if you want it to.
+whole thing **once you invoke it** — it is user-invoked, so no agent and no other skill can compose
+it on your behalf, and an uncoached run says so rather than pretending.
 
 ---
 

@@ -46,9 +46,9 @@ policies.
 ## Before you act
 
 Read `references/guardrails.md` first — the rules that are cheap to violate fast, the prerequisites
-and how they degrade, and the optional learning-layer composition (`learn:<level>`, an intensity
-dial rather than an on/off). It is short, and it is the file that stops the auditor reproducing the
-failure it was hired to find.
+and how they degrade, and the learning-layer, which only the **operator** can compose
+(`learn:<level>` sets its intensity, never whether it runs). It is short, and it is the file that
+stops the auditor reproducing the failure it was hired to find.
 
 ## Modes
 

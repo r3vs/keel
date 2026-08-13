@@ -31,14 +31,28 @@ permissions:
 
 jobs:
   checks:
-    # One matrix, two questions. The three ubuntu legs ask "does this work on the interpreters our
-    # users have?"; the macOS leg asks "is anything here Linux-shaped?" and pins to 3.12 because
-    # the point is the platform, not a second interpreter sweep.
+    # One matrix, two questions. The ubuntu legs ask "does this work on the interpreters our users
+    # have?"; the macOS leg asks "is anything here Linux-shaped?" and pins to 3.12 because the point
+    # is the platform, not a second interpreter sweep.
+    #
+    # The interpreter list is DERIVED, not chosen: it is every version the shipped server declares
+    # it runs on, floor to newest. `src/mcp/server.py`'s PEP 723 header says
+    # `requires-python = ">=3.10"` and `ruff.toml` pins `target-version = "py310"` so linting cannot
+    # green-light syntax the server would reject — and the matrix used to start at 3.12, which meant
+    # the repo LINTED a floor it never RAN. A declared-supported interpreter that CI never executes
+    # is a support claim with no carrier, which is the same class every gate in this repo is for.
+    # Either end may move; they must move together with the header and ruff.toml, or the claim
+    # detaches again.
+    #
+    # The floor leg's one declared residual, named rather than left to be discovered: `tomllib` is
+    # 3.11+, so `test_roster_generation`'s Codex-TOML validity case skips on 3.10 alone (1 skip,
+    # with its reason printed). The other four legs run it. That is a guarded skip that says what it
+    # is — the opposite of the silent one the extraction-backend step below exists to prevent.
     strategy:
       fail-fast: false          # a 3.14-only break must not hide a macOS-only one
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           - os: macos-latest
             python-version: "3.12"
@@ -139,16 +153,26 @@ jobs:
       # can only add coverage, never flake the build. Pinned to what the server ships — CI must test
       # the backend that reaches the user, and `test_treesitter.py` holds the two copies together.
       #
-      # The tolerance is scoped to ONE leg, and the scope is the whole point. The pinned pack is a
+      # Blocking on EVERY leg, including the newest interpreter, and the tolerance that used to be
+      # scoped to 3.14 is gone because its premise was false. It read: "the pinned pack is a
       # wheel-only distribution, so a Python newer than the pin has no wheel until its maintainer
-      # cuts one — a real, expected, temporary gap on 3.14 that must degrade coverage rather than
-      # fail a PR about something else. On every other leg the wheel exists, so a failed install is
-      # a broken environment and blocking it is correct: a blanket `continue-on-error: true` here
-      # would turn "21 tests silently stopped running" into the normal state, which is precisely
-      # the self-healing silence `test_treesitter.py` was written to end. Note it stays VISIBLE
-      # even where tolerated — the step is annotated as failed in the run summary, unlike `|| true`.
+      # cuts one". Checked at the index rather than assumed from the pin: every wheel PyPI serves
+      # for `tree-sitter-language-pack==1.12.5` is `cp310-abi3` — the stable ABI, forward-compatible
+      # with every later CPython — and there is an sdist besides; `tree-sitter` 0.26 additionally
+      # ships explicit `cp314` wheels. Confirmed empirically on a clean 3.14
+      # (`uv venv --python 3.14 && uv pip install …` → exit 0, `get_parser("python")` parses). A
+      # "cp3NN-only wheel" mental model, applied to an abi3 distribution, invented a gap that does
+      # not exist.
+      #
+      # What the tolerance actually bought was the failure it claimed to prevent: on the 3.14 leg no
+      # other interpreter on PATH carries the backend, so `TestASkipIsAClaimAboutOneInterpreter`
+      # cannot fire — it compares THIS interpreter against a sibling that HAS the backend — and 21
+      # extraction tests would skip green behind a merely-annotated step. That is the self-healing
+      # silence `test_treesitter.py` exists to end, reintroduced by the comment that named it. If a
+      # future interpreter genuinely has no wheel, the honest move is to bump the pin (and the pin
+      # in `src/mcp/server.py`, which `test_treesitter.py` holds together with this one), not to
+      # tolerate a leg that stops testing what it says it tests.
       - name: Extraction backend (the primary one, so the tests for it actually run)
-        continue-on-error: ${{ matrix.python-version == '3.14' }}
         run: python -m pip install "tree-sitter>=0.23" "tree-sitter-language-pack==1.12.5"
 
       # --- behaviour ---------------------------------------------------------------------------
