@@ -245,8 +245,12 @@ class TestARelativeLedgerBelongsToTheRunAndNotToTheHarness(unittest.TestCase):
 
     def test_an_absolute_ledger_outside_the_copy_is_still_the_runs(self):
         """The property the relative fix must not cost: naming an absolute path is legitimate, and
-        a harness that only globs its copy reports `0 pins` for a run that wrote a full ledger."""
-        elsewhere = pathlib.Path(tempfile.mkdtemp()) / "out.json"
+        a harness that only globs its copy reports `0 pins` for a run that wrote a full ledger.
+
+        The tempdir is `.resolve()`d because the harness labels ledgers by RESOLVED path (its
+        stated symlink rationale) and macOS mounts tempdirs behind one: `/var` -> `/private/var`.
+        Compared unresolved, this assertion is green on Linux and red on the macOS CI leg only."""
+        elsewhere = pathlib.Path(tempfile.mkdtemp()).resolve() / "out.json"
         elsewhere.write_text(json.dumps({"version": "0.31", "pins": [
             {"id": "pin_1", "kind": "defect", "state": "detected"}]}), encoding="utf-8")
         run = make_run(self.workdir, tools=[("mcp__keel__ledger_add_pin",
