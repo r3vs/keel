@@ -134,6 +134,12 @@ Summary of what matters here:
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.
+- **Every surface outside this file is a projection of it, and projections are one-way.** The map,
+  the interview, the `AGENTS.md` region and the issue tracker (`tracker_project`) all render from
+  the ledger and none of them is read back into it: an answer typed into a generated issue or into
+  a managed region elects nothing, because no tool reads it. That is the same anti-divergence
+  property the ledger enforces on the codebases these skills touch, applied to the ledger's own
+  audience — a second place a decision can be written is a second place it can disagree.
 
 **Runtime:** the spec's load-bearing rules are not left to care — they are implemented once, for
 every skill, in the ledger runtime (stdlib-only, tested in CI): pin CRUD with kind validation,
