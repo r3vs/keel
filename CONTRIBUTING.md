@@ -88,11 +88,39 @@ done
 git push --follow-tags
 ```
 
-Use `-a`. The eight tags that exist today are lightweight, which carries no tagger, date or message
-— fine for a string match, useless for asking later *who released this and when*. `claude plugin tag
---push`, run from a plugin directory, does the same job and additionally validates the plugin,
-checks that `plugin.json` and the marketplace entry agree on the version, and refuses on a dirty
-tree; prefer it when the CLI is available and treat the loop above as the portable equivalent.
+Use `-a`. The eight tags **on the remote** are lightweight, which carries no tagger, date or message
+— fine for a string match, useless for asking later *who released this and when*. The four
+`--v0.6.0` tags are the first annotated ones, so this is a practice that started rather than a rule
+being restated. `claude plugin tag --push`, run from a plugin directory, does the same job and
+additionally validates the plugin, checks that `plugin.json` and the marketplace entry agree on the
+version, and refuses on a dirty tree; prefer it when the CLI is available and treat the loop above
+as the portable equivalent.
+
+**Step 4 is a maintainer step, and an agent session cannot do it for you.** Learned at the 0.6.0
+release: the credentials a Claude Code session runs under are scoped to the **work branch**, so
+`git push --follow-tags` comes back **403 on `refs/tags/*`** while the branch push in the same
+command succeeds. Steps 1–3 are all local — `git tag -a` writes into the clone — so a session
+finishes them, reports the tags created, and everything *looks* released while the resolver on every
+other machine still sees nothing. That is the same self-healing silence this whole section exists to
+end, one layer further out: not a gate that skips green, but a release step that returns success for
+the half it could do.
+
+So verify the two sides separately, from the machine that will publish, rather than trusting the
+transcript:
+
+```bash
+# annotated or not? `tag` = annotated (has its own object), `commit` = lightweight
+git for-each-ref --format='%(refname:short) %(objecttype)' refs/tags
+# what the RESOLVER sees — and what CI sees, since it fetches tags rather than reading your clone
+git ls-remote --tags origin
+# the maintainer's step; --follow-tags carries the annotated ones with the branch
+git push --follow-tags
+```
+
+Today those first two disagree by exactly the four `--v0.6.0` tags: annotated in the clone, absent
+from `origin`. Absent is the state `tests/test_plugin_version.py` reads as *"this version was never
+released"*, and it skips — so the local tags buy the gate nothing until somebody with push rights
+runs the third command.
 
 **The version fallback chain — why the pin is worth keeping.** Claude Code resolves a plugin's
 version from the first of these that is set:
