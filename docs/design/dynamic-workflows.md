@@ -1,66 +1,80 @@
-# Dynamic Workflows — spec di design/build (cross-host)
+# Dynamic Workflows — design/build spec (cross-host)
 
-> **Stato: PROPOSAL — `open_decision`, NON eletto.** Nessun codice finché la to-be non è eletta.
-> Branch consigliato: `dynamic-workflows` off `main` (una worktree per scope, `branch-lifecycle`).
-> Questa spec è l'input dell'interview: elegge le forche in §7, poi il build in §9 è meccanico.
+> **Status: PROPOSAL — `open_decision`, NOT elected.** No code until the to-be is elected.
+> Suggested branch: `dynamic-workflows` off `main` (one worktree per scope, `branch-lifecycle`).
+> This spec is the interview's input: elect the forks in §7, and then the build in §9 is mechanical.
 
-## 0. Principio
+> **Translated from Italian on 2026-08-13.** It was the last Italian file in the repo — the design
+> authority for the TS workflow engine, written in a language most of the agents and contributors
+> expected to execute it do not read. Structure, section numbering and every verified claim are
+> preserved; only the language changed. The ledger spec took the same trip on 2026-07-14.
 
-Il "dynamic workflow" **non è un concetto nuovo per questo package**: è il *runtime* della regola di
-roster **"serialized writing, parallel reading"** ([src/core/agents.md](../../src/core/agents.md)).
-I ruoli read-only (researcher · brainstorm · challenger · reviewer · measurer) **sono** il fan-out;
-l'executor è l'unica traccia serializzata in scrittura. Un motore di workflow rende quel roster
-*eseguibile*.
+> **§7 and §8 are unelected pins living in prose.** Their home is a ledger — §7's forks are
+> `open_decision` pins and §8's assumptions are `provenance: agent_assumption` pins, vetoable — and
+> until they are recorded there, a fresh agent reading only the ledger cannot see them at all. They
+> are kept here because that is where they were written, not because a design document is the right
+> register for a decision nobody has made yet.
 
-Vincolo che decide tutto: il workflow è **una proiezione del ledger**, non un nuovo store — come la
-mappa, l'interview e il brainstorm. Fan-out read-only; scrittura del ledger sempre serializzata.
-`gap = diff(to-be, as-is)`: il workflow **chiude** il gap dopo l'elezione, non lo decide.
+## 0. Principle
 
-## 1. Cosa esiste già (verificato, non a memoria)
+The "dynamic workflow" is **not a new concept for this package**: it is the *runtime* of the roster
+rule **"serialized writing, parallel reading"**
+([src/core/agents.md](../../src/core/agents.md)). The read-only roles (researcher · brainstorm ·
+challenger · reviewer · measurer) **are** the fan-out; the executor is the single serialized write
+track. A workflow engine makes that roster *executable*.
 
-| Pezzo | Cos'è | Dove |
+The constraint that decides everything: the workflow is **a projection of the ledger**, not a new
+store — like the map, the interview and the brainstorm. Read-only fan-out; ledger writes always
+serialized. `gap = diff(to-be, as-is)`: the workflow **closes** the gap after the election, it does
+not decide it.
+
+## 1. What already exists (verified, not from memory)
+
+| Piece | What it is | Where |
 |---|---|---|
-| **`buildloop.py`** | Scheduler DAG puro sul `depends_on` del ledger: `waves()` (leveling topologico + rilevamento cicli), `ready()`, `next_item()`, `checkpoint(wave)`, `plan()`. **Non spawna agenti — di proposito.** Stdlib. | [src/runtime/buildloop.py](../../src/runtime/buildloop.py) |
-| **pi-dynamic-workflows** | Fork MIT (v3.4.0) di un originale di *michaelliv*; **replica il contract di Claude Code**. DSL (`agent/parallel/pipeline/phase/verify/loopUntilDry/checkpoint/workflow/judgePanel/gate/retry`), journal per indice posizionale, sandbox `vm` deterministica, e il seam `WorkflowAgentRunner`. | `QuintinShaw/pi-dynamic-workflows@main` |
-| **Claude Code Workflow** | Stessa stirpe, ma **NON pilotabile da plugin/SDK** (solo main-loop / keyword `ultracode`). Il ceiling *programmatico* su Claude è l'Agent SDK. | — |
+| **`buildloop.py`** | A pure DAG scheduler over the ledger's `depends_on`: `waves()` (topological leveling + cycle detection), `ready()`, `next_item()`, `checkpoint(wave)`, `plan()`. **It does not spawn agents — on purpose.** Stdlib. | [src/runtime/buildloop.py](../../src/runtime/buildloop.py) |
+| **pi-dynamic-workflows** | An MIT fork (v3.4.0) of an original by *michaelliv*; **it replicates Claude Code's contract**. A DSL (`agent/parallel/pipeline/phase/verify/loopUntilDry/checkpoint/workflow/judgePanel/gate/retry`), a journal keyed by positional index, a deterministic `vm` sandbox, and the `WorkflowAgentRunner` seam. | `QuintinShaw/pi-dynamic-workflows@main` |
+| **Claude Code Workflow** | The same lineage, but **not drivable from a plugin or SDK** (main loop / `ultracode` keyword only). The *programmatic* ceiling on Claude is the Agent SDK. | — |
 
-**Conclusione:** la metà "cosa eseguire dopo" è già nostra (`buildloop.py`). Manca la metà "come
-eseguirlo": un **runner** (concorrenza + journal + resume) dietro un **seam di spawn**, più i
-**4 adapter**. pi-dw è la referenza completa di quella metà, e il suo seam è esattamente il nostro.
+**Conclusion:** the "what to execute next" half is already ours (`buildloop.py`). What is missing is
+the "how to execute it" half: a **runner** (concurrency + journal + resume) behind a **spawn seam**,
+plus the **4 adapters**. pi-dw is the complete reference for that half, and its seam is exactly ours.
 
-## 2. Architettura — floor / ceiling (post-"Totale": il floor è un MCP tool, non un CLI)
+## 2. Architecture — floor / ceiling (post-"Totale": the floor is an MCP tool, not a CLI)
 
-> ✅ **Riconciliato** (vedi §10). Il framing originale "CLI-floor" era stale dopo la decisione
-> "Totale" (PR #5): non esiste più un CLI del runtime. Il floor è ora lo scheduler **esposto come MCP
-> tool `build_waves`**; `buildloop.py` resta una *library* stdlib invocata dal server MCP.
+> ✅ **Reconciled** (see §10). The original "CLI-floor" framing was stale after the "Totale"
+> decision (PR #5): there is no longer a runtime CLI. The floor is now the scheduler **exposed as
+> the MCP tool `build_waves`**; `buildloop.py` remains a stdlib *library* invoked by the MCP server.
 
 ```
-        run-workflow SKILL.md  (binder: invoca il motore; se manca Node → degrada a sequenziale)
+        run-workflow SKILL.md  (binder: invokes the engine; no Node → degrade to sequential)
                     │
         ┌───────────┴─────────────┐
-   FLOOR (parità garantita)         CEILING (parallelo, journal, resume)
-   scheduler `build_waves` (MCP)    Motore workflow ──seam──► spawn(prompt,{model,schema,isolation,agentType})
+   FLOOR (guaranteed parity)        CEILING (parallel, journal, resume)
+   scheduler `build_waves` (MCP)    workflow engine ──seam──► spawn(prompt,{model,schema,isolation,agentType})
    buildloop.py = library via MCP                               │
-   uv soltanto, nessun Node         Node richiesto  ┌───────┬───┼────┬────────┐
-                                                  Claude  Codex opencode Pi   (4 adapter)
+   uv only, no Node                 Node required   ┌───────┬───┼────┬────────┐
+                                                  Claude  Codex opencode Pi   (4 adapters)
 ```
 
-- **FLOOR** = lo scheduler DAG **esposto come MCP tool `build_waves`** (`buildloop.py` resta una
-  *library* stdlib, invocata dal server MCP — dopo il "Totale" non c'è più alcun CLI del runtime da
-  eseguire). Serve **solo uv**, nessun Node. È la parità *letterale*: stessa topologia, ordine dal
-  DAG; l'esecuzione la fa l'agente item-per-item chiamando i tool MCP.
-- **CEILING** = **un solo motore** TS con il seam `spawn(...)`, invocato **dall'agente dentro la
-  sessione host** (`engine/cli.ts`). Prende DAG e fatti (`build_waves`, `contract_diff`,
-  `blast_radius`) **via MCP tool** — l'agente li chiama e fa da ponte (`--args-stdin`); il motore non
-  parla MCP. Il determinismo (journal) vive nel motore → replay riproducibile **anche** sugli host
-  model-driven (opencode/Codex), perché l'host è colto solo come primitiva di spawn.
-- **BINDER** = la `run-workflow` `SKILL.md`. Invoca `engine/cli.ts` (Node + il CLI dell'host); se Node
-  manca, **degrada**: esegui i passi della topologia in sequenza / a mano — **non** "esegui
-  `buildloop.py`", che non è più un eseguibile.
-- **Prerequisito Node (deciso, §10):** il ceiling richiede Node; il floor MCP no. Node è quindi un
-  prerequisito **scoped alla skill `run-workflow`**, non dell'intero package (che gira su uv+MCP).
+- **FLOOR** = the DAG scheduler **exposed as the MCP tool `build_waves`** (`buildloop.py` stays a
+  stdlib *library*, invoked by the MCP server — after "Totale" there is no runtime CLI left to run).
+  It needs **only uv**, no Node. This is *literal* parity: same topology, order straight from the
+  DAG; execution is done by the agent item by item, calling the MCP tools.
+- **CEILING** = **one single** TS engine with the `spawn(...)` seam, invoked **by the agent inside
+  the host session** (`engine/cli.ts`). It takes the DAG and the facts (`build_waves`,
+  `contract_diff`, `blast_radius`) **via MCP tools** — the agent calls them and bridges the values in
+  (`--args-stdin`); the engine does not speak MCP. Determinism (the journal) lives in the engine, so
+  replay is reproducible **even** on the model-driven hosts (opencode/Codex), because the host is
+  used only as a spawn primitive.
+- **BINDER** = the `run-workflow` `SKILL.md`. It invokes `engine/cli.ts` (Node + the host's CLI); if
+  Node is missing it **degrades**: run the topology's steps sequentially / by hand — **not** "run
+  `buildloop.py`", which is no longer an executable.
+- **Node prerequisite (decided, §10):** the ceiling requires Node; the MCP floor does not. Node is
+  therefore a prerequisite **scoped to the `run-workflow` skill**, not to the whole package (which
+  runs on uv + MCP).
 
-### Il seam di spawn (dal `WorkflowAgentRunner.run` reale di pi-dw)
+### The spawn seam (from pi-dw's real `WorkflowAgentRunner.run`)
 
 ```
 interface SpawnAdapter {
@@ -69,237 +83,261 @@ interface SpawnAdapter {
 }
 ```
 
-**Policy modello (riusa `src/core/model-tiers.md`, non la reinventa):** il modello si lega al **ruolo**
-(`agentType`), risolto **per-host all'install** nel config nativo per-agente (Profile A–D). Il motore
-**non** risolve modelli. Dove il CLI headless dell'host sa selezionare un ruolo installato (opencode
-`--agent`), il modello del ruolo si applica da solo; dove non sa (Claude `-p`, `codex exec` non hanno
-un selettore di ruolo installato), si **degrada al modello di sessione** — la stessa degradazione che
-model-tiers già prevede per una riga mancante e per Pi. `model` è un **override esplicito** (es. il
-target di escalation dell'executor), mai un tier risolto. Perciò `tier` **non** è più un campo del seam.
+**Model policy (reuses `src/core/model-tiers.md`, does not reinvent it):** the model binds to the
+**role** (`agentType`), resolved **per host at install time** in the native per-agent config
+(Profiles A–D). The engine **does not** resolve models. Where the host's headless CLI can select an
+installed role (opencode `--agent`), the role's model applies by itself; where it cannot (Claude
+`-p` and `codex exec` have no installed-role selector), it **degrades to the session model** — the
+same degradation model-tiers already prescribes for a missing row and for Pi. `model` is an
+**explicit override** (e.g. the executor's escalation target), never a resolved tier. That is why
+`tier` is **no longer** a field of the seam.
 
-Firme per-host **verificate** (§ricerca 2026-07-22):
+Per-host signatures **verified** (research pass 2026-07-22):
 
-| Host | Adapter caldo (SDK) | Adapter freddo (CLI headless) | model | schema | cost | token |
+| Host | Warm adapter (SDK) | Cold adapter (headless CLI) | model | schema | cost | tokens |
 |---|---|---|---|---|---|---|
-| **Claude Code** | `@anthropic-ai/claude-agent-sdk` `query({prompt, options:{model, allowedTools, systemPrompt, maxTurns}})` → itera fino a `ResultMessage` (`.result`, `.total_cost_usd`) | `claude -p "…" --output-format json --model X --json-schema '…' --max-budget-usd` | ✓ | ✓ | ✓ (solo SDK) | ✗ |
-| **Codex** | TS/Python SDK `Codex().run(…, {model, outputSchema, sandboxMode})`; app-server JSON-RPC | `codex exec --json --skip-git-repo-check --model X --output-schema f --output-last-message m` (prompt da stdin; **rc=0 anche in errore** → fail-loud sull'envelope) | ✓ | ✓ (`--output-schema`) | best-effort² | best-effort² |
-| **opencode** | `@opencode-ai/sdk` `client.session.create()` + `client.session.prompt({agent, model, parts})`; `serve --attach` = caldo | `opencode run "…" --model X --agent A --format json` | ✓ | valida in-engine | ✓ **verif.** (`step_finish.part.cost`) | ✓ **verif.** (`part.tokens.total`) |
-| **Pi** | `createAgentSession(...)` da `@earendil-works/pi-coding-agent` (il `WorkflowAgent` di pi-dw) | — | ✓ | ✓ (`structured_output` tool) | ✓ | ✓ (`getSessionStats`) |
+| **Claude Code** | `@anthropic-ai/claude-agent-sdk` `query({prompt, options:{model, allowedTools, systemPrompt, maxTurns}})` → iterate to `ResultMessage` (`.result`, `.total_cost_usd`) | `claude -p "…" --output-format json --model X --json-schema '…' --max-budget-usd` | ✓ | ✓ | ✓ (SDK only) | ✗ |
+| **Codex** | TS/Python SDK `Codex().run(…, {model, outputSchema, sandboxMode})`; app-server JSON-RPC | `codex exec --json --skip-git-repo-check --model X --output-schema f --output-last-message m` (prompt from stdin; **rc=0 even on error** → fail loud on the envelope) | ✓ | ✓ (`--output-schema`) | best-effort² | best-effort² |
+| **opencode** | `@opencode-ai/sdk` `client.session.create()` + `client.session.prompt({agent, model, parts})`; `serve --attach` = warm | `opencode run "…" --model X --agent A --format json` | ✓ | validated in-engine | ✓ **verified** (`step_finish.part.cost`) | ✓ **verified** (`part.tokens.total`) |
+| **Pi** | `createAgentSession(...)` from `@earendil-works/pi-coding-agent` (pi-dw's `WorkflowAgent`) | — | ✓ | ✓ (`structured_output` tool) | ✓ | ✓ (`getSessionStats`) |
 
-Nota onesta: **token count non è esposto uniformemente** — Claude SDK dà solo cost; **opencode dà
-entrambi** (verificato con probe reale, opencode **v1.18.4**, WSL: JSONL, `type:"text"`→`part.text`,
-`type:"step_finish"`→`part.cost`/`part.tokens.total`; riconfermato dopo un update). Il cost-tracking
-del motore keya su cost dove c'è, token dove c'è, e **degrada** — mai hard-fail.
+An honest note: **token count is not exposed uniformly** — the Claude SDK gives cost only;
+**opencode gives both** (verified with a real probe, opencode **v1.18.4**, WSL: JSONL,
+`type:"text"`→`part.text`, `type:"step_finish"`→`part.cost`/`part.tokens.total`; reconfirmed after an
+update). The engine's cost tracking keys on cost where there is cost, tokens where there are tokens,
+and **degrades** — never hard-fails.
 
-² **Codex** (probe reale, codex-cli **0.137.0**, WSL): envelope JSONL verificato — `thread.started` →
+² **Codex** (real probe, codex-cli **0.137.0**, WSL): JSONL envelope verified — `thread.started` →
 `turn.started` → `item.completed{item}` → `turn.completed` | `error{message}` | `turn.failed{error}`.
-Due fatti fondati: (a) codex **esce 0 anche quando il turn fallisce** (visto: usage-limit ChatGPT con
-rc=0) → l'adapter rileva `error`/`turn.failed` e **fallisce forte**, non ritorna `''` in silenzio (gli
-`item.completed` con `item.type:"error"` sono warning non-fatali, es. lo skills-budget notice); (b) il
-risultato si legge da `--output-last-message <file>` (flag verificato), non dallo schema-item — che la
-quota esaurita mi ha impedito di osservare in caso di successo. Perciò `cost`/`tokens` codex restano
-best-effort finché non vedo un turn riuscito.
+Two grounded facts: (a) codex **exits 0 even when the turn fails** (observed: a ChatGPT usage-limit
+with rc=0) → the adapter detects `error`/`turn.failed` and **fails loud** rather than silently
+returning `''` (the `item.completed` entries with `item.type:"error"` are non-fatal warnings, e.g.
+the skills-budget notice); (b) the result is read from `--output-last-message <file>` (flag
+verified), not from the schema item — which the exhausted quota prevented me from observing on a
+success. So codex `cost`/`tokens` stay best-effort until a successful turn is seen.
 
-**Verifica end-to-end LIVE (2026-07-22, opencode v1.18.4 via WSL):** il motore reale ha pilotato
-opencode reale — topologia a-funzione → `"4"`; **replay dal journal → 0 chiamate all'host** (replay
-deterministico contro host reale); path vm-sorgente → `"4"`. Harness opt-in in
-`src/workflow/__tests__/live-smoke.ts` (fuori da `npm test`: costa token, richiede WSL).
+**LIVE end-to-end verification (2026-07-22, opencode v1.18.4 via WSL):** the real engine drove real
+opencode — a-function topology → `"4"`; **replay from the journal → 0 calls to the host**
+(deterministic replay against a real host); vm-source path → `"4"`. Opt-in harness in
+`src/workflow/__tests__/live-smoke.ts` (outside `npm test`: it costs tokens and requires WSL).
 
-## 3. Topologia = proiezione del DAG del ledger
+## 3. Topology = a projection of the ledger's DAG
 
-La topologia **non è hardcoded**: cade dal `depends_on`, esattamente come oggi "contracts before
-logic" (rescue) e "contract → paved road → slice" (greenfield) cadono dal DAG in `buildloop.waves()`.
+The topology is **not hardcoded**: it falls out of `depends_on`, exactly the way "contracts before
+logic" (rescue) and "contract → paved road → slice" (greenfield) fall out of the DAG today in
+`buildloop.waves()`.
 
-- `buildloop.waves(ledger)` → i livelli → `pipeline`/`parallel` per wave.
-- ogni `acceptance_criterion` / `RemediationItem` / `BuildItem` → un `agent()`.
-- gate `verify` / challenge → `verify()` (perspective-diverse) o il ruolo `challenger`.
-- È la **4ª superficie** accanto a map/interview/brainstorm; **nessuno stato proprio**.
+- `buildloop.waves(ledger)` → the levels → `pipeline`/`parallel` per wave.
+- each `acceptance_criterion` / `RemediationItem` / `BuildItem` → one `agent()`.
+- a `verify` / challenge gate → `verify()` (perspective-diverse) or the `challenger` role.
+- It is the **4th surface** beside map/interview/brainstorm; **it holds no state of its own**.
 
-## 4. Motore: cosa riusare da pi-dw (MIT) e cosa cambiare
+## 4. The engine: what to reuse from pi-dw (MIT) and what to change
 
-**Riusare (è maturo, testato, replica il contract di Claude Code):**
-- Journal: chiave `${runId}:${callIndex}` (indice posizionale assegnato **prima** del limiter →
-  deterministico); `hash` = sha256 dell'identità della call (`prompt, model, tier, phase, agentType,
-  schema`); replay solo se `hash == cached && callIndex < firstMiss` = **longest-unchanged-prefix**.
-- Persistenza: scrittura atomica tmp+rename con recovery `.bak`; `initialTokenUsage` risemina i
-  contatori sul resume.
-- Sandbox `vm` + `DETERMINISM_PRELUDE` (neutralizza `Date.now`/`Math.random`/`Date()` argless).
-  **Non è una sandbox di sicurezza** — vale solo per script *fidati* (utente / LLM guidato).
-- Subagenti: sessione fresca, `noExtensions`, **escludono `workflow`/`workflow_control`**
-  (anti-fanout ricorsivo), `dispose()` in `finally`.
-- Cap: `MAX_CONCURRENCY=16`, `MAX_AGENTS_PER_RUN=1000`, `retries=3`.
+**Reuse (it is mature, tested, and replicates Claude Code's contract):**
+- Journal: key `${runId}:${callIndex}` (the positional index is assigned **before** the limiter →
+  deterministic); `hash` = sha256 of the call's identity (`prompt, model, tier, phase, agentType,
+  schema`); replay only if `hash == cached && callIndex < firstMiss` = **longest-unchanged-prefix**.
+- Persistence: atomic tmp+rename writes with `.bak` recovery; `initialTokenUsage` reseeds the
+  counters on resume.
+- `vm` sandbox + `DETERMINISM_PRELUDE` (neutralizes `Date.now`/`Math.random`/argless `Date()`).
+  **It is not a security sandbox** — it holds only for *trusted* scripts (the user's, or an LLM's
+  under supervision).
+- Subagents: fresh session, `noExtensions`, **excluding `workflow`/`workflow_control`** (anti
+  recursive fan-out), `dispose()` in `finally`.
+- Caps: `MAX_CONCURRENCY=16`, `MAX_AGENTS_PER_RUN=1000`, `retries=3`.
 
-**Cambiare (è l'unico lavoro di sostanza):**
-- Sostituire il `WorkflowAgent` Pi-specifico con il seam `SpawnAdapter` a 4 implementazioni (§2).
-- Agganciare la topologia a `buildloop.waves()` invece di uno script scritto a mano.
-- Far atterrare l'output come **pin** (§5.4), non come valore di ritorno libero.
+**Change (this is the only substantive work):**
+- Replace the Pi-specific `WorkflowAgent` with the `SpawnAdapter` seam and its 4 implementations (§2).
+- Hook the topology to `buildloop.waves()` instead of a hand-written script.
+- Land the output as **pins** (§5.4), not as a free-form return value.
 
-**Attribuzione MIT (obbligatoria):** riprodurre **entrambe** le righe di copyright del `LICENSE`
-verbatim + il testo MIT integrale:
+**MIT attribution (mandatory):** reproduce **both** copyright lines from the `LICENSE` verbatim plus
+the full MIT text:
 ```
 Copyright (c) 2026 QuintinShaw
 Copyright (c) Michael Livs (original pi-dynamic-workflows)
 ```
-⚠️ Discrepanza da risolvere prima del commit: `LICENSE` dice "Michael Livs", `package.json`
-contributors dice "michaelliv". In dubbio si riproduce la notice del `LICENSE` così com'è.
+⚠️ Discrepancy to resolve before committing: the `LICENSE` says "Michael Livs", while `package.json`
+contributors says "michaelliv". When in doubt, reproduce the `LICENSE` notice exactly as it stands.
 
-## 5. Invarianti (i guardrail — rompine uno e hai costruito il forgetting-twin)
+## 5. Invariants (the guardrails — break one and you have built the forgetting twin)
 
-1. **Orchestrazione pura; unico writer del ledger = l'executor-subagent** (via floor MCP/CLI). Il
-   motore non tocca `ledger.json`. È la regola di roster resa runtime.
-2. **Elect-before-fanout.** Prima l'interview elegge la to-be, poi il workflow lavora. Il workflow
-   **non** eleva mai un `open_decision`.
-3. **Agent per il giudizio, tool deterministici per i fatti.** Non spawnare un agent per approssimare
-   ciò che `contract_diff`/`blast_radius`/`findings_gate` danno esatto (regola no-heuristics). Il
-   motore *chiama* il tool dentro l'agent e fana-out l'interpretazione.
-4. **L'output atterra come pin, non come report.** Fan-out read-only → risultati strutturati → la
-   scrittura come pin resta serializzata. Così il workflow è proiezione, non twin.
-5. **Self-containment.** **NON** dipendere da `npm:@quintinshaw/pi-dynamic-workflows` — è un fork MIT
-   vendorizzato/adattato in `src/`. Il gate `test_no_source_leaves_this_repo` lo impone comunque.
-6. **Determinismo engine-side.** Il journal vive nel motore → parità di replay anche sugli host
-   model-driven (opencode/Codex), dove l'orchestrazione *in-sessione* non sarebbe riproducibile.
+1. **Pure orchestration; the ledger's only writer is the executor subagent** (via the MCP floor). The
+   engine never touches `ledger.json`. This is the roster rule made runtime.
+2. **Elect before fan-out.** The interview elects the to-be first, then the workflow works. The
+   workflow **never** elects an `open_decision`.
+3. **Agents for judgment, deterministic tools for facts.** Do not spawn an agent to approximate what
+   `contract_diff`/`blast_radius`/`findings_gate` give exactly (the no-heuristics rule). The engine
+   *calls* the tool inside the agent and fans out the interpretation.
+4. **The output lands as a pin, not as a report.** Read-only fan-out → structured results → the write
+   as a pin stays serialized. That is what makes the workflow a projection rather than a twin.
+5. **Self-containment.** Do **not** depend on `npm:@quintinshaw/pi-dynamic-workflows` — it is an MIT
+   fork vendored and adapted into `src/`. The `test_no_source_leaves_this_repo` gate enforces it
+   regardless.
+6. **Engine-side determinism.** The journal lives in the engine → replay parity even on the
+   model-driven hosts (opencode/Codex), where *in-session* orchestration would not be reproducible.
 
-## 6. Topologie flagship (pseudocodice, stile DSL da forkare)
+## 6. Flagship topologies (pseudocode, in the DSL style to fork)
 
-> **Stato: tutte e tre implementate e testate** in `src/workflow/topologies/` (`phase1-finding`,
-> `challenger-verify`, `build-waves`), registrate in `cli.ts`. `build-waves` usa il primitivo
-> `checkpoint` (gate journaled, auto-approve headless) + `WorktreeAdapter` (isolamento git **reale**,
-> un worktree+branch per executor). Il pseudocodice sotto è la referenza; il codice è la verità.
+> **Status: all three implemented and tested** in `src/workflow/topologies/` (`phase1-finding`,
+> `challenger-verify`, `build-waves`), registered in `cli.ts`. `build-waves` uses the `checkpoint`
+> primitive (a journaled gate, auto-approving when headless) + `WorktreeAdapter` (**real** git
+> isolation, one worktree+branch per executor). The pseudocode below is the reference; the code is
+> the truth.
 
-### 6.1 Phase-1 finding (rescue) — multi-modal sweep + loop-until-dry  ⟵ valore massimo
+### 6.1 Phase-1 finding (rescue) — multi-modal sweep + loop-until-dry  ⟵ highest value
 ```js
 export const meta = { name: 'rescue-phase1-finding',
-  description: 'Estrai as-is + trova drift/dead/contradictions → pin', phases:[{title:'Sweep'},{title:'Verify'}] }
+  description: 'Extract as-is + find drift/dead/contradictions → pins', phases:[{title:'Sweep'},{title:'Verify'}] }
 
 phase('Sweep')
 const found = await loopUntilDry({
-  round: (i) => parallel(  // finder ciechi l'uno all'altro
-    ['per-layer DB↔ORM↔API↔FE','per-entity','per-contract','dead-code','contraddizioni']
+  round: (i) => parallel(  // finders blind to one another
+    ['per-layer DB↔ORM↔API↔FE','per-entity','per-contract','dead-code','contradictions']
     .map(lens => () => agent(
-      `Round ${i}. Trova pin via lente "${lens}". Chiama i tool deterministici (contract_diff, blast_radius) per i FATTI; ritorna solo il giudizio.`,
+      `Round ${i}. Find pins through the "${lens}" lens. Call the deterministic tools (contract_diff, blast_radius) for the FACTS; return judgment only.`,
       { tier:'medium', schema: PIN_SCHEMA }))),
   key: p => `${p.file}:${p.line}:${p.kind}`, consecutiveEmpty: 2 })
 
-phase('Verify')  // perspective-diverse: riapre, non decide
+phase('Verify')  // perspective-diverse: reopens, does not decide
 const kept = await parallel(found.map(pin => () =>
-  verify(pin, { reviewers:3, lens:['correttezza','fan-out/blast-radius','riproducibilità'], threshold:0.5 })
+  verify(pin, { reviewers:3, lens:['correctness','fan-out/blast-radius','reproducibility'], threshold:0.5 })
     .then(v => v.real ? pin : null)))
-return kept.filter(Boolean)   // ← l'executor li scrive come pin (scrittura serializzata, fuori dall'orchestrazione)
+return kept.filter(Boolean)   // ← the executor writes them as pins (serialized write, outside the orchestration)
 ```
 
-### 6.2 challenger verify — perspective-diverse (upstream twin del reviewer)
+### 6.2 challenger verify — perspective-diverse (the reviewer's upstream twin)
 ```js
-await pipeline(args.oracles,   // acceptance_criteria / to_be eletti, dal ledger
-  o => verify(o, { reviewers:3, lens:['unfalsifiable','inconsistente','unsatisfiable','assunzione-non-detta','ignora-fan-out'] }),
-  (v, o) => v.real ? null : { reopen: o.id, event:'ChallengeEvent', votes: v.votes })  // riapre il pin, non decide
+await pipeline(args.oracles,   // elected acceptance_criteria / to_be, from the ledger
+  o => verify(o, { reviewers:3, lens:['unfalsifiable','inconsistent','unsatisfiable','unstated-assumption','ignores-fan-out'] }),
+  (v, o) => v.real ? null : { reopen: o.id, event:'ChallengeEvent', votes: v.votes })  // reopens the pin, does not decide
 ```
 
-### 6.3 build waves — pipeline sul DAG + worktree isolation (già `buildloop`)
+### 6.3 build waves — a pipeline over the DAG + worktree isolation (already `buildloop`)
 ```js
 for (const wave of args.waves) {                 // args.waves = buildloop.waves(ledger)
   phase(`wave ${wave.index}`)
   await parallel(wave.items.map(item => () => agent(
-    `Implementa ${item.id} in TDD (red = acceptance_criterion pin). Apri PR, non fare merge.`,
+    `Implement ${item.id} in TDD (red = an acceptance_criterion pin). Open a PR, do not merge.`,
     { isolation:'worktree', agentType:'executor', model:'big' })))
-  await checkpoint(`Wave ${wave.index} completa? verdetto reviewer.`, { kind:'confirm' })  // gate prima della wave successiva
+  await checkpoint(`Wave ${wave.index} complete? reviewer's verdict.`, { kind:'confirm' })  // gate before the next wave
 }
 ```
 
-## 7. Open decisions da eleggere (i pin di questa proposta)
+## 7. Open decisions to elect (this proposal's pins)
 
-- **OD-1 — Substrato del motore.** (A) Fork MIT di pi-dw in TS, seam a 4 adapter [consigliato:
-  motore maturo, journal/vm/verify già fatti, tutti e 4 gli host hanno TS SDK]; (B) riscrivi in
-  Python estendendo `buildloop.py` [coerente col floor stdlib, ma reinventi determinismo/journal];
-  (C) nessun motore nuovo, solo generatore verso il primitivo nativo di ogni host [meno controllo,
-  niente parità reale su opencode/Codex].
-- **OD-2 — Modello d'esecuzione** (dipende da OD-1). Ibrido [consigliato]: floor `buildloop.py`
-  sequenziale + ceiling motore che guida gli host via **SDK caldo** · vs esterno-uniforme (subprocess
-  headless, freddo, parità massima) · vs nativo-per-host (più caldo, 4 integrazioni).
-- **OD-3 — Prima slice.** Phase-1 finding [consigliato] · build-wave (estende `buildloop`) ·
+*Each of these is an `open_decision` pin that has never been recorded as one. Elect them in the
+interview and write them to the ledger; the "recommended" tag below is a proposal, not an election —
+no agent may commit a decision the human did not make.*
+
+- **OD-1 — Engine substrate.** (A) An MIT fork of pi-dw in TS, with a 4-adapter seam [recommended:
+  mature engine, journal/vm/verify already done, all 4 hosts have a TS SDK]; (B) rewrite in Python,
+  extending `buildloop.py` [consistent with the stdlib floor, but you reinvent determinism and the
+  journal]; (C) no new engine, only a generator targeting each host's native primitive [less
+  control, no real parity on opencode/Codex].
+- **OD-2 — Execution model** (depends on OD-1). Hybrid [recommended]: a sequential `buildloop.py`
+  floor plus a ceiling engine driving the hosts through the **warm SDK** · vs uniform-external
+  (headless subprocess, cold, maximum parity) · vs native-per-host (warmest, 4 integrations).
+- **OD-3 — First slice.** Phase-1 finding [recommended] · build-wave (extends `buildloop`) ·
   challenger-verify.
 
-## 8. Assumptions (`agent_assumption`, vetoabili)
+## 8. Assumptions (`agent_assumption`, vetoable)
 
-- **A-1 → DECISO (§10):** il ceiling TS richiede **Node** sulla macchina dell'utente; il **floor MCP
-  (`build_waves`, via uv) resta senza Node**. Non più un'assunzione tacita: Node è un prerequisito
-  **hard ma scoped alla skill `run-workflow`** (l'intero package gira su uv+MCP senza di esso).
-  Difendibile — i 4 host sono ecosistemi Node/TS-SDK — e ora esplicito, con degrado a sequenziale.
-- **A-2**: token-count non è disponibile uniformemente → tracking **cost-first**, degrada a token o a
-  n/d. Nessun gate dipende dal token-count.
-- **A-3**: il fork di pi-dw resta API-compatibile col peer `@earendil-works/pi-coding-agent >=0.80.8`;
-  su bump maggiore, l'adapter Pi è il primo a rompersi.
+*These are forced assumptions surfaced deliberately rather than encoded silently
+(`src/core/assumptions.md`). Their home is a pin with `provenance: agent_assumption`, which a human
+can veto; while they live only here, nobody can.*
 
-## 9. Build plan (slice, ognuna = `acceptance_criterion` pin, TDD)
+- **A-1 → DECIDED (§10):** the TS ceiling requires **Node** on the user's machine; the **MCP floor
+  (`build_waves`, via uv) stays Node-free**. No longer a tacit assumption: Node is a **hard
+  prerequisite scoped to the `run-workflow` skill** (the whole package runs on uv + MCP without it).
+  Defensible — all 4 hosts are Node/TS-SDK ecosystems — and now explicit, with a documented
+  degradation to sequential.
+- **A-2**: token count is not uniformly available → tracking is **cost-first**, degrading to tokens
+  or to n/a. No gate depends on the token count.
+- **A-3**: the pi-dw fork stays API-compatible with the peer
+  `@earendil-works/pi-coding-agent >=0.80.8`; on a major bump, the Pi adapter is the first to break.
 
-- **Slice 0 — ✅ FATTO (verificato, 5/5 test in `src/workflow/__tests__/run.ts`)** — branch
-  `dynamic-workflows`; `SpawnAdapter` + `MockAdapter` + `ClaudeCliAdapter` (skeleton); core
-  deterministico `runWorkflow` (agent/parallel/pipeline/verify/loopUntilDry/phase/log) + journal per
-  indice posizionale con replay longest-unchanged-prefix. Gira su Node 22 `--experimental-strip-types`
-  (nessuna dep). `src/workflow/`.
-- **Slice 1 — parziale** — topologia §6.1 (`phase1Finding`) gira end-to-end **contro mock** (dedup +
-  dry-out + verify avversariale, testata). Manca: sandbox `vm` + determinism guard; e **output→pin nel
-  ledger reale** (oggi la topologia ritorna i pin come dati — la scrittura serializzata è da agganciare).
-- **Slice 2 — parziale (7/7 test)** — adapter host in `src/workflow/adapters/` (Codex + opencode:
-  **argv/flag verificati e testati** via seam `ExecFn` iniettabile; Claude Agent SDK + Pi: skeleton
-  *guarded* che falliscono forte se manca la dep). Ports `ledger_add_pin`/`build_waves` in `ports.ts`
-  **tipizzati sulle firme MCP reali** (`src/mcp/server.py`). `launch.ts` esegue la topologia e scrive
-  i sopravvissuti via `PinSink` (scrittura **serializzata**, fuori dal motore). opencode **verificato
-  end-to-end live**; codex **envelope + fail-loud verificati** (item di successo non visto: quota/auth).
-  **Adapter SDK caldi (`claude-sdk`/`codex-sdk`) + Pi-native FATTI** (Slice 7): scritti contro le API
-  reali dei `.d.ts` installati, mock-testati via `loadSdk` iniettabile, **opt-in** (`npm i`, non spediti).
-- **Slice 3 — ✅ FATTO (verificato, 7/7 test)** — sandbox `vm` + determinism guard in `sandbox.ts`:
-  `runWorkflowSource` (script come sorgente, primitive iniettate come global), blocklist parse-time +
-  `DETERMINISM_PRELUDE` runtime (blocca `Date.now`/`Math.random`/`Date()` argless, lascia `new Date(arg)`),
-  `stripLeadingExportMeta`. Refactor `createWorkflowContext` condiviso tra path a-funzione e a-sorgente.
-- **Slice 3** — bind topologia ↔ `buildloop.waves()`; wave build §6.3 con worktree.
-- **Slice 4 — ✅ FATTO** — skill **`run-workflow`** (in keel-core) col motore vendorizzato
-  **dentro la skill** (`engine/`, path **skill-relative** che ogni host inietta → portabile; il
-  plugin-root avrebbe richiesto `${CLAUDE_PLUGIN_ROOT}`, solo-Claude, o un `../` che non viaggia).
-  `build.py` copia `src/workflow/`→`skills/run-workflow/engine/` (`__tests__` esclusi), gated da
-  `build --check` + `tests/test_workflow_vendored.py`. La `SKILL.md` dà il protocollo: esegui
-  `engine/cli.ts` (Node + CLI host, **zero dep npm**) → pin JSON → **l'agente** li scrive via
-  `ledger_add_pin`.
-- **Slice 7 — ✅ FATTO** — adapter SDK caldi (`claude-sdk`/`codex-sdk`) + Pi-native, verificati contro
-  le API reali (SDK installati, `node_modules` gitignorato/non spedito), guarded + `loadSdk` iniettabile,
-  mock-testati (35/36 → 41 test totali), opt-in in `optionalDependencies`. **build_waves live risolto
-  SENZA client MCP** (obiezione giusta dell'utente): l'agente — che ha già il client MCP — chiama
-  `build_waves` e fa da ponte via `--args-stdin` (`--args-file -`); il motore resta puro e zero-dep.
-  Resta solo l'esecuzione **live** degli SDK (serve auth provider) e la forma item-successo codex (quota).
+## 9. Build plan (slices, each one an `acceptance_criterion` pin, TDD)
 
-## 10. Riconciliazione con decisioni recenti — ✅ FATTA
+- **Slice 0 — ✅ DONE (verified, 5/5 tests in `src/workflow/__tests__/run.ts`)** — branch
+  `dynamic-workflows`; `SpawnAdapter` + `MockAdapter` + `ClaudeCliAdapter` (skeleton); the
+  deterministic core `runWorkflow` (agent/parallel/pipeline/verify/loopUntilDry/phase/log) + a
+  journal keyed by positional index with longest-unchanged-prefix replay. Runs on Node 22
+  `--experimental-strip-types` (no deps). `src/workflow/`.
+- **Slice 1 — partial** — the §6.1 topology (`phase1Finding`) runs end-to-end **against mocks** (dedup
+  + dry-out + adversarial verify, tested). Missing: the `vm` sandbox + determinism guard; and
+  **output→pin in the real ledger** (today the topology returns the pins as data — the serialized
+  write is still to be hooked up).
+- **Slice 2 — partial (7/7 tests)** — host adapters in `src/workflow/adapters/` (Codex + opencode:
+  **argv/flags verified and tested** through an injectable `ExecFn` seam; Claude Agent SDK + Pi:
+  *guarded* skeletons that fail loud when the dependency is missing). The `ledger_add_pin`/
+  `build_waves` ports in `ports.ts` are **typed against the real MCP signatures**
+  (`src/mcp/server.py`). `launch.ts` runs the topology and writes the survivors through `PinSink`
+  (a **serialized** write, outside the engine). opencode **verified end-to-end live**; codex
+  **envelope + fail-loud verified** (the success item was not observed: quota/auth).
+  **The warm SDK adapters (`claude-sdk`/`codex-sdk`) + Pi-native are DONE** (Slice 7): written
+  against the real APIs in the installed `.d.ts` files, mock-tested through an injectable `loadSdk`,
+  **opt-in** (`npm i`, not shipped).
+- **Slice 3 — ✅ DONE (verified, 7/7 tests)** — `vm` sandbox + determinism guard in `sandbox.ts`:
+  `runWorkflowSource` (a script as source, with the primitives injected as globals), a parse-time
+  blocklist + the runtime `DETERMINISM_PRELUDE` (blocks `Date.now`/`Math.random`/argless `Date()`,
+  leaves `new Date(arg)` alone), `stripLeadingExportMeta`. Refactored `createWorkflowContext` to be
+  shared between the a-function and a-source paths.
+- **Slice 3** — bind the topology ↔ `buildloop.waves()`; the §6.3 build wave with worktrees.
+- **Slice 4 — ✅ DONE** — the **`run-workflow`** skill (in keel-core) with the engine vendored
+  **inside the skill** (`engine/`, a **skill-relative** path that every host injects → portable; the
+  plugin root would have required `${CLAUDE_PLUGIN_ROOT}`, which is Claude-only, or a `../` that does
+  not travel). `build.py` copies `src/workflow/`→`skills/run-workflow/engine/` (`__tests__`
+  excluded), gated by `build --check` + `tests/test_workflow_vendored.py`. The `SKILL.md` carries the
+  protocol: run `engine/cli.ts` (Node + the host CLI, **zero npm deps**) → pins as JSON → **the
+  agent** writes them through `ledger_add_pin`.
+- **Slice 7 — ✅ DONE** — warm SDK adapters (`claude-sdk`/`codex-sdk`) + Pi-native, verified against
+  the real APIs (SDKs installed, `node_modules` gitignored and not shipped), guarded + an injectable
+  `loadSdk`, mock-tested (35/36 → 41 tests total), opt-in via `optionalDependencies`. **Live
+  `build_waves` solved WITHOUT an MCP client** (a fair objection from the user): the agent — which
+  already has the MCP client — calls `build_waves` and bridges the result in through `--args-stdin`
+  (`--args-file -`); the engine stays pure and dependency-free. What remains is only the **live**
+  execution of the SDKs (needs provider auth) and the shape of a codex success item (quota).
 
-Due elezioni recenti intersecavano questo design e ne correggevano la cornice; ora sono **integrate**
-(il framing "CLI-floor" in §1-§2 era stale ed è stato riscritto):
+## 10. Reconciliation with recent decisions — ✅ DONE
 
-- ✅ **Il "CLI floor" non esiste più** (decisione "Totale", 2026-07-22, PR #5). MCP è l'**unico** canale
-  runtime su tutti e 4 gli host (Pi via `mcp-bridge.ts`), uv è prerequisito **hard**. Il floor qui
-  **non** è "eseguire `buildloop.py` come CLI": è lo **scheduler esposto come MCP tool `build_waves`**
-  (buildloop.py resta library, invocato via MCP). Il ceiling TS prende DAG e fatti (`build_waves`,
-  `contract_diff`, `blast_radius`) **via MCP tool** — l'agente li chiama e fa da ponte (`--args-stdin`),
-  il motore non parla MCP. **§2 riscritto di conseguenza.**
-- ✅ **Node eletto come prerequisito, scoped.** Il ceiling TS aggiunge **Node**; il floor MCP no.
-  Deciso esplicitamente (non più assunzione tacita — vedi §8 A-1): Node è **hard ma scoped alla skill
-  `run-workflow`**, non un secondo prerequisito globale accanto a uv — il resto del package gira su
-  uv+MCP senza Node, e la skill degrada a sequenziale se Node manca. Nota: gli adapter host
-  (`claude -p`, `codex exec`) sono i CLI dei *coding agent*, non il vecchio CLI runtime — lì nessun
-  conflitto.
-- ✅ **`tier` riusa `model-orchestration-profiles`, non lo reinventa.** Rimosso il dial `tier` dal seam
-  (era `task→model`, l'euristica vietata). Il carrier è ora il **ruolo** (`agentType`): finder→
-  `researcher`, verify→`reviewer`, challenger→`challenger`, executor→`executor`. Il modello si risolve
-  **per-host all'install** dal config nativo per-agente (`model-tiers.md` Profile A–D); opencode lo
-  applica via `--agent`, gli altri degradano al modello di sessione. Il motore non risolve modelli.
+Two recent elections intersected this design and corrected its frame; they are now **integrated**
+(the "CLI-floor" framing in §1–§2 was stale and has been rewritten):
 
-Slice 0 non era toccata da nulla di questo (il motore è agnostico su come arrivano DAG/ruolo/fatti);
-le slice successive ora partono da questa cornice riconciliata, non da §1-§2 originali.
+- ✅ **The "CLI floor" no longer exists** (the "Totale" decision, 2026-07-22, PR #5). MCP is the
+  **only** runtime channel on all 4 hosts (Pi via `mcp-bridge.ts`), and uv is a **hard**
+  prerequisite. The floor here is **not** "run `buildloop.py` as a CLI": it is the **scheduler
+  exposed as the MCP tool `build_waves`** (`buildloop.py` stays a library, invoked over MCP). The TS
+  ceiling takes the DAG and the facts (`build_waves`, `contract_diff`, `blast_radius`) **via MCP
+  tools** — the agent calls them and bridges (`--args-stdin`); the engine does not speak MCP.
+  **§2 rewritten accordingly.**
+- ✅ **Node elected as a prerequisite, scoped.** The TS ceiling adds **Node**; the MCP floor does
+  not. Decided explicitly (no longer a tacit assumption — see §8 A-1): Node is **hard but scoped to
+  the `run-workflow` skill**, not a second global prerequisite beside uv — the rest of the package
+  runs on uv + MCP without Node, and the skill degrades to sequential when Node is missing. Note:
+  the host adapters (`claude -p`, `codex exec`) are the *coding agents'* CLIs, not the old runtime
+  CLI — no conflict there.
+- ✅ **`tier` reuses `model-orchestration-profiles`, it does not reinvent it.** The `tier` dial was
+  removed from the seam (it was `task→model`, the forbidden heuristic). The carrier is now the
+  **role** (`agentType`): finder→`researcher`, verify→`reviewer`, challenger→`challenger`,
+  executor→`executor`. The model resolves **per host at install** from the native per-agent config
+  (`model-tiers.md` Profiles A–D); opencode applies it through `--agent`, the others degrade to the
+  session model. The engine does not resolve models.
 
-**Risoluzione (Slice 4), senza fork controverso:** il motore **non parla MCP**. Una skill/command dentro
-la sessione host invoca `workflow/cli.ts` (Node + il CLI dello *stesso* host, zero dep npm); il motore
-pilota sub-invocazioni di quel CLI e **stampa i pin come JSON**; l'agente chiamante li scrive con
-`ledger_add_pin` — il tool MCP che ha già. Così `build_waves` (via `args`) e la scrittura del ledger
-restano sull'agente, non nel motore. Questo scioglie il "come raggiunge MCP" senza scegliere nulla di
-opinabile: il motore vendorizzato è invocabile subito (discovery/dry-run), la scrittura è dell'agente.
+Slice 0 was untouched by any of this (the engine is agnostic about how the DAG, the role and the
+facts arrive); the later slices now start from this reconciled frame rather than from the original
+§1–§2.
+
+**Resolution (Slice 4), without a controversial fork:** the engine **does not speak MCP**. A
+skill/command inside the host session invokes `workflow/cli.ts` (Node + the *same* host's CLI, zero
+npm deps); the engine drives sub-invocations of that CLI and **prints the pins as JSON**; the calling
+agent writes them with `ledger_add_pin` — the MCP tool it already has. So `build_waves` (through
+`args`) and the ledger write both stay with the agent rather than moving into the engine. That
+dissolves the "how does it reach MCP" question without choosing anything contestable: the vendored
+engine is invocable immediately (discovery/dry-run), and the write belongs to the agent.
 
 ---
-*Ricerca a fondamento (2026-07-22): sorgente pi-dw v3.4.0 letto integralmente; Claude Code Agent SDK
-+ CLI headless via docs; Codex `codex exec`/app-server + opencode `run`/`serve` via deepwiki;
-`buildloop.py` letto in repo. Firme e flag citati sono verificati, non a memoria.*
+*Grounding research (2026-07-22): pi-dw v3.4.0 source read in full; the Claude Code Agent SDK and
+headless CLI via the docs; Codex `codex exec`/app-server and opencode `run`/`serve` via deepwiki;
+`buildloop.py` read in the repo. The signatures and flags cited are verified, not from memory.*

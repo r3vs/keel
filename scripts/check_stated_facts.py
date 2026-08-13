@@ -16,12 +16,23 @@ fact names the thing that knows it — `unittest`'s own discovery for the suite 
 decorations for the roster, `ledger.SCHEMA_VERSION` for the schema. A gate holding its own copy of
 the number it checks is the drift it exists to catch, one file over.
 
-**What it is scanned over, and the one deliberate exclusion.** Every markdown that describes the
-repo *as it now stands*. `docs/open-gaps.md` is excluded and the reason is structural rather than
-convenient: it is a historical register whose closed sections are kept verbatim on purpose, so it
-quotes `Ran 565 tests, OK (skipped=28)` and "617 tests and eight green linters" as records of what
-was true on a past day. Checking those against today would make the file un-writable in its own
+**What it is scanned over, and the two deliberate exclusions.** Every markdown that describes the
+repo *as it now stands*. `docs/open-gaps.md` and `CHANGELOG.md` are excluded and the reason is
+structural rather than convenient, and it is the same reason twice: both are **historical registers
+by construction**. `open-gaps.md` keeps its closed sections verbatim on purpose, so it quotes
+`Ran 565 tests, OK (skipped=28)` and "617 tests and eight green linters" as records of what was
+true on a past day; a changelog entry for 0.1.0 restates the ~170-test suite and the v0.6 ledger
+spec of the day 0.1.0 shipped, and rewriting those to today's numbers would be falsifying the
+record, not fixing it. Checking either against today would make the file un-writable in its own
 declared shape. Every other doc in scope is making a present-tense claim.
+
+**`MEMORY.md` is in scope as of 2026-08-13, and it is the instance this gate was written for.**
+It sat outside `SCOPE` while claiming "**179 tests** in CI" against a suite of 1017, and while
+asserting that cognee was among the declared MCP servers when the build declares only the rows its
+own table marks `→ **http**`. That is exactly the shape the docstring above describes — a claim in
+prose with a carrier one call away, wrong because nobody happened to edit the line beside it — and
+the file was invisible to the gate for the whole time. An unlisted file reads as an oversight in one
+shape and as a decision in the other, which is why both lists below are explicit.
 
 **The honest limit, stated because a gate that hides one is worse than none.** A restatement in a
 phrasing nobody registered below is not checked — "roughly fifty tools", "about eight hundred
@@ -68,13 +79,20 @@ sys.path.insert(0, str(ROOT / "src" / "runtime"))
 #: Present-tense descriptions of the repo. Anything not here is not scanned, which is why the list
 #: is paths and globs rather than "every .md" minus exceptions — an unlisted file reads as an
 #: oversight in one shape and as a decision in the other.
-SCOPE = ("README.md", "CLAUDE.md", "AGENTS.md",
+SCOPE = ("README.md", "CLAUDE.md", "AGENTS.md", "MEMORY.md",
          "src/readme/*.md", "src/core/*.md", "src/skills/*/SKILL.md",
          "src/skills/*/references/*.md", "docs/packaging.md")
 
-#: Kept out, with the reason. `open-gaps.md` is a historical register by construction: its closed
-#: sections quote the numbers of the day they were filed, and that is the point of the file.
-EXCLUDED = {"docs/open-gaps.md"}
+#: Kept out, with the reason. Both are historical registers by construction, so their numbers are
+#: records of a past day rather than claims about this one:
+#:  - `open-gaps.md` keeps its closed sections verbatim — that is the point of the file.
+#:  - `CHANGELOG.md` restates, per released version, the suite size and ledger-spec version that
+#:    were true when that version shipped (0.1.0's "~170 tests", "spec v0.6"). Holding those to
+#:    today's carrier would demand rewriting history to keep a linter quiet, which inverts what the
+#:    file is for. Present-tense claims about the package belong in README/CLAUDE/MEMORY, which are
+#:    all in SCOPE — so nothing is lost by excluding this one, and the exclusion is recorded here
+#:    rather than left as an unlisted-file silence.
+EXCLUDED = {"docs/open-gaps.md", "CHANGELOG.md"}
 
 
 def suite_size() -> int:

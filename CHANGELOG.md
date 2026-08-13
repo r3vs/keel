@@ -1,11 +1,49 @@
 # Changelog
 
-All notable changes to this project are documented here. The design is complete and the runtime
-spine has started; versions track design + packaging + runtime together.
+All notable changes to this project are documented here, in
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) order. The design is complete and the
+runtime spine has started; versions track design + packaging + runtime together.
 
-## [Unreleased]
+**One number, four surfaces.** A version here is `VERSION` in `scripts/build.py` — the only
+hand-written version in the repo. Every `.claude-plugin/` manifest, every `.codex-plugin/` manifest
+and the root `.claude-plugin/marketplace.json` are stamped from it by the build, and a release is
+the annotated git tag `{plugin-name}--v{version}` (see `CONTRIBUTING.md` § Release). A host decides
+"do I need to update?" by comparing that string and nothing else.
+
+**Which of these were actually tagged, stated rather than implied**: only **0.3.0** and **0.4.0**
+carry `{plugin}--v{version}` tags, and those eight are *lightweight*, not annotated. 0.1.0, 0.2.0,
+0.4.1 and 0.5.0 moved the manifest number without a tag, so `tests/test_plugin_version.py` — which
+diffs `plugins/<name>` against the tag that claims to have shipped it — has been **skipping green**
+for every version since 0.4.0. That is the gate's own declared residual ("tag at release, or this
+file is decoration"), and it is why tagging is now written down as a step.
+
+**Dates are the merge/commit dates of the range, best-effort.** Three versions landed on 2026-07-24;
+that is what the history says, not a transcription error.
+
+**This file deliberately restates old numbers, and is deliberately outside
+`scripts/check_stated_facts.py`'s scope for that reason.** The 0.1.0 entry says "~170 tests" and
+"spec v0.6" because those were true when 0.1.0 shipped; holding a changelog to today's carrier
+would mean rewriting the record to keep a linter quiet. Present-tense claims live in
+`README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
+
+## [0.6.0] — unreleased
 
 ### Added
+- **`which-skill`, and the two skills that name what an agent must *not* do alone.** The package
+  had nineteen skills and no map; `which-skill` is the router over them, and the only
+  **user-invoked** one (`disable-model-invocation: true`, authored once, read by Claude Code and
+  Pi, derived into Codex's `agents/openai.yaml`; opencode is a stated residual because its only
+  door is the model's `skill` tool). Beside it: **`prototype`** — a fork about how something
+  behaves or looks is settled against a runnable artifact rather than by two people imagining the
+  same words differently, and the human still elects; and **`wizard`** — the inverse of the
+  assumptions doctrine, covering not what an agent does when it must guess but what it does when it
+  must **wait** for a person, closed on something observed rather than on their "done".
+- **Ledger v0.30 → v0.31 — two registers the schema had nowhere to put.** v0.30 adds **claims**:
+  `ledger_claim` / `ledger_release` / `ledger_frontier`, a compare-and-set with expiry, because two
+  sessions could take the same pin and neither could tell. v0.31 adds the **fog register**
+  (`ledger_fog` / `ledger_add_fog` / `ledger_graduate_fog` / `ledger_clear_fog`): a decision you can
+  sense and cannot yet phrase has no home in a register whose unit is a *question*, so it gets its
+  own, and it **leaves** that register the moment a human phrases it into a pin.
 - **`screenshot-to-code` (in `keel-kit`) — a reference image as evidence, not as a specification.**
   The prior art (`abi/screenshot-to-code`, MIT) answers a picture with a file, and everything the
   picture withheld — breakpoints, the hover and error states, which strings were placeholder, what a
@@ -31,6 +69,109 @@ spine has started; versions track design + packaging + runtime together.
   a mechanism. A screenshot the user chose and handed over **is** an approved visual direction, and
   this is how it becomes a DTCG contract.
 
+- **Eleven grammars beyond JS/TS in the comprehension graph** — Go · Rust · Java · C# · Ruby · PHP ·
+  C · C++ · Kotlin · Swift · Scala, each one query table rather than one parser, so the graph stops
+  being a two-language instrument on a polyglot repo.
+- **MCP surface beyond tools** — the server now also serves **resources**, **prompts**, **progress**
+  notifications and a **version**, so a host can discover what the package holds without a tool call
+  and can show a long scan advancing instead of hanging.
+- **Evals expanded** across the skills, and `run_evals.py --validate` widened with them.
+
+### Changed
+- **The trigger axis reworked.** A skill self-activates off its `description`, so the descriptions
+  are the routing table; they were rewritten to separate the skills along the axis a user's request
+  actually varies on rather than along the axis we happened to author them in.
+- **CI grew a matrix, a Node job, and manifest gates** — the tree-sitter backend is installed before
+  the suite on every leg (a missing backend used to skip 21 tests *green*), Node covers the vendored
+  workflow engine, and the plugin manifests are validated rather than eyeballed.
+- **`keel-kit` now constrains its dependency on `keel-core` to `^0.6`** instead of tracking whatever
+  the marketplace last published. Every kit skill calls keel-core's MCP tools by name, so a core
+  release that renames one breaks the kit's prose while both manifests stay valid. Verified at the
+  consumer before being written (`docs/en/plugin-dependencies`): a `dependencies` entry may be a
+  bare string or `{name, version}` with an npm semver range, resolved against `{name}--v{version}`
+  git tags — the same tags `tests/test_plugin_version.py` already anchors on.
+
+### Fixed
+- **`MEMORY.md` was outside `check_stated_facts.py`'s `SCOPE`** while claiming a 179-test suite
+  against 1017, and while listing `cognee` among the declared MCP servers when the build declares
+  only the rows its own table marks `→ **http**`. That is the precise failure shape the gate was
+  written for, in a file the gate could not see. It is in scope now; `CHANGELOG.md` is recorded in
+  `EXCLUDED` with its reason, so its absence reads as a decision rather than an oversight.
+- **`MEMORY.md`'s own header claimed it was always-on context** *"loaded by AGENTS.md-aware agents"*.
+  It is loaded by nobody, on any of the four hosts — `AGENTS.md` names it in prose, which is a
+  pointer, not an import, and no import syntax is portable. The audit that built the instruction
+  carrier killed that claim in `project-memory`'s playbook and left it standing in the file it was
+  about.
+- **`docs/design/dynamic-workflows.md` was still in Italian** — the design authority for the TS
+  workflow engine, unreadable to most of the agents and contributors expected to execute it. Fully
+  translated; its open decisions and assumptions are retitled in English and flagged as what they
+  are: `open_decision` and `agent_assumption` pins living in prose instead of in a ledger.
+
+## [0.5.0] — 2026-08-05 (never tagged)
+
+*Reconstructed from git history after the fact — the entries below are read off the commits between
+`b692cd9` and `96d402a`, not written at release time.*
+
+### Added
+- **A human had no way to record a decision on any host.** The ledger's whole premise is that only a
+  committed human answer elects anything, and every write door was an agent door. This release adds
+  the human's: the recording tools take an election the person made and **refuse a relay with no
+  quote**, so "the user said yes" cannot be typed by the thing that wanted the yes.
+
+### Fixed
+- **An item's `depends_on` was accepted, stored, and read by nobody** — the field the wave scheduler
+  levels the DAG on, written faithfully into every ledger and consulted by nothing. This is the
+  failure `check_schema_fields.py` now quantifies over: a field the schema declares that nothing
+  which ships ever reads.
+
+## [0.4.1] — 2026-08-05 (never tagged)
+
+*Reconstructed from git history (`9bcf88a`..`b692cd9`).*
+
+### Fixed
+- **The two cross-layer tools declared `dict` and returned a bare `list`.** An MCP output contract
+  that disagrees with the value is worse than an undocumented one: the client validates against the
+  declaration and the tool works anyway, until a stricter client refuses it.
+- **A colon in an agent description silently unrestricted a read-only agent** — YAML frontmatter
+  parsed the rest of the line as a new key, dropping the tool allowlist that *was* the enforcement.
+
+### Changed
+- **The tool roster was pruned, and the pruning recorded** — a tool description is rent paid every
+  session and its value arrives only when it is called. The docs were corrected in the same pass so
+  they stop reading as if 52 tools shipped.
+- **Docs and gates audited against their carriers**: three lines of one README said 34, 37 and 465;
+  a constant with no carrier is a hypothesis, and `check_hypotheses.py` now says so; a backtick is a
+  claim about the code, and `docs_claims` now checks them; two signals that agree are strong, two
+  that disagree **are** the finding; `readiness_assess` was added because a correct plan onto ground
+  that cannot hold it still fails; and `ledger_mark_correctness_unknown` gave an unverifiable claim
+  somewhere honest to land instead of landing on green.
+
+## [0.4.0] — 2026-07-24
+
+*Reconstructed from git history (`0f75eb3`..`9bcf88a`) — one commit, and it is the whole release.*
+
+### Added
+- **The ledger reaches a fresh agent through `AGENTS.md`, or it does not reach it at all.** The
+  ledger is the single source of truth and **no coding agent loads it**; every host loads exactly one
+  markdown instruction file unprompted. So a project could hold a fully elected design and still
+  hand every fresh executor a blank slate — and `greenfield-forge` shipped new repos with zero
+  occurrences of `AGENTS.md`, `CLAUDE.md` or `MEMORY.md`. The ledger is now **projected** into a
+  fenced managed region of the user's `AGENTS.md` (`runtime/instructions.py`,
+  `mcp:generate_instructions` / `mcp:instructions_diff`), generated and drift-checked like
+  `generate.py`'s contracts. Verified at each host's loading function rather than its docs — Codex
+  `read_agents_md`, opencode `InstructionContext.observe`, Pi `loadProjectContextFiles`, Claude
+  Code's `CLAUDE.md` hierarchy. Two facts decide the design: **no import syntax is portable** (only
+  Claude Code parses `@path`, and it skips code spans), and **length is a correctness constraint**
+  (Codex truncates by bytes, Claude Code loses adherence past ~200 lines), so the region is a
+  budgeted index whose every clip is declared. The begin marker carries the body's fingerprint,
+  which separates `hand_edited` (someone wrote a decision *into* the projection — reported, never
+  auto-healed) from `stale` (the ledger moved).
+
+## [0.3.0] — 2026-07-24
+
+*Reconstructed from git history (`0158386`..`0f75eb3`). Its release commit is titled "the number
+moves because the bytes moved", which is the rule this whole file exists to keep.*
+
 ### Removed
 - **The root `.claude-plugin/plugin.json` is gone.** It declared the repository itself to be a
   plugin — which it stopped being on 2026-07-16, when the architecture became four plugins under
@@ -42,6 +183,20 @@ spine has started; versions track design + packaging + runtime together.
   old brand and the old repo URL, and only an eyeball caught it, which is not a mechanism.
   `tests/test_mcp_declaration.py::test_the_root_is_a_marketplace_not_a_plugin` now gates it — and was
   confirmed to fail with the file restored, rather than merely passing without it.
+
+### Changed
+- **One object per gate, evidence before judgment, one reopen path.** The roster was tightened so
+  each role owns exactly one thing: the `measurer` owns the evidence, the `reviewer` owns the code,
+  the `challenger` owns the oracle. The cheap deterministic gate runs first, so review judgment is
+  never spent on a change that does not close the gap — this package's own static-first doctrine,
+  applied to its own roster.
+- **Each plugin got its own README**, because a plugin that ships 32 tools cannot be documented by
+  one sentence in the repo's front page.
+
+## [0.2.0] — 2026-07-24
+
+*Reconstructed from git history (`b97f7bb`..`0158386`) — the largest reconstructed range, spanning
+PRs #1 and #3–#7. Its release commit is the rebrand; it was never tagged.*
 
 ### Changed
 - **The project is named `Keel`, and for the first time every surface agrees on it.** There used to
@@ -62,8 +217,43 @@ spine has started; versions track design + packaging + runtime together.
   - One line of that rewrite was cut on the house rule: the draft's hero ran `keel contract-diff`,
     a CLI that has not existed since it was removed in favour of the MCP-only runtime. A fabricated
     command in the first code block of the README is the claiming-vs-doing bug in its purest form.
+- **"Totale": the CLI ceases to exist — MCP is the only runtime channel** on all four hosts (Pi via
+  `mcp-bridge.ts`), and `uv` becomes a hard prerequisite. What had been a CLI floor with an MCP
+  ceiling became one channel, which is why `run-workflow`'s floor is the `build_waves` **tool** and
+  not a command.
 
-## [0.1.0] — unreleased
+### Added
+- **An `understand` mode** — comprehension as the deliverable rather than as phase 1 of a rescue,
+  with the runtime family behind it: `graph_build` (tree-sitter-native backbone), `understand`,
+  `explain`, `query`, `tours`, `impact`, `domain`, `graphmap`, `fingerprint`, `docs_claims`.
+- **The cross-host dynamic-workflow engine** (`src/workflow/`, a TS fork of the MIT
+  `pi-dynamic-workflows`) and the **`run-workflow`** skill that invokes it: deterministic journal
+  with longest-unchanged-prefix replay, a `vm` sandbox with a determinism prelude, a four-adapter
+  spawn seam (Claude · Codex · opencode · Pi), and three flagship topologies. Verified end-to-end
+  live against real opencode; the engine is vendored **inside the skill** so its paths stay
+  skill-relative and portable. Design authority: `docs/design/dynamic-workflows.md`.
+- **The design-alignment layer** — the DTCG token contract (`design_tokens`: one source → CSS /
+  Tailwind / `DESIGN.md`), greenfield's `design-propagation` twin, rescue's as-is DTCG extraction
+  with Playwright browser verification, and the `playwright` MCP server declared as a capability
+  server (it connects with zero setup, unlike cognee).
+- **Per-role model + effort, resolved per provider profile** (`src/core/model-tiers.md`), and
+  `spend_report` telemetry — measure the tiers rather than assert them.
+- **The self-model doctrine + six anti-cheat extensions**, and a `learn:<level>` intensity dial for
+  the learning layer.
+- **The Phase-0 gating verdict recorded from the VibraFlow run**, closing the rescue TODO's step 0.
+
+### Fixed
+- **Every host claim that was verified at the *type* rather than at the *parser*** was re-checked and
+  corrected, including the Codex `./`-prefix rule that had silently dropped manifest paths for
+  months, and the refuted "`Bash` is a write vector Claude Code cannot restrict" claim that was still
+  in the shipped doctrine.
+- **`backend="auto"` did not actually degrade** — tree-sitter is now probed per grammar.
+- **Bootstrap's grammar prefetch never ran** (`__file__` is `"<stdin>"` in a heredoc) and its uv
+  cache warm-up resolved the wrong path while always claiming success.
+- **The challenger's vibe-word heuristic was dropped** — it violated the no-heuristics rule and had a
+  substring bug underneath it.
+
+## [0.1.0] — 2026-07-17 (never tagged)
 
 ### Removed
 - **The root's host config — `.mcp.json`, `opencode.json`, `.codex/config.toml` — is gone**, and

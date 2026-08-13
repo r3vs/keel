@@ -109,13 +109,22 @@ class TestTheProductShipsWhatItOrders(unittest.TestCase):
         # MCP servers are session-global — but only if the plugin declaring them is installed.
         # `dependencies` is the only thing that guarantees it; there is no cross-plugin file access
         # to fall back on.
+        #
+        # The question asked here is "is keel-core NAMED", never "in what shape". A `dependencies`
+        # entry is a bare string OR `{name, version}` with a semver range, and this assertion used
+        # to be `assertIn("keel-core", …)` over the raw list — which reads as a name check and is
+        # really a shape check, so the day keel-kit gained a `^0.x` constraint it would have failed
+        # for a reason that has nothing to do with reachability. Extracting the name first makes the
+        # test say what it means, and leaves the range to `test_plugin_version.py`, which owns it.
         for p in sorted(x for x in PLUGINS.iterdir() if x.is_dir()):
             with open(p / ".claude-plugin" / "plugin.json", encoding="utf-8") as fh:
                 m = json.load(fh)
             with self.subTest(plugin=p.name):
                 if (p / ".mcp.json").exists():
                     continue  # it declares them itself
-                self.assertIn("keel-core", m.get("dependencies", []),
+                names = [d if isinstance(d, str) else d.get("name")
+                         for d in m.get("dependencies", [])]
+                self.assertIn("keel-core", names,
                               "this plugin's skills cite the doctrine's servers but nothing "
                               "guarantees the plugin that declares them is installed")
 
