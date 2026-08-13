@@ -136,7 +136,7 @@ durable memory without it.
 
 ## The tool surface is a budget, and it is the host's to spend
 
-**The assumption this package has been relying on silently, now written down: 67 MCP tools is
+**The assumption this package has been relying on silently, now written down: 69 MCP tools is
 affordable only because the host defers them.** Nothing in `src/mcp/server.py` decides that, nothing
 gates it, and it is false on at least one host we ship to. Naming it is the point of this section —
 it is a load-bearing bet on somebody else's product behaviour, which is the class of fact this repo
@@ -147,18 +147,31 @@ handshake, and size the `tools/list` result:
 
 | | |
 |---|---|
-| tools advertised | **67** |
-| whole `tools/list` result | ~98 k characters of JSON — **≈24 k tokens** at ~4 chars/token |
+| tools advertised | **69** |
+| whole `tools/list` result | ~101 k characters of JSON — **≈25 k tokens** at ~4 chars/token |
 | median tool object | ~1,410 characters (the JSON: name + description + `inputSchema` + annotations) |
 | longest single description | 1,405 characters |
 | server `instructions` | 335 characters |
 
 Method, because a number in prose with no way to re-derive it is the thing
-`scripts/check_stated_facts.py` exists to prevent — and these four have **no gate**, unlike the
-tool count, which `check_stated_facts.py` checks against the `@mcp.tool` decorations themselves:
-spawn `uv run --script src/mcp/server.py`, send `initialize` + `notifications/initialized` +
-`tools/list` over stdio (the harness in `tests/test_mcp_server.py` does exactly this), and
-`len(json.dumps(tool, ensure_ascii=False))` each entry. Re-derive rather than trust.
+`scripts/check_stated_facts.py` exists to prevent: spawn `uv run --script src/mcp/server.py`, send
+`initialize` + `notifications/initialized` + `tools/list` over stdio (the harness in
+`tests/test_mcp_server.py` does exactly this), and `len(json.dumps(tool, ensure_ascii=False))` each
+entry. Re-derive rather than trust.
+
+**And the re-derivation now runs**, which for a year it did not: this paragraph used to end by
+admitting *"these four have no gate"*, which is a published method with nobody executing it — a
+measurement that was true on one afternoon, propping up every argument the section makes.
+`scripts/check_packaging_wire.py` completes that handshake in CI, sizes what arrives, and fails when
+any figure here drifts by more than a **declared 5%** from the wire. The tolerance is on the
+*argument* the number carries (*"roughly a fifth of a 128 k window"*, *"about 640 of headroom"*),
+never on the number, and it is why this is a second gate rather than four more rows in
+`check_stated_facts.py`: that one compares for exact equality because its facts are **counts**, and
+loosening it to a tolerance to admit `~98 k` would weaken every count it holds. The two split on
+exactness and on cost — an AST walk under a second there, a PEP 723 resolve plus an MCP handshake
+here. The tool count stays on both, deliberately: `check_stated_facts.py` asks the `@mcp.tool`
+decorations, this asks the wire, and a tool registered behind a condition is the case where those
+two answers differ.
 
 Two things that measurement corrects, both of which were being estimated the easy way. **The
 docstring is not the payload**: FastMCP splits a tool's docstring, sending the prose before `Args:`
@@ -170,9 +183,9 @@ cost**: median description 372 characters inside a median tool object of ~1,410.
 
 **Per host, and only the first row is a verified mechanism:**
 
-| Host | Are the 67 loaded up front? | Verification |
+| Host | Are the 69 loaded up front? | Verification |
 |---|---|---|
-| **Claude Code** | **No, deferred by default** | VERIFIED in its docs: *"Tool search is enabled by default: MCP tools are deferred and discovered on demand"* — only tool **names** and the server `instructions` load at session start. Off in named cases: `ENABLE_TOOL_SEARCH=false`; a non-first-party `ANTHROPIC_BASE_URL`; `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; Microsoft Foundry on Azure (rejected server-side, unoverridable); Google Cloud Agent Platform models older than the 4.5 generation. `auto` is a middle setting: *"tools load upfront if they fit within 10% of the context window, deferred otherwise"* — at ≈24 k tokens we fit that only on a large window. |
+| **Claude Code** | **No, deferred by default** | VERIFIED in its docs: *"Tool search is enabled by default: MCP tools are deferred and discovered on demand"* — only tool **names** and the server `instructions` load at session start. Off in named cases: `ENABLE_TOOL_SEARCH=false`; a non-first-party `ANTHROPIC_BASE_URL`; `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; Microsoft Foundry on Azure (rejected server-side, unoverridable); Google Cloud Agent Platform models older than the 4.5 generation. `auto` is a middle setting: *"tools load upfront if they fit within 10% of the context window, deferred otherwise"* — at ≈25 k tokens we fit that only on a large window. |
 | **Codex** | **UNVERIFIED** | Its MCP documentation is silent on tool deferral, count limits and context budgeting, and the Rust source was not read at the consuming function. Absence of a documented mechanism is not absence of one. Plan for the full surface — that is the conservative direction. |
 | **opencode** | **Yes, on the docs' own account** | *"Once added, MCP tools are automatically available to the LLM alongside built-in tools"*, and it names the consequence itself: *"When you use an MCP server, it adds to the context. This can quickly add up if you have a lot of tools."* Docs-level, not source-level — call it verified-by-documentation. The available mitigation is the user's, not ours: opencode filters tools per agent by glob. |
 | **Pi** | **No — one tool, ours** | VERIFIED in our own adapter: `src/adapters/pi/extensions/mcp-bridge.ts` registers a **single** proxy tool (`alignment`) synchronously and connects lazily, so Pi's context carries one description regardless of how many the server serves. The bridge is a deferral mechanism nobody planned; it is the reason the tool count has never been felt there. |
@@ -188,7 +201,18 @@ deliberate edit.
 tool descriptions and server instructions at 2KB each"*, and truncation is silent: the agent picks
 a tool by its description, so a clipped one degrades selection with nothing reporting it. Our
 longest description is 1,405 characters — about 640 of headroom, which one thorough docstring would
-consume. Anything approaching 2,048 has to be shortened at the docstring, not accepted.
+consume. Anything approaching 2,048 has to be shortened at the docstring, not accepted, and
+`check_packaging_wire.py` now refuses one that is not.
+
+**The unit is the soft spot, and this is the second place in this package where it is.** *2KB* is
+**bytes**; every figure in this section is **characters**; and this repo's prose is full of em
+dashes, which cost three bytes each. The same description measures 1,405 characters and **1,413
+bytes**, so a check written against `len(s)` would report headroom the host does not honour. The
+gate measures `len(s.encode("utf-8"))` for the ceiling and characters for the prose, because those
+are the units each claim is actually made in. `docs/open-gaps.md` §31 residual 1 records the twin of
+this — a *"character budget"* that *"scales at 1% of the model's context window"*, a window measured
+in tokens — and the same rule applies: when a host states a limit, adopt its unit rather than the
+one your own numbers happen to be in.
 
 **What we deliberately do not use.** Claude Code offers two escapes from deferral — `alwaysLoad: true`
 per server in `.mcp.json`, and `"anthropic/alwaysLoad": true` in an individual tool's `_meta` — and
@@ -433,6 +457,48 @@ be model-invoked — the whole design is that an agent meeting a broken build re
 that model-invocation stops being the shape a skill has because nobody chose, and the two costs of
 the other branch (unreachable by another skill; not preloaded into a subagent) are now written down
 where the choice is made.
+
+## When the name is already taken — `/code-review`, and the install path that overrides a bundled skill
+
+Claude Code bundles skills of its own, and one of them is called `code-review`. So is ours, and the
+name **stays**: it is what the skill is, a skill is chosen off its name and description, and the
+namespace already provides the collision-avoidance a rename would buy — trading trigger accuracy for
+it would be paying twice. What the collision actually costs is a *door*, and which door opens is
+decided by three separate rules, each read at the page that states the consequence
+(`https://code.claude.com/docs/en/skills`, *Skill name conflicts*):
+
+| The operator types | What runs | The rule |
+|---|---|---|
+| `/keel-kit:code-review` | **ours**, always | *"Plugin skills use a `plugin-name:skill-name` namespace, so they can't conflict with other levels"* |
+| `/code-review` | **the bundled one**, silently | *"The bare `/fancy` also invokes the skill unless another command already uses that name"* — and this name is already used |
+| `/code-review`, after the skill folder lands in `.claude/skills/` or `~/.claude/skills/` | **ours**, in every project, replacing the host's | *"A skill at any of these levels also overrides a bundled skill with the same name… a `code-review` skill in your project's `.claude/skills/` replaces the bundled `/code-review`"* |
+
+The first two rows are the trade, and they are fine: the qualified command is taught in
+`which-skill` and in `src/readme/keel-kit.md`, which is the whole remedy the namespace needs. **The
+third row is the one that bites, and this repo makes it reachable in one argument.**
+`scripts/install.sh` takes its target directory as `$1`, defaulting to `~/.agents/skills` — the path
+opencode and Pi discover and Claude Code ignores. Point it at Claude Code's own directory instead:
+
+```bash
+bash scripts/install.sh ~/.claude/skills   # NOT an install — this is an override
+```
+
+and every skill lands at the **personal** level, where ours no longer merely loses the bare name: it
+*replaces* the bundled `/code-review` in every project that user opens, on a host that reports
+nothing about having done so. (Whether Claude Code follows a *symlinked* skill directory is
+**UNVERIFIED** — and it softens nothing: `place()` falls back to a real copy wherever symlinks are
+unavailable, which is the same override with none of the doubt.) Claude Code's supported path is the
+marketplace (`/plugin marketplace
+add r3vs/keel`), where the namespace protects both skills; the directory argument exists for the two
+hosts with no plugin format, and pointing it at `~/.claude/skills` is a supported-looking way to get
+an unsupported result.
+
+`tests/test_name_collision.py` holds this shut, and its subject is the class rather than the
+instance: the colliding set is **derived** — `build.shipped_skills()` intersected with Claude Code's
+bundled roster — so a future skill named `debug`, `verify` or `simplify` inherits the requirement to
+teach its namespaced form instead of inheriting an exemption. The declared limit is that the bundled
+roster is a dated copy of somebody else's list: if the host bundles a new name tomorrow, nothing
+here notices, and that is a fact about their release notes rather than a hole a gate can close.
 
 ## Shared-core resolution
 

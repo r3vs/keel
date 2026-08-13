@@ -84,8 +84,8 @@ SCOPE = ("README.md", "CLAUDE.md", "AGENTS.md", "MEMORY.md",
          "src/readme/*.md", "src/core/*.md", "src/skills/*/SKILL.md",
          "src/skills/*/references/*.md", "docs/packaging.md")
 
-#: Kept out, with the reason. Both are historical registers by construction, so their numbers are
-#: records of a past day rather than claims about this one:
+#: Kept out, with the reason. The first two are historical registers by construction, so their
+#: numbers are records of a past day rather than claims about this one:
 #:  - `open-gaps.md` keeps its closed sections verbatim — that is the point of the file.
 #:  - `CHANGELOG.md` restates, per released version, the suite size and ledger-spec version that
 #:    were true when that version shipped (0.1.0's "~170 tests", "spec v0.6"). Holding those to
@@ -93,7 +93,16 @@ SCOPE = ("README.md", "CLAUDE.md", "AGENTS.md", "MEMORY.md",
 #:    file is for. Present-tense claims about the package belong in README/CLAUDE/MEMORY, which are
 #:    all in SCOPE — so nothing is lost by excluding this one, and the exclusion is recorded here
 #:    rather than left as an unlisted-file silence.
-EXCLUDED = {"docs/open-gaps.md", "CHANGELOG.md"}
+#:  - `docs/measurements.md` is out for a different reason, and it is the reason the file itself
+#:    states: every number on that page is the output of running this runtime against a **specific
+#:    commit of somebody else's repository**, over a network, with a particular parser installed.
+#:    No carrier here recomputes that, and a gate that pretended to would be checking a cached
+#:    answer against itself. Its honesty mechanism is the per-section provenance stamp instead.
+#:    It is LISTED because the doc asserts this exclusion in its own second paragraph and, until
+#:    this line, no such decision existed anywhere — the file was merely unmatched by a glob, which
+#:    is exactly the ambiguity the docstring above says these two lists exist to remove. Precedent:
+#:    `docs/open-gaps.md` is matched by no SCOPE glob either and is named here anyway.
+EXCLUDED = {"docs/open-gaps.md", "CHANGELOG.md", "docs/measurements.md"}
 
 
 def suite_size() -> int:

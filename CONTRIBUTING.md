@@ -55,12 +55,24 @@ repo can — *"do the bytes under `plugins/<name>` still equal the bytes that sh
 number?"* — by diffing the working tree against the `{plugin-name}--v{version}` tag. Its anchor lives
 outside the tree, so with no tag there is nothing to diff and the assertion **skips**, quietly, at
 the moment it matters most. That file states the residual in its own docstring: *"tag at release, or
-this file is decoration."* This section is what stops it being decoration. As of 0.6.0 only 0.3.0
-and 0.4.0 were ever tagged, so the check has been skipping for every version since.
+this file is decoration."* This section is what stops it being decoration. Through 0.4.0 that was
+the whole story — only 0.3.0 and 0.4.0 were ever tagged, so the check skipped for every version in
+between.
+
+**It stopped being decoration at 0.7.0, and the event is worth recording because it is the first
+time the gate ever bit.** The four `--v0.6.0` tags were written locally, so the anchor existed; the
+merge that became 0.7.0 changed bytes under all four `plugins/<name>` paths (`keel-core` directly,
+the other three because they vendor `core/ledger.md`); all four assertions failed at once with
+*"differs from what shipped as 0.6.0, but the version is still 0.6.0"*; and the fix was the one the
+message names — bump `VERSION`, rebuild, and let the marketplace and every manifest restamp. Note
+what it cost to arm it: nothing but a tag existing. The gate then disarmed itself again the moment
+the number moved, which is the designed behavior, not a regression — an untagged version was served
+to nobody, so no install can be holding it.
 
 Tags are also load-bearing for **dependency resolution**, which is a second consumer and the reason
 the name shape is not ours to choose. Claude Code resolves a semver-constrained dependency — ours is
-`keel-kit` → `{"name": "keel-core", "version": "^0.6"}` — by listing tags on the hosting repository,
+`keel-kit` → `{"name": "keel-core", "version": "^<major>.<minor>"}`, derived from `VERSION` — by
+listing tags on the hosting repository,
 filtering to `keel-core--v*`, and fetching the highest that satisfies the range. Untagged, a
 relative-path plugin falls back to the marketplace's current copy and the constraint is checked at
 load instead of at fetch.
@@ -88,11 +100,39 @@ done
 git push --follow-tags
 ```
 
-Use `-a`. The eight tags that exist today are lightweight, which carries no tagger, date or message
-— fine for a string match, useless for asking later *who released this and when*. `claude plugin tag
---push`, run from a plugin directory, does the same job and additionally validates the plugin,
-checks that `plugin.json` and the marketplace entry agree on the version, and refuses on a dirty
-tree; prefer it when the CLI is available and treat the loop above as the portable equivalent.
+Use `-a`. The eight tags **on the remote** are lightweight, which carries no tagger, date or message
+— fine for a string match, useless for asking later *who released this and when*. The four
+`--v0.6.0` tags are the first annotated ones, so this is a practice that started rather than a rule
+being restated. `claude plugin tag --push`, run from a plugin directory, does the same job and
+additionally validates the plugin, checks that `plugin.json` and the marketplace entry agree on the
+version, and refuses on a dirty tree; prefer it when the CLI is available and treat the loop above
+as the portable equivalent.
+
+**Step 4 is a maintainer step, and an agent session cannot do it for you.** Learned at the 0.6.0
+release: the credentials a Claude Code session runs under are scoped to the **work branch**, so
+`git push --follow-tags` comes back **403 on `refs/tags/*`** while the branch push in the same
+command succeeds. Steps 1–3 are all local — `git tag -a` writes into the clone — so a session
+finishes them, reports the tags created, and everything *looks* released while the resolver on every
+other machine still sees nothing. That is the same self-healing silence this whole section exists to
+end, one layer further out: not a gate that skips green, but a release step that returns success for
+the half it could do.
+
+So verify the two sides separately, from the machine that will publish, rather than trusting the
+transcript:
+
+```bash
+# annotated or not? `tag` = annotated (has its own object), `commit` = lightweight
+git for-each-ref --format='%(refname:short) %(objecttype)' refs/tags
+# what the RESOLVER sees — and what CI sees, since it fetches tags rather than reading your clone
+git ls-remote --tags origin
+# the maintainer's step; --follow-tags carries the annotated ones with the branch
+git push --follow-tags
+```
+
+Today those first two disagree by exactly the four `--v0.6.0` tags: annotated in the clone, absent
+from `origin`. Absent is the state `tests/test_plugin_version.py` reads as *"this version was never
+released"*, and it skips — so the local tags buy the gate nothing until somebody with push rights
+runs the third command.
 
 **The version fallback chain — why the pin is worth keeping.** Claude Code resolves a plugin's
 version from the first of these that is set:

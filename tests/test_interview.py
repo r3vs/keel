@@ -301,5 +301,69 @@ class TestAPinWhoseForkWasAnsweredSaysSo(unittest.TestCase):
         self.assertNotIn("already_elected", entry)
 
 
+class TestTheFunnelCarriesTheForkAndNotJustItsPrompt(unittest.TestCase):
+    """The entry carried `prompt` and never `options`, which is the fork minus its answers.
+
+    It reached a surface before anyone noticed: `ui://keel/interview.html` reads
+    `q.options[].label` and `.implication`, `interview_next` returned neither, and the app rendered
+    a card with a question and no menu — while four shipped statements said its whole reason for
+    existing over the host's flat enum was showing *"each option with the implication that makes it
+    a decision"*. The byte-greps over the served document could not see it: they assert that markup
+    sinks are ABSENT, never that anything appears.
+    """
+
+    def _forked(self):
+        led = fresh_ledger()
+        pin = led.add_pin(kind="open_decision", title="datastore", severity="blocker",
+                          confidence="inferred", provenance=[{"source": "recon", "detail": "x"}],
+                          question={"prompt": "Which datastore?", "allow_freeform": True,
+                                    "options": [
+                                        {"id": "pg", "label": "Relational Postgres",
+                                         "implication": "schema-first; contract = shared-types"},
+                                        {"id": "doc", "label": "Document store",
+                                         "implication": "flexible schema; runtime validation"}]})
+        led.add_proposals(pin["id"], [{"id": "prop_1", "summary": "start relational",
+                                       "effort": "S", "recommended": True}])
+        return led
+
+    def test_every_option_arrives_with_the_implication_that_makes_it_a_decision(self):
+        entry = interview.funnel(self._forked())["asked"][0]
+        self.assertEqual([o["id"] for o in entry["options"]], ["pg", "doc"])
+        self.assertEqual(entry["options"][0]["implication"],
+                         "schema-first; contract = shared-types")
+
+    def test_allow_freeform_travels_with_the_menu(self):
+        """Without it a reader shown the options reasonably concludes they are the whole of what
+        may be answered — and on this schema the human's own words are often the outcome."""
+        self.assertTrue(interview.funnel(self._forked())["asked"][0]["allow_freeform"])
+
+    def test_the_options_and_the_proposals_stay_two_fields(self):
+        """An option is what this pin OFFERS — the carrier the offered-options rule anchors on. A
+        proposal is what an agent suggested and nobody elected. Merged into one list, an unelected
+        suggestion joins the menu a human chooses from, which is that rule dismantled in the
+        presentation layer."""
+        entry = interview.funnel(self._forked())["asked"][0]
+        self.assertEqual([p["id"] for p in entry["proposals"]], ["prop_1"])
+        self.assertNotIn("prop_1", [o["id"] for o in entry["options"]])
+
+    def test_a_pin_that_poses_no_menu_carries_no_empty_one(self):
+        led = fresh_ledger()
+        led.add_pin(kind="ambiguity", title="t", severity="high", confidence="ambiguous",
+                    provenance=[{"source": "recon", "detail": "x"}],
+                    question={"prompt": "open-ended?", "allow_freeform": True})
+        self.assertNotIn("options", interview.funnel(led)["asked"][0])
+
+    def test_a_strange_options_value_is_a_funnel_that_still_answers(self):
+        """`interview_next` is one of the four surfaces an agent meets a hand-edited file on, and a
+        funnel that dies reports zero open questions — the confident wrong answer. Same guard the
+        two fields below it already carry, for the same reason."""
+        led = fresh_ledger()
+        pin = led.add_pin(kind="ambiguity", title="t", severity="high", confidence="ambiguous",
+                          provenance=[{"source": "recon", "detail": "x"}],
+                          question={"prompt": "p", "allow_freeform": True})
+        pin["question"]["options"] = "not a list at all"
+        self.assertNotIn("options", interview.funnel(led)["asked"][0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -10,12 +10,16 @@ and the root `.claude-plugin/marketplace.json` are stamped from it by the build,
 the annotated git tag `{plugin-name}--v{version}` (see `CONTRIBUTING.md` § Release). A host decides
 "do I need to update?" by comparing that string and nothing else.
 
-**Which of these were actually tagged, stated rather than implied**: only **0.3.0** and **0.4.0**
-carry `{plugin}--v{version}` tags, and those eight are *lightweight*, not annotated. 0.1.0, 0.2.0,
-0.4.1 and 0.5.0 moved the manifest number without a tag, so `tests/test_plugin_version.py` — which
-diffs `plugins/<name>` against the tag that claims to have shipped it — has been **skipping green**
-for every version since 0.4.0. That is the gate's own declared residual ("tag at release, or this
-file is decoration"), and it is why tagging is now written down as a step.
+**Which of these were actually tagged, stated rather than implied, and where those tags live**:
+only **0.3.0** and **0.4.0** are tagged **on `origin`**, and those eight are *lightweight*, not
+annotated. 0.1.0, 0.2.0, 0.4.1 and 0.5.0 moved the manifest number without any tag at all. The four
+`--v0.6.0` tags are annotated and exist **only in the clone** — pushing a tag needs maintainer
+credentials a session does not hold, so they reach no resolver (`CONTRIBUTING.md` § Release has the
+verified account and the two commands that tell the sides apart). That local anchor was still
+enough to make `tests/test_plugin_version.py` bite for the **first time** at 0.7.0, after skipping
+green since 0.4.0: bytes moved under all four `plugins/<name>` paths while the number stood still,
+and all four assertions failed at once. The gate's declared residual — "tag at release, or this file
+is decoration" — is why tagging is written down as a step.
 
 **Dates are the merge/commit dates of the range, best-effort.** Three versions landed on 2026-07-24;
 that is what the history says, not a transcription error.
@@ -25,6 +29,54 @@ that is what the history says, not a transcription error.
 "spec v0.6" because those were true when 0.1.0 shipped; holding a changelog to today's carrier
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
+
+## [0.7.0] — unreleased
+
+### Added
+- **Two `ui://` MCP Apps, and the reason both of them only read.** `ui://keel/interview.html` (the
+  funnel as a read surface, linked from `interview_next` via `_meta.ui.resourceUri`) and
+  `ui://keel/map/{path*}` (`map.py`'s page baked with the ledger inline). They exist because the
+  adapter had been *announcing* the apps extension with nothing behind it — FastMCP splices
+  `io.modelcontextprotocol/ui` into `capabilities.extensions` unconditionally, with no constructor
+  flag to stop it — so serving them is the only available way to make a declared capability true,
+  and a test now fails if the capability is ever declared with no `ui://` resource behind it. The
+  design note's own plan to let an app *elect* was reversed by a finding: an app's `tools/call` is
+  proxied by the host onto the **same connection the model uses**, with nothing distinguishing the
+  two, so an app-elected outcome could only claim the `elicited` rung on the agent's word — and
+  `visibility: ["app"]` is a host hint (such a tool is still served in full by `tools/list`,
+  observed on the wire), not an enforcement. Hand-written, no dependency added, no external origin.
+- **The ledger ⇄ issue-tracker projection** — `src/runtime/tracker.py` plus `tracker_project` and
+  `tracker_diff`. The same shape as `instructions.py` a second time: one source, a generated
+  projection, managed markers, and a drift check computed by the **same planner the writer
+  executes**. One-way by construction — no `Ledger` constructed, no write door imported, held by an
+  AST test — because an issue box is unauthenticated input. Two host facts decided the design and
+  were read at GitHub's docs rather than remembered: every pull request answers as an issue (the
+  index skips anything carrying `pull_request`), and **labels are silently dropped without push
+  access** — the label *is* the idempotency key, so a run that lost it stops rather than duplicating
+  every pin forever. Idempotency comes from a label listing, not the search API, whose index is
+  eventually consistent exactly when you project twice quickly.
+- **`run_evals.py --execute`** — eval cases run against the real `claude` CLI with the built plugin
+  loaded, and assertions resolved against the **artifacts the run produced** (the `ledger.json` it
+  wrote, the ordered tool calls) rather than against its prose. 29 machine checks over 196
+  assertions; everything else reports `manual` — never a pass, never a silent skip. `--validate`
+  now also fails when a check is keyed to an assertion that no longer exists, so the prose-keyed
+  table cannot rot. CI runs it as an advisory `behavioral-evals` job.
+- **`docs/measurements.md` + `scripts/measure_public.py`** — the first honest read of what this
+  engine finds on somebody else's code, provenance-stamped to a commit, with the null results
+  written up at full length and five extractor gaps recorded as findings rather than quietly fixed.
+- **`scripts/check_packaging_wire.py`** — the measured twin of the stated-fact linter. It spawns the
+  server over stdio and re-measures the tool surface `docs/packaging.md` publishes, inside a
+  declared tolerance, and fails a description crossing the host's silent 2 KB cut in **bytes**
+  (the ceiling is stated in KB; our figures are characters).
+- **`tests/test_name_collision.py`** — the `/code-review` name collision closed by keeping the name,
+  after re-verification made the residual sharper than recorded: `install.sh` takes its target dir
+  as `$1`, so `bash scripts/install.sh ~/.claude/skills` places every skill at the **personal**
+  level and replaces the bundled skill in every project that user opens.
+
+### Changed
+- **`VERSION` 0.6.0 → 0.7.0, because the gate said so.** See the tag paragraph at the top of this
+  file: this is the first bump this repo made because `tests/test_plugin_version.py` demanded it
+  rather than because someone decided a release had happened.
 
 ## [0.6.0] — unreleased
 

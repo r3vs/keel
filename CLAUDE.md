@@ -47,12 +47,22 @@ package exists to find, sitting in its own front door.
 - **`src/runtime/` + `src/mcp/`** — the deterministic spine and its MCP adapter. `build.py` vendors
   the runtime into each skill that runs it (the portable floor) *and* the MCP server serves it as
   typed tools — which is what makes the capability **discoverable** rather than merely available.
-  The adapter now serves **three** surfaces, not one: 67 typed tools, three read-only ledger
+  The adapter now serves **four** surfaces, not one: 69 typed tools, three read-only ledger
   **resource** templates (`ledger://summary/{path*}`, `ledger://pins/{path*}`,
   `ledger://pin/{pin_id}/{path*}` — the `{path*}` wildcard is load-bearing, since a bare `{path}`
-  compiles to `[^/]+` and matches no absolute path), and three **prompts** Claude Code surfaces as
-  `/mcp__keel__*`. The server also reports its own identity from the plugin manifest beside the
-  vendored copy (`dev` in the source tree); with no `version=`, FastMCP had been answering
+  compiles to `[^/]+` and matches no absolute path), three **prompts** Claude Code surfaces as
+  `/mcp__keel__*`, and **two `ui://` MCP Apps** (`ui://keel/interview.html`, the funnel as a read
+  surface linked from `interview_next`; `ui://keel/map/{path*}`, `map.py`'s page baked with the
+  ledger inline). The apps exist because the adapter had been *announcing* the apps extension with
+  nothing behind it — FastMCP splices `io.modelcontextprotocol/ui` into `capabilities.extensions`
+  unconditionally, with no constructor flag to stop it — so serving them is what makes the claim
+  true, and a test fails if the capability is ever declared with no `ui://` resource behind it.
+  Neither app writes: an app's `tools/call` is proxied by the host onto the **same connection the
+  model uses**, with nothing distinguishing the two, so an app-elected outcome could only claim the
+  `elicited` rung on the agent's word — and `visibility: ["app"]` is a host hint (such a tool is
+  still served in full by `tools/list`, observed on the wire), not an enforcement. The server also
+  reports its own identity from the plugin manifest beside the vendored copy (`dev` in the source
+  tree); with no `version=`, FastMCP had been answering
   `initialize` with its **own** version, so every host showing a server version showed the library's.
 - **`plugins/`** — **generated build output; the only thing that ships.** Four plugins
   (`keel-core`, `codebase-rescue`, `greenfield-forge`, `keel-kit`), each with both a
@@ -77,11 +87,11 @@ package exists to find, sitting in its own front door.
   with the skills you invoke least* — so nineteen model-invoked entries cost the two flagships their
   trigger for exactly the cold user the package exists for. `scripts/check_description_budget.py` is
   the gate (1,178 / 1,200 characters, ~22 to spare, so the next situation-triggered skill forces a
-  real cut or a re-derivation); `docs/open-gaps.md` §31 holds the evidence and five residuals. The
-  key is authored once and read by Claude Code **and Pi**; the build derives Codex's
-  `agents/openai.yaml` from it, and opencode is a stated residual (its only door is the model's
-  `skill` tool, so denying it removes the skill from the human too). The choice and its two costs
-  live in `src/core/writing-for-agents.md`; the per-host mechanism in `docs/packaging.md`.
+  real cut or a re-derivation); `docs/open-gaps.md` §31 holds the evidence and five residuals, one
+  of them since closed. The key is authored once and read by Claude Code **and Pi**; the build
+  derives Codex's `agents/openai.yaml` from it, and opencode is a stated residual (its only door is
+  the model's `skill` tool, so denying it removes the skill from the human too). The choice and its
+  two costs live in `src/core/writing-for-agents.md`; the per-host mechanism in `docs/packaging.md`.
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
   `static-first-analysis`, `project-memory`, `learning-layer`, `documentation-lifecycle`,
   `maintainer-assist`, `screenshot-to-code`, `which-skill`), a memory subsystem (ledger +
@@ -119,9 +129,16 @@ round-trip to zero drift), `findings.py` (SARIF/OSV + fp-check gate), `interview
 `assets/decision-catalog.json` (frame + funnel), `challenger.py`, `buildloop.py` (Phase-4 wave
 scheduler), `map.py` (self-contained visual map), `graph.py` (graph anchoring + blast-radius over
 the `graph.json`, staleness-gated), `instructions.py` (the ledger projected into the user's
-`AGENTS.md` — see below), and the `understand`-mode comprehension family (`graph_build.py`
+`AGENTS.md` — see below), `tracker.py` (the **same** projection shape aimed at people rather than
+agents: the ledger to a GitHub issue tracker, one-way by construction — it constructs no `Ledger`
+and imports no write door, and an AST test holds that shut, because an issue box is unauthenticated
+input), and the `understand`-mode comprehension family (`graph_build.py`
 — the tree-sitter-native graph backbone — plus `understand.py`, `explain.py`, `query.py`, `tours.py`,
-`impact.py`, `domain.py`, `graphmap.py`, `fingerprint.py`, `docs_claims.py`). Plus the eval harness (`scripts/run_evals.py`), the
+`impact.py`, `domain.py`, `graphmap.py`, `fingerprint.py`, `docs_claims.py`). Plus the eval harness
+(`scripts/run_evals.py`, whose `--execute` mode drives real runs and grades them on the artifacts
+they left behind), `scripts/measure_public.py` (points the runtime at a public repo and writes the
+JSON `docs/measurements.md` is derived from — the first honest read of what this engine finds on
+somebody else's code, null results included), the
 consistency linters under `scripts/`, and rescue's ast-grep rule pack. What remains is
 agent-orchestrated at runtime (the per-item TDD loop).
 
@@ -145,6 +162,7 @@ python scripts/check_hypotheses.py     # every tuned number in the runtime is de
 python scripts/check_schema_fields.py  # every field the ledger spec declares is READ by something that ships
 python scripts/check_stated_facts.py   # every number this repo restates in prose equals what computes it
 python scripts/check_tool_carriers.py  # every WRITE tool the server exposes is named by a shipped playbook
+python scripts/check_packaging_wire.py # the tool surface docs/packaging.md measures, re-measured on the wire
 python scripts/verify_commands.py      # every agent-facing COMMAND resolves after install; exits 1 on drift
 python scripts/run_evals.py --validate # each skill's evals.json is well-formed (structure, not behaviour)
 python -m unittest discover -s tests   # ledger runtime, MCP tools + server, ledger gate, installed package
@@ -159,8 +177,18 @@ only verifies the result with `--check`) and the two `bash` lines, which it synt
 `bash -n` rather than executing. CI additionally installs the tree-sitter backend before the tests
 (tolerated on the 3.14 leg alone, where the pinned wheel may not exist yet — a blanket tolerance
 would normalize the 21 silently-skipped tests `test_treesitter.py` was written to end), and runs
-`claude plugin validate --strict` per plugin in a third job that is `continue-on-error`, so it
-advises and never blocks — neither is a gate you run here.
+`claude plugin validate --strict` per plugin in a `continue-on-error` job, so it advises and never
+blocks — neither is a gate you run here.
+
+There is now a **second** advisory job, and it is named here rather than left to the same silence
+the paragraph above carves `plugin-validate` out of: `behavioral-evals` runs
+`run_evals.py --execute`, which drives each eval case against the real `claude` CLI with the built
+plugin loaded and resolves its assertions against the **artifacts the run produced** — the
+`ledger.json` it wrote and the ordered tool calls — rather than against its prose. It is
+`continue-on-error` for a reason a developer cannot fix locally: it needs an `ANTHROPIC_API_KEY`
+that CI does not hold on forks, and it costs money per run. Unconfigured, it exits 3 with the
+runner's own words and a `::notice` saying NOT RUN — which is deliberately *not* shaped like a skill
+regression. Blocking `--validate` in `checks` is unchanged and is the line in the block above.
 
 Two shapes in that file are newer than the one-line-per-gate reading. The `checks` job is a
 **matrix** — Python 3.12/3.13/3.14 on ubuntu plus one macOS 3.12 leg, `fail-fast: false` — so a green
@@ -348,10 +376,14 @@ property for permission rules at all. Selective `Bash(...)` rules live only in t
 read-only roles (they need it for static analysis), so blunt denial is not available either. That is
 what the ledger gate closes at runtime. Full details: `docs/packaging.md` — including its section
 *"The tool surface is a budget, and it is the host's to spend"*, which names a previously-silent
-assumption: 67 tools are affordable only because hosts **defer** them (verified default on Claude
+assumption: 69 tools are affordable only because hosts **defer** them (verified default on Claude
 Code; one proxy tool on Pi; loaded up front on opencode per its own docs; **UNVERIFIED** on Codex,
 so the doc plans for the conservative case). That budget and the skill-listing budget above are the
 same lesson at two layers — a surface this package does not own, spent by a number nobody measured.
+`scripts/check_packaging_wire.py` is what ended the second half of that sentence: it re-measures the
+surface on the wire and fails on drift, so the figures the doc publishes are re-derived rather than
+remembered — and it fails a description crossing the host's silent 2 KB cut, in **bytes**, because
+the ceiling is stated in KB while every figure here is characters.
 
 > Loose thread, flagged rather than guessed: the manifest has a top-level `settings` — *"Only the
 > documented allowlisted keys are applied"* — and that allowlist is **not documented anywhere**.
@@ -434,8 +466,13 @@ is not this one.
   hand-written version; every manifest **and** the root `.claude-plugin/marketplace.json` are stamped
   from it, so a bump requires regenerating **both** paths — `git checkout -- plugins/` alone leaves
   the root marketplace stale at a different version than the manifests it serves. Tag
-  `{name}--v{version}` **annotated** at merge, or `tests/test_plugin_version.py` skips green: the
-  eight existing tags are lightweight, so annotating is a change of practice, not a restatement. See
-  `CONTRIBUTING.md` § Release.
+  `{name}--v{version}` **annotated** at merge, or `tests/test_plugin_version.py` skips green — and
+  that gate is not decoration: the four `--v0.6.0` tags exist, so the moment this branch's work
+  changed `plugins/`, all four plugins failed it and `VERSION` had to move to `0.7.0`. Pushing the
+  tag is a **maintainer** step, not a session step, and the distinction is a verified finding rather
+  than a caution: `git tag -a` is local and session credentials are scoped to the work branch, so
+  `git push --follow-tags` returns 403 on `refs/tags` while the branch push succeeds — the tags look
+  done and reach nobody. `CONTRIBUTING.md` § Release carries the full account and the
+  remote-vs-local tag inventory; do not restate the counts here.
 - Runtime artifacts (`ledger.json`, `graph.json`, `*.skill`, `.audit/`, `docs/audits/`) are
   gitignored — the skill generates them; they are never authored or committed here.

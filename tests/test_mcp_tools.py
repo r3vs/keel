@@ -756,11 +756,29 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         "build_waves": {},
         "challenge_oracle": {},
         "instructions_diff": {},
+        # The tracker projection reads the ledger and renders every pin BEFORE it touches a
+        # transport, which is what makes it a member of this roster rather than a tool that would
+        # answer `no_token` on all hundred malformed pins and prove nothing. `setUp` below removes
+        # the token from the environment so the run can never leave the machine.
+        "tracker_diff": {"repo": "keel-test/not-a-real-repo"},
         "scope_check": {"pin_id": PIN, "changed": ["a.py"]},
         # `head` is declared even though it has a default: without it the tool shells out to git for
         # HEAD, so what it exercises would depend on the cwd the suite happens to run in.
         "readiness_assess": {"pin_id": PIN, "graph_path": GRAPH, "head": HEAD},
     }
+
+    def setUp(self):
+        """No test in this suite may leave the machine, and that is enforced rather than assumed.
+
+        `tracker_diff` reads a token out of the environment. A developer with `GH_TOKEN` exported —
+        anyone who has run `gh auth login` — would otherwise have this gate issue ~100 real HTTP
+        calls to a repository that does not exist, and a green run here would mean something
+        different from a green run in CI. The suite's own recorded lesson, one file over: a green
+        run is a claim about the environment that produced it.
+        """
+        self._token_env = {k: os.environ.pop(k) for k in ("GITHUB_TOKEN", "GH_TOKEN")
+                           if k in os.environ}
+        self.addCleanup(os.environ.update, self._token_env)
 
     def _call(self, name, path, tmp):
         """The declared payload with the two sentinels resolved against THIS fixture."""
@@ -792,10 +810,18 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
     #: `PIN_FIELDS` already declared, and this unchanged gate went red: `verification: "observed"`
     #: killed `interview_next` over stdio. So the cases come from the schema the rule is about —
     #: see `tests/shape_corpus.py`.
+    #: Both corpora, because this gate's claim is about READING and the two are read the same way.
+    #: `broken_pins` is every shape the schema refuses; `sparse_pins` is every shape it ALLOWS and
+    #: nobody had generated — an optional path simply omitted. The second half exists because
+    #: `pin_read` repairs a null or wrongly-typed value into its result and materializes an absent
+    #: one only for `PIN_GUARANTEED`, so a bracket index on a non-guaranteed path survives all ~100
+    #: malformations and dies on the legal file. That is how `read["provenance"]` shipped, taking
+    #: both tracker tools down with a bare `KeyError` — while this very gate was green, and while
+    #: `instructions_diff`, `render_map` and `ledger_summary` read the same file fine.
     @staticmethod
     def BROKEN_PINS():
-        from shape_corpus import broken_pins
-        return broken_pins()
+        from shape_corpus import broken_pins, sparse_pins
+        return broken_pins() + sparse_pins()
 
     @staticmethod
     def _read_only_ledger_tools():
@@ -886,10 +912,10 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         """The same corpus one collection over. `policies` was the collection whose CONTAINER was
         guarded a round before its FIELDS were, so it is exactly the half a pin-shaped corpus
         cannot see."""
-        from shape_corpus import broken_policies
+        from shape_corpus import broken_policies, sparse_policies
         tmp = tempfile.mkdtemp()
         roster = self._read_only_ledger_tools()
-        for index, (label, broken) in enumerate(broken_policies()):
+        for index, (label, broken) in enumerate(broken_policies() + sparse_policies()):
             path = _ledger_with_pins(tempfile.mkdtemp(dir=tmp))
             with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)

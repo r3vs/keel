@@ -2343,6 +2343,39 @@ thing that is never allowed here. So the line is: **a number the repo computes i
 the repo implements is not.** Anything proposed for this class in future should be checked against
 that line first.
 
+### Newly gated since — `scripts/check_packaging_wire.py` (2026-08-13)
+
+**A number the repo MEASURED, published with its method, and never ran again.** A third position on
+the line above, and it had been sitting in plain sight inside the very document that argues for
+carriers: `docs/packaging.md`'s tool-surface section states five figures — ~98 k characters on the
+wire, ≈24 k tokens, a ~1,410-character median tool object, a 1,405-character longest description, a
+335-character `instructions` string — writes out the exact procedure to re-derive them, and then
+**admits in the same paragraph** that *"these four have no gate."* Everything the section argues
+rests on them (*"roughly a fifth of a 128 k window before the conversation starts"*, *"about 640 of
+headroom"*), and every docstring anybody edits moves them. A published method with nobody executing
+it is the carrier-less claim wearing the costume of a measured one, which is why it survived a gate
+built specifically for stale numbers.
+
+Three things it settled, and the first is the reason it is a second file rather than seven more rows
+in `check_stated_facts.py`:
+
+- **The two gates split on exactness, not on subject.** That one compares `match.group(1) ==
+  str(truth)` because its facts are *counts*; these are rounded by construction (`~98 k`, `≈24 k`)
+  and rightly so. Loosening the exact gate to admit a tolerance would weaken every count it holds.
+  So the tolerance is declared here instead — **5%, on the ARGUMENT the number carries** — and cost
+  seals it: an AST walk under a second there, a PEP 723 resolve plus an MCP handshake here.
+- **The unit was the soft spot, exactly as §31 residual 1 said it would be.** Claude Code truncates
+  descriptions *"at 2KB each"* — bytes — while every figure in the section is characters, and this
+  repo's prose is full of three-byte em dashes: the longest description is 1,405 characters and
+  **1,413 bytes**. The gate enforces the ceiling in the host's unit and checks the prose in its own.
+  Two rounds have now found the same defect shape at two layers; treat a host limit's unit as a
+  thing to verify, never to assume.
+- **It is not only a prose-checker**, which is what earns it a CI slot: it fails when any tool
+  description or the server's `instructions` crosses the 2 KB ceiling, and that truncation is
+  **silent** — the agent selects by the text it never sees clipped. `tests/test_packaging_wire.py`
+  drives the prose half with a doctored document and a fake measurement, because a gate whose
+  failure nobody has watched is a gate nobody has tested.
+
 ### Not gated, with the argument
 
 **A test named for an invariant it does not check** (and its consequence, *a gate that has been
@@ -3806,7 +3839,11 @@ listing, × 60% = 1,200 for Keel — leaving 800 for the bundled skills and what
 The over-allocation is deliberate and named: Keel's flagships are the entries that must survive on a
 repo where nothing has been invoked yet.
 
-### Residuals — all four are real, and none is closed by the gate
+### Residuals — five, none of them closed by the gate, and **one closed since** (2026-08-13)
+
+The numbering is a citation — `docs/packaging.md` and `check_packaging_wire.py` both point at
+*"§31 residual 1"* — so a closed item keeps its number and says so in place rather than being
+deleted and the rest renumbered underneath the pointers.
 
 1. **The budget number is a hypothesis about hosts, and its unit is the soft spot.** The doc calls it
    a *"character budget"* that *"scales at 1% of the model's context window"* — a window measured in
@@ -3817,7 +3854,8 @@ repo where nothing has been invoked yet.
    number applied to a package that ships to four hosts: opencode and Codex publish no equivalent
    budget, so for them the gate is prudence rather than a constraint.
 2. **`code-review` collides with a bundled skill of the same name, and the namespace saves it —
-   partly.** Claude Code bundles `/code-review` (*"bundled skills, such as `/doctor`,
+   partly. — CLOSED 2026-08-13**, by executing the recommendation recorded here rather than
+   revisiting it. Claude Code bundles `/code-review` (*"bundled skills, such as `/doctor`,
    `/code-review`, `/batch`, `/debug`, `/loop`, and `/claude-api`"*). Ours ships in `keel-kit`, and
    plugin skills are namespaced: *"Plugin skills use a `plugin-name:skill-name` namespace, so they
    can't conflict with other levels"*, so `/keel-kit:code-review` always resolves. What is lost is
@@ -3830,6 +3868,30 @@ repo where nothing has been invoked yet.
    their own `.claude/skills/` instead of installing the plugin — the docs name that exact case:
    *"a `code-review` skill in your project's `.claude/skills/` replaces the bundled `/code-review`"*.
    That is an override with no warning, and it is the install path this repo does not document.
+
+   **How it closed, and the one thing re-verifying it added.** The recommendation was executed
+   exactly as written — nothing renamed. The precedence rules were re-read at the source before
+   acting (`https://code.claude.com/docs/en/skills`, *Skill name conflicts*) and all three quoted
+   above still hold verbatim, so the decision needed no re-litigation, only the two carriers it
+   asked for:
+
+   - **The undocumented install path is now documented**, in `docs/packaging.md` § *"When the name
+     is already taken"* — a three-row table of what actually runs for each way the command is typed.
+     Re-verifying turned the residual's *"a user who copies the skill folder"* into something
+     sharper and closer to home: **this repo makes the override reachable in one argument.**
+     `scripts/install.sh` takes its target directory as `$1` (default `~/.agents/skills`, which
+     Claude Code ignores), so `bash scripts/install.sh ~/.claude/skills` places every skill at the
+     **personal** level — not the project level the docs' example names, so it replaces the bundled
+     `/code-review` in *every* project that user opens. The residual imagined a user improvising;
+     the real path is a supported-looking argument to our own installer.
+   - **The qualified command now has a gate**, `tests/test_name_collision.py`, and its subject is the
+     class rather than the instance: the colliding set is derived as `build.shipped_skills()` ∩ the
+     bundled roster, and each member must have `/{plugin}:{skill}` spelled in `which-skill` **and**
+     in its plugin README. The prose already said the right thing in both places — what it lacked was
+     anything that would notice its deletion, or extend it to the next skill named `debug` or
+     `verify`. Its declared limit is the bundled roster: a dated copy of somebody else's list, which
+     no gate of ours can keep current.
+
 3. **`disable-model-invocation` is not in the Agent Skills spec, and the failure is hard.** Outside
    Claude Code only `name`, `description`, `license`, `compatibility`, `metadata` and `allowed-tools`
    are allowed, and *"If you include any field the spec doesn't allow, packaging or upload fails with
@@ -3856,6 +3918,123 @@ repo where nothing has been invoked yet.
    that needs a situation-trigger cannot simply be added: it forces either a real cut elsewhere or a
    re-derivation of `LISTING_BUDGET_CHARS` with the arithmetic in the file's comment updated to match.
    Raising the constant to make a red gate green would discard the only measurement anyone has.
+
+---
+
+## 32. The register asserted a completeness it did not have — **PARTLY CLOSED 2026-08-13** (four defects registered below; three still OPEN)
+
+### Verified
+
+This file's own opening is a claim with a carrier nobody had checked:
+
+> *"the **standing register**: every defect this repo has found in itself and has not closed, kept
+> in one place, in one shape, so that a cold session can pick any of them up without re-deriving
+> the evidence — and so that nothing gets closed twice or forgotten once."*
+
+At the time of writing, four verified, unclosed defects lived **only** in design docs.
+`grep -n "mcp-apps\|MCP App\|ui://\|tracker\|measurements.md\|extractor gap" docs/open-gaps.md`
+returned zero matches, and every numbered section that states a defect — all of them except §18,
+which says in its first line that it is not one — was marked CLOSED. So a cold session reading the
+register concluded that nothing was outstanding. That reading is what `CLAUDE.md` and
+`MEMORY.md` both route a cold session to, which is what makes the claim load-bearing rather than
+decorative.
+
+The omission was not neglect of the file. The same commit range **edited** it (the
+`check_packaging_wire.py` note, §31's residual-2 closure), so the file was open in an editor while
+four findings were being written down somewhere else. That is the shape worth naming: a register
+fails not by being forgotten but by being **updated for the round that is in progress** while the
+findings of a different round land in the document nearest to where they were found.
+
+The four, each with its evidence already written and cited here rather than restated:
+
+**32.1 — `_client_can_elicit` promises a door the 2026-07-28 era removed. STILL OPEN.**
+`docs/design/mcp-apps.md:255,261`. Driven end to end against 4.0.0b2:
+*"`ctx.elicit` raises before touching the wire on a modern connection"* — SEP-2577 removed the
+back-channel — and `ledger_record_decision` *"came back `isError` rather than degrading"*, because
+`_client_can_elicit` answers from the client's **declared capability** alone and the code then
+commits to a path the era deleted. The doc states the order of work itself: fix this **"first and
+independently of any bump"**. It is a correctness bug in the flagship election door the day any
+host negotiates that revision, whatever pin we are on. **Done looks like:** the predicate answers
+from the negotiated protocol revision as well as the capability, and the tool degrades to the
+`relay` rung that is already sitting there instead of erroring. **Prove it:** drive
+`ledger_record_decision` over a modern connection and observe a recorded decision on the lower rung,
+not an `isError`. **Trap:** this is not the version bump, and doing it as part of one buries a
+correctness fix inside a migration nobody has scheduled.
+
+**32.2 — five extractor gaps in `src/runtime/shapes.py`, one of which answers two questions with one
+value. STILL OPEN.** `docs/measurements.md`. The sharpest: `reconcile_layers` returns `[]` both for
+*"these layers agree"* and for *"I parsed neither"* — a clean report from a scan that did not run,
+which is the exact class §15 and `check_stated_facts.py` exist for, sitting in the function that
+carries the package's central promise. **Done looks like:** the two answers are two values, and a
+layer the backend could not parse is reported as unparsed wherever the drift count is read.
+**Prove it:** point `reconcile_layers` at a repo whose ORM layer no backend handles and read the
+result — agreement and silence must not print the same. **Trap:** the other four gaps are extractor
+coverage and are worth measuring before fixing; this one is a reporting defect and is worth fixing
+before measuring anything.
+
+**32.3 — the tracker's inbound reopen arc is an unelected open decision. STILL OPEN, and
+deliberately.** `docs/design/tracker-projection.md:139`. A comment matching a declared form
+(`/keel reopen <reason>`) becoming a `ReopenEvent` is the one direction worth having, and it needs a
+ledger schema change plus three questions elected first. It is registered here **as an open
+decision, not as a defect**: building it on a hunch puts an unauthenticated comment box on the write
+path of the single source of truth. **Done looks like:** the three questions are elected in an
+interview and the schema change is written, or the arc is recorded as refused with the reason.
+**Prove it:** either a `ReopenEvent` whose provenance names an issue comment and whose author was
+authenticated, or a "Do not re-litigate" entry. **Trap:** the attraction ("the team is already in
+that surface") is an argument for the projection, which already exists — it is not an argument for
+the door.
+
+**32.4 — the apps' JavaScript is checked by no linter here. CLOSED 2026-08-13 in part, and the
+residual is named.** `docs/design/mcp-apps.md:229` recorded it as a stated residual: the render path
+was exercised manually under a stub DOM and never again. The cost of "never again" arrived exactly
+where it was predicted — `renderEntry` read `q.options[].label/.implication`, a key
+`interview_next` **never returned**, so the interview app rendered no options at all while four
+shipped statements said rendering each option's implication was the whole reason it exists. The
+byte-greps could not see it: they check that markup sinks are absent, not that anything appears.
+What is closed is the defect (`interview.funnel` now carries `question.options` and
+`allow_freeform`, and the app renders them and the brainstorm's proposals as two lists that are
+never merged). What remains open is the residual itself: **no CI job executes this JavaScript.**
+**Done looks like:** a node test that renders the served bytes under a stub DOM against a real
+`interview_next` payload and asserts the option labels reach the tree — the `workflow-engine` job
+already runs node 22, so the runner exists. **Prove it:** delete the `options` line from
+`interview.funnel` and watch a suite go red. **Trap:** a grep for the string `options` in the served
+bytes is not that test; the bug was a key mismatch between two files that both contained the word.
+
+### Why it matters
+
+A register whose completeness is asserted and unchecked is worse than no register, because it
+converts "I have not looked" into "there is nothing there". The four above were each found by a
+careful round, written up with named evidence, and then made invisible to the next session by being
+filed in the document that round happened to be editing.
+
+### What was done
+
+The four are registered above in the register's own shape. 32.4's defect is fixed in the same commit
+as this entry; 32.1, 32.2 and 32.3 are open and stated so in their headings.
+
+### The gate that does not exist, and why it is argued rather than built
+
+There is no mechanical check that "every defect a design doc records is registered here". A defect
+in prose has no syntax — `docs/design/mcp-apps.md` states 32.1 in a table cell and 32.4 in a
+paragraph, and any grep tight enough to find those would miss the next one written differently,
+while any grep loose enough to catch it would fire on every sentence containing the word "bug". A
+gate that reports a completeness it cannot decide is the defect this section is about, one layer up.
+
+So it belongs to the ungated class §18 already names, with one procedural row worth copying:
+**a round that files a finding in a design doc has not filed it.** The design doc is where the
+evidence and the mechanism belong; the register is where a cold session looks. Writing in one is
+not writing in the other, and the check is a question a human can actually ask at the end of a
+round — *which documents did I edit, and does the register know about each finding in them?*
+
+### Traps
+
+- **Do not close 32.1 by pinning away from the prerelease.** The bug is in our predicate, not in the
+  library; pinning hides the day it fires rather than the fault that fires it.
+- **Do not merge 32.4's residual into the existing byte-greps.** They are static gates on absence
+  and cannot observe a render; adding a string to their list would restore exactly the false
+  confidence this section is about.
+- **Do not read this section's existence as the completeness claim now being carried.** It is
+  carried by nothing. What changed is that four known items are in the register instead of none.
 
 ---
 

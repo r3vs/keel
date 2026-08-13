@@ -23,7 +23,8 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **67** | the deterministic engine, typed and discoverable |
+| MCP tools | **69** | the deterministic engine, typed and discoverable |
+| MCP apps | **2** | `ui://keel/interview.html` · `ui://keel/map/{path*}` — read surfaces, never write |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
 | Skills | **3** | `using-the-ledger`, `which-skill`, `run-workflow` |
@@ -32,7 +33,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 67 MCP tools
+## The 69 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
@@ -124,6 +125,28 @@ unprompted: `AGENTS.md` (Claude Code via a `CLAUDE.md` that imports it). Without
 can have a fully elected design and still hand every fresh executor a blank slate. It writes **only**
 between its own markers, so the file stays yours; `hand_edited` is reported and never auto-healed,
 because a decision written into the projection belongs in the ledger.
+
+### Tracker carrier (2)
+
+| Tool | Does |
+|---|---|
+| `tracker_project` | project every open pin into a GitHub issue; settling a pin closes it |
+| `tracker_diff` | is the tracker still what the ledger projects — `create` / `update` / `reopen` / `close` / `hand_edited` / `orphan` |
+
+The pair above carries the ledger to the *agent*; this one carries it to the *team*, and it is the
+same shape a second time: one source, a generated projection, managed markers, and a drift check
+computed by the same planner the writer executes. The direction is one-way by construction, and the
+construction is precise rather than sweeping: the projection module — everything that reads an
+issue — imports only the READ half of the ledger and **constructs no `Ledger`**. The two tools
+above do open one, through the same guarded loader every read tool uses, and then call no writer on
+it. Both halves are gates over the shipping code's own AST, because the sentence is worth exactly
+what checks it: what exists nowhere is a path from an issue body back into `ledger.json`, so an
+issue box (unauthenticated input) can never become a decision. Two host facts decide the design:
+every pull request answers as an issue, so the
+index skips anything carrying `pull_request`; and **GitHub silently drops labels when the token
+lacks push access** — the label *is* the idempotency key, so a run that lost it stops rather than
+duplicating every pin forever. Neither tool takes a token: a secret an agent can pass is a secret an
+agent has read.
 
 ### Comprehension graph (9)
 
