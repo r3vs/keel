@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Find a bug by building a tight feedback loop that goes red on it, then narrowing a hypothesis against evidence instead of guessing at fixes — reproduce, isolate, prove the cause, fix, then prove the fix. Binds to the decisions ledger as a defect pin so the root cause is recorded, not just the patch. Use when something is broken, a test fails mysteriously, or behavior differs between environments.
+description: Find a bug by building a tight loop that goes red on it, then narrowing a hypothesis against evidence instead of guessing at fixes. Root cause lands in a defect pin. Use when something is broken, a test fails mysteriously, or behavior differs between environments.
 license: MIT
 ---
 

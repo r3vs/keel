@@ -71,9 +71,21 @@ class TestManifests(unittest.TestCase):
         # rescue/forge cannot read core's FILES (per-plugin ${CLAUDE_PLUGIN_ROOT}, no marketplace
         # root, no ../ traversal). They reach it through its MCP tools, which are session-global —
         # and `dependencies` is what guarantees it is installed and enabled at all.
+        #
+        # The name is extracted before it is asserted, and that is not ceremony: a `dependencies`
+        # entry is documented as a bare string OR `{name, version}` with a semver range, so
+        # `assertIn("keel-core", <the raw list>)` is a SHAPE check wearing a name check's message.
+        # keel-kit already carries the object form; the day these two do, the old spelling failed
+        # with "nothing guarantees the plugin that declares them is installed" — a sentence about
+        # reachability, on a change that altered nothing about reachability. Its twin over in
+        # `test_mcp_declaration.py::test_every_plugin_reaches_the_declaration` was fixed and this
+        # one was not, which is how one assertion in a pair goes stale: the pair is not enumerated
+        # anywhere, so fixing one does not surface the other.
         for p in ("codebase-rescue", "greenfield-forge"):
             with self.subTest(plugin=p):
-                self.assertIn("keel-core", self._manifest(p).get("dependencies", []))
+                declared = self._manifest(p).get("dependencies", [])
+                names = [d if isinstance(d, str) else d.get("name") for d in declared]
+                self.assertIn("keel-core", names)
 
     def test_the_core_depends_on_nothing(self):
         self.assertEqual(self._manifest("keel-core").get("dependencies", []), [])

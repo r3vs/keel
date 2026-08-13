@@ -16,12 +16,23 @@ fact names the thing that knows it — `unittest`'s own discovery for the suite 
 decorations for the roster, `ledger.SCHEMA_VERSION` for the schema. A gate holding its own copy of
 the number it checks is the drift it exists to catch, one file over.
 
-**What it is scanned over, and the one deliberate exclusion.** Every markdown that describes the
-repo *as it now stands*. `docs/open-gaps.md` is excluded and the reason is structural rather than
-convenient: it is a historical register whose closed sections are kept verbatim on purpose, so it
-quotes `Ran 565 tests, OK (skipped=28)` and "617 tests and eight green linters" as records of what
-was true on a past day. Checking those against today would make the file un-writable in its own
+**What it is scanned over, and the two deliberate exclusions.** Every markdown that describes the
+repo *as it now stands*. `docs/open-gaps.md` and `CHANGELOG.md` are excluded and the reason is
+structural rather than convenient, and it is the same reason twice: both are **historical registers
+by construction**. `open-gaps.md` keeps its closed sections verbatim on purpose, so it quotes
+`Ran 565 tests, OK (skipped=28)` and "617 tests and eight green linters" as records of what was
+true on a past day; a changelog entry for 0.1.0 restates the ~170-test suite and the v0.6 ledger
+spec of the day 0.1.0 shipped, and rewriting those to today's numbers would be falsifying the
+record, not fixing it. Checking either against today would make the file un-writable in its own
 declared shape. Every other doc in scope is making a present-tense claim.
+
+**`MEMORY.md` is in scope as of 2026-08-13, and it is the instance this gate was written for.**
+It sat outside `SCOPE` while claiming "**179 tests** in CI" against a suite of 1017, and while
+asserting that cognee was among the declared MCP servers when the build declares only the rows its
+own table marks `→ **http**`. That is exactly the shape the docstring above describes — a claim in
+prose with a carrier one call away, wrong because nobody happened to edit the line beside it — and
+the file was invisible to the gate for the whole time. An unlisted file reads as an oversight in one
+shape and as a decision in the other, which is why both lists below are explicit.
 
 **The honest limit, stated because a gate that hides one is worse than none.** A restatement in a
 phrasing nobody registered below is not checked — "roughly fifty tools", "about eight hundred
@@ -57,6 +68,7 @@ gate.
 from __future__ import annotations
 
 import ast
+import json
 import pathlib
 import re
 import sys
@@ -68,13 +80,20 @@ sys.path.insert(0, str(ROOT / "src" / "runtime"))
 #: Present-tense descriptions of the repo. Anything not here is not scanned, which is why the list
 #: is paths and globs rather than "every .md" minus exceptions — an unlisted file reads as an
 #: oversight in one shape and as a decision in the other.
-SCOPE = ("README.md", "CLAUDE.md", "AGENTS.md",
+SCOPE = ("README.md", "CLAUDE.md", "AGENTS.md", "MEMORY.md",
          "src/readme/*.md", "src/core/*.md", "src/skills/*/SKILL.md",
          "src/skills/*/references/*.md", "docs/packaging.md")
 
-#: Kept out, with the reason. `open-gaps.md` is a historical register by construction: its closed
-#: sections quote the numbers of the day they were filed, and that is the point of the file.
-EXCLUDED = {"docs/open-gaps.md"}
+#: Kept out, with the reason. Both are historical registers by construction, so their numbers are
+#: records of a past day rather than claims about this one:
+#:  - `open-gaps.md` keeps its closed sections verbatim — that is the point of the file.
+#:  - `CHANGELOG.md` restates, per released version, the suite size and ledger-spec version that
+#:    were true when that version shipped (0.1.0's "~170 tests", "spec v0.6"). Holding those to
+#:    today's carrier would demand rewriting history to keep a linter quiet, which inverts what the
+#:    file is for. Present-tense claims about the package belong in README/CLAUDE/MEMORY, which are
+#:    all in SCOPE — so nothing is lost by excluding this one, and the exclusion is recorded here
+#:    rather than left as an unlisted-file silence.
+EXCLUDED = {"docs/open-gaps.md", "CHANGELOG.md"}
 
 
 def suite_size() -> int:
@@ -133,9 +152,83 @@ def spec_version() -> str:
     return ledger.SCHEMA_VERSION
 
 
+def _modules(skill: str):
+    """A skill's module count, read from the `modules.json` that CLAUDE.md calls *"authoritative for
+    its module catalog"*. `check_consistency.py` already validates every entry against a reference
+    that exists; nothing checked the number the READMEs print beside it, and both drifted together
+    at the commit that added `agent-instructions` — 28 vs 29 and 15 vs 16, in four places, for
+    months. Same class as the tool count that shipped as 37 against a server serving 54."""
+    def carrier() -> int:
+        path = ROOT / "src" / "skills" / skill / "modules.json"
+        mods = json.loads(path.read_text(encoding="utf-8")).get("modules")
+        if not mods:
+            raise SystemExit(f"ERROR {skill}/modules.json declares no modules — the catalog shape "
+                             f"changed and this gate just went vacuous")
+        return len(mods)
+    return carrier
+
+
+_CDB = None
+
+
+def _cdb():
+    """`check_description_budget.py`, loaded once. It is the authority on every number below that
+    concerns the listing — the total, the headroom, AND the budget those two are measured against."""
+    global _CDB
+    if _CDB is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_cdb", pathlib.Path(__file__).resolve().parent / "check_description_budget.py")
+        _CDB = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_CDB)
+    return _CDB
+
+
+def _budget():
+    """`check_description_budget.py`'s own numbers, asked of the gate rather than recomputed here.
+
+    Two copies of "how long are the model-invoked descriptions" would be the duplication this file
+    exists to catch, committed by the file that catches it.
+    """
+    mod = _cdb()
+    total = sum(len(mod.description_of(s)) for s in mod.model_invoked())
+    return total, mod.LISTING_BUDGET_CHARS - total
+
+
+def listing_chars() -> str:
+    """Returned already comma-grouped, because the comparison is against `str(truth)`.
+
+    `render` is display-only — `main()` compares `match.group(1) == str(truth)` — so a carrier whose
+    prose spelling is `1,178` has to *be* `1,178`, or the gate reports a number as stale against
+    itself.
+    """
+    return f"{_budget()[0]:,}"
+
+
+def listing_headroom() -> int:
+    return _budget()[1]
+
+
+#: The budget the prose writes as the denominator — READ from the gate that declares it, never
+#: spelled here. It was spelled here, inside the pattern (`([\d,]+) / 1,200`), and that is a copy of
+#: the answer sitting in the file whose whole subject is copies of answers: re-deriving
+#: `LISTING_BUDGET_CHARS` (which the gate's error message invites) would leave the pattern matching
+#: nothing, so CLAUDE.md's restatement would stop being checked while the run still printed
+#: `0 stale`. `{:,}` because the prose groups it, like every other number in that sentence.
+LISTING_BUDGET = f"{_cdb().LISTING_BUDGET_CHARS:,}"
+
+
 #: Each fact: what it is, how the prose spells it, and the function that knows the answer. The
 #: patterns capture exactly one group, and each is annotated with the site it was written for, so a
 #: pattern that stops matching anything is visible as a pattern nobody uses rather than as coverage.
+#:
+#: That sentence used to be a hope. `main()` now ENFORCES it: a pattern matching nothing anywhere in
+#: SCOPE fails the run. The aggregate `if not checked` guard at the bottom could never see it — the
+#: live patterns keep that count above zero while one more quietly covers nothing — and the
+#: two ways a pattern dies are exactly the two this file exists to catch: prose rewritten out from
+#: under it, or a constant it hardcoded moving (see `LISTING_BUDGET` above). `(\d+) tests? passing
+#: in CI` was the one already dead when this was written; it is gone rather than kept as a shape
+#: nobody writes, and the badge + status-line patterns still cover the number in both spellings.
 FACTS = (
     {
         "label": "the size of the test suite",
@@ -143,7 +236,6 @@ FACTS = (
         "render": str,
         "patterns": (
             re.compile(r"\*?\*?(\d+) tests? green"),            # README.md's status line
-            re.compile(r"(\d+) tests? passing in CI"),
             # README.md's shields.io BADGE, added in 2026-08-06. It said `tests-592 passing` while
             # the status line 314 lines below it said 828 — two claims about one number, in one
             # file, disagreeing by 236. This gate was built for exactly that instance and its own
@@ -175,6 +267,57 @@ FACTS = (
             re.compile(r"decisions-ledger spec \(v(0\.\d+)\)"),     # keel-core.md's core listing
         ),
     },
+    # Added 2026-08-13, at the merge that proved the need. `screenshot-to-code` arrived from a
+    # parallel branch still model-invoked with a 748-character description, and the total jumped to
+    # 1,809 against a 1,200 budget. `check_description_budget.py` caught that, because it gates the
+    # *ceiling*. What had no gate was the number once CLAUDE.md restated it — and this one drifts
+    # more easily than the others, because the budget is a SHARED POOL: editing any one skill's
+    # description moves a number written in a file that skill has nothing to do with.
+    #
+    # Only CLAUDE.md is covered, and deliberately so. `docs/open-gaps.md` §31 states the same two
+    # numbers and is in EXCLUDED — it is a dated register whose entries record what was true on the
+    # day of a round, exactly like CHANGELOG.md. Patterns aimed at it would match nothing here, which
+    # is the fake coverage the note above the FACTS table warns about.
+    {
+        "label": "the listing characters Keel's model-invoked descriptions occupy",
+        "carrier": listing_chars,
+        "render": str,
+        "patterns": (
+            # CLAUDE.md's invocation-axis bullet. The denominator is interpolated, not typed.
+            re.compile(rf"([\d,]+) / {re.escape(LISTING_BUDGET)}"),
+        ),
+    },
+    {
+        "label": "the characters left in Keel's share of the listing budget",
+        "carrier": listing_headroom,
+        "render": str,
+        "patterns": (
+            re.compile(r"~(\d+) to spare"),           # CLAUDE.md's invocation-axis bullet
+        ),
+    },
+    # Added 2026-08-13. Both counts had been wrong by one since `agent-instructions` was added, in
+    # README's install table AND in each plugin README's section heading, and the section bodies had
+    # never listed the module either — so the prose was internally consistent and collectively
+    # false, which is the shape no reader catches.
+    {
+        "label": "the number of analysis modules codebase-rescue runs",
+        "carrier": _modules("codebase-rescue"),
+        "render": str,
+        "patterns": (
+            # README.md's install table AND src/readme/codebase-rescue.md's section heading — one
+            # phrasing covers both, which is why the heading was worded to match the table.
+            re.compile(r"(\d+) analysis modules"),
+        ),
+    },
+    {
+        "label": "the number of modules greenfield-forge runs",
+        "carrier": _modules("greenfield-forge"),
+        "render": str,
+        "patterns": (
+            re.compile(r"(\d+) modules · `/forge`"),   # README.md's install table
+            re.compile(r"^## The (\d+) modules$", re.M),  # src/readme/greenfield-forge.md
+        ),
+    },
 )
 
 def in_scope() -> list[pathlib.Path]:
@@ -193,14 +336,18 @@ def main() -> int:
     errors = 0
     checked = 0
     files = in_scope()
+    hits: dict[tuple[str, str], int] = {}
     for fact in FACTS:
         truth = fact["carrier"]()
         shown = fact["render"](truth)
+        for pattern in fact["patterns"]:
+            hits.setdefault((fact["label"], pattern.pattern), 0)
         for path in files:
             text = path.read_text(encoding="utf-8")
             for pattern in fact["patterns"]:
                 for match in pattern.finditer(text):
                     checked += 1
+                    hits[(fact["label"], pattern.pattern)] += 1
                     if match.group(1) == str(truth):
                         continue
                     errors += 1
@@ -208,8 +355,21 @@ def main() -> int:
                     print(f"ERROR {path.relative_to(ROOT).as_posix()}:{line}: says "
                           f"`{match.group(0).strip()}` — {fact['label']} is {shown}. The number is "
                           f"computed, not remembered; restate it or delete the claim.")
+    # A pattern nobody matches is not coverage, and the aggregate count below cannot see it: the
+    # other patterns keep `checked` positive while this one silently covers nothing. Both ways it
+    # happens are this file's own subject — the sentence was rewritten, or the pattern hardcoded a
+    # constant that moved — so it is an ERROR with the two honest remedies named.
+    for (label, pattern), n in sorted(hits.items()):
+        if n:
+            continue
+        errors += 1
+        print(f"ERROR pattern `{pattern}` ({label}) matched nothing in any file in SCOPE. It is "
+              f"annotated with the site it was written for, so either that sentence was rewritten "
+              f"— restate it or repoint the pattern — or the pattern spells a constant that has "
+              f"since moved. A pattern nobody matches reads as coverage and is not.")
     print(f"\n{len(files)} file(s) scanned, {len(FACTS)} computed fact(s), "
-          f"{checked} restatement(s) found — {errors} stale")
+          f"{checked} restatement(s) found across {sum(1 for n in hits.values() if n)}/{len(hits)} "
+          f"pattern(s) — {errors} stale")
     if not checked:
         print("ERROR no restatement matched any pattern at all — either the prose was rewritten or "
               "this gate is checking nothing")

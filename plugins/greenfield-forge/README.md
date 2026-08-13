@@ -167,13 +167,13 @@ baseline a `codebase-rescue` can diff against years later.
 
 ---
 
-## The 15 modules
+## The 16 modules
 
 | Phase | Modules |
 |---|---|
 | **1 — Frame** | `decision-frame` *(judgment)* · `acceptance-framing` *(judgment)* · `threat-model` *(judgment)* · `to-be-map` |
 | **2 — Interview** | `interview-generator` *(judgment)* |
-| **3 — Contract** | `contract-propagation` (one contract → every layer) · `design-propagation` (DTCG → CSS/Tailwind/DESIGN.md) · `roadmap-sequencer` (the DAG → waves) · `paved-road` (scaffold from the elected decisions) · `architecture-fitness` (boundaries as CI constraints) |
+| **3 — Contract** | `contract-propagation` (one contract → every layer) · `design-propagation` (DTCG → CSS/Tailwind/DESIGN.md) · `roadmap-sequencer` (the DAG → waves) · `paved-road` (scaffold from the elected decisions) · `architecture-fitness` (boundaries as CI constraints) · `agent-instructions` (the elected ledger projected into `AGENTS.md`, the one file every host loads unprompted) |
 | **4–5 — Build** | `build-loop` *(judgment)* · `validate` *(judgment)* |
 | **6–7 — Ship** | `release` · `operate` · `evolve` *(judgment)* |
 

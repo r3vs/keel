@@ -9,11 +9,19 @@ license: MIT
 
 This package ships enough skills that nobody remembers all of them, and the cost of forgetting is
 not a missing feature — it is doing by hand something the package already does properly. This file
-is the index, so you have one thing to remember instead of eighteen.
+is the index, so you have one thing to remember instead of nineteen.
 
-**It is user-invoked on purpose.** A router has nothing to tell the model that the skills'
-own descriptions do not already carry, so paying permanent context load for it would buy nothing.
-It costs you the memory of one name instead (`references/core/writing-for-agents.md`, the two loads).
+**It is user-invoked, and so is almost everything it routes to.** A router has nothing to tell the
+model that the skills' own descriptions do not already carry, so paying permanent context load for
+it would buy nothing. That was the original argument, and it now generalizes: the host loads a
+listing of skill names and descriptions whose budget is **1% of the model's context window**, and on
+overflow it *"drops descriptions starting with the skills you invoke least"*
+(`https://code.claude.com/docs/en/skills`). A package that spent the whole budget on nineteen
+entries would lose exactly the descriptions a cold user needs — the ones that have never been
+invoked *because* they have never matched. So only four skills stay model-invoked
+(`codebase-rescue`, `greenfield-forge`, `systematic-debugging`, `screenshot-to-code`); every other
+one below is reached by typing its name, which is what this map is for. The axis and its two costs:
+`references/core/writing-for-agents.md`.
 
 ## Start here: what is in front of you?
 
@@ -22,11 +30,28 @@ It costs you the memory of one name instead (`references/core/writing-for-agents
 | An existing codebase that has drifted, is misaligned, or was largely AI-built | **`codebase-rescue`** — the diff run backward: the as-is exists, derive the to-be, close the gap |
 | A new project, nothing built yet | **`greenfield-forge`** — elect the design first, then build until the gap is zero |
 | A codebase you need to *understand* before deciding anything | `codebase-rescue` in **`understand` mode** — comprehension without committing to a rescue |
+| A screenshot or mockup someone has already approved, and the job is to build it | **`screenshot-to-code`** — the image is evidence, not a spec: its palette is checked against the pixels, and what it cannot show is asked rather than invented |
 | One well-scoped change on a project already under the ledger | skip both. Go straight to the loop below |
 
 Rescue and forge are the two methodology skills, and they are model-invoked precisely because they
-should activate off the description when the task matches. Everything below is what runs *inside*
-them — and each is useful on its own.
+should activate off the description when the task matches — a cold user does not know this package
+exists to name it. Everything below is what runs *inside* them, each useful on its own, and each
+**typed by name**: `/branch-lifecycle`, `/prototype`, `/using-the-ledger`. Two more stay
+model-invoked on the same test — the trigger is a situation, not a name somebody reaches for:
+`systematic-debugging`, because *"it's broken"* is a situation, and `screenshot-to-code`, whose
+trigger is not even text — a pasted image is not a command anyone types.
+
+**One name is not free, and it is the one you would type without checking.** A plugin skill
+installs as `/<plugin>:<name>`, and the bare `/<name>` also reaches it *"unless another command
+already uses that name"* — Claude Code's own words. `/code-review` is a **bundled** Claude Code
+skill, so on that host the bare name dispatches to Anthropic's reviewer, not to this package's
+ledger-bound one, with nothing to tell you it happened. Type **`/keel-kit:code-review`** when you
+want the one described below. The docs' own example for the override rule is a code-review skill,
+and it covers only the enterprise/personal/project levels; a plugin is namespaced instead, so no
+version of this package can win the bare name. It is the only collision among the nineteen shipped
+names — checked name by name against the *enumerated* bundled set in the host's commands reference
+(batch, claude-api, code-review, dataviz, debug, deep-research, design-sync, doctor,
+fewer-permission-prompts, loop, verify), not against the *"such as"* sample the skills page gives.
 
 ## The engineering loop
 
@@ -41,7 +66,8 @@ Roughly in order, though only the first and last are fixed:
 4. **`systematic-debugging`** — when something is broken. It refuses to theorise until it has a
    **tight** loop that goes **red** on *this* bug, which is also what earns the `rung="observed"`
    that closing the pin demands.
-5. **`code-review`** — findings reopen, they never decide. Read-only by design.
+5. **`code-review`** — findings reopen, they never decide. Read-only by design. Reach it as
+   **`/keel-kit:code-review`**; the bare name is a bundled Claude Code skill, per above.
 6. **`verification-before-completion`** — a pin resolves when the behavior was **observed**. This is
    the one that stops "the code is written" from being reported as "it works".
 

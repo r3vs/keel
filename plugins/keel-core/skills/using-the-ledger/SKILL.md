@@ -1,6 +1,7 @@
 ---
 name: using-the-ledger
 description: Use the shared decisions ledger correctly from any task — read pins, add a finding, run the compressed interview, record a decision with flip_criteria, and never let an agent commit a decision the human did not elect. The spine both codebase-rescue and greenfield-forge run on.
+disable-model-invocation: true
 license: MIT
 ---
 

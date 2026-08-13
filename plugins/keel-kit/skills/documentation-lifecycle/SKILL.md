@@ -1,6 +1,7 @@
 ---
 name: documentation-lifecycle
 description: Plan, write, ground and maintain documentation as a governed artifact — register a doc with its subject, owner and source files before writing it, block any code reference that does not resolve, and track graded staleness by distance from what changed. Use when writing or regenerating docs, or when asking which docs a change invalidated.
+disable-model-invocation: true
 license: MIT
 ---
 

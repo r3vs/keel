@@ -1,6 +1,6 @@
 """A router that omits a shipped skill, or routes to one that is gone, is a router that lies.
 
-`which-skill` exists to pay down cognitive load: the human remembers one name instead of eighteen.
+`which-skill` exists to pay down cognitive load: the human remembers one name instead of nineteen.
 That only works while the map is complete. The failure is quiet and asymmetric — a skill the router
 never mentions is a capability the operator does not know they installed, and it stays invisible
 precisely because the router is where they would have looked.
@@ -56,6 +56,15 @@ class TestRouterIsCompleteAndCurrent(unittest.TestCase):
         all_dirs = {d.name for d in B.SKILLS.iterdir() if d.is_dir()}
         # Only judge tokens that LOOK like this package's skill names: hyphenated, and matching the
         # shape of a directory that once existed. Anything else in backticks is ordinary prose.
+        #
+        # The convention this rests on, stated because it is invisible until you break it: **in the
+        # router, backticks mean "a route into this package"**. A FOREIGN skill name goes in plain
+        # text. The router now names Claude Code's bundled set (to show that `code-review` collides
+        # and must be typed `/keel-kit:code-review`), and backticking `deep-research` there failed
+        # this assertion with a message about a stale route — true to the heuristic, false about the
+        # sentence. Plain text for foreign names is the right side of that trade: it keeps this
+        # test's discriminator meaning something, and it matches the repo's wider rule that only
+        # load-bearing pointers are backticked.
         suspects = {n for n in _named_by_router() if "-" in n and n.endswith(
             ("-skill", "-skills", "-lifecycle", "-analysis", "-memory", "-layer", "-research",
              "-review", "-debugging", "-development", "-completion", "-rescue", "-forge",

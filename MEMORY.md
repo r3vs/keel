@@ -4,25 +4,60 @@ Durable, cross-session facts about THIS repository (see the `project-memory` ski
 this file must never ship to users**: it describes *this* repo, so shipping it would inject our
 facts into someone else's project. Keep it small; promote real decisions to the ledger.
 
-Loaded as always-on context by AGENTS.md-aware agents (opencode, Codex, Pi). **Claude Code reads
-`CLAUDE.md`, not `AGENTS.md`** — it reaches this file through CLAUDE.md's `@AGENTS.md` import.
+**No host loads this file, and that is the first fact it has to be honest about.** It used to open
+by claiming it was "loaded as always-on context by AGENTS.md-aware agents (opencode, Codex, Pi)"
+and that "Claude Code reaches this file through CLAUDE.md's `@AGENTS.md` import". Neither is true:
+`AGENTS.md` *names* `MEMORY.md` in prose, which is a pointer, not an import — and **no import syntax
+is portable** (only Claude Code parses `@path`). The same audit that built the instruction carrier
+killed this claim in `project-memory`'s playbook (`CLAUDE.md`, *"loaded by nobody, on any of the
+four hosts"*) and left it standing here, in the file the claim was about. So: an agent reads this
+because it was told to, or because a human pasted it. Nothing loads it for you.
+
+**Every number below is restated from a carrier, not remembered** — this file is in
+`scripts/check_stated_facts.py`'s `SCOPE`, so a stale count fails CI instead of waiting for someone
+to edit the line beside it. It was added there on 2026-08-13, having sat outside the scope of the
+gate written for exactly its failure shape.
 
 ## Facts
 - This repo is a **package of agent skills** — the deliverable is prose a future agent executes,
-  plus a runtime spine (`runtime/`, stdlib-only, **179 tests** in CI), `scripts/run_evals.py`, and
-  the ast-grep rule pack. **Step-0 verdicts, both now on trustworthy data**: greenfield STRONG
-  (full generation is Plan A); rescue's VibraFlow **re-run on a fresh graph 2026-07-14** →
-  **WEAK** cross-layer correspondence, so standalone extraction is Plan A and the carrier is the
-  correspondence source of truth. The WEAK verdict is citable — the stale-graph challenge is closed.
-- **`core/decisions-ledger-spec.md` is the authoritative ledger schema** (English); `core/ledger.md`
-  is the short English pointer summary. (Historical note: the spec was authored in Italian and
-  translated to English on 2026-07-14.)
+  plus a runtime spine (`src/runtime/`, core stdlib-only, **1065 tests green in CI**),
+  `scripts/run_evals.py`, and the ast-grep rule pack. **Step-0 verdicts, both now on trustworthy
+  data**: greenfield STRONG (full generation is Plan A); rescue's VibraFlow **re-run on a fresh
+  graph 2026-07-14** → **WEAK** cross-layer correspondence, so standalone extraction is Plan A and
+  the carrier is the correspondence source of truth. The WEAK verdict is citable — the stale-graph
+  challenge is closed.
+- **`src/core/decisions-ledger-spec.md` is the authoritative ledger schema** — English, and
+  **currently v0.31**; `src/core/ledger.md` is the short English pointer summary. The runtime
+  implementing it is `src/runtime/ledger.py`, and `ledger.SCHEMA_VERSION` is what every prose claim
+  about the version is checked against. (Historical note: the spec was authored in Italian and translated to
+  English on 2026-07-14. `docs/design/dynamic-workflows.md` was the last Italian file and was
+  translated 2026-08-13.)
 - **`src/` you write by hand. `plugins/` `build.py` writes. Nothing else exists.** Skills are
   authored under `src/skills/<name>/` (Agent Skills spec; `name` matches the directory) and the
   build makes each **self-contained** (Model B), vendoring the doctrine it needs into its own
   `references/core/` *inside `plugins/`*. `src/core/*.md` is the single **authoring source** — edit
   it there, then `python scripts/build.py`. A skill never points at `src/core/` directly (the linter
-  errors on a bare `core/x.md` under a skill).
+  errors on a bare `core/x.md` under a skill). **20 skills are authored; 19 ship** —
+  `writing-skills` is our contributor guide in a skill's clothes, held back by `DEV_ONLY_SKILLS`.
+- **A skill's `description` is rent on a budget the package does not own.** Claude Code keeps every
+  skill's name and description in context, capped at 1% of the window, and on overflow drops
+  descriptions *starting with the least-invoked skill* — which on a cold repo is all of ours. So
+  only skills whose trigger is a **situation nobody names** stay model-invoked (today:
+  `codebase-rescue`, `greenfield-forge`, `systematic-debugging`, `screenshot-to-code`); everything a
+  person can reach by typing its name sets `disable-model-invocation: true`. The practical
+  consequence for anyone adding a skill: **the budget is a shared pool, so a new model-invoked
+  description is spent out of the existing ones**, and it is nearly exhausted.
+  `scripts/check_description_budget.py` prints the live total and holds the ceiling — read it there
+  rather than restating a number here. Evidence and five residuals: `docs/open-gaps.md` §31.
+- **One authored version string, and the release is a git tag.** `VERSION` in `scripts/build.py` is
+  the only place a version is written by hand; every `.claude-plugin/` manifest, every
+  `.codex-plugin/` manifest and the root `.claude-plugin/marketplace.json` are **stamped from it by
+  the build** — the marketplace file is generated output that happens to live outside `plugins/`.
+  A host decides "do I need to update?" by comparing that **string and nothing else**, so the number
+  must move whenever the bytes move; `tests/test_plugin_version.py` makes that a gate by diffing
+  `plugins/<name>` against the `{name}--v{version}` tag. That gate **skips green until the tag
+  exists**, which is why tagging at merge is a documented release step (`CONTRIBUTING.md`) rather
+  than a habit.
 - **The gates protect the package *as installed*, not just the repo as a repo.** That distinction
   is the one this repo learned the hard way: every earlier gate anchored on `__file__` and was
   therefore blind to the only path class that is working-directory-sensitive — the strings a
@@ -53,9 +88,19 @@ Loaded as always-on context by AGENTS.md-aware agents (opencode, Codex, Pi). **C
   `buildloop.py` and `core/agents.md` that cannot write to the ledger. Not a reinvention, a binding:
   TDD's red step *is* an `acceptance_criterion` pin. Gate:
   `test_codex_manifest.py::test_no_source_leaves_this_repo`.
-- MCP: Context7 + DeepWiki + **cognee** (graph memory; opt-in, needs the Docker container +
-  `LLM_API_KEY`) are declared; GitHub is opt-in (needs a token). **Pi has no native MCP** — it is
-  reached through our own extension, never a hard dependency on `pi-mcp-adapter`.
+- **Four MCP servers are declared, and cognee is not one of them.** The shipped `.mcp.json` carries
+  `keel` (our own, 67 typed MCP tools over `uv run --script`), `playwright` (rendered-DOM
+  extraction), `context7` and `deepwiki`. **`cognee` and `github` are named in the doctrine's table
+  and deliberately left undeclared** — each needs external setup (a container plus `LLM_API_KEY`; a
+  token), and a declared-but-unreachable server is a broken entry in every user's session.
+  `tests/test_mcp_declaration.py::test_opt_in_servers_are_named_but_not_declared` is the gate. This
+  bullet used to say cognee *was* declared, which contradicted the build rule two bullets up: the
+  build only declares a row the table marks `→ **http**`. **Pi has no native MCP** — it is reached
+  through our own extension, never a hard dependency on `pi-mcp-adapter`.
+- **Node is a prerequisite of one skill, not of the package.** `run-workflow` vendors the TS
+  workflow engine and needs Node; everything else runs on `uv` + MCP, and the skill degrades to
+  sequential execution when Node is absent. Scoping it that way was an election, not an assumption
+  (`docs/design/dynamic-workflows.md` §8 A-1, §10).
 
 ## Preferences
 - **No heuristics, tech-stack agnostic** (hard rule): the shape engine and the graph must be

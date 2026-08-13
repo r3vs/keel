@@ -13,12 +13,14 @@ skip marks an environment that must be fixed, not a soft fallback.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 import unittest
+import urllib.parse
 
 SERVER = os.path.join(os.path.dirname(__file__), "..", "src", "mcp", "server.py")
 
@@ -68,6 +70,9 @@ EXPECTED_TOOLS = {
     "policy_preview", "ledger_record_policy",
     # design contract (DTCG) + the frontend/design scanner
     "generate_tokens", "tokens_diff", "extract_tokens", "design_scan",
+    # reference-image evidence: the computed half of "build me this screenshot". Read-only over
+    # an image the user supplied — the one claim about a reference picture that is a fact.
+    "image_palette", "palette_verify",
     # cost & token telemetry — the measurer's surface
     "spend_report",
     # landing-zone readiness: D0 evidence (read-only) + the D2 verdict (write)
@@ -146,7 +151,7 @@ class _Session(unittest.TestCase):
         cls._drain = threading.Thread(target=cls._pump_stderr, daemon=True)
         cls._drain.start()
         try:
-            cls._request("initialize", {
+            handshake = cls._request("initialize", {
                 "protocolVersion": "2025-11-25",
                 "capabilities": cls.CAPABILITIES,
                 "clientInfo": {"name": "keel-tests", "version": "1"},
@@ -156,6 +161,12 @@ class _Session(unittest.TestCase):
         except Exception:
             cls.tearDownClass()
             raise
+        # Kept, not discarded: `serverInfo` and `capabilities` are the server's claims about
+        # ITSELF, and they were unread here for as long as this file existed — which is how
+        # `serverInfo.version` came to report FastMCP's version instead of the plugin's.
+        cls.handshake = handshake["result"]
+        cls.server_info = cls.handshake.get("serverInfo") or {}
+        cls.capabilities = cls.handshake.get("capabilities") or {}
         cls.tools = {t["name"]: t for t in listing["result"]["tools"]}
 
     @classmethod
@@ -770,3 +781,290 @@ class TestTheElicitedAnswerIsCarriedNotParsed(_Session):
             data = json.load(fh)
         self.assertEqual(data["decision_log"], [])
         self.assertEqual([p["state"] for p in data["pins"]], ["needs_input"])
+
+
+@NEEDS_UV
+class TestTheServerSaysWhoItIs(_Session):
+    """`serverInfo` is a claim this server makes about itself, and it was somebody else's.
+
+    With no `version=` passed, FastMCP fills `serverInfo.version` with **its own**: an `initialize`
+    against this server answered `{"name": "keel", "version": "3.4.4"}` — the pinned
+    `fastmcp==3.4.4`, and nothing about this package. Every host that shows a server's version was
+    showing the library's. `tests/test_plugin_version.py` guards the manifest number against the
+    bytes that shipped under it and could not see this, because the value on the wire never came
+    from the manifest at all.
+
+    Asserted on the wire rather than by reading `server.py`, because `serverInfo` is assembled by
+    FastMCP from the constructor argument: the source would prove what we passed, not what a host
+    receives.
+    """
+
+    def test_the_version_reported_is_not_the_pinned_library_s(self):
+        # Read off the PEP 723 header, which is the line that actually decides what `uv` installs —
+        # the running interpreter has no fastmcp to ask, and a number typed here would be a third
+        # copy of the pin.
+        with open(SERVER, encoding="utf-8") as fh:
+            pinned = re.search(r"fastmcp==([\d.]+)", fh.read(2048))
+        self.assertIsNotNone(pinned, "the PEP 723 pin moved or changed shape; this check went blind")
+        self.assertNotEqual(self.server_info.get("version"), pinned.group(1),
+                            "serverInfo.version is FastMCP's version, not this package's — pass "
+                            "version= to the FastMCP constructor")
+
+    def test_running_from_the_source_tree_reports_dev_rather_than_a_stale_number(self):
+        """`src/mcp/server.py` is not a release. The manifest sits beside the VENDORED copy only,
+        so here the honest answer is `dev`: reporting the last built plugin's number from an unbuilt
+        working copy is exactly the staleness `test_plugin_version.py` exists to catch."""
+        self.assertEqual(self.server_info.get("version"), "dev")
+
+    def test_the_website_is_declared_so_a_user_can_find_out_what_this_is(self):
+        self.assertEqual(self.server_info.get("websiteUrl"), "https://github.com/r3vs/keel")
+
+    def test_the_server_advertises_the_two_surfaces_it_now_serves(self):
+        # Not decoration: a host decides whether to CALL `resources/list` and `prompts/list` from
+        # these. A registered prompt behind an unadvertised capability is a slash command nobody
+        # can type.
+        self.assertIn("resources", self.capabilities)
+        self.assertIn("prompts", self.capabilities)
+
+
+@NEEDS_UV
+class TestTheVendoredServerReadsItsOwnManifest(unittest.TestCase):
+    """The version rule, exercised in the layout it was written for — assembled, not assumed.
+
+    `plugins/keel-core/mcp/server.py` is generated, so asserting against the committed copy would
+    make this a test of whether someone had run `build.py` since the last edit. It builds the shape
+    instead — `<root>/mcp/{server,tools}.py`, `<root>/mcp/runtime/*`, `<root>/.claude-plugin/
+    plugin.json` — which is what `build.py` emits and what `_plugin_version` resolves
+    `../.claude-plugin/plugin.json` against.
+
+    The version planted is deliberately not the real one: planting `0.5.0` would still pass against
+    a function that returned a hardcoded `0.5.0`.
+    """
+
+    PLANTED = "9.8.7-planted"
+
+    @classmethod
+    def setUpClass(cls):
+        src = os.path.join(os.path.dirname(__file__), "..", "src")
+        cls.root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(cls.root, "mcp", "runtime"))
+        os.makedirs(os.path.join(cls.root, ".claude-plugin"))
+        for name in os.listdir(os.path.join(src, "mcp")):
+            if name.endswith(".py"):
+                shutil.copy(os.path.join(src, "mcp", name), os.path.join(cls.root, "mcp", name))
+        for name in os.listdir(os.path.join(src, "runtime")):
+            if name.endswith(".py"):
+                shutil.copy(os.path.join(src, "runtime", name),
+                            os.path.join(cls.root, "mcp", "runtime", name))
+        cls.manifest = os.path.join(cls.root, ".claude-plugin", "plugin.json")
+        with open(cls.manifest, "w", encoding="utf-8") as fh:
+            json.dump({"name": "keel-core", "version": cls.PLANTED}, fh)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def _server_info(self):
+        """One handshake, and stderr goes to a FILE rather than a pipe.
+
+        `_Session` drains stderr on a thread and its docstring says why; this hit the same wall from
+        the other side and is worth recording, because the trigger is not an error. FastMCP prints a
+        boxed startup banner plus an "Update available" notice before serving, and on a first run
+        `uv` adds its resolution output — enough to fill the pipe, at which point the server BLOCKS
+        on its own stderr write, never answers, and `readline()` waits forever. A file has no such
+        buffer, and it keeps the text for the failure message below.
+        """
+        log = os.path.join(self.root, "stderr.log")
+        with open(log, "w", encoding="utf-8") as err:
+            proc = subprocess.Popen(
+                ["uv", "run", "--script", os.path.join(self.root, "mcp", "server.py")],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err,
+                text=True, encoding="utf-8", bufsize=1,
+                env={**os.environ, "CODEBASE_ALIGNMENT_SKIP_WARM": "1"})
+            try:
+                proc.stdin.write(json.dumps({
+                    "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                    "params": {"protocolVersion": "2025-11-25", "capabilities": {},
+                               "clientInfo": {"name": "keel-tests", "version": "1"}}}) + "\n")
+                proc.stdin.flush()
+                line = proc.stdout.readline()
+            finally:
+                proc.stdin.close()
+                proc.stdout.close()
+                try:
+                    proc.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+        with open(log, encoding="utf-8") as fh:
+            self.assertTrue(line, f"server closed the stream; stderr:\n{fh.read()[-2000:]}")
+        return json.loads(line)["result"].get("serverInfo") or {}
+
+    def test_the_version_comes_from_the_manifest_beside_the_vendored_copy(self):
+        self.assertEqual(self._server_info().get("version"), self.PLANTED,
+                         "the vendored server must read ../.claude-plugin/plugin.json — one source "
+                         "for the number, resolved against __file__ and never against the cwd")
+
+    def test_an_unreadable_manifest_degrades_to_dev_rather_than_crashing(self):
+        """Never raises: a server that refused to start because it could not label itself would
+        trade a cosmetic gap for the silent-absence failure this whole adapter fears — with `uv`
+        involved, a server that does not start has no error path to the agent at all."""
+        with open(self.manifest, encoding="utf-8") as fh:
+            good = fh.read()
+        try:
+            with open(self.manifest, "w", encoding="utf-8") as fh:
+                fh.write("{ not json at all")
+            self.assertEqual(self._server_info().get("version"), "dev")
+        finally:
+            with open(self.manifest, "w", encoding="utf-8") as fh:
+                fh.write(good)
+
+
+@NEEDS_UV
+class TestTheLedgerIsAddressable(_Session):
+    """Resources: the ledger as a thing a PERSON attaches, not only a thing the model calls.
+
+    In Claude Code that is `@keel:ledger://summary//abs/path/ledger.json`, fetched and attached to
+    the turn. What is asserted here is the half we own — that the URIs resolve, that they answer
+    from the same guarded read the tools use, and that a mistyped path is refused rather than
+    answered as an empty ledger.
+    """
+
+    def _read(self, uri):
+        res = self._request("resources/read", {"uri": uri})
+        self.assertNotIn("error", res, f"{uri} did not resolve: {res.get('error')}")
+        contents = res["result"]["contents"]
+        self.assertEqual(len(contents), 1)
+        return json.loads(contents[0]["text"])
+
+    def _templates(self):
+        return {t["uriTemplate"] for t in
+                self._request("resources/templates/list", {})["result"]["resourceTemplates"]}
+
+    def test_the_three_templates_are_advertised(self):
+        self.assertEqual(self._templates(), {"ledger://summary/{path*}", "ledger://pins/{path*}",
+                                             "ledger://pin/{pin_id}/{path*}"})
+
+    def test_the_path_segment_is_a_wildcard_because_a_filesystem_path_has_slashes(self):
+        """The one detail that decides whether any of this works. FastMCP compiles a bare `{path}`
+        to `(?P<path>[^/]+)` and only `{path*}` to `(?P<path>.+)`
+        (`fastmcp/resources/template.py::build_regex`), so a template without the star matches no
+        absolute path at all — and fails by not being found, which reads as the user's typo."""
+        for template in self._templates():
+            with self.subTest(template=template):
+                self.assertIn("{path*}", template)
+
+    def test_concrete_resources_are_empty_and_that_is_the_design(self):
+        """Asserted so it stays a decision rather than becoming an accident.
+
+        This server has no notion of "the current project" — every tool takes the ledger path as an
+        argument for exactly that reason — so there is no concrete ledger URI it could list. The
+        cost is real and is written down in `docs/design/mcp-apps.md`: whether a given host offers
+        TEMPLATE resources in its `@` picker (as opposed to concrete ones) is UNVERIFIED, and where
+        it does not, the URI is typed from the template's description.
+        """
+        self.assertEqual(self._request("resources/list", {})["result"]["resources"], [])
+
+    def test_the_summary_resource_answers_what_the_summary_tool_answers(self):
+        path, _ = _seeded_ledger(self, tempfile.mkdtemp())
+        by_tool = self._request("tools/call", {"name": "ledger_summary",
+                                               "arguments": {"ledger": path}})
+        self.assertEqual(self._read(f"ledger://summary/{path}"),
+                         by_tool["result"]["structuredContent"],
+                         "two projections of one ledger that disagree is the divergence this "
+                         "package exists to find, arriving in its own server")
+
+    def test_the_pin_index_and_the_whole_pin_round_trip(self):
+        path, pin_id = _seeded_ledger(self, tempfile.mkdtemp())
+        index = self._read(f"ledger://pins/{path}")
+        self.assertEqual(index["count"], 1)
+        self.assertEqual(index["pins"][0]["id"], pin_id)
+        self.assertNotIn("as_is", index["pins"][0], "the index is an index; the pin is the read")
+        whole = self._read(f"ledger://pin/{pin_id}/{path}")["pin"]
+        self.assertEqual(whole["id"], pin_id)
+        self.assertEqual(whole["as_is"]["current_design"], "copy-paste")
+
+    def test_a_ledger_that_is_not_there_is_refused_not_answered_empty(self):
+        """The guarded read reaching the resource door — the whole reason these delegate to
+        `tools.py` instead of parsing the file themselves. A missing ledger must never come back as
+        'no pins', on any surface."""
+        missing = os.path.join(tempfile.mkdtemp(), "never-built.json")
+        res = self._request("resources/read", {"uri": f"ledger://summary/{missing}"})
+        self.assertIn("error", res, "an absent ledger answered as if it had been read")
+        self.assertIn("no ledger at", json.dumps(res["error"]))
+
+    def test_a_percent_encoded_path_resolves_to_the_same_ledger(self):
+        """`match_uri_template` unquotes every captured group, so a host that escapes the URI it was
+        handed reaches the same file. Asserted because it is free to keep and silent to lose."""
+        path, _ = _seeded_ledger(self, tempfile.mkdtemp())
+        self.assertEqual(self._read(f"ledger://summary/{urllib.parse.quote(path, safe='')}"),
+                         self._read(f"ledger://summary/{path}"))
+
+
+@NEEDS_UV
+class TestThePhaseEntriesAreServedAsCommands(_Session):
+    """Prompts: the one surface here a human drives directly (`/mcp__keel__<name>`).
+
+    Each is a phase ENTRY — the ledger to read, the phase to enter, the pointer to the prose that
+    governs it. Deliberately not a copy of any playbook: a prompt restating a `SKILL.md` would be
+    the stateless twin this repo refuses to author, drifting from the original with no gate between
+    them. So what is asserted is the wiring and the pointer, never the wording.
+    """
+
+    EXPECTED_PROMPTS = {"interview-kickoff", "rescue-phase", "forge-phase"}
+
+    def test_every_prompt_is_advertised_with_its_arguments(self):
+        prompts = {p["name"]: p for p in self._request("prompts/list", {})["result"]["prompts"]}
+        self.assertEqual(set(prompts), self.EXPECTED_PROMPTS)
+        for name, prompt in sorted(prompts.items()):
+            with self.subTest(prompt=name):
+                self.assertTrue((prompt.get("description") or "").strip(),
+                                "a prompt with no description is a slash command nobody can pick")
+                args = {a["name"] for a in prompt.get("arguments", [])}
+                self.assertIn("ledger", args,
+                              "every phase entry starts from the single source of truth")
+
+    def test_the_kickoff_carries_the_ledger_it_was_given_and_names_the_funnel(self):
+        text = self._request("prompts/get", {"name": "interview-kickoff",
+                                             "arguments": {"ledger": "/tmp/x/ledger.json"}})[
+            "result"]["messages"][0]["content"]["text"]
+        self.assertIn("/tmp/x/ledger.json", text)
+        self.assertIn("interview_next", text, "the entry point is the funnel, never the pin list")
+
+    def test_neither_phase_entry_pretends_to_be_the_playbook(self):
+        """The rule that keeps a prompt from becoming a second copy of a skill: it sends the reader
+        to the prose, and the prose is where the instruction lives."""
+        for name, args in (("rescue-phase", {"ledger": "/l.json", "phase": "2", "repo": "/r"}),
+                           ("forge-phase", {"ledger": "/l.json", "phase": "3", "root": "/r"})):
+            with self.subTest(prompt=name):
+                text = self._request("prompts/get", {"name": name, "arguments": args})[
+                    "result"]["messages"][0]["content"]["text"]
+                self.assertIn("SKILL.md", text)
+                self.assertIn("references/", text)
+                self.assertIn(args["phase"], text)
+
+
+@NEEDS_UV
+class TestAPaletteCheckOfNothingIsNotAPass(_Session):
+    """`palette_verify` with no claim set used to answer `status: "checked"`, `refuted: false`.
+
+    Reachable with no mistake on the caller's part — `palette_verify(image)` before any color has
+    been proposed, or a `contract` whose color group is empty — and `refuted: false` is the field a
+    caller reads to decide it may propagate a palette. Over the wire, because that is where a
+    vacuous pass would actually be believed.
+    """
+
+    def test_no_claims_is_unchecked_with_a_reason(self):
+        out = self._request("tools/call", {"name": "palette_verify",
+                                           "arguments": {"image": "/nonexistent.png"}})[
+            "result"]["structuredContent"]
+        self.assertEqual(out["status"], "unchecked")
+        self.assertNotIn("refuted", out, "nothing was examined, so nothing may be reported clean")
+        self.assertIn("claimed", out["reason"])
+
+    def test_the_coverage_floor_the_engine_accepts_is_reachable_from_the_wire(self):
+        """`visual.verify_palette` has taken `coverage_floor` since it was written and no caller
+        could pass one — a parameter reachable from nowhere is the same silent gap as a tool no
+        playbook names, one layer down."""
+        schema = self.tools["palette_verify"]["inputSchema"]
+        self.assertIn("coverage_floor", schema["properties"])
+        self.assertNotIn("coverage_floor", schema.get("required", []))

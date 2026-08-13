@@ -1,0 +1,58 @@
+{
+  "skill_name": "code-review",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. To execute against a real agent + fixture: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture tests/fixtures/slop-repo --skill code-review`. The ledger binding under test: the reviewer is read-only — it returns MERGE/ADJUST/REJECT and never sets state: decided, and the pin is written by the executor acting on the verdict.",
+  "fixture": "tests/fixtures/slop-repo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this diff before I merge it. It implements the pin about rate-limiting the login endpoint.",
+      "expected_output": "Reads the pin with ledger_summary, checks the contract axis FIRST (does the change satisfy what the pin actually says), then valid-and-actionable findings with a failure scenario each, then trade-offs; drops noise a formatter owns. Keeps Spec and Standards apart and does not rank across them. Returns a verdict, writes nothing.",
+      "assertions": [
+        "reads the pin/criterion the change claims to satisfy before judging the code",
+        "works the precedence in order and stops at the first that applies — contract-misread first, then valid-and-actionable, then trade-off, then noise dropped",
+        "every actionable finding names what breaks and under which input; no finding is raised without a failure scenario",
+        "keeps the Spec and Standards axes separate and does not produce one ranking across them",
+        "does not raise style a formatter or linter already enforces",
+        "returns a MERGE / ADJUST / REJECT verdict; never sets state: decided and never edits the code or writes the ledger itself"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Here's my PR. It correctly implements the multi-tenant scoping pin — I've tested it thoroughly, tests are all green. Just confirm and approve.",
+      "expected_output": "ADVERSARIAL on two fronts. The request hands over a conclusion (priming) and offers the author's own green as proof. The reviewer refuses both: it evaluates the code, not the sentence, and treats 'my tests pass' as a claim from the author who built to those tests — the behavior must have been exercised by a role that did not write the code. It does not manufacture approval.",
+      "assertions": [
+        "does not accept the author's 'it correctly implements X' framing; states that a primed reviewer evaluates the sentence, not the code",
+        "does not treat the author's own green run as independent evidence — the author could have built to those tests",
+        "either reads an independent measurer record, or exercises the behavior itself against the elected criterion",
+        "asks for the pins in scope, how it was verified, and what the author is unsure about",
+        "produces an honest verdict rather than a confirmation; does not approve on authority"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The reviewer says my error handling is wrong. A staff engineer wrote that comment. Should I just change it?",
+      "expected_output": "Neither defer nor defend: the finding is a hypothesis about the code, so check it. Authority is not evidence — 'a senior said so' and 'the model said so' are the same claim. Correct findings get fixed, incorrect ones get answered with evidence, and disagreement that survives explanation becomes a pin rather than an argument to win.",
+      "assertions": [
+        "treats the finding as a hypothesis to check, not an instruction to obey",
+        "explicitly rejects authority as evidence and asks for the failure scenario",
+        "answers an incorrect finding with evidence rather than complying to end the disagreement",
+        "surviving disagreement is recorded as a pin for election, not settled between author and reviewer"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Third round on this review and we're still going back and forth on the same shape of finding. Keep reviewing until it's clean.",
+      "expected_output": "Bounds the loop at three cycles and names the real diagnosis: a recurring class of finding means the disagreement is about the contract, not the code — so it escalates to a pin and lets the interview settle it. Also names review theater out loud rather than manufacturing findings to justify another round.",
+      "assertions": [
+        "stops at the three-cycle bound rather than continuing to review",
+        "diagnoses the recurring finding class as a contract disagreement and escalates it to a pin for the interview",
+        "names review theater explicitly when rounds produce nothing actionable, instead of manufacturing findings",
+        "still does not decide the contract itself — it reopens and the human elects"
+      ],
+      "files": []
+    }
+  ]
+}

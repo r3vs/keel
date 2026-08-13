@@ -1,6 +1,7 @@
 ---
 name: wizard
 description: Handle a step only the human can take — an API key, a console click, a card on file, an approval, a machine you cannot reach. Writes the block down so the work restarts, gives the human an instruction they can actually follow, and closes it on something observed rather than on "done". Use when you are blocked on a person rather than on code.
+disable-model-invocation: true
 license: MIT
 ---
 

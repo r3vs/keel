@@ -47,6 +47,72 @@ throughout.
   `src/core/ledger.md` is the short English pointer summary to it. Keep both in sync with the version.
 - **Read the relevant reference before editing a phase/module** — don't work from memory.
 
+## Release — at merge to main, tag every plugin
+
+**A version that is never tagged is a version nobody can compare against, and the gate for it skips
+green.** `tests/test_plugin_version.py` answers the one question no correspondence check inside this
+repo can — *"do the bytes under `plugins/<name>` still equal the bytes that shipped under this
+number?"* — by diffing the working tree against the `{plugin-name}--v{version}` tag. Its anchor lives
+outside the tree, so with no tag there is nothing to diff and the assertion **skips**, quietly, at
+the moment it matters most. That file states the residual in its own docstring: *"tag at release, or
+this file is decoration."* This section is what stops it being decoration. As of 0.6.0 only 0.3.0
+and 0.4.0 were ever tagged, so the check has been skipping for every version since.
+
+Tags are also load-bearing for **dependency resolution**, which is a second consumer and the reason
+the name shape is not ours to choose. Claude Code resolves a semver-constrained dependency — ours is
+`keel-kit` → `{"name": "keel-core", "version": "^0.6"}` — by listing tags on the hosting repository,
+filtering to `keel-core--v*`, and fetching the highest that satisfies the range. Untagged, a
+relative-path plugin falls back to the marketplace's current copy and the constraint is checked at
+load instead of at fetch.
+
+**One constant, then four commands.** `VERSION` in `scripts/build.py` is the only hand-written
+version; the build stamps every `.claude-plugin/` and `.codex-plugin/` manifest **and** the root
+`.claude-plugin/marketplace.json` from it. Bump it whenever `plugins/` content changes — a host
+compares the string and nothing else, so bytes that move under a number that does not are bytes no
+installed copy will ever receive.
+
+```bash
+# 1. bump VERSION in scripts/build.py, then regenerate and verify
+python scripts/build.py && python scripts/build.py --check
+python -m unittest discover -s tests
+
+# 2. record the release in CHANGELOG.md, commit, merge to main
+
+# 3. from main, one ANNOTATED tag per plugin — the name shape is Claude Code's, not ours
+for p in keel-core codebase-rescue greenfield-forge keel-kit; do
+  v=$(python -c "import json,sys;print(json.load(open(f'plugins/{sys.argv[1]}/.claude-plugin/plugin.json'))['version'])" "$p")
+  git tag -a "$p--v$v" -m "$p $v"
+done
+
+# 4. push them, or the resolver on every other machine sees none of it
+git push --follow-tags
+```
+
+Use `-a`. The eight tags that exist today are lightweight, which carries no tagger, date or message
+— fine for a string match, useless for asking later *who released this and when*. `claude plugin tag
+--push`, run from a plugin directory, does the same job and additionally validates the plugin,
+checks that `plugin.json` and the marketplace entry agree on the version, and refuses on a dirty
+tree; prefer it when the CLI is available and treat the loop above as the portable equivalent.
+
+**The version fallback chain — why the pin is worth keeping.** Claude Code resolves a plugin's
+version from the first of these that is set:
+
+1. `version` in the plugin's `plugin.json` — *what we ship*, so this always wins;
+2. `version` in the plugin's marketplace entry in `marketplace.json`;
+3. the git commit SHA of the plugin's source (for `github`, `url`, `git-subdir`, and relative-path
+   sources in a git-hosted marketplace);
+4. the SHA-256 digest, for `archive` sources;
+5. `unknown`, for `npm` sources or local directories outside a git repository.
+
+We sit on rung 1 deliberately: an explicit pin means users get an update **only** when we bump it,
+which is what makes the number a promise rather than a side effect of pushing. Dropping to rung 3
+would ship every commit to every user and make `test_plugin_version.py` meaningless, since the
+version could never disagree with the content.
+
+CI must fetch tags for any of this to run — `actions/checkout@v4` defaults to `fetch-depth: 1` and
+brings none, so the workflow pins `fetch-depth: 0`. Without it every assertion in that file skips
+green, which is the same silence this section exists to end.
+
 ## Licensing
 
 Contributions are under the MIT `LICENSE`. Note that the external toolchain the skills invoke keeps

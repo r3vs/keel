@@ -2,7 +2,7 @@
 
 # keel-kit
 
-**Eleven composable skills.** Each is useful on its own, in any task, on any codebase — and each is
+**Fourteen composable skills.** Each is useful on its own, in any task, on any codebase — and each is
 **bound to the decisions ledger**, which is the only reason they are authored here instead of
 borrowed from an existing marketplace.
 
@@ -60,7 +60,9 @@ when to abandon a hypothesis instead of defending it.
 *Use when: something is broken, a test fails mysteriously, or behavior differs between environments.*
 
 ### `code-review`
-**Reviewers reopen. The human elects.**
+**Reviewers reopen. The human elects.** *(Type `/keel-kit:code-review` — the bare `/code-review` is
+a bundled Claude Code skill and wins the name, so this is the one skill here whose namespaced form
+is not optional.)*
 
 That is not a limitation on thoroughness — it is the property that makes review safe to automate. A
 reviewer who can also change the code will fix what it *thinks* is wrong, and a wrong fix applied
@@ -130,7 +132,7 @@ is `correctness_unknown` rather than resolved.
 
 ---
 
-## The supporting four
+## The supporting seven
 
 ### `grounded-research`
 The enemy is the model's training cutoff — stale APIs, outdated practices, confidently hallucinated
@@ -206,7 +208,10 @@ you've already got, so it stops re-explaining it. Four hooks, one per existing s
 roadmap, test-first, review.
 
 Intensity is a dial: `essential` · `guided` (default) · `deep`. **A volume, not an on/off** — no
-setting silently drops the coaching.
+setting silently drops the coaching. What the dial does *not* control is whether the layer is there:
+it is user-invoked, so you type `/learning-layer` and it wraps everything after. `learn:<level>` on
+`/rescue` sets the volume of a layer you already loaded; it cannot load one, because a skill with
+`disable-model-invocation: true` is unreachable from the model and from another skill by design.
 
 *Use when: onboarding onto a codebase, "learn while shipping", "explain why, not just what", or
 wanting to be coached rather than handed answers.*
@@ -253,6 +258,44 @@ diff this package produced, on a trusted path.
 
 ---
 
+### `screenshot-to-code`
+
+Someone hands you a picture of a UI and asks for the UI. Every tool that does this answers with a
+file — and everything the picture withheld gets supplied silently, at high confidence, by a model:
+the breakpoints, the hover state, the error state, which strings were placeholder, what the button
+does. Those were decided by nobody, and they survive review because the render matches the picture,
+which is the one thing they were optimized to do.
+
+So this one converts a screenshot into an **elected design contract plus the list of questions the
+picture raised**, and then builds the real components against it. Three buckets, never one:
+
+- **Computed** — geometry, the real color histogram with coverage, WCAG on a claimed pair. A stdlib
+  PNG decode (`image_palette`), no model, no network. `confidence: extracted`.
+- **Inferred** — that this is a nav, that this blue *means* primary, that the grid has 12 columns.
+  D2, so it lands as a pin carrying `provenance: agent_assumption` — vetoable in the interview.
+- **Absent** — states, breakpoints, dark mode, real-vs-placeholder data, behavior, focus order,
+  motion, i18n. Elicited, never filled in.
+
+The hinge is that the first bucket **refutes** the second: `palette_verify` asks the picture whether
+the colors the model claims to have seen are in it, summing coverage inside a perceptual ΔE radius so
+anti-aliasing counts toward a claim. A token that covers nothing is caught at the contract, for the
+price of one pin, instead of after it has been propagated into `tokens.css`, a Tailwind theme, a
+`DESIGN.md` and every component built on them.
+
+It closes the loop the way the reference implementations do — render, look again, refine — with the
+comparison split: `design_scan` on the running URL (token membership + a11y) is computed and blocks;
+a pixel comparison is a noisy signal and goes to a human-reviewed pin, never a merge gate.
+
+The problem statement is [`abi/screenshot-to-code`](https://github.com/abi/screenshot-to-code)'s
+(MIT), including the look-again loop. None of its code is used. What is added is the half a
+generator does not have: a check on what the model claims to have seen, and a ledger for everything
+it could not.
+
+*Use when: a screenshot, mockup, Figma frame or design file is the input — "make it look like this",
+"clone this UI", "turn this design into components".*
+
+---
+
 ## Using them together
 
 They compose, and they compose with the methodology skills:
@@ -268,7 +311,8 @@ project-memory     → what was worth keeping
 ```
 
 `grounded-research` slots in anywhere a current external fact is needed; `learning-layer` wraps the
-whole thing if you want it to.
+whole thing **once you invoke it** — it is user-invoked, so no agent and no other skill can compose
+it on your behalf, and an uncoached run says so rather than pretending.
 
 ---
 

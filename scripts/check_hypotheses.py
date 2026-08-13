@@ -53,6 +53,12 @@ ALLOWED = {
                       "`test_the_declared_nonconformance_note_length_is_the_length_it_emits`, "
                       "which is what makes it arithmetic rather than a guess: at the floor the "
                       "first draft displaced `### Standing rules`",
+    "_CHANNELS": "the PNG spec's own color-type table (RFC 2083 / W3C PNG §4.1.1): color type 2 has "
+                 "3 samples per pixel because that is what RGB means. Not ours to tune — a "
+                 "different number here does not decode a different image, it decodes garbage",
+    "WCAG_FLOORS": "the published success criteria of WCAG 2.x — 1.4.3 (AA: 4.5 normal / 3.0 large) "
+                   "and 1.4.6 (AAA: 7.0 / 4.5). Tuning them would not make a design more readable, "
+                   "it would make the grade we report mean something other than the grade it names",
     "SCHEMA_VERSION": "a version string, not a threshold",
     "CATALOG_VERSION": "a version string, not a threshold",
     "_INDENT": "formatting width",

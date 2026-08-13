@@ -73,7 +73,12 @@ OUT = ROOT / "plugins"
 # flavours are stamped from here. Bump it whenever `plugins/` content changes, because a host
 # compares this STRING and nothing else — see `tests/test_plugin_version.py`, which is what makes
 # that sentence a gate rather than a hope.
-VERSION = "0.5.0"
+#
+# It is the only hand-written version in the repo, and that was re-verified rather than assumed
+# (2026-08-13): the root `.claude-plugin/marketplace.json` is `marketplace()`'s output, not an
+# authored file, so it moves with this constant and must be rebuilt after a bump — a `--check`
+# failure naming it is the bump, not a regression.
+VERSION = "0.6.0"
 AUTHOR = {"name": "r3vs"}
 HOMEPAGE = "https://github.com/r3vs/keel"
 KEYWORDS = ["skills", "vibe-coding", "ai-generated-code", "codebase", "rescue", "greenfield",
@@ -204,7 +209,7 @@ PLUGINS = {
             "derive the to-be from an elected interview, close the gap."
         ),
         "skills": ["codebase-rescue"], "commands": ["rescue"],
-        "dependencies": ["keel-core"],
+        "dependencies": [{"name": "keel-core", "version": f"^{'.'.join(VERSION.split('.')[:2])}"}],
     },
     "greenfield-forge": {
         "description": (
@@ -213,7 +218,7 @@ PLUGINS = {
             "contract so they cannot drift."
         ),
         "skills": ["greenfield-forge"], "commands": ["forge"],
-        "dependencies": ["keel-core"],
+        "dependencies": [{"name": "keel-core", "version": f"^{'.'.join(VERSION.split('.')[:2])}"}],
     },
     "keel-kit": {
         "description": (
@@ -225,8 +230,10 @@ PLUGINS = {
             "sources, never stale memory), static-first-analysis (strongest deterministic signal "
             "before judgment), project-memory (durable facts), learning-layer (senior-grade "
             "output while the operator levels up), documentation-lifecycle (register, ground and "
-            "grade docs instead of trusting them), and maintainer-assist (triage issues and PRs, "
-            "treating incoming content as untrusted)."
+            "grade docs instead of trusting them), maintainer-assist (triage issues and PRs, "
+            "treating incoming content as untrusted), and screenshot-to-code (build a UI from a "
+            "reference image, fact-checking what the model claims to have seen and eliciting what "
+            "the image cannot show)."
         ),
         # The five engineering skills are authored here rather than composed from an external
         # marketplace, and the reason is not NIH — it is that a generic TDD skill cannot make its
@@ -241,12 +248,35 @@ PLUGINS = {
         "skills": ["test-driven-development", "systematic-debugging", "code-review",
                    "verification-before-completion", "branch-lifecycle", "prototype", "wizard",
                    "grounded-research", "static-first-analysis", "project-memory", "learning-layer",
-                   "documentation-lifecycle", "maintainer-assist"],
+                   "documentation-lifecycle", "maintainer-assist", "screenshot-to-code"],
         # It depends on the core, and the honest reason is the MCP servers, not the ledger:
         # `grounded-research` IS the Context7/DeepWiki doctrine as a skill, and core is where those
         # servers are declared. This used to say `dependencies: []` and "no runtime dependency" —
         # which read well and shipped a skill that orders the agent to use a server it never got.
-        "dependencies": ["keel-core"],
+        #
+        # It is the one dependency carrying a **version range**, and the range is what a bare name
+        # cannot say: *"the tool names in these fourteen playbooks were tested against this core"*.
+        # Every kit skill calls keel-core's MCP tools BY NAME — `ledger_add_pin`, `build_waves`,
+        # `contract_diff` — so a core release that renames one breaks the kit's prose while both
+        # manifests stay valid. A bare string tracks whatever the marketplace last published, which
+        # is precisely the upstream-moves-under-you case the constraint exists for.
+        #
+        # Verified at the consumer, not at the type (docs/en/plugin-dependencies, 2026-08-13): an
+        # entry may be a bare string OR `{name, version}` where `version` is an npm semver range —
+        # *"a semver range such as `~2.1.0`, `^2.0`, `>=1.4`, or `=2.1.0`. The dependency is fetched
+        # at the highest tagged version that satisfies this range."* Resolution reads
+        # `{plugin-name}--v{version}` git tags, which is the same convention `test_plugin_version.py`
+        # already anchors on — so this constraint and that gate are two readers of one tag.
+        # `^0.6` is `>=0.6.0 <0.7.0`: patch and minor of an 0.x line, held before the next minor.
+        #
+        # The failure mode is bounded and was checked rather than hoped: our marketplace entries use
+        # relative `./plugins/<name>` sources, and *"for a relative-path plugin with no matching tag,
+        # Claude Code installs the marketplace's current copy instead and checks the constraint when
+        # the plugin loads"* — so before the first tag exists this resolves to the copy in the repo,
+        # which is stamped from VERSION above and satisfies the range by construction.
+        #
+        # Codex never sees this: `codex_manifest()` emits no `dependencies` at all, by design.
+        "dependencies": [{"name": "keel-core", "version": f"^{'.'.join(VERSION.split('.')[:2])}"}],
     },
 }
 
