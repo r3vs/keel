@@ -252,7 +252,7 @@ What was observed while establishing that, kept because it makes the eventual mi
 | 4.0.0b2 runs this server's **entire** surface unchanged on a legacy `initialize` — every tool, all `ledger://` templates, all prompts, elicitation end to end | The bump is not an API-breakage cascade. Nothing in `server.py` or `tools.py` had to change to start. |
 | On a modern connection, `server/discover` answers with `supportedVersions: ["2026-07-28"]`, `resultType: "complete"`, `ttlMs`, `cacheScope`, and `serverInfo` under `_meta` | SEP-2575/2549/2322's mechanical parts are the library's, exactly as the header predicted. Our `version` and `websiteUrl` arrive correctly. |
 | Every modern request **must** carry `_meta` with both `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities`; omitting the second is rejected `-32602` | The stateless handshake is real. A test harness for that era is a different client, not a tweaked one. |
-| **`ctx.elicit` raises before touching the wire on a modern connection** — `fastmcp/server/context.py`: *"elicitation via server-initiated requests is unavailable on 2026-07-28 connections"* (SEP-2577 removed the back-channel) | **The blocker.** Driven end to end, `ledger_record_decision` came back `isError` rather than degrading, because `_client_can_elicit` still answers True from the client's declared capability and the code then commits to a path the era deleted. |
+| **`ctx.elicit` raises before touching the wire on a modern connection** — `fastmcp/server/context.py`: *"elicitation via server-initiated requests is unavailable on 2026-07-28 connections"* (SEP-2577 removed the back-channel) | **Was the blocker; the hard-error half is closed** (§6a, 2026-08-13). Driven end to end, `ledger_record_decision` came back `isError` rather than degrading, because `_client_can_elicit` answered True from the client's declared capability and the code then committed to a path the era deleted. It now degrades to the relay rung instead. What the era still costs is the strong rung itself, which is MRTR's row below. |
 | The supported replacement is the **guard pattern**: return an `InputRequiredResult` with `input_requests`, read `ctx.input_responses` / `ctx.request_state` when the client retries | A real refactor of the two most carefully tested tools here (`ledger_record_decision`, `ledger_record_policy`), both written as one `async` body straddling the ask. |
 | An exact `==` pin on a prerelease resolves under a bare `uv run --script`, with **no** `--prerelease` flag | Mechanically shippable — worth knowing, because the host's command line is fixed in `.mcp.json` and is not ours to change. It removes an excuse, not the objection. |
 | `resources/subscribe` → `subscriptions/listen`; we subscribe to nothing | No work — worth knowing before someone builds §5's "live" map on subscriptions. |
@@ -263,6 +263,54 @@ any bump: it answers from the client's declared capability alone, so on a modern
 promises a door the era has removed and the tool hard-errors instead of degrading to the relay rung
 that is sitting right there. That is a correctness bug the day any host negotiates 2026-07-28,
 whatever pin we are on. Then MRTR, then the pin.
+
+### 6a. The first step is DONE (2026-08-13), and this is the mechanism
+
+Two layers, because the probe alone would have been a guess about somebody else's protocol and the
+backstop alone would have been silent about why:
+
+- **The backstop — `server.py::_ask`, and it is the guarantee.** Every elicitation this server sends
+  goes through it, and it turns on one distinction the protocol already draws: **a refusal is a
+  VALUE, a missing door is a RAISE.** `DeclinedElicitation`/`CancelledElicitation` are *returned*, so
+  they reach the call site untouched and keep the hard refusal v0.29 argued for — degrading on a
+  decline converts a human's "no" into an outcome the agent wrote, and `Declined` cannot distinguish
+  *no prompt was drawn* from *the human refused*. A raise means nothing was asked, so nothing was
+  refused: the tool falls through to the `transcribed` rung exactly as on a client that declared
+  nothing, and refuses — naming `option_id`, `human_answer` and the `decide.py` path — only when the
+  caller relayed nothing at all. Never `isError` for the unavailability itself.
+- **The probe — `_client_can_elicit` now also asks what the session NEGOTIATED**, via
+  `_negotiated_era`, which reads `ServerSession.protocol_version` (`mcp>=2.0`) or
+  `request_context.protocol_version` (`fastmcp>=4`) where they exist. **At the current pin neither
+  does**, and that is stated in the code rather than papered over: `mcp==1.29.0`'s `RequestContext`
+  has no such field and its session keeps only `client_params` — the version the client *asked* for.
+  So the last branch re-derives the negotiated value with the library's own expression
+  (`requested if requested in SUPPORTED_PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION`,
+  `mcp/server/session.py::_received_request`). The era set is `mcp_types.version.
+  MODERN_PROTOCOL_VERSIONS` where importable — the same table `fastmcp>=4`'s own
+  `_is_modern_protocol` compares against — and the literal `2026-07-28` until that module exists.
+
+Two findings worth keeping, each of which changed the code:
+
+1. **The classifier is an allowlist, and it has to be.** The first draft caught `Exception`, which
+   swallowed the opposite fact: a `list[str]` response type compiles to an enum schema, so a reply
+   *outside* the enum raises pydantic's `ValidationError` out of `handle_elicit_accept` — **after**
+   the human answered. Degrading there replaced the user's real answer with the option the caller
+   proposed. `_no_question_was_put()` now names the classes that mean no answer arrived
+   (`ToolError`, plus `McpError` **and** `MCPError` — `mcp==2.0.0` renames that class with no alias,
+   so one spelling goes blind at the very pin this fix is for), and
+   `test_an_answer_outside_the_offered_choices_leaves_the_pin_open` is what fails if it widens again.
+2. **The era branch is unreachable from this repo's tests, and that is declared rather than faked.**
+   No stable release speaks 2026-07-28, so `tests/test_mcp_server.py` drives the same *class* through
+   the door that is reachable — a client that declares elicitation and answers `elicitation/create`
+   with a JSON-RPC error — and asserts the degradation, the two refusals that must not move, and
+   that an era the library cannot speak is negotiated *down* rather than routed around. The two
+   properties the wire cannot check (the probe still being consulted; no `ctx.elicit` outside `_ask`)
+   are held by AST, the way `test_human_door.py` quantifies the `elicited` rung over its callers.
+
+What this does **not** do is MRTR's guard pattern. On a modern connection the strong rung is simply
+gone and every decision lands as `transcribed` or goes through `decide.py`; the refactor that gets
+it back — `InputRequiredResult` + `ctx.input_responses` — is still step two, and it is now a
+capability upgrade rather than a bug fix.
 
 ## 7. What this note still does not decide
 

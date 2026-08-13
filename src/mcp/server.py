@@ -146,7 +146,7 @@ def _human_door() -> str:
 
 
 def _client_can_elicit(ctx) -> bool:
-    """Does THIS client accept an elicitation request? Asked, never assumed.
+    """Does THIS client accept an elicitation request? Asked, never assumed — and asked twice.
 
     The strong rung of `ledger_record_decision` needs the host to render a prompt, and host support
     is exactly the kind of fact this repo has been wrong about by reasoning from memory. So it is
@@ -154,13 +154,201 @@ def _client_can_elicit(ctx) -> bool:
     capabilities, and the MCP session already holds the answer. A host that gains support gets the
     better path with no change here; one that lacks it degrades to relaying instead of hanging on a
     request it will never answer — `ctx.elicit` does not check first, it just sends.
+
+    **The declaration was only half the question, and the missing half is the era.** SEP-2577 removes
+    the back-channel a server-initiated request travels on, so on a **2026-07-28** connection a client
+    can declare `elicitation` truthfully and there is still no door: `Context.elicit` raises before
+    touching the wire (`fastmcp==4.0.0b2`, `fastmcp/server/context.py` — `raise ToolError(
+    _ELICIT_MODERN_ERROR)` guarded by `_is_modern_protocol`). Driven end to end that came back
+    `isError` from a tool whose whole design is two rungs, because the path was chosen off the
+    declaration and the era had deleted it. So this asks the session what it NEGOTIATED as well —
+    and `_ask` carries the guarantee for every way a door can fail to open that no probe can see.
+
+    Both halves answer False on anything unexpected: unknown means the weaker rung, never the
+    stronger one. That doctrine is honoured end to end because the rung is earned by an answer
+    coming BACK, never by this function saying it might.
     """
     try:
         from mcp import types
-        return bool(ctx.session.check_client_capability(
-            types.ClientCapabilities(elicitation=types.ElicitationCapability())))
+        if not ctx.session.check_client_capability(
+                types.ClientCapabilities(elicitation=types.ElicitationCapability())):
+            return False
+        return _negotiated_era(ctx) not in _eras_without_a_back_channel()
     except Exception:
         return False   # unknown means the weaker rung, never the stronger one
+
+
+def _eras_without_a_back_channel() -> frozenset:
+    """The protocol revisions that carry no server-initiated request — read off the SDK, not kept.
+
+    `mcp_types.version.MODERN_PROTOCOL_VERSIONS` (*"protocol revisions that use the stateless
+    per-request envelope"*) is the exact table `fastmcp>=4`'s own `Context._is_modern_protocol`
+    compares against before refusing to elicit, so taking it from there is what stops this becoming
+    a second opinion about somebody else's protocol — the stateless-twin shape this repo refuses to
+    author, in a place where the twin would be about the wire.
+
+    That module does not exist at the current pin: it arrives with `mcp==2.0.0`, which only
+    `fastmcp==4.0.0b2` pulls. The literal is the floor until it does, and it is one revision because
+    `KNOWN_PROTOCOL_VERSIONS` names exactly one in that era.
+    """
+    try:
+        from mcp_types.version import MODERN_PROTOCOL_VERSIONS
+        return frozenset(MODERN_PROTOCOL_VERSIONS)
+    except Exception:
+        return frozenset({"2026-07-28"})
+
+
+def _negotiated_era(ctx) -> str:
+    """The protocol revision this SESSION settled on — asked of the library where it says, derived
+    only where it says nothing, and each branch verified by reading the installed wheel.
+
+      * `mcp==2.0.0` puts it on the session: `ServerSession.protocol_version` returns
+        `self._connection.protocol_version` (`mcp/server/session.py`).
+      * `fastmcp==4.0.0b2` reads `request_context.protocol_version` for the same question.
+      * **At the current pin there is neither**, which is the honest answer this function has to
+        carry rather than paper over. `mcp==1.29.0`'s `RequestContext` is a dataclass with no such
+        field, and its `ServerSession` stores only `client_params` — the version the client ASKED
+        for. The negotiated value is computed inline while answering `initialize` and then thrown
+        away: `protocolVersion=requested_version if requested_version in
+        SUPPORTED_PROTOCOL_VERSIONS else types.LATEST_PROTOCOL_VERSION`
+        (`mcp/server/session.py::_received_request`). The last branch applies that rule to that
+        input — a re-derivation of one expression, off the library's own tables, rather than an API
+        invented here. It matters in exactly the case it looks pedantic in: a client asking for
+        `2026-07-28` against a library that cannot speak it was answered `2025-11-25`, and the era
+        it was answered with is the one whose rules apply.
+
+    Returns `""` when nothing can be established, which reads as "an era that still has a
+    back-channel" — the permissive direction, deliberately. A conservative default would delete the
+    strong rung the day an attribute is renamed, whereas being wrong this way costs one attempted
+    request that `_ask` then degrades. Attempting is not claiming.
+    """
+    try:
+        era = ctx.session.protocol_version                 # mcp >= 2.0
+        if isinstance(era, str) and era:
+            return era
+    except Exception:
+        pass
+    try:
+        era = ctx.request_context.protocol_version         # fastmcp >= 4
+        if isinstance(era, str) and era:
+            return era
+    except Exception:
+        pass
+    try:
+        requested = ctx.session.client_params.protocolVersion    # mcp 1.x: what was ASKED for
+        from mcp import types
+        from mcp.server.session import SUPPORTED_PROTOCOL_VERSIONS
+    except Exception:
+        return ""
+    if not isinstance(requested, str) or not requested:
+        return ""
+    return (requested if requested in SUPPORTED_PROTOCOL_VERSIONS
+            else types.LATEST_PROTOCOL_VERSION)
+
+
+def _no_question_was_put() -> tuple:
+    """The exception classes that mean the request never became a question — an allowlist, named at
+    the version that raises each, because the blanket alternative swallows the opposite fact.
+
+      * `fastmcp.exceptions.ToolError` — what `Context.elicit` raises BEFORE the wire when the era
+        cannot carry the request: `4.0.0b2` has exactly two such raises, `_ELICIT_MODERN_ERROR`
+        under `_is_modern_protocol` and `_TASK_ELICIT_ERROR` inside a background task. The class
+        exists at both pins, and `elicit` raises it from nowhere else.
+      * `McpError` / `MCPError` — the peer answered the REQUEST with a JSON-RPC error, so no
+        elicitation result exists to read. **Two spellings, verified rather than assumed:**
+        `mcp==1.29.0` defines `McpError` in `mcp/shared/exceptions.py`; `mcp==2.0.0` renames the
+        class to `MCPError` there and leaves no alias, so a single name would go quietly blind at
+        the pin this whole fix is aimed at.
+
+    **What is deliberately NOT here — found by running the suite, not by reasoning about it.** A
+    reply that arrived and cannot be attributed. A `list[str]` response type compiles to an enum
+    schema, so an answer outside it raises pydantic's `ValidationError` out of
+    `handle_elicit_accept`, i.e. AFTER the human answered. A first draft caught `Exception` and
+    turned that into a relay: the user's actual answer replaced by the option the CALLER proposed,
+    recorded on the caller's word. That is worse than the bug this backstop exists to fix, and
+    `test_an_answer_outside_the_offered_choices_leaves_the_pin_open` is what caught it.
+
+    So a library that ever raises some third class for "no door" falls through to `isError` again.
+    That is the direction to be wrong in: a loud failure nobody can mistake for a write.
+    """
+    out = []
+    try:
+        from fastmcp.exceptions import ToolError
+        out.append(ToolError)
+    except Exception:
+        pass
+    try:
+        import mcp.shared.exceptions as wire
+        for name in ("McpError", "MCPError"):
+            klass = getattr(wire, name, None)
+            if isinstance(klass, type) and issubclass(klass, Exception):
+                out.append(klass)
+    except Exception:
+        pass
+    return tuple(out)
+
+
+async def _ask(ctx, message: str, response_type) -> tuple:
+    """Put the question to the human, and bring back either their answer or the reason no door opened.
+
+    **The distinction this draws is the whole backstop, and the protocol already draws it: a refusal
+    is a VALUE, a missing door is a RAISE.** `DeclinedElicitation` and `CancelledElicitation` are
+    *returned* (`Context.elicit` maps the reply's `action` onto them), so they travel back through
+    the first element untouched and keep their hard refusal at the call site — degrading there would
+    convert a human's "no" into an outcome the agent wrote, which is the inversion `decide.py` and
+    spec v0.29 both refuse, and `Declined` flattens *no prompt was drawn* onto *the human refused*
+    with nothing downstream able to tell them apart. A raise from `_no_question_was_put()` is the
+    opposite fact: nothing was asked, so there is no answer to invert and the weaker rung is honest.
+
+    Every other exception is re-raised, and the boundary is not "before or after the wire" but
+    **whether a human answered**: the classes are listed one function up with what each means.
+    `asyncio.CancelledError` is a `BaseException`, so a cancelled call stays cancelled rather than
+    degrading into a write — which no `except Exception` here would have preserved either.
+
+    Returns `(result, "")` on an answer, `(None, reason)` when the door did not open. The reason is
+    carried, not logged: it is what the refusal shows an agent that must now do something else.
+    """
+    try:
+        return await ctx.elicit(message, response_type), ""
+    except _no_question_was_put() as exc:
+        return None, f"{type(exc).__name__}: {exc}".strip()
+
+
+def _relay_instead(reason: str, *, writes: str, needs: dict, door: str) -> None:
+    """The declared door did not open: degrade to the relay rung, or refuse in a way an agent can act
+    on — which is not the same as failing.
+
+    Returning is the degradation: the caller falls through to its `transcribed` write exactly as it
+    would have on a client that declared nothing, which is what "unknown means the weaker rung" has
+    to mean at the point where the unknown is discovered rather than predicted. What it must not
+    become is the strong rung — nobody was asked — and the caller keeps `evidence = "transcribed"`
+    for that reason.
+
+    Raising is for the case that has no honest write left: the door is shut AND the caller relayed
+    nothing, so an outcome would have to come from the agent. The sentence names all three ways
+    forward, because a refusal an agent cannot act on is a wall: what to pass, that it records as the
+    weaker rung, and the one door only the human can run — whose path is computed by the process the
+    host located (`_human_door`), never written down anywhere.
+
+    `needs` maps each argument the relay rung requires to `(what the caller passed, what it must
+    be)`; an argument that is legitimately empty on this path (a `design_concern` accepted as is
+    carries no `option_id`) is simply not in the mapping.
+    """
+    absent = [f"{name} — {want}" for name, (value, want) in needs.items()
+              if not str(value or "").strip()]
+    if not absent:
+        return
+    raise ValueError(
+        f"this client declared elicitation and the door did not open ({reason}), so nobody was "
+        f"asked and no {writes} was written. That is NOT the user refusing: a client can declare "
+        f"the capability while the connection carries no back-channel for it (SEP-2577 removes "
+        f"server-initiated requests in the 2026-07-28 era), and a request that never became a "
+        f"question is not an answer to one. The relay rung below is open, and it is the weaker one "
+        f"on purpose — pass " + "; ".join(absent) + ", and this records as `transcribed`, never "
+        f"`elicited`. If the user has not actually been asked, do not compose their answer: ask "
+        f"them, or have them run the door you cannot run:\n"
+        f"  uv run --script {_human_door()} {door}"
+    )
 
 
 def _warm_grammars_async() -> None:
@@ -407,9 +595,16 @@ async def ledger_record_decision(
     if ctx is not None and _client_can_elicit(ctx):
         by_choice = _decision_choices(prompt)
         message = f"{prompt['title']}\n\n{prompt['prompt']}"
-        result = await (ctx.elicit(message, str) if not by_choice
-                        else ctx.elicit(message, list(by_choice)))
-        if not isinstance(result, AcceptedElicitation):
+        result, shut = await _ask(ctx, message, list(by_choice) if by_choice else str)
+        if shut:
+            # The door the capability promised did not open. Nobody was asked, so nobody refused —
+            # degrade to the rung that says an agent carried the words, or refuse if it carried none.
+            _relay_instead(shut, writes="decision", door=f"pin {ledger} {pin_id}", needs={
+                **({} if accept_as_is else {"option_id": (
+                    option_id, "an id this pin's own question offers, or 'freeform' where it "
+                    "allows it")}),
+                "human_answer": (human_answer, "the user's answer, verbatim")})
+        elif not isinstance(result, AcceptedElicitation):
             # Declined and cancelled are not outcomes. Writing one would be the fabrication this
             # whole path exists to make impossible.
             raise ValueError(
@@ -421,25 +616,26 @@ async def ledger_record_decision(
                 f"human door themselves — you cannot run it, and it will refuse a pipe:\n"
                 f"  uv run --script {_human_door()} pin {ledger} {pin_id}"
             )
-        human_answer = str(result.data)
-        if not by_choice:
-            picked = FREEFORM_OUTCOME
-        elif human_answer in by_choice:
-            picked = by_choice[human_answer]
         else:
-            # The protocol constrains the reply to the enum we sent, so this is a client that did
-            # not honour it. Guessing which option was meant is the failure this whole lookup
-            # replaced; refusing leaves the pin open, which is the correct state for an answer
-            # nobody can attribute.
-            raise ValueError(
-                f"the client answered {human_answer!r}, which is not one of the choices it was "
-                f"offered ({sorted(by_choice)}). {pin_id} stays open: an answer that maps to no "
-                f"option is not an election, and picking the nearest one would be this server "
-                f"electing."
-            )
-        evidence = "elicited"
-        accept_as_is = picked is None          # the leave-as-is row, and nothing else, maps to None
-        option_id = "" if accept_as_is else picked
+            human_answer = str(result.data)
+            if not by_choice:
+                picked = FREEFORM_OUTCOME
+            elif human_answer in by_choice:
+                picked = by_choice[human_answer]
+            else:
+                # The protocol constrains the reply to the enum we sent, so this is a client that
+                # did not honour it. Guessing which option was meant is the failure this whole
+                # lookup replaced; refusing leaves the pin open, which is the correct state for an
+                # answer nobody can attribute.
+                raise ValueError(
+                    f"the client answered {human_answer!r}, which is not one of the choices it was "
+                    f"offered ({sorted(by_choice)}). {pin_id} stays open: an answer that maps to no "
+                    f"option is not an election, and picking the nearest one would be this server "
+                    f"electing."
+                )
+            evidence = "elicited"
+            accept_as_is = picked is None      # the leave-as-is row, and nothing else, maps to None
+            option_id = "" if accept_as_is else picked
 
     return tools.record_decision(ledger, pin_id, option_id, rationale, flip_criteria,
                                  human_answer=human_answer, evidence=evidence,
@@ -612,8 +808,17 @@ async def ledger_record_policy(
                    + (f"\n{len(unoffered)} pin(s) are held back because their own question does not "
                       f"offer {prompt['default_outcome']!r}: {', '.join(unoffered)}"
                       if unoffered else ""))
-        result = await ctx.elicit(message, [_POLICY_ACCEPT, _POLICY_DECLINE])
-        if not isinstance(result, AcceptedElicitation):
+        result, shut = await _ask(ctx, message, [_POLICY_ACCEPT, _POLICY_DECLINE])
+        if shut:
+            # Same degradation as the single decision, and the same reason it is not a decline: an
+            # offer that could not be put is not an offer somebody turned down.
+            _relay_instead(
+                shut, writes="policy",
+                door=(f"policy {ledger} {offer_id}" if offer_id else
+                      f"pin {ledger} <pin_id>   (one pin at a time: that door takes a CATALOG "
+                      f"offer_id, and this rule is one you composed)"),
+                needs={"human_answer": (human_answer, "the user's answer, verbatim")})
+        elif not isinstance(result, AcceptedElicitation):
             raise ValueError(
                 f"the user did not answer ({type(result).__name__}); no policy was set. "
                 f"An unanswered offer is not an election — ask again, or decide the pins one by "
@@ -625,14 +830,15 @@ async def ledger_record_policy(
                     f"you composed. A rule an agent wrote, elected on a rung that claims no agent "
                     f"carried it, is exactly the laundering the rung exists to prevent.")
             )
-        human_answer = str(result.data)
-        if human_answer != _POLICY_ACCEPT:
-            raise ValueError(
-                "the user declined this policy; nothing was written. Their pins stay open, which is "
-                "the correct outcome — ask them individually rather than cascading a rule they "
-                "turned down."
-            )
-        evidence = "elicited"
+        else:
+            human_answer = str(result.data)
+            if human_answer != _POLICY_ACCEPT:
+                raise ValueError(
+                    "the user declined this policy; nothing was written. Their pins stay open, "
+                    "which is the correct outcome — ask them individually rather than cascading a "
+                    "rule they turned down."
+                )
+            evidence = "elicited"
 
     return tools.record_policy(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
                                human_answer=human_answer, evidence=evidence,

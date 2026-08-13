@@ -11,6 +11,7 @@ uv the host cannot spawn the server and the tools go missing with no error surfa
 uv is a hard prerequisite now (the CLI floor was removed; bootstrap.sh aborts without it), so this
 skip marks an environment that must be fixed, not a soft fallback.
 """
+import ast
 import json
 import os
 import re
@@ -135,6 +136,14 @@ class _Session(unittest.TestCase):
     CAPABILITIES: dict = {}
     #: Reply to a server->client `elicitation/create`, or None to fail loudly on one.
     ELICIT_REPLY: dict | None = None
+    #: A JSON-RPC **error** to answer `elicitation/create` with, instead of a result. This is the
+    #: reachable-today instance of the class the 2026-07-28 era makes structural: a client that
+    #: DECLARES elicitation and then never turns a request into a question. The server must degrade
+    #: to the relay rung on it, because nobody was asked — which is the opposite of being refused.
+    ELICIT_ERROR: dict | None = None
+    #: The revision this fake client asks for in `initialize`. What the server may act on is what
+    #: the session NEGOTIATED, which is not the same string whenever the library cannot speak this.
+    PROTOCOL_VERSION: str = "2025-11-25"
 
     @classmethod
     def setUpClass(cls):
@@ -158,7 +167,7 @@ class _Session(unittest.TestCase):
         cls._drain.start()
         try:
             handshake = cls._request("initialize", {
-                "protocolVersion": "2025-11-25",
+                "protocolVersion": cls.PROTOCOL_VERSION,
                 "capabilities": cls.CAPABILITIES,
                 "clientInfo": {"name": "keel-tests", "version": "1"},
             })
@@ -220,6 +229,10 @@ class _Session(unittest.TestCase):
                 # is part of being this client — and it is what lets the strong rung be tested
                 # end to end with no host involved.
                 cls.elicited.append(msg["params"])
+                if cls.ELICIT_ERROR is not None:
+                    # The declared door that does not open: answered, and not with an answer.
+                    cls._send({"jsonrpc": "2.0", "id": msg["id"], "error": cls.ELICIT_ERROR})
+                    continue
                 if cls.ELICIT_REPLY is None:
                     raise AssertionError(
                         "the server elicited from a client that declared no elicitation capability")
@@ -774,7 +787,14 @@ class TestTheElicitedAnswerIsCarriedNotParsed(_Session):
 
     def test_an_answer_outside_the_offered_choices_leaves_the_pin_open(self):
         """The other half of carrying the mapping: an unmatched reply is refused, not snapped to the
-        nearest row. Guessing which option was meant is this server electing."""
+        nearest row. Guessing which option was meant is this server electing.
+
+        It is now also the carrier of the backstop's boundary, and it earned that by failing: a
+        `list[str]` response type compiles to an enum schema, so this reply raises pydantic's
+        `ValidationError` out of `handle_elicit_accept` — after the human answered. The first draft
+        of `_ask` caught `Exception`, read that as "no door opened", and relayed the option the
+        CALLER proposed over the answer the user actually gave. `_no_question_was_put()` is the
+        allowlist that keeps the two apart, and this test is what fails if it widens."""
         type(self).ELICIT_REPLY = {"action": "accept", "content": {"value": "keep"}}
         tmp = tempfile.mkdtemp()
         path, pin_id = self._pin(tmp)
@@ -787,6 +807,214 @@ class TestTheElicitedAnswerIsCarriedNotParsed(_Session):
             data = json.load(fh)
         self.assertEqual(data["decision_log"], [])
         self.assertEqual([p["state"] for p in data["pins"]], ["needs_input"])
+
+
+@NEEDS_UV
+class TestADeclaredDoorThatDoesNotOpen(_Session):
+    """A capability the client declares is not an answer it will give — the RAISE half.
+
+    v0.29 closed this for a client that declares elicitation and **declines**; the door `decide.py`
+    is what that leaves the human. What stayed open is the case where the request never becomes a
+    question at all: on a 2026-07-28 connection `Context.elicit` raises before touching the wire
+    (SEP-2577 removed the back-channel), so `ledger_record_decision` came back `isError` from a tool
+    designed around two rungs, with the relay sitting right beside it.
+
+    That era cannot be negotiated at the current pin — `mcp==1.29.0` tops out at `2025-11-25` — so
+    this drives the same class through the door that IS reachable: the client declares elicitation
+    and answers `elicitation/create` with a JSON-RPC error, which raises inside `ctx.elicit` exactly
+    as the era's guard does. **A named residual, not a silent one:** what is exercised here is the
+    backstop's classification (raised ⇒ no answer came back), not the era guard itself, which needs
+    a client from an era no stable release speaks.
+
+    The refusal that must NOT change is asserted one class down: `Declined`/`Cancelled` are values,
+    not raises, and they still hard-refuse.
+    """
+
+    CAPABILITIES = {"elicitation": {}}
+    ELICIT_ERROR = {"code": -32601, "message": "Method not found"}
+
+    def test_a_decision_degrades_to_the_relay_rung_instead_of_failing(self):
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "extract",
+            "rationale": "one call shape beats three", "human_answer": "yes, pull the helper out",
+            "flip_criteria": "if a second caller shape appears"}})
+        self.assertFalse(res["result"].get("isError"),
+                         f"the tool hard-failed on a door that did not open rather than degrading: "
+                         f"{res['result'].get('content')}")
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["outcome"], "extract")
+        self.assertEqual(out["evidence"], "transcribed",
+                         "nobody was asked, so the rung is the one that says an agent carried the "
+                         "words — degrading must not mint the rung the failed path would have")
+        self.assertTrue(self.elicited, "the server never even tried to ask")
+
+    def test_a_policy_degrades_the_same_way(self):
+        tmp = tempfile.mkdtemp()
+        path = _clustered_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_policy", "arguments": {
+            "ledger": path, "rule": "the DB is truth", "default_outcome": "db",
+            "applies_to": {"cluster_id": "cl_shape"},
+            "human_answer": "the DB wins unless I flag one"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        self.assertEqual(res["result"]["structuredContent"]["evidence"], "transcribed")
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["policies"][-1]["evidence"], "transcribed")
+
+    def test_a_caller_that_relayed_nothing_is_told_what_to_relay_and_where_the_door_is(self):
+        """Degrading is not the same as writing. With the door shut AND nothing relayed, the only
+        outcome available would be one the agent composed, so this refuses — and a refusal an agent
+        cannot act on is a wall, so it names all three ways forward."""
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "rationale": "r", "flip_criteria": "f"}})
+        self.assertTrue(res["result"].get("isError"), "an election nobody carried was written")
+        said = json.dumps(res["result"].get("content"))
+        for needed in ("option_id", "human_answer", "decide.py", "transcribed"):
+            self.assertIn(needed, said,
+                          f"the refusal does not name {needed}, so the agent is told it failed and "
+                          f"not what to do instead")
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        self.assertEqual(data["decision_log"], [])
+        self.assertEqual([p["state"] for p in data["pins"]], ["needs_input"])
+
+
+@NEEDS_UV
+class TestARefusalIsStillARefusal(_Session):
+    """The half of the fix that is a REFUSAL to change anything.
+
+    `Declined` flattens *no prompt was ever drawn* onto *the human saw the fork and said no*, and
+    nothing downstream tells them apart — so degrading on it would, on a conforming host, convert a
+    user's refusal into an outcome the agent authored. That is spec v0.29's whole argument and it
+    survives this change untouched: the protocol returns those two as VALUES, and only a RAISE means
+    no question was ever put. `ELICIT_REPLY` is set per test because both answers exercise the same
+    branch and a second server spawn buys nothing but seven seconds.
+    """
+
+    CAPABILITIES = {"elicitation": {}}
+    ELICIT_REPLY = {"action": "decline"}
+
+    def _decide(self, action):
+        type(self).ELICIT_REPLY = {"action": action}
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "extract", "rationale": "r",
+            "human_answer": "the caller's own words", "flip_criteria": "f"}})
+        return path, res["result"]
+
+    def test_a_decline_writes_nothing_even_though_the_caller_relayed_an_answer(self):
+        path, result = self._decide("decline")
+        self.assertTrue(result.get("isError"),
+                        "a declined elicitation fell through to the relay rung — a human's no "
+                        "became an outcome the agent wrote, which inverts the guarantee")
+        self.assertIn("did not answer", json.dumps(result.get("content")))
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["decision_log"], [])
+
+    def test_a_cancel_writes_nothing_either(self):
+        path, result = self._decide("cancel")
+        self.assertTrue(result.get("isError"))
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["decision_log"], [])
+
+
+@NEEDS_UV
+class TestTheEraIsWhatWasNegotiatedNotWhatWasAsked(_Session):
+    """The probe half, on the one asymmetry this pin can actually produce.
+
+    `_client_can_elicit` now asks what the session NEGOTIATED as well as what the client declared,
+    because the back-channel belongs to the era. The cheap version of that — reading
+    `client_params.protocolVersion`, the version the client ASKED for — is wrong here: `mcp==1.29.0`
+    answers an era it cannot speak with its own latest (`protocolVersion=requested_version if
+    requested_version in SUPPORTED_PROTOCOL_VERSIONS else types.LATEST_PROTOCOL_VERSION`), and the
+    era it answered with is the one whose rules apply. So this client asks for `2026-07-28`, gets
+    `2025-11-25`, and must still be elicited — a back-channel that exists is not one to route
+    around.
+
+    The mirror case (an era that really has no back-channel ⇒ no request sent) is **not reachable
+    here**: no stable release speaks 2026-07-28, so a client for it is a different client, not a
+    tweaked one. Declared rather than faked — the backstop above is what covers that case in the
+    meantime.
+    """
+
+    CAPABILITIES = {"elicitation": {}}
+    PROTOCOL_VERSION = "2026-07-28"
+    ELICIT_REPLY = {"action": "accept",
+                    "content": {"value": "extract — extract a helper (→ one call shape)"}}
+
+    def test_the_handshake_answered_with_an_era_this_library_speaks(self):
+        self.assertEqual(self.handshake.get("protocolVersion"), "2025-11-25",
+                         "the premise of this class is gone: the library now answers the era it "
+                         "was asked for, so the negotiated value is no longer the interesting one")
+
+    def test_the_strong_rung_still_runs_on_the_era_that_was_negotiated(self):
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "keep", "rationale": "r",
+            "human_answer": "the caller's own words", "flip_criteria": "f"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        out = res["result"]["structuredContent"]
+        self.assertEqual(out["evidence"], "elicited",
+                         "the probe read the version the client ASKED for and dropped a rung the "
+                         "connection could still carry")
+        self.assertEqual(out["outcome"], "extract")
+
+
+class TestTheBackstopCannotBeBypassedAndTheProbeCannotBeDropped(unittest.TestCase):
+    """The two properties the wire cannot check at this pin, held shut by reading the source.
+
+    Everything else in this file is asserted end to end, deliberately. These two cannot be: the era
+    that closes the back-channel is unreachable while `mcp==1.29.0` tops out at `2025-11-25`, so a
+    regression that deleted the probe — or a third electing tool that called `ctx.elicit` directly,
+    with no backstop under it — would leave every wire test above green. That is the shape this
+    package keeps finding in other people's code, so it is quantified here the same way
+    `test_human_door.py` quantifies the `elicited` rung over its callers: by AST, over what the file
+    actually does, and failing on a third call site rather than on a remembered rule.
+
+    No `uv` needed — nothing is spawned, and nothing here imports `fastmcp`.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        with open(SERVER, encoding="utf-8") as fh:
+            cls.tree = ast.parse(fh.read())
+
+    def _function(self, name):
+        for node in ast.walk(self.tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+                return node
+        self.fail(f"{name} is gone from server.py")
+
+    def test_the_capability_is_not_the_only_thing_the_probe_consults(self):
+        """A client can declare `elicitation` truthfully on a connection that has no back-channel to
+        carry it (SEP-2577), which is how the strong path came to be chosen and then raise."""
+        called = {n.func.id for n in ast.walk(self._function("_client_can_elicit"))
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        for helper in ("_negotiated_era", "_eras_without_a_back_channel"):
+            self.assertIn(helper, called,
+                          f"_client_can_elicit no longer asks {helper} — it answers from the "
+                          f"DECLARED capability alone again, and the era it cannot see is the one "
+                          f"where the door is gone")
+
+    def test_every_elicitation_in_this_server_goes_through_the_backstop(self):
+        """`ctx.elicit` raising is not the same as a user declining, and only `_ask` draws that
+        line. A second call site is a path where an unopened door hard-fails a tool again."""
+        holders = set()
+        for node in ast.walk(self.tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for inner in ast.walk(node):
+                if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+                        and inner.func.attr == "elicit"):
+                    holders.add(node.name)
+        self.assertEqual(holders, {"_ask"},
+                         "an elicitation is sent from somewhere other than `_ask`, so a raised "
+                         "'no door' there becomes an isError instead of the relay rung")
 
 
 @NEEDS_UV
