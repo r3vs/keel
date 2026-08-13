@@ -33,6 +33,44 @@ The PEP 723 block above lets ``uv run --script`` resolve and cache the dependenc
 2.0 goes stable inside this dependency tree on 2026-07-28, so an unpinned range would drift under
 us on someone else's machine.
 
+Why the pin is still ``3.4.4``, re-derived rather than inherited (2026-08-13)
+----------------------------------------------------------------------------
+The bump was researched to a decision and the decision is *not yet*. Four facts, each observed at
+the consumer rather than read off a changelog, and the first one is the whole answer:
+
+1. **No stable release speaks 2026-07-28.** ``3.4.7`` — the latest stable, published 2026-08-10 —
+   resolves ``mcp==1.29.0``, whose ``LATEST_PROTOCOL_VERSION`` is ``2025-11-25``. Only
+   ``4.0.0b2`` pulls ``mcp==2.0.0`` / ``2026-07-28``, and it is a **beta**. There is no
+   lowest-stable-that-speaks-2026-07-28 to choose; the honest report is that the option does not
+   exist yet, not a prerelease shipped to everyone who installs from the marketplace.
+2. **The bump would not fix the thing it was wanted for.** The unconditional
+   ``io.modelcontextprotocol/ui`` advertisement (`apps.py`'s docstring has the citation) is
+   unchanged in 4.0.0b2, whose own source calls it *"unconditional — the SDK's pre-2026 version
+   sieve strips capabilities.extensions on legacy eras, a known limitation"*. Observed: on a
+   legacy ``initialize`` the key is absent; on a modern ``server/discover`` it is right there with
+   no app behind it. Serving the apps is what closes it, and that works at **this** pin.
+3. **The modern era breaks this server's flagship human door, and breaks it hard.** On a
+   2026-07-28 connection ``Context.elicit`` raises before touching the wire —
+   ``fastmcp/server/context.py``: *"elicitation via server-initiated requests is unavailable on
+   2026-07-28 connections"* (SEP-2577 removed the back-channel). Driven end to end against this
+   very file, ``ledger_record_decision`` came back ``isError`` rather than degrading, because
+   `_client_can_elicit` still answers True from the client's declared capability and the code then
+   commits to a path the era has deleted. The replacement is MRTR's guard pattern (return an
+   ``InputRequiredResult``, read ``ctx.input_responses`` on the retry) — a real refactor of the two
+   most carefully tested tools here, and one that must land **before** any host negotiates the new
+   era, not with it.
+4. **The apps surface we do use is byte-identical across the stable line.** ``fastmcp/apps/`` and
+   ``fastmcp/utilities/mime.py`` are the same source at 3.4.4 and 3.4.7, so moving the pin buys
+   this file's app registrations exactly nothing.
+
+What was verified and is worth keeping for whoever does move it: 4.0.0b2 runs this server's whole
+surface unchanged on the legacy handshake, and answers ``server/discover`` with
+``supportedVersions``, ``resultType``, ``ttlMs`` and ``cacheScope`` on the modern one; and an exact
+``==`` pin on a prerelease resolves under a bare ``uv run --script`` with no ``--prerelease`` flag,
+which matters because the host's command line is fixed in ``.mcp.json`` and is not ours to change.
+So the migration is bounded and mechanical apart from (3). ``docs/design/mcp-apps.md`` §6 holds the
+full account.
+
 The deps also carry ``tree-sitter`` + ``tree-sitter-language-pack`` — the shape engine's **primary**
 extraction backend. This is a correctness fix, not bloat: the runtime degrades to stdlib parsers
 without them, but the removed CLI floor ran in the system python that ``bootstrap.sh`` populated,
@@ -52,9 +90,11 @@ import sys
 from pathlib import Path
 
 from fastmcp import FastMCP
+from fastmcp.apps import AppConfig, ResourceCSP
 from fastmcp.server.context import Context
 from fastmcp.server.elicitation import AcceptedElicitation
 
+import apps
 import tools
 from ledger import FREEFORM_OUTCOME
 
@@ -217,7 +257,14 @@ def ledger_summary(ledger: str) -> dict:
     return tools.ledger_summary(ledger)
 
 
-@mcp.tool(annotations={"title": "Interview — Next Questions", **_RO})
+@mcp.tool(annotations={"title": "Interview — Next Questions", **_RO},
+          # The one tool in this server that carries an app, and it is read-only on purpose. A
+          # host that renders apps preloads `ui://keel/interview.html` and pushes this result into
+          # it, so the human sees each option's implication and fan-out instead of the flat enum an
+          # elicitation can carry. `visibility` keeps it callable by the model too — an app-only
+          # tool would be reachable only through a hint the host may ignore, and `apps.py`'s
+          # docstring holds the argument for why no WRITE door may sit behind such a hint.
+          app=AppConfig(resource_uri=apps.INTERVIEW_URI, visibility=["model", "app"]))
 def interview_next(ledger: str) -> dict:
     """Open interview questions, best-first by information gain.
 
@@ -1878,6 +1925,55 @@ def ledger_pins_resource(path: str) -> dict:
                           "is refused, never answered as an empty pin.")
 def ledger_pin_resource(pin_id: str, path: str) -> dict:
     return tools.ledger_pin(path, pin_id)
+
+
+# -- APPS: the two `ui://` documents, and the claim they make true --------------------------------
+#
+# FastMCP advertises `io.modelcontextprotocol/ui` unconditionally, so before these existed this
+# server announced the apps extension and served nothing behind it. That was recorded as a
+# `contract_mismatch` in `docs/design/mcp-apps.md` with two honest exits — serve an app, or stop
+# announcing one — and these two registrations take the first. The declaration is not gated here
+# because it cannot be (the splice is in the dependency, with no constructor flag); what keeps it
+# honest is that `TestTheAppsAreServedAndTheClaimIsTrue` fails the moment the capability is
+# declared with no `ui://` resource behind it. A gate on the property, rather than prose about it.
+#
+# Neither app writes, and that reverses this note's own §4 plan. The reason is in `apps.py`'s
+# docstring and is short: an app's `tools/call` is proxied by the host onto the same connection the
+# model uses, with nothing distinguishing the two, so an app-elected outcome could only claim
+# `elicited` — the rung whose whole content is *the agent did not hold this value* — on the agent's
+# word. `visibility: ["app"]` does not close it either: observed on the wire, a tool declaring it
+# is still served in full by `tools/list`, so it is a hint, not an enforcement.
+#
+# `mime_type` is deliberately not passed: `fastmcp/utilities/mime.py::resolve_ui_mime_type` derives
+# `text/html;profile=mcp-app` from the `ui://` scheme, and the tests assert the value a host
+# RECEIVES — so they guard the SDK's derivation instead of restating a constant of ours beside it.
+#
+# The CSP is an explicit pair of empty lists rather than an omission. Both documents are entirely
+# self-contained — no CDN, no font, no image, no fetch — which is why hand-writing them was worth
+# it, and `connectDomains: []` / `resourceDomains: []` is that fact stated to the host rather than
+# left for it to infer. No `permissions` are requested at all: neither app wants a camera, a
+# microphone, geolocation or the clipboard, and the quiet way to ask for nothing is to ask.
+
+_APP_CSP = ResourceCSP(connect_domains=[], resource_domains=[])
+
+
+@mcp.resource(apps.INTERVIEW_URI, name="keel-interview-app",
+              description="The interview funnel as an interactive read surface: every open fork "
+                          "best-first, each option with the implication that makes it a decision, "
+                          "the severity, and how many pins one answer unblocks. Reads only — the "
+                          "election is still recorded by the server through ledger_record_decision.",
+              app=AppConfig(csp=_APP_CSP, prefers_border=True))
+def interview_app_resource() -> str:
+    return apps.interview_app()
+
+
+@mcp.resource(apps.MAP_URI_TEMPLATE, name="keel-map-app",
+              description="The decisions map for the ledger at the URI's path, rendered as an "
+                          "interactive page with the data already inline: "
+                          "ui://keel/map//abs/path/to/ledger.json. A snapshot as of the read.",
+              app=AppConfig(csp=_APP_CSP))
+def map_app_resource(path: str) -> str:
+    return tools.map_app_html(path)
 
 
 # -- PROMPTS: the phase entries, as commands a human can type -------------------------------------
