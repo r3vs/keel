@@ -23,6 +23,9 @@
     "tdd"
   ],
   "dependencies": [
-    "keel-core"
+    {
+      "name": "keel-core",
+      "version": "^0.6"
+    }
   ]
 }

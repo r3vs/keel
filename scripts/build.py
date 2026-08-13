@@ -209,7 +209,7 @@ PLUGINS = {
             "derive the to-be from an elected interview, close the gap."
         ),
         "skills": ["codebase-rescue"], "commands": ["rescue"],
-        "dependencies": ["keel-core"],
+        "dependencies": [{"name": "keel-core", "version": f"^{'.'.join(VERSION.split('.')[:2])}"}],
     },
     "greenfield-forge": {
         "description": (
@@ -218,7 +218,7 @@ PLUGINS = {
             "contract so they cannot drift."
         ),
         "skills": ["greenfield-forge"], "commands": ["forge"],
-        "dependencies": ["keel-core"],
+        "dependencies": [{"name": "keel-core", "version": f"^{'.'.join(VERSION.split('.')[:2])}"}],
     },
     "keel-kit": {
         "description": (
