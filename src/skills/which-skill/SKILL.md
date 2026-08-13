@@ -11,9 +11,17 @@ This package ships enough skills that nobody remembers all of them, and the cost
 not a missing feature — it is doing by hand something the package already does properly. This file
 is the index, so you have one thing to remember instead of nineteen.
 
-**It is user-invoked on purpose.** A router has nothing to tell the model that the skills'
-own descriptions do not already carry, so paying permanent context load for it would buy nothing.
-It costs you the memory of one name instead (`references/core/writing-for-agents.md`, the two loads).
+**It is user-invoked, and so is almost everything it routes to.** A router has nothing to tell the
+model that the skills' own descriptions do not already carry, so paying permanent context load for
+it would buy nothing. That was the original argument, and it now generalizes: the host loads a
+listing of skill names and descriptions whose budget is **1% of the model's context window**, and on
+overflow it *"drops descriptions starting with the skills you invoke least"*
+(`https://code.claude.com/docs/en/skills`). A package that spent the whole budget on eighteen
+entries would lose exactly the descriptions a cold user needs — the ones that have never been
+invoked *because* they have never matched. So only three skills stay model-invoked
+(`codebase-rescue`, `greenfield-forge`, `systematic-debugging`); every other one below is reached by
+typing its name, which is what this map is for. The axis and its two costs:
+`references/core/writing-for-agents.md`.
 
 ## Start here: what is in front of you?
 
@@ -26,8 +34,11 @@ It costs you the memory of one name instead (`references/core/writing-for-agents
 | One well-scoped change on a project already under the ledger | skip both. Go straight to the loop below |
 
 Rescue and forge are the two methodology skills, and they are model-invoked precisely because they
-should activate off the description when the task matches. Everything below is what runs *inside*
-them — and each is useful on its own.
+should activate off the description when the task matches — a cold user does not know this package
+exists to name it. Everything below is what runs *inside* them, each useful on its own, and each
+**typed by name**: `/branch-lifecycle`, `/prototype`, `/using-the-ledger`. The one exception is
+`systematic-debugging`, which stays model-invoked because *"it's broken"* is a situation, not a
+skill somebody remembers to reach for.
 
 ## The engineering loop
 

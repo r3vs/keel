@@ -1,6 +1,7 @@
 ---
 name: branch-lifecycle
 description: Run work on a branch or git worktree from start to finish — branch per scope, commit against pins, keep parallel agents from colliding, and finish cleanly. Makes the executor's "one scope at a time" enforceable by giving each scope its own tree. Use when starting a unit of work, running agents in parallel, or finishing a development branch.
+disable-model-invocation: true
 license: MIT
 ---
 

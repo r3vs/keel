@@ -3706,6 +3706,144 @@ still fog, and nothing invented a question for it), all three traps, and the old
 
 ---
 
+## 31. The package outbid itself for the one thing it needs to be chosen — **CLOSED 2026-08-12** (no schema change)
+
+### Verified
+
+Claude Code loads a listing of every skill's **name and description** into context on every turn,
+and that listing is capped. Read at the page that documents the cap, not at the frontmatter
+reference:
+
+> *"Claude Code loads a listing of skill names and descriptions into context so Claude knows what's
+> available. The listing always contains every skill name, but if you have many skills, Claude Code
+> shortens descriptions to fit the listing's character budget, which can strip the keywords Claude
+> needs to match your request. **The budget scales at 1% of the model's context window. When the
+> listing overflows, Claude Code drops descriptions starting with the skills you invoke least**, so
+> the skills you use most keep their full text."*
+> — `https://code.claude.com/docs/en/skills#skill-descriptions-are-cut-short`
+
+And the lever that removes an entry from that listing, quoted from the behaviour table that states
+the consequence in the column that matters:
+
+> | `disable-model-invocation: true` | You can invoke: **Yes** | Claude can invoke: **No** | **Description not in context**, full skill loads when you invoke |
+> — same page, *Control who invokes a skill*
+
+Against those two facts the package as shipped was a **self-reinforcing deadlock**, and the numbers
+are the argument: eighteen shipped skills, every one model-invoked but the router, **7,009
+characters** of description permanently in context, and the two longest entries were the two
+flagships — `codebase-rescue` at 827 and `greenfield-forge` at 848. Now run the drop order against
+the user this package exists for. A **cold** user has invoked nothing, so every Keel skill sits at
+the front of the least-invoked queue; the two longest are the most expensive characters in it; and a
+skill whose description is not in context cannot match a request, so it is never invoked, so it
+stays at the front of the queue. Nothing in that loop is broken enough to fail a test, and the whole
+of the package's value hangs on the two entries it drops first.
+
+Three further facts were checked at the consumer because each one closes an escape somebody would
+otherwise reach for:
+
+- **The user cannot free budget for our skills.** `skillOverrides` is the documented way to list a
+  low-priority skill by name only — and *"Plugin skills are not affected by `skillOverrides`. Manage
+  those through `/plugin` instead."* Keel ships as a plugin. The only lever on Keel's share is
+  Keel's own frontmatter.
+- **The authored key is not a Claude-ism.** Pi reads the same `disable-model-invocation` and filters
+  the skill out of its prompt (`dist/core/skills.js` → `formatSkillsForPrompt`); Codex takes a
+  generated `agents/openai.yaml` sidecar; opencode is the stated residual. That machinery already
+  existed for `which-skill` — `tests/test_invocation_axis.py` — so this round added no mechanism,
+  only the decision about which skills use it.
+- **A skill body is not free after it loads.** *"Once a skill loads, its content stays in context
+  across turns, so every line is a recurring token cost"* (same page). That makes a loaded `SKILL.md`
+  always-on text for the rest of the session, which is the regime `core/instruction-files.md` rule 3
+  already has a number for: *"One host truncates by bytes, another loses adherence past ~200
+  lines."* Both flagship bodies were over it — 286 and 277 lines.
+
+### Why it matters
+
+This is the package's own thesis turned on the package. Everything here is built so a decision has a
+carrier and the carrier is checked; the skills' **trigger** had a carrier — the `description` — that
+nobody had ever measured against the budget it competes in. The result was the worst available
+allocation: seventeen composable skills, each of which a human can reach by name, were each paying
+permanent rent in the one place where the two skills that *cannot* be reached by name have to win.
+
+The asymmetry is what makes it a defect rather than a preference. `/test-driven-development` is a
+name somebody types; *"this codebase is a mess"* is a situation with no name attached, and a package
+nobody has heard of cannot be summoned by a user who does not know it is installed.
+
+### What was done
+
+- **Invocation split.** Model-invoked: `codebase-rescue`, `greenfield-forge`, `systematic-debugging`
+  — the three whose trigger is a *situation* rather than a name. Every other shipped skill sets
+  `disable-model-invocation: true`; `which-skill` already did, and `writing-skills` is dev-only and
+  never travels. Fifteen skills now carry the key and the build derives fifteen Codex sidecars.
+- **Descriptions tightened, keeping the verbatim user phrases.** Abstract nouns lose to the words a
+  person actually types, so *"this codebase is a mess"*, *"the frontend and backend don't match"*,
+  *"pick up where I left off"*, *"make this production-ready"*, *"I want to build X"* and
+  *"scaffold a new codebase"* all survived the cut. **7,009 → 1,061 characters**, an 85% reduction,
+  with the flagships at 376 and 363.
+- **Progressive disclosure on the two flagship bodies.** 286 → 197 and 277 → 199 lines. Nothing was
+  deleted: the guardrails, the learning-layer composition and the prerequisites moved into a new
+  `references/guardrails.md` per skill, and the phase prose was compressed onto detail the phase
+  playbooks already carried. The old flat "Reference index" became a **conditional** table — every
+  row is a situation (*"the work touches more than one layer"*), not a topic — which is the shape
+  the host's own guidance asks for and the shape that makes a pointer actionable from a cold read.
+
+### The gate that now holds it shut
+
+`scripts/check_description_budget.py`, run in CI, checks both halves and prints the counts:
+
+- the total description characters over the skills whose frontmatter does **not** set
+  `disable-model-invocation: true`, against a declared `LISTING_BUDGET_CHARS = 1_200`, and
+- the line count of each flagship `SKILL.md` against `FLAGSHIP_MAX_LINES = 200`, citing
+  `core/instruction-files.md` in the failure message.
+
+The budget's arithmetic is written out in the file rather than asserted: 200,000 tokens (the most
+conservative published window for a model Claude Code runs) × 1% = 2,000 characters for the whole
+listing, × 60% = 1,200 for Keel — leaving 800 for the bundled skills and whatever the user wrote.
+The over-allocation is deliberate and named: Keel's flagships are the entries that must survive on a
+repo where nothing has been invoked yet.
+
+### Residuals — all four are real, and none is closed by the gate
+
+1. **The budget number is a hypothesis about hosts, and its unit is the soft spot.** The doc calls it
+   a *"character budget"* that *"scales at 1% of the model's context window"* — a window measured in
+   tokens — and the override `SLASH_COMMAND_TOOL_CHAR_BUDGET` is *"a fixed character count"*. Reading
+   1% of 200,000 as 2,000 **characters** is the conservative reading; if it is really 2,000 tokens
+   the true ceiling is roughly four times larger and this gate is merely strict. The reverse error
+   would be silent, which is why the strict reading is the one encoded. It is also a **Claude Code**
+   number applied to a package that ships to four hosts: opencode and Codex publish no equivalent
+   budget, so for them the gate is prudence rather than a constraint.
+2. **`code-review` collides with a bundled skill of the same name, and the namespace saves it —
+   partly.** Claude Code bundles `/code-review` (*"bundled skills, such as `/doctor`,
+   `/code-review`, `/batch`, `/debug`, `/loop`, and `/claude-api`"*). Ours ships in `keel-kit`, and
+   plugin skills are namespaced: *"Plugin skills use a `plugin-name:skill-name` namespace, so they
+   can't conflict with other levels"*, so `/keel-kit:code-review` always resolves. What is lost is
+   the **bare** name: *"The bare `/fancy` also invokes the skill unless another command already uses
+   that name"* — and `code-review` is already used. So `/code-review` runs Anthropic's, not ours,
+   silently. **Nothing was renamed** and nothing should be: the recommendation is to keep the name
+   (it is what the skill *is*, and renaming trades trigger accuracy for collision-avoidance the
+   namespace already provides) and to teach the qualified command wherever the package tells someone
+   to review a change. The one place this bites harder is a user who copies the skill folder into
+   their own `.claude/skills/` instead of installing the plugin — the docs name that exact case:
+   *"a `code-review` skill in your project's `.claude/skills/` replaces the bundled `/code-review`"*.
+   That is an override with no warning, and it is the install path this repo does not document.
+3. **`disable-model-invocation` is not in the Agent Skills spec, and the failure is hard.** Outside
+   Claude Code only `name`, `description`, `license`, `compatibility`, `metadata` and `allowed-tools`
+   are allowed, and *"If you include any field the spec doesn't allow, packaging or upload fails with
+   a hard error instead of ignoring the field."* Claude Code plugin skills — how Keel ships — are
+   explicitly exempt, and Pi reads the key, so the four supported install paths are unaffected. What
+   is now foreclosed is **claude.ai upload / the Skills API / `package_skill.py`**, for fifteen
+   skills instead of one. Nobody has asked for that path; it should be recorded as a cost paid, not
+   discovered later as a bug.
+4. **A user-invoked skill cannot be reached by the model at all, including from another skill.** The
+   docs are explicit: *"If Claude tries anyway, Claude Code blocks the call"*, and the key *"also
+   prevents the skill from being preloaded into subagents"*. Today nothing in this package composes
+   by invoking a sibling skill — the flagships point at `references/*.md`, and the roster agents
+   declare no preloaded skills — so the split costs nothing *now*. It becomes a trap the moment
+   somebody writes *"invoke the `test-driven-development` skill"* into a playbook, which would read
+   as ordinary composition and be blocked at runtime. There is no gate for that; it is written here
+   so the next session recognizes it.
+
+---
+
 ## Do not re-litigate
 
 Settled with evidence; re-opening these costs a session and lands where it started.
