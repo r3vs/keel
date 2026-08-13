@@ -80,38 +80,61 @@ def comprehension(repo: pathlib.Path) -> dict:
     }
 
 
+#: Classification markers the engine attaches to a finding without dropping it (`shapes.py`):
+#: a structural tier the other layer cannot have, and the FK-scalar/relation-object pair that is one
+#: disagreement in two kinds. Counted here so the report says how much of its own noise the engine
+#: now labels — the raw counts stay in `by_kind`, which is the point of classifying rather than
+#: filtering.
+MARKERS = ("structural_tier", "relation_pair", "entity_key_source")
+
+
 def reconcile_one(a_layer: str, a_path: pathlib.Path, b_layer: str, b_path: pathlib.Path,
-                  propose: bool, examples: int) -> dict:
+                  propose: bool, examples: int, min_overlap: float | None = None) -> dict:
     """One layer pair. Entity counts are reported for BOTH sides whatever the finding count is:
-    an empty diff over two empty extractions is the failure mode most easily read as a success."""
+    an empty diff over two empty extractions is the failure mode most easily read as a success.
+
+    Since the measurement that found it, the engine itself refuses that case (`EmptyExtraction`)
+    rather than answering `[]`. The refusal is recorded here as a RESULT — which side read empty and
+    what it expected to see — not swallowed into an error string beside a syntax error."""
     t0 = time.monotonic()
     try:
         a = shapes.EXTRACTORS[a_layer](str(a_path))
         b = shapes.EXTRACTORS[b_layer](str(b_path))
     except Exception as exc:
         return {"error": f"{type(exc).__name__}: {exc}"}
-    correspondence = None
-    proposals = []
-    if propose:
-        proposals = shapes.propose_correspondence(a_layer, str(a_path), b_layer, str(b_path))
-        # Electing the proposals is normally the HUMAN's move (`core/shape-engine.md`); doing it
-        # here is a stated condition of the measurement, not a claim that the tool decided.
-        correspondence = {p["a"]: p["b"] for p in proposals if not p["name_match"]}
-    findings = shapes.reconcile_layers(a_layer, str(a_path), b_layer, str(b_path),
-                                       correspondence=correspondence)
-    seconds = time.monotonic() - t0
-    by_kind = collections.Counter(f["kind"] for f in findings)
-    return {
-        "seconds": round(seconds, 2),
+    counts = {
         "entities": {a_layer: len(a), b_layer: len(b)},
         "fields": {a_layer: sum(len(v) for v in a.values()),
                    b_layer: sum(len(v) for v in b.values())},
+    }
+    correspondence = None
+    proposals = []
+    try:
+        if propose:
+            floor = {} if min_overlap is None else {"min_overlap": min_overlap}
+            proposals = shapes.propose_correspondence(a_layer, str(a_path), b_layer, str(b_path),
+                                                      **floor)   # engine's own default unless set
+            # Electing the proposals is normally the HUMAN's move (`core/shape-engine.md`); doing it
+            # here is a stated condition of the measurement, not a claim that the tool decided.
+            correspondence = {p["a"]: p["b"] for p in proposals if not p["name_match"]}
+        findings = shapes.reconcile_layers(a_layer, str(a_path), b_layer, str(b_path),
+                                           correspondence=correspondence)
+    except shapes.EmptyExtraction as refusal:
+        return {"seconds": round(time.monotonic() - t0, 2), **counts, "refused": refusal.sides}
+    seconds = time.monotonic() - t0
+    by_kind = collections.Counter(f["kind"] for f in findings)
+    by_marker = {m: sum(1 for f in findings if m in f) for m in MARKERS}
+    return {
+        "seconds": round(seconds, 2),
+        **counts,
         "findings": len(findings),
         "by_kind": dict(sorted(by_kind.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "by_marker": {m: n for m, n in by_marker.items() if n},
         "elected_correspondence": correspondence or None,
         "proposals": len(proposals),
         "examples": [{"entity": f["entity"], "field": f["field"], "kind": f["kind"],
-                      "detail": f["detail"]} for f in findings[:examples]],
+                      "detail": f["detail"],
+                      **{m: f[m] for m in MARKERS if m in f}} for f in findings[:examples]],
     }
 
 
@@ -136,6 +159,10 @@ def main() -> int:
     ap.add_argument("--propose", action="store_true",
                     help="elect propose_correspondence's top pairing per entity before diffing. "
                          "Normally the human's move — recorded in the output as a condition")
+    ap.add_argument("--min-overlap", type=float, default=None,
+                    help="Jaccard floor for --propose. Omitted, the engine's own default stands; "
+                         "set it to record what a pair below that floor actually scores, and say "
+                         "in the write-up that you moved it")
     ap.add_argument("--examples", type=int, default=6, help="concrete findings to carry per pair")
     ap.add_argument("--out", default="", help="write the JSON report here (default: stdout)")
     args = ap.parse_args()
@@ -162,19 +189,26 @@ def main() -> int:
             pairs.append((repo / a_rel, repo / b_rel))
         report["reconcile"] = []
         for a_path, b_path in pairs:
-            entry = reconcile_one(a_layer, a_path, b_layer, b_path, args.propose, args.examples)
+            entry = reconcile_one(a_layer, a_path, b_layer, b_path, args.propose, args.examples,
+                                  args.min_overlap)
             entry["a"] = str(a_path.relative_to(repo))
             entry["b"] = str(b_path.relative_to(repo))
             report["reconcile"].append(entry)
-        ok = [e for e in report["reconcile"] if "error" not in e]
-        totals = collections.Counter()
+        ok = [e for e in report["reconcile"] if "error" not in e and "refused" not in e]
+        refused = [e for e in report["reconcile"] if "refused" in e]
+        totals, markers = collections.Counter(), collections.Counter()
         for entry in ok:
             totals.update(entry["by_kind"])
+            markers.update(entry["by_marker"])
         report["reconcile_totals"] = {
             "pairs": len(report["reconcile"]), "pairs_ok": len(ok),
+            "pairs_refused": len(refused),
+            "refused_layers": dict(collections.Counter(
+                s["layer"] for e in refused for s in e["refused"])),
             "findings": sum(e["findings"] for e in ok),
             "seconds": round(sum(e["seconds"] for e in ok), 2),
             "by_kind": dict(sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))),
+            "by_marker": dict(sorted(markers.items(), key=lambda kv: (-kv[1], kv[0]))),
         }
 
     text = json.dumps(report, indent=2, ensure_ascii=False)
