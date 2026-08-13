@@ -1251,6 +1251,28 @@ def render_map(ledger: str, out: str, live: bool = False) -> dict:
     return {"written": out, "live": live}
 
 
+def map_app_html(ledger: str) -> str:
+    """The visual map as an MCP App document — the SAME renderer, through the SAME guarded read.
+
+    Both halves of that sentence are the design. `map.render` is the one projection of a ledger
+    into a page, so an app that re-implemented any of it in JS would be the stateless twin this
+    repo refuses to author — two surfaces disagreeing about one ledger is the divergence the
+    package exists to find, and it would be arriving in our own server. And the read is
+    `_open_existing`, like every other read door here, so a mistyped path is refused rather than
+    rendered as an empty map: a blank page reads as "this project has no decisions", which is the
+    confident wrong answer this whole module is built to avoid.
+
+    `live` is deliberately not a parameter. The live fragments in `map.py` are a self-reload loop
+    against a file on disk, which is meaningless inside a sandboxed iframe that cannot read one —
+    and `render_map(live=True)`'s registry re-projects a *file* on every ledger write, which no
+    resource read participates in. `apps.map_app` states the snapshot instead of faking currency.
+    """
+    import map as M
+    import apps
+    led = _open_existing(ledger)
+    return apps.map_app(M.render(led.data, title=Path(ledger).stem))
+
+
 def spend_report(project: str = "", session: str = "", pricing: str = "",
                  declared_mcp: list | None = None) -> dict:
     import spend

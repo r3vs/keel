@@ -940,9 +940,18 @@ class TestTheLedgerIsAddressable(_Session):
         return {t["uriTemplate"] for t in
                 self._request("resources/templates/list", {})["result"]["resourceTemplates"]}
 
-    def test_the_three_templates_are_advertised(self):
-        self.assertEqual(self._templates(), {"ledger://summary/{path*}", "ledger://pins/{path*}",
-                                             "ledger://pin/{pin_id}/{path*}"})
+    def test_the_three_ledger_templates_are_advertised(self):
+        """Equality over the `ledger://` scheme, not over every template the server serves.
+
+        It used to be equality over the whole list, which was the same assertion until an app
+        arrived under a different scheme (`ui://keel/map/{path*}`) and made it fail for a reason
+        that had nothing to do with the ledger surface it guards. Scoping to the scheme keeps the
+        real property — a ledger projection silently disappearing, or a fourth one appearing
+        unguarded — and stops this test failing on somebody else's feature.
+        """
+        self.assertEqual({t for t in self._templates() if t.startswith("ledger://")},
+                         {"ledger://summary/{path*}", "ledger://pins/{path*}",
+                          "ledger://pin/{pin_id}/{path*}"})
 
     def test_the_path_segment_is_a_wildcard_because_a_filesystem_path_has_slashes(self):
         """The one detail that decides whether any of this works. FastMCP compiles a bare `{path}`
@@ -953,16 +962,28 @@ class TestTheLedgerIsAddressable(_Session):
             with self.subTest(template=template):
                 self.assertIn("{path*}", template)
 
-    def test_concrete_resources_are_empty_and_that_is_the_design(self):
+    def test_no_ledger_is_addressable_without_its_path_and_that_is_the_design(self):
         """Asserted so it stays a decision rather than becoming an accident.
 
         This server has no notion of "the current project" — every tool takes the ledger path as an
-        argument for exactly that reason — so there is no concrete ledger URI it could list. The
-        cost is real and is written down in `docs/design/mcp-apps.md`: whether a given host offers
-        TEMPLATE resources in its `@` picker (as opposed to concrete ones) is UNVERIFIED, and where
-        it does not, the URI is typed from the template's description.
+        argument for exactly that reason — so there is no concrete LEDGER URI it could list, and
+        every `ledger://` surface is a template. The cost is real and is written down in
+        `docs/design/mcp-apps.md`: whether a given host offers TEMPLATE resources in its `@` picker
+        (as opposed to concrete ones) is UNVERIFIED, and where it does not, the URI is typed from
+        the template's description.
+
+        This used to assert `resources/list == []`, which said the same thing by accident and
+        stopped being true the moment an app was served: `ui://keel/interview.html` is rightly
+        concrete, because it carries no project data at all — it is a document, and the ledger it
+        renders arrives at runtime. So the property is now stated as what it always meant. The
+        map app is a template for the original reason, since its URI does carry a path.
         """
-        self.assertEqual(self._request("resources/list", {})["result"]["resources"], [])
+        concrete = {r["uri"] for r in self._request("resources/list", {})["result"]["resources"]}
+        self.assertEqual({u for u in concrete if u.startswith("ledger://")}, set(),
+                         "a concrete ledger:// resource would be this server claiming to know "
+                         "which project it is in, and it does not")
+        self.assertTrue(all(u.startswith("ui://") for u in concrete),
+                        f"an unexpected concrete resource appeared: {sorted(concrete)}")
 
     def test_the_summary_resource_answers_what_the_summary_tool_answers(self):
         path, _ = _seeded_ledger(self, tempfile.mkdtemp())
@@ -998,6 +1019,225 @@ class TestTheLedgerIsAddressable(_Session):
         path, _ = _seeded_ledger(self, tempfile.mkdtemp())
         self.assertEqual(self._read(f"ledger://summary/{urllib.parse.quote(path, safe='')}"),
                          self._read(f"ledger://summary/{path}"))
+
+
+#: The one MIME type the MCP Apps extension admits — *"MUST be 'text/html;profile=mcp-app' (other
+#: types reserved for future extensions)"*, `modelcontextprotocol/ext-apps`, revision 2026-01-26.
+#: Written here rather than imported from `apps.py` on purpose: this suite asserts what a HOST
+#: receives, and importing our own constant would let the two drift together into agreement while
+#: the wire said something else. FastMCP derives the value from the `ui://` scheme
+#: (`fastmcp/utilities/mime.py::resolve_ui_mime_type`), so what is guarded here is that derivation.
+UI_MIME = "text/html;profile=mcp-app"
+UI_EXTENSION = "io.modelcontextprotocol/ui"
+
+
+@NEEDS_UV
+class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
+    """The `contract_mismatch` this server carried from the day it was written, now closed.
+
+    FastMCP splices `io.modelcontextprotocol/ui` into `capabilities.extensions` with no branch on
+    whether any app is registered (`fastmcp/server/low_level.py::get_capabilities` — the function
+    that BUILDS the value a host receives), so this server announced the apps extension and served
+    zero `ui://` resources: an artifact claiming a capability its bytes do not have, which is this
+    repo's signature failure arriving from upstream. `docs/design/mcp-apps.md` recorded it with two
+    honest exits, serve an app or stop announcing one, and only the first is a decision somebody
+    makes.
+
+    We cannot gate the declaration — the splice is in the dependency and has no constructor flag —
+    so the property is held from the other side instead: **if the capability is declared, an app
+    must be behind it**. That is `test_the_capability_is_backed_by_something_it_can_point_at`, and
+    it is the only test here that would still be worth writing if every other one were deleted.
+
+    `CAPABILITIES` declares the extension the way the spec does, because that is what a host that
+    renders apps sends, and this class is about what such a host is told in return.
+    """
+
+    CAPABILITIES = {"extensions": {UI_EXTENSION: {"mimeTypes": [UI_MIME]}}}
+
+    def _resources(self):
+        return self._request("resources/list", {})["result"]["resources"]
+
+    def _templates(self):
+        return self._request("resources/templates/list", {})["result"]["resourceTemplates"]
+
+    def _read(self, uri):
+        res = self._request("resources/read", {"uri": uri})
+        self.assertNotIn("error", res, f"{uri} did not resolve: {res.get('error')}")
+        contents = res["result"]["contents"]
+        self.assertEqual(len(contents), 1)
+        return contents[0]
+
+    def test_the_capability_is_backed_by_something_it_can_point_at(self):
+        """The gate. Announcing the extension with nothing behind it is the bug; this fails then."""
+        if UI_EXTENSION not in (self.capabilities.get("extensions") or {}):
+            self.skipTest("the server no longer announces the UI extension — nothing to back")
+        served = ([r["uri"] for r in self._resources()]
+                  + [t["uriTemplate"] for t in self._templates()])
+        self.assertTrue([u for u in served if u.startswith("ui://")],
+                        "the server announces io.modelcontextprotocol/ui and serves no ui:// "
+                        "resource. Either serve one or stop announcing it — a capability with no "
+                        "bytes behind it is the mismatch this package exists to find")
+
+    def test_both_apps_are_served_under_the_uris_the_tool_metadata_names(self):
+        self.assertIn("ui://keel/interview.html", [r["uri"] for r in self._resources()])
+        self.assertIn("ui://keel/map/{path*}", [t["uriTemplate"] for t in self._templates()])
+        # The link a host follows to preload the app must name a resource that exists. A dangling
+        # `resourceUri` fails by rendering nothing, which reads as "this host does not do apps".
+        linked = self.tools["interview_next"]["_meta"]["ui"]["resourceUri"]
+        self.assertIn(linked, [r["uri"] for r in self._resources()])
+
+    def test_the_map_template_keeps_the_wildcard_a_filesystem_path_needs(self):
+        """Same trap as the `ledger://` templates: FastMCP compiles a bare `{path}` to
+        `(?P<path>[^/]+)`, which matches no absolute path, and fails by not being found."""
+        [tpl] = [t for t in self._templates() if t["name"] == "keel-map-app"]
+        self.assertIn("{path*}", tpl["uriTemplate"])
+
+    def test_each_app_carries_the_one_mime_type_the_extension_admits(self):
+        for entry in ([r for r in self._resources() if r["uri"].startswith("ui://")]
+                      + [t for t in self._templates() if t["uriTemplate"].startswith("ui://")]):
+            with self.subTest(app=entry["name"]):
+                self.assertEqual(entry["mimeType"], UI_MIME)
+        self.assertEqual(self._read("ui://keel/interview.html")["mimeType"], UI_MIME,
+                         "the mime type on the READ must match the one on the listing — a host "
+                         "decides how to render from what it is handed, not from what it was told")
+
+    def test_neither_app_asks_the_host_for_anything(self):
+        """The declarations that make an app safe to render, asserted as declarations.
+
+        Both documents are entirely self-contained, so the CSP is an explicit pair of empty lists
+        rather than an omission — a positive statement that this page reaches no origin. And
+        neither requests a `permissions` grant: no camera, microphone, geolocation or clipboard.
+        A page that wants nothing should be seen to want nothing.
+        """
+        for entry in ([r for r in self._resources() if r["uri"].startswith("ui://")]
+                      + [t for t in self._templates() if t["uriTemplate"].startswith("ui://")]):
+            with self.subTest(app=entry["name"]):
+                ui = entry["_meta"]["ui"]
+                self.assertEqual(ui.get("csp", {}).get("connectDomains", []), [])
+                self.assertEqual(ui.get("csp", {}).get("resourceDomains", []), [])
+                self.assertNotIn("permissions", ui)
+
+    def test_the_interview_app_is_a_whole_document_that_fetches_nothing(self):
+        """Self-containment is the property the CSP above CLAIMS; this is the property itself.
+
+        Asserted on the served bytes rather than on the source file, because what a host renders is
+        what came down the wire. An external `<script src>` or a stylesheet link would need a
+        `resourceDomains` entry the declaration does not have, so the two would disagree and the
+        app would silently fail to load in a host that honours the policy.
+        """
+        body = self._read("ui://keel/interview.html")["text"]
+        self.assertTrue(body.lstrip().lower().startswith("<!doctype html"))
+        self.assertIn("</html>", body)
+        for reach in ("src=\"http", "src='http", "href=\"http", "href='http",
+                      "fetch(", "XMLHttpRequest", "importScripts", "@import"):
+            self.assertNotIn(reach, body, f"the app reaches outside itself via {reach!r}")
+
+    def test_the_interview_app_speaks_the_handshake_the_extension_defines(self):
+        """`ui/initialize` is a request and `ui/notifications/initialized` the notification that
+        follows it, both sent by the view; the result carries `hostContext`. An app that never
+        handshakes renders in no host, and it fails by looking like a host that does not do apps."""
+        body = self._read("ui://keel/interview.html")["text"]
+        for method in ("ui/initialize", "ui/notifications/initialized",
+                       "ui/notifications/tool-result"):
+            self.assertIn(method, body)
+        self.assertIn("2026-01-26", body,
+                      "the apps extension is versioned outside the core protocol, so the "
+                      "handshake must send ITS revision and not the core's")
+
+    def test_the_interview_app_never_builds_dom_from_a_string(self):
+        """Pin titles, option labels and implications are agent-authored content out of someone
+        else's repo, and this document inlines none of it — it arrives at runtime and goes in
+        through `textContent`. `map.py` learned the same lesson twice, and both times the fix was
+        to make the guarantee structural at the step where content enters rather than a rule
+        somebody remembers. So: no `innerHTML`, no `outerHTML`, no `insertAdjacentHTML`, no
+        `document.write`, and no `eval`. One of those appearing is the regression."""
+        body = self._read("ui://keel/interview.html")["text"]
+        for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+            self.assertNotIn(sink, body, f"{sink} is a way for a pin title to become markup")
+
+    def test_the_map_app_bakes_the_ledger_it_was_asked_for(self):
+        """The renderer is `map.py`'s, unchanged, and the data is already inline — which is what
+        makes this app free and what keeps the page out of the model's context entirely."""
+        path, _ = _seeded_ledger(self, tempfile.mkdtemp())
+        page = self._read(f"ui://keel/map/{path}")["text"]
+        self.assertIn("three near-identical blocks", page,
+                      "the map app must carry the ledger's own content, baked at read time")
+        self.assertIn("</html>", page)
+        self.assertIn("Snapshot of the ledger", page,
+                      "an app a host may keep on screen across later writes must say that it is a "
+                      "snapshot — a stale map looks exactly like a current one")
+
+    def test_the_map_app_refuses_a_ledger_that_is_not_there(self):
+        """The guarded read reaching the newest door. Every other read surface refuses a missing
+        ledger rather than answering it empty, and an app is where a blank page would be read as
+        'this project has no decisions' — the confident wrong answer, rendered handsomely."""
+        missing = os.path.join(tempfile.mkdtemp(), "never-built.json")
+        res = self._request("resources/read", {"uri": f"ui://keel/map/{missing}"})
+        self.assertIn("error", res, "an absent ledger was rendered as if it were a ledger")
+        self.assertIn("no ledger at", json.dumps(res["error"]))
+
+    def test_only_a_read_only_tool_carries_an_app(self):
+        """The finding that reversed the design note's own plan, kept as a gate.
+
+        An app's `tools/call` is proxied by the host onto the same connection the model uses, and
+        nothing on the wire distinguishes the two. So a value arriving through a tool cannot be
+        known to have come from the app rather than from the agent — which means an app-elected
+        outcome could only claim `elicited`, the rung whose entire content is *the agent did not
+        hold this value*, on the agent's word. Presentation is what an app may upgrade here;
+        provenance is not. Any write tool growing `_meta.ui` is that line being crossed.
+        """
+        with_app = {name for name, t in self.tools.items() if "ui" in (t.get("_meta") or {})}
+        self.assertTrue(with_app, "no tool links an app any more — the preload path is gone")
+        self.assertEqual(with_app - READ_ONLY, set(),
+                         "a WRITE tool carries a UI link. An app cannot earn a provenance rung "
+                         "(see apps.py), so it must not be the surface that writes one")
+
+    def test_no_tool_hides_behind_a_hint_the_host_is_merely_asked_to_honour(self):
+        """`visibility: ["app"]` reads like an access control and is not one: observed on the wire,
+        a tool declaring it is still served in full by `tools/list`, so hiding it from the model is
+        the host's choice. A tool that relied on it would be guarded by host cooperation alone —
+        and on the hosts this package ships to, by nothing at all."""
+        for name, t in sorted(self.tools.items()):
+            vis = (t.get("_meta") or {}).get("ui", {}).get("visibility")
+            if vis is not None:
+                with self.subTest(tool=name):
+                    self.assertIn("model", vis,
+                                  "an app-only tool is enforced by no host; keep it callable by "
+                                  "the model so its real guard is the one in the tool body")
+
+
+@NEEDS_UV
+class TestAnAppCapableClientEarnsNoStrongerRung(_Session):
+    """The degradation path, asserted where it would be tempting to cheat.
+
+    This client declares the UI extension and **not** elicitation — exactly the shape that would
+    make an implementer reach for "well, they have an app, call it elicited". The ladder does not
+    move: no app is a write door, so the value still has to reach the server through the agent, and
+    the rung recorded is still the weaker `transcribed` one. `ELICIT_REPLY` stays None so the
+    harness fails loudly rather than deadlocking if the server tried to ask anyway.
+    """
+
+    CAPABILITIES = {"extensions": {UI_EXTENSION: {"mimeTypes": [UI_MIME]}}}
+
+    def test_an_app_capable_host_still_records_a_relay_as_a_relay(self):
+        tmp = tempfile.mkdtemp()
+        path, pin_id = _seeded_ledger(self, tmp)
+        res = self._request("tools/call", {"name": "ledger_record_decision", "arguments": {
+            "ledger": path, "pin_id": pin_id, "option_id": "extract",
+            "rationale": "one call shape beats three", "human_answer": "yes, pull the helper out",
+            "flip_criteria": "if a second caller shape appears"}})
+        self.assertFalse(res["result"].get("isError"), res["result"].get("content"))
+        self.assertEqual(res["result"]["structuredContent"]["evidence"], "transcribed",
+                         "rendering an app is not holding a human's answer — the rung is decided "
+                         "by which path ran, and the app is on neither")
+        self.assertEqual(self.elicited, [], "the server must not ask a client that cannot answer")
+
+    def test_the_app_rung_is_not_smuggled_in_as_an_argument_either(self):
+        """The other way it would arrive: a caller simply asserting the rung. `ledger_record_decision`
+        has never taken an `evidence` parameter — the rung is decided by WHICH PATH RAN — and adding
+        an app must not become the reason someone adds one."""
+        self.assertNotIn("evidence", self.tools["ledger_record_decision"]["inputSchema"]["properties"],
+                         "provenance the caller states is provenance the caller invents")
 
 
 @NEEDS_UV
