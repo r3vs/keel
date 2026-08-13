@@ -107,9 +107,15 @@ or forward to prevent.
 
 **Runtime:** the `contract_diff` / `reconcile_layers` tools implement this file for
 the live stacks: extractors for Postgres DDL / SQLAlchemy (both idioms) / Pydantic v2 / TS
-interfaces that normalize to the descriptor, plus `diff_shapes`/`drift_check` with all three honesty
-rules enforced (unresolved → `ambiguous` note, absence → `missing_field`/`extra_field` finding,
-empty side → a refusal naming the side and its unmet preconditions). It is also
+interfaces that normalize to the descriptor, plus `diff_shapes`/`drift_check` with the honesty rules
+enforced (unresolved → `ambiguous` note, absence → `missing_field`/`extra_field` finding). Rule 3 is
+enforced one layer up, at each entry point that does the extracting — `drift_check` over the carrier
+**and** every layer handed to it, `reconcile_layers`, `propose_correspondence` — each refusing with
+the empty side named and the idiom its extractor needed to see. `diff_shapes` is handed two
+already-extracted dicts and cannot tell an empty layer from an empty file, so it does not enforce
+it; the distinction is worth stating because a tool that wraps the diff and skips the extraction
+refusal answers "no findings" over a layer nothing read, which is the failure rule 3 exists for and
+is what `drift_check` did on every layer but the carrier until this was written down. It is also
 greenfield's CI drift-check — the same shape-diff wired to fail the build on drift. New stacks are
 additive: an optional tree-sitter extraction backend is one generic engine driven by declarative
 per-grammar **data** (a query + type maps — no per-stack code, no heuristics, no comment sniffing),

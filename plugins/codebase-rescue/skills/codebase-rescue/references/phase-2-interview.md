@@ -127,12 +127,16 @@ proposals on its entry — exploring a hard fork must not be what takes it off t
 >   anywhere else is you electing, which is the one thing no agent here may do.
 > - **`flip_criteria` is required** — a decision with no reopen condition fossilizes, and the
 >   feedback loop has nothing to fire against. Name the observable that would make you revisit it.
-> - **If the host's client declares elicitation, the server asks the user itself** and ignores
->   whatever you passed; the answer never travels through you (`evidence: elicited`). Otherwise you
->   are relaying, and must **quote the user verbatim in `human_answer`** — that lands as
->   `evidence: transcribed`, the weaker rung, which a reader and the `challenger` can then weigh.
+> - **If the host's client declares elicitation and the door opens, the server asks the user
+>   itself** and the answer it gets back replaces whatever you passed (`evidence: elicited`).
+>   Otherwise you are relaying, and must **quote the user verbatim in `human_answer`** — that lands
+>   as `evidence: transcribed`, the weaker rung, which a reader and the `challenger` can then weigh.
 >   Relaying with nothing quoted is refused: an honest relay and an invented one would be
->   indistinguishable in the log.
+>   indistinguishable in the log. **A declared capability is not a promise you are not relaying**: a
+>   client can declare elicitation on a connection that carries no back-channel for it, and then the
+>   values you passed are what gets written, on the weaker rung. So there is no path on which an
+>   `option_id`/`human_answer` you invented is guaranteed to be thrown away — ask before you fill
+>   them in, or pass neither and take the refusal.
 > - **`accept_as_is: true`** is how "leave it as it is" is recorded, and only for a `design_concern`
 >   — an `ambiguity` or a `contract_mismatch` has nothing to keep.
 >
