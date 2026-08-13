@@ -134,6 +134,79 @@ Prefer **deliberate writes** (`cognee.remember("…")`) over conversational auto
 stays curated. If you don't want the container + key, skip it — the ledger + `MEMORY.md` cover
 durable memory without it.
 
+## The tool surface is a budget, and it is the host's to spend
+
+**The assumption this package has been relying on silently, now written down: 67 MCP tools is
+affordable only because the host defers them.** Nothing in `src/mcp/server.py` decides that, nothing
+gates it, and it is false on at least one host we ship to. Naming it is the point of this section —
+it is a load-bearing bet on somebody else's product behaviour, which is the class of fact this repo
+insists on verifying at the consumer.
+
+**What the surface actually costs, measured rather than estimated.** Start the server, complete the
+handshake, and size the `tools/list` result:
+
+| | |
+|---|---|
+| tools advertised | **67** |
+| whole `tools/list` result | ~98 k characters of JSON — **≈24 k tokens** at ~4 chars/token |
+| median tool object | ~1,410 characters (the JSON: name + description + `inputSchema` + annotations) |
+| longest single description | 1,405 characters |
+| server `instructions` | 335 characters |
+
+Method, because a number in prose with no way to re-derive it is the thing
+`scripts/check_stated_facts.py` exists to prevent — and these four have **no gate**, unlike the
+tool count, which `check_stated_facts.py` checks against the `@mcp.tool` decorations themselves:
+spawn `uv run --script src/mcp/server.py`, send `initialize` + `notifications/initialized` +
+`tools/list` over stdio (the harness in `tests/test_mcp_server.py` does exactly this), and
+`len(json.dumps(tool, ensure_ascii=False))` each entry. Re-derive rather than trust.
+
+Two things that measurement corrects, both of which were being estimated the easy way. **The
+docstring is not the payload**: FastMCP splits a tool's docstring, sending the prose before `Args:`
+as `description` and moving each `Args:` entry into the matching property's `description` inside
+`inputSchema` — checked on the wire against `ledger_summary`, whose `ledger: Path to ledger.json.`
+arrives inside the schema and not in the description. So counting docstrings sees about half the
+truth: ~51 k characters of docstring against ~98 k on the wire. And **the schema is most of the
+cost**: median description 372 characters inside a median tool object of ~1,410.
+
+**Per host, and only the first row is a verified mechanism:**
+
+| Host | Are the 67 loaded up front? | Verification |
+|---|---|---|
+| **Claude Code** | **No, deferred by default** | VERIFIED in its docs: *"Tool search is enabled by default: MCP tools are deferred and discovered on demand"* — only tool **names** and the server `instructions` load at session start. Off in named cases: `ENABLE_TOOL_SEARCH=false`; a non-first-party `ANTHROPIC_BASE_URL`; `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; Microsoft Foundry on Azure (rejected server-side, unoverridable); Google Cloud Agent Platform models older than the 4.5 generation. `auto` is a middle setting: *"tools load upfront if they fit within 10% of the context window, deferred otherwise"* — at ≈24 k tokens we fit that only on a large window. |
+| **Codex** | **UNVERIFIED** | Its MCP documentation is silent on tool deferral, count limits and context budgeting, and the Rust source was not read at the consuming function. Absence of a documented mechanism is not absence of one. Plan for the full surface — that is the conservative direction. |
+| **opencode** | **Yes, on the docs' own account** | *"Once added, MCP tools are automatically available to the LLM alongside built-in tools"*, and it names the consequence itself: *"When you use an MCP server, it adds to the context. This can quickly add up if you have a lot of tools."* Docs-level, not source-level — call it verified-by-documentation. The available mitigation is the user's, not ours: opencode filters tools per agent by glob. |
+| **Pi** | **No — one tool, ours** | VERIFIED in our own adapter: `src/adapters/pi/extensions/mcp-bridge.ts` registers a **single** proxy tool (`alignment`) synchronously and connects lazily, so Pi's context carries one description regardless of how many the server serves. The bridge is a deferral mechanism nobody planned; it is the reason the tool count has never been felt there. |
+
+**So the cost is real on Codex and opencode and paid every turn**, and it is roughly a fifth of a
+128 k window before the conversation starts. That is the honest statement of the risk. It is not
+currently actionable by us — trimming to fit the worst host would degrade the two hosts that defer
+— but it is the number to put beside any proposal to add tools, and the reason `EXPECTED_TOOLS` in
+`tests/test_mcp_server.py` is asserted as set **equality**: adding a tool should cost somebody a
+deliberate edit.
+
+**One host-specific limit we sit under, and it is closer than it looks.** Claude Code *"truncates
+tool descriptions and server instructions at 2KB each"*, and truncation is silent: the agent picks
+a tool by its description, so a clipped one degrades selection with nothing reporting it. Our
+longest description is 1,405 characters — about 640 of headroom, which one thorough docstring would
+consume. Anything approaching 2,048 has to be shortened at the docstring, not accepted.
+
+**What we deliberately do not use.** Claude Code offers two escapes from deferral — `alwaysLoad: true`
+per server in `.mcp.json`, and `"anthropic/alwaysLoad": true` in an individual tool's `_meta` — and
+we set neither. Nothing here is needed on every turn: an agent reaches for `contract_diff` when it
+is doing cross-layer work and for `ledger_record_decision` when a human is answering, and the
+`instructions` string plus the tool names are what point it at the search. Exempting a tool would
+spend context on every turn to save a search step on a few, and it would also make startup wait for
+this server (`alwaysLoad` blocks on connect, capped at 5 s) — a real cost for a `uv run --script`
+server whose cold start is ~7 s.
+
+**Resources and prompts add to the same budget, and much less.** `resources/list`, `prompts/list`
+and `resources/templates/list` are separate calls a host makes on its own schedule, so they do not
+enter the tool budget above at all; the three templates and three prompts this server serves are a
+few hundred characters each. Which hosts even ask is uneven: Claude Code documents both surfaces
+(resources as `@server:protocol://resource/path` mentions, prompts as `/mcp__servername__promptname`
+commands), while the Codex and opencode MCP docs describe tools only — see `docs/design/mcp-apps.md`
+for that matrix and how much each row's evidence is worth.
+
 ## Elicitation — does the host ask the human, or does the agent relay?
 
 `ledger_record_decision` has two rungs. The strong one (`evidence: "elicited"`) has **this server**
