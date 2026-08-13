@@ -8,7 +8,7 @@ from quietly becoming a decision. It is shared; both skills read it.
 It is not "always search the web." It is a **ponytail escalation for knowledge** — reach for the
 cheapest sufficient source, and go outward only when the local signal can't answer:
 
-```
+```text
 1 local signal (the code, the graph, static tools)      — cheapest, always first
 2 authoritative docs (Context7)                          — a specific library/framework/API
 3 repo-grounded (DeepWiki)                               — exemplar architectures + public deps

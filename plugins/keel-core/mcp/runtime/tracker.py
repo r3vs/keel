@@ -27,11 +27,21 @@ A window, not a door
 **Nothing in this module writes the ledger, and that is structural rather than promised.** It
 imports the read half of `ledger` — `pin_read`, `read_collection`, the state sets, `severity_rank`
 — and never constructs a `Ledger`. There is no path from an issue back into `ledger.json`, so a
-tracker that has been edited, vandalised, or migrated cannot change what this project decided. The
-one direction that WOULD be worth having — an issue comment as a reopen signal — is designed and
-deliberately unbuilt; `docs/design/tracker-projection.md` records it as an open decision with the
-three questions that have to be elected first. Building it on a hunch would put an unauthenticated
-comment box on the write path of the single source of truth.
+tracker that has been edited, vandalised, or migrated cannot change what this project decided.
+
+The inbound direction was elected on 2026-08-13 and the elected answer is **read-only surfacing**:
+`diff` reads the comments on the issues it already indexed and lists them under
+`awaiting_human_review`, and that is the whole of it. A comment is a fact about a thread, never an
+argument to a write — the human reopens in the interview, exactly as they always did, and this
+section only stops the tracker being the one place a fork gets answered where nobody who reads the
+ledger will ever see it. Full inbound (`/keel reopen …` becoming a `ReopenEvent`) stays unbuilt, and
+`docs/design/tracker-projection.md` holds the election record and what it would still cost — a new
+member of `reopen`'s closed `source` vocabulary, which is a schema change, which is a spec version.
+Surfacing needs none of that, which is precisely why it is the half that could be built.
+
+The projector must not report itself: a comment carrying this module's own fence is excluded from
+that list, because a report whose "awaiting review" count is inflated by the tool's own output is
+the same lie as a clean scan that did not run.
 
 The four host facts this design rests on, each read at GitHub's own docs
 -----------------------------------------------------------------------
@@ -142,6 +152,20 @@ TITLE_MAX = 120
 #: (again, declared). The pin is the place to read the whole thing; the issue is an index into it,
 #: exactly as the `AGENTS.md` region is.
 PAYLOAD_MAX = 1200
+
+#: HYPOTHESIS, tunable — characters of a tracker comment carried into `awaiting_human_review`.
+#: The excerpt exists so a human can tell without leaving the report whether a comment is worth
+#: opening; the thread is where it is read. That is `PAYLOAD_MAX`'s bargain one surface over, with
+#: the same declared clip — 400 is about a screenful of a review comment, chosen and not measured.
+COMMENT_EXCERPT_MAX = 400
+
+#: HYPOTHESIS, tunable — issues whose comment threads ONE `diff` will read.
+#: The cost profile is what this bounds: `diff` used to be documented as costing a single request,
+#: and reading comments makes it cost one more per indexed issue that has any. The cap keeps that
+#: statable instead of proportional to a tracker nobody here sized — and threads are visited in the
+#: plan's own severity-first order, so the requests that do get spent are spent on the blockers. A
+#: run that reaches the cap DECLARES it, for the same reason a clipped line does.
+COMMENT_ISSUE_CAP = 50
 
 
 class Unavailable(Exception):
@@ -621,7 +645,8 @@ class Client:
                 return url
         return ""
 
-    def paginate(self, path: str, params: dict, page_cap: int = 20) -> tuple:
+    def paginate(self, path: str, params: dict, page_cap: int = 20,
+                 repo_scoped: bool = True) -> tuple:
         """Every entry across pages, plus whether the walk was cut short and why.
 
         `page_cap` is a signature default rather than a module constant on purpose: it is a
@@ -629,12 +654,17 @@ class Client:
         The cap and the budget are both DECLARED in the return, because a truncated index would
         otherwise read as "these pins have no issue" and the next run would duplicate every one of
         them — the single worst thing an idempotent projection can be quietly wrong about.
+
+        `repo_scoped` is forwarded rather than fixed, and it carries the same distinction
+        `request` documents: `/issues` is the repository, so its 404 ends the run, while
+        `/issues/{n}/comments` is ONE issue, and an issue transferred or deleted between the index
+        and the read is not evidence about the other forty threads.
         """
         url = f"{API}/repos/{self.repo}{path}?{urllib.parse.urlencode(params)}"
         out: list = []
         pages = 0
         while url:
-            status, data, headers = self.request("GET", url)
+            status, data, headers = self.request("GET", url, repo_scoped=repo_scoped)
             if status != 200 or not isinstance(data, list):
                 return out, {"reason": "unexpected_response", "status": status}
             out += [e for e in data if isinstance(e, dict)]
@@ -855,28 +885,188 @@ def _summary(items: list, ledger_path: str, repo: str, truncated: dict) -> dict:
             "items": [{k: v for k, v in i.items() if k != "body"} for i in items]}
 
 
-def diff(data: dict, repo: str, token: Optional[str] = None, urlopen: Optional[Callable] = None,
-         timeout: float = TIMEOUT, ledger_path: str = "ledger.json") -> dict:
-    """Is the tracker still what the ledger projects? **Writes nothing, on either side.**
+# ── the one inbound reading, and it reads only: comments awaiting a human ─────────────────────
 
-    The read-only twin of `project`, and the one to run first — it costs the index request and
-    nothing else, and it answers the question a team actually has ("what has drifted?") without
-    touching a tracker they may not have agreed to have written to yet.
+def _comment_author(comment: dict) -> str:
+    """The commenter's login. Through `.get` on both hops, because this is somebody else's JSON.
+
+    A deleted account answers `"user": null` on GitHub's own comment resource, and `None["login"]`
+    inside a read-only drift report would be this module raising into a tool call — the one thing
+    its docstring says it must never do.
+    """
+    user = comment.get("user")
+    if isinstance(user, dict):
+        return str(user.get("login") or "").strip()
+    return str(user or "").strip()
+
+
+def _is_own_output(text: Optional[str]) -> bool:
+    """Does this text carry THIS module's fence? Then it is not a human waiting for an answer.
+
+    The exclusion is by marker rather than by author, and that is the stronger key: an author check
+    needs the token's own identity (a request this module does not make) and would still miss a
+    mirror bot, a migration script, or a maintainer who pasted a projected body into the thread to
+    quote it. The marker is what the projection stamps, so the marker is what it can recognise.
+
+    Both markers, as everywhere else in this file: a body carrying only a begin marker is as much
+    this module's output as one carrying the pair.
+    """
+    return bool(BEGIN_RE.search(text or "")) or bool(_END_RE.search(text or ""))
+
+
+def _comment_scan(client: Client, index: dict, items: list) -> tuple:
+    """`(awaiting_human_review, stats)` — every comment on an indexed issue, read and never acted on.
+
+    The elected inbound path, in its entirety (`docs/design/tracker-projection.md`, elected
+    2026-08-13). A comment is **surfaced**, attributed to the pin whose marker its issue carries,
+    and left exactly where it is. Nothing here decides, reopens, or writes: the human reads the
+    list and elects in the interview, which is the only door that ever moved ledger state.
+
+    Three things it refuses, each for a reason the rest of this module already pays:
+
+      * **the issue's own `comments_url`.** It is on every issue object the index walked and it is
+        server-supplied input that our bearer token would ride — the same class the `link` header's
+        allowlist exists for. The URL is built here from the validated repo and an `int()` of the
+        issue number, or the issue is skipped.
+      * **an empty thread's request.** The index listing's issue object carries a `comments` count;
+        a documented zero means there is nothing to fetch, so nothing is fetched. An ABSENT or
+        non-integer count is read as unknown and fetched — silence about the count is not a claim
+        that the thread is empty, and failing open here costs a request while failing closed would
+        lose a comment.
+      * **its own output.** See `_is_own_output`.
+
+    Every early stop is declared, and the two kinds are kept apart: `stopped` is what ended the
+    WALK (the issue cap, the rate-limit reserve, a dead transport) and `threads_incomplete` names
+    the single threads that could not be read whole — pages that ran out, or an endpoint that
+    refused (a 404 on one issue is that issue transferred or deleted, and never the repository).
+    Flattening those into one field is the bug this module already fixed once, on the index — a run
+    that wrote nothing because its index was short reporting itself as merely rate-limited.
+    """
+    surfaced: list = []
+    threads_incomplete: list = []
+    stopped: Optional[dict] = None
+    issues_read = 0
+    comments_read = 0
+    excluded_own = 0
+
+    for item in items:
+        number = item.get("issue")
+        if number is None:
+            continue
+        try:
+            issue_number = int(number)
+        except (TypeError, ValueError):
+            continue
+        issue = index.get(item.get("pin")) or {}
+        count = issue.get("comments")
+        if isinstance(count, int) and not isinstance(count, bool) and count <= 0:
+            continue
+        if issues_read >= COMMENT_ISSUE_CAP:
+            stopped = {"reason": "issue_cap", "issues_read": issues_read,
+                       "detail": f"stopped after {COMMENT_ISSUE_CAP} threads. The ones read are the "
+                                 f"plan's own severity-first order, so what is missing is the tail "
+                                 f"— read this list as a floor, not a total."}
+            break
+        if client.exhausted():
+            stopped = {"reason": "rate_limit", "remaining": client.remaining,
+                       "reset_at": client.reset_at,
+                       "detail": "stopped inside the rate-limit reserve rather than spending the "
+                                 "user's last requests on a read. The drift plan above is complete; "
+                                 "this list is not."}
+            break
+        try:
+            # `repo_scoped=False`: this URL names ONE issue. A 404 here is that issue transferred
+            # or deleted between the index snapshot and now, and ending a read-only drift report
+            # over it would blame the repository for one dead thread.
+            comments, thread_truncated = client.paginate(
+                f"/issues/{issue_number}/comments", {"per_page": 100}, repo_scoped=False)
+        except Unavailable as exc:
+            stopped = exc.as_result(issues_read=issues_read)
+            break
+        issues_read += 1
+        if thread_truncated:
+            threads_incomplete.append({"issue": issue_number, **thread_truncated})
+        for comment in comments:
+            body = str(comment.get("body") or "")
+            comments_read += 1
+            if _is_own_output(body):
+                excluded_own += 1
+                continue
+            if not body.strip():
+                continue
+            surfaced.append({
+                "issue_number": issue_number,
+                "pin_id": item.get("pin") or "",
+                "author": _comment_author(comment),
+                "created_at": str(comment.get("created_at") or ""),
+                # Whitespace collapsed before clipping: a thread's newlines would make one comment
+                # own the report's shape, and this is an index into the thread rather than a copy
+                # of it. The clip is stated, like every clip in this package.
+                "excerpt": _clip(" ".join(body.split()), COMMENT_EXCERPT_MAX,
+                                 " … (clipped — open the issue)"),
+            })
+
+    stats = {
+        "available": True,
+        "issues_read": issues_read,
+        "comments_read": comments_read,
+        "excluded_own": excluded_own,
+        "surfaced": len(surfaced),
+        "stopped": stopped,
+        "threads_incomplete": threads_incomplete or None,
+        "detail": "Comments are SURFACED and never acted on. Nothing here reopens a pin, and no "
+                  "answer typed into a thread decides anything — take it to the interview "
+                  "(`interview_next`, then `ledger_record_decision`) if it belongs on the ledger.",
+    }
+    return surfaced, stats
+
+
+def diff(data: dict, repo: str, token: Optional[str] = None, urlopen: Optional[Callable] = None,
+         timeout: float = TIMEOUT, ledger_path: str = "ledger.json",
+         comments: bool = True) -> dict:
+    """Is the tracker still what the ledger projects, and is anyone waiting on an answer in it?
+    **Writes nothing, on either side.**
+
+    The read-only twin of `project`, and the one to run first — it touches a tracker nobody has
+    agreed to have written to yet, and answers the question a team actually has.
+
+    Two sections, and they answer different questions. `items` / `planned` is the drift plan
+    `project` would execute. `awaiting_human_review` is every comment on an indexed issue, with the
+    pin its issue carries — the elected inbound path, which reads and stops there.
+
+    **A comment never moves `in_sync`**, and that is deliberate rather than an omission. `in_sync`
+    means *the projection matches the ledger*, and it is the field a caller acts on by re-running
+    `project`. Nothing this tool can do clears a comment: only a human electing does. A comment
+    folded into `in_sync` would make the flag permanently false on any tracker a team actually
+    talks in, and a flag that is always false is a flag nobody reads.
 
     The ledger is rendered BEFORE the transport is touched (see `projection`), so an unreachable
     tracker still reports how many pins the projection could read — an unavailable result never
-    doubles as an unnoticed failure to read the source.
+    doubles as an unnoticed failure to read the source. That rule is why the refusal path below
+    sets `awaiting_human_review` to **None** and not `[]`: an empty list is the answer "nobody is
+    waiting", which is exactly the reading a tracker that was never read may not be given.
     """
     rendered = projection(data, ledger_path)
     try:
         client = Client(repo, token if token is not None else token_from_env(), urlopen, timeout)
         index, duplicates, truncated = _index(client)
     except Unavailable as exc:
-        return exc.as_result(repo=repo, ledger=ledger_path, pins=len(rendered))
+        return exc.as_result(
+            repo=repo, ledger=ledger_path, pins=len(rendered), awaiting_human_review=None,
+            comments={"available": False, "reason": exc.reason,
+                      "detail": f"no comment was read, so this is not 'nobody is waiting on you' — "
+                                f"{exc.detail}"})
     items = plan_over(rendered, index)
     out = _summary(items, ledger_path, repo, truncated)
     out["duplicates"] = duplicates
     out["index_truncated"] = truncated or None
+    if comments:
+        out["awaiting_human_review"], out["comments"] = _comment_scan(client, index, items)
+    else:
+        out["awaiting_human_review"] = None
+        out["comments"] = {"available": False, "reason": "not_requested",
+                           "detail": "the caller asked for the drift plan only. No thread was "
+                                     "read, so nothing here says whether anyone is waiting."}
     out["rate_limit"] = client.budget()
     return out
 

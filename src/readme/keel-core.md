@@ -129,7 +129,7 @@ because a decision written into the projection belongs in the ledger.
 | Tool | Does |
 |---|---|
 | `tracker_project` | project every open pin into a GitHub issue; settling a pin closes it |
-| `tracker_diff` | is the tracker still what the ledger projects — `create` / `update` / `reopen` / `close` / `hand_edited` / `orphan` |
+| `tracker_diff` | is the tracker still what the ledger projects — `create` / `update` / `reopen` / `close` / `hand_edited` / `orphan` — plus `awaiting_human_review`, the comments on projected issues, read and never acted on |
 
 The pair above carries the ledger to the *agent*; this one carries it to the *team*, and it is the
 same shape a second time: one source, a generated projection, managed markers, and a drift check
@@ -139,7 +139,10 @@ issue — imports only the READ half of the ledger and **constructs no `Ledger`*
 above do open one, through the same guarded loader every read tool uses, and then call no writer on
 it. Both halves are gates over the shipping code's own AST, because the sentence is worth exactly
 what checks it: what exists nowhere is a path from an issue body back into `ledger.json`, so an
-issue box (unauthenticated input) can never become a decision. Two host facts decide the design:
+issue box (unauthenticated input) can never become a decision. That is why the inbound path, when
+it was finally elected, is a **reading**: `tracker_diff` lists the comments on projected issues so
+a fork answered in a thread is at least visible, and lists them for a human — nothing reopens, and
+the module still holds no write door to hold open. Two host facts decide the design:
 every pull request answers as an issue, so the
 index skips anything carrying `pull_request`; and **GitHub silently drops labels when the token
 lacks push access** — the label *is* the idempotency key, so a run that lost it stops rather than

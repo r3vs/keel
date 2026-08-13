@@ -73,6 +73,50 @@ MCP_PREFIX = r"mcp__(?:plugin_[\w-]+_)?keel__"
 #: credentials leaves one, and `git add -A` on a release commit would carry it in.
 DEFAULT_REPORT = "eval-report.json"
 
+
+class UnconfinedSeed(ValueError):
+    """A `files` entry naming a path outside the directory the harness owns on that side."""
+
+
+#: The stand-in `--validate` checks a `to` against. The real workdir is minted per case by
+#: `execute_case` and does not exist when a PR is validated, so the containment `--validate` can
+#: decide is the one that depends on the path's SHAPE and not on the tree — which is every case
+#: `confined` refuses, since absoluteness and `..` are both properties of the string.
+NOTIONAL_WORKDIR = ROOT / ".eval-workdir"
+
+
+def confined(base: pathlib.Path, candidate: object, what: str) -> pathlib.Path:
+    """`base / candidate`, resolved — and only if it is still under `base`.
+
+    An eval file is DATA. This repo's corpus today, a contributor's PR tomorrow, and `--execute`
+    reads it and then copies files on the operator's behalf. Neither side was looked at: a `from`
+    of `/etc/id_rsa` read whatever the operator could read, because `pathlib`'s `/` **discards the
+    left operand** when the right is absolute, and a `to` of `../../.ssh/authorized_keys` wrote
+    wherever they could write, because `to` was never validated at all. Confinement is checked here
+    rather than at each site so `--validate` (the gate a PR passes) and `seed_files` (the copy a run
+    performs) cannot disagree about what a legal seed is — `execute_case` does not call `validate`,
+    so a rule enforced only there governs nothing at execution.
+
+    Absolute is refused BEFORE resolution and in both syntaxes, because the interpreter that opens
+    the file is not always the one that wrote it: `PurePosixPath("C:\\\\x").is_absolute()` is False,
+    so a POSIX-only test passes a Windows path through to a `pathlib` join that then discards the
+    base on Windows. Traversal is refused AFTER resolution, which also settles a symlink pointing
+    out of the tree — `..` is the spelling, escaping is the property.
+    """
+    if not isinstance(candidate, str) or not candidate:
+        raise UnconfinedSeed(f"{what} {candidate!r} names no path")
+    if pathlib.PurePosixPath(candidate).is_absolute() or \
+            pathlib.PureWindowsPath(candidate).is_absolute():
+        raise UnconfinedSeed(f"{what} {candidate!r} is absolute; a seed path is relative to "
+                             f"{base.name!r} and the harness copies nothing from outside it")
+    root = base.resolve()
+    resolved = (root / candidate).resolve()
+    if resolved == root or not resolved.is_relative_to(root):
+        raise UnconfinedSeed(f"{what} {candidate!r} escapes {base.name!r} (resolves to "
+                             f"{resolved}); a seed neither reads nor writes outside its own tree")
+    return resolved
+
+
 JUDGE_PROMPT = """You are a strict eval judge. Below is the full transcript of an agent \
 working on a task, followed by ONE assertion about the required behavior.
 
@@ -510,9 +554,31 @@ def validate(paths: list[pathlib.Path]) -> int:
             if cid in seen_ids:
                 problems.append(f"{label}: duplicate id")
             seen_ids.add(cid)
-            for fixture in case.get("files", []):
-                if not (path.parent / fixture).exists():
-                    problems.append(f"{label}: listed file {fixture!r} does not exist")
+            # `files` is a path, or `{"from": …, "to": …}` when the name a seed must LAND under is
+            # not a name this repo can commit — `ledger.json` is gitignored as a runtime artifact,
+            # and seeding one is the only way a case can record against pins it did not create.
+            # Both forms are copied by `seed_files`; both are checked here, because a seed that
+            # does not exist is a case that silently runs against the bare fixture.
+            #
+            # Both SIDES are checked, through the same `confined` the copy itself calls. A seed is
+            # a path an eval file names and the harness then acts on, so `from` may not read outside
+            # the eval directory and `to` may not write outside the workdir — and the workdir does
+            # not exist at validate time, so the containment is decided on the shape of the path
+            # rather than on the tree it will land in.
+            for entry in case.get("files", []):
+                source = entry.get("from") if isinstance(entry, dict) else entry
+                target = entry.get("to", source) if isinstance(entry, dict) else entry
+                try:
+                    resolved = confined(path.parent, source, "files `from`")
+                except UnconfinedSeed as refusal:
+                    problems.append(f"{label}: {refusal}")
+                else:
+                    if not resolved.exists():
+                        problems.append(f"{label}: listed file {source!r} does not exist")
+                try:
+                    confined(NOTIONAL_WORKDIR, target, "files `to`")
+                except UnconfinedSeed as refusal:
+                    problems.append(f"{label}: {refusal}")
             for assertion in case.get("assertions", []):
                 corpus.add((skill_dir, cid, assertion))
         total_cases += len(cases)
@@ -732,8 +798,103 @@ def build_command(executable: str, plugins: list[pathlib.Path], args) -> list[st
     return cmd
 
 
+#: Skills the host will not let the MODEL load — `disable-model-invocation: true`. Read off the
+#: BUILT SKILL.md, never listed here: which skills are user-invoked is the frontmatter's fact and a
+#: second copy of it is the drift every gate in this repo exists to catch.
+USER_INVOKED = re.compile(r"^disable-model-invocation:\s*true\s*$", re.M)
+
+#: The leading `---`-fenced YAML block, and nothing after it. The host reads the key there and
+#: nowhere else, so this predicate must too: `SKILL.md` bodies in this package quote the key in
+#: prose — `which-skill` tabulates it, `writing-skills` documents writing it — and a body match
+#: would tell the runner to type `/codebase-rescue`, i.e. to test a door no cold user uses on the
+#: one skill whose whole case is the cold trigger. A frontmatter block is the file's FIRST line
+#: `---` through the next `---` on its own line; a file with no such block has no frontmatter at
+#: all, which is a different fact from "the key is absent" only to a human.
+FRONTMATTER = re.compile(r"\A---\r?\n(.*?)^---\s*$", re.S | re.M)
+
+
+def frontmatter(text: str) -> str:
+    """The YAML block a host parses, or `""` when the file opens with no block at all."""
+    found = FRONTMATTER.match(text)
+    return found.group(1) if found else ""
+
+
+def declares_user_invoked(text: str) -> bool:
+    """Does this SKILL.md's FRONTMATTER set the key — the whole predicate, over a string, so it can
+    be exercised against a body that merely mentions it without building a plugin to hold one."""
+    return bool(USER_INVOKED.search(frontmatter(text)))
+
+
+def is_user_invoked(skill: str) -> bool:
+    plugin = plugin_for(skill)
+    if plugin is None:
+        return False
+    path = plugin / "skills" / skill / "SKILL.md"
+    if not path.is_file():
+        return False
+    return declares_user_invoked(path.read_text(encoding="utf-8"))
+
+
+def case_prompt(skill: str, case: dict) -> str:
+    """The text piped to the runner — the case's prompt, prefixed with `/<skill>` when the host
+    will not let the model reach that skill on its own.
+
+    **This is the fix for a whole class of runs that measured nothing.** Fifteen of the nineteen
+    shipped skills set `disable-model-invocation: true`, and the raw prompt was piped for all of
+    them. The consequence is in the host's own words, captured in the 2026-08-13 transcripts:
+    *"Skill using-the-ledger cannot be used with Skill tool due to disable-model-invocation. Ask
+    the user to run /using-the-ledger themselves."* The agent tried, was refused, and answered the
+    prompt with the skill's prose never in its context — so every assertion about the skill's
+    steering was resolved against a run the skill did not steer. A pass proved the package's tools
+    were discoverable; a fail proved nothing at all.
+
+    The invocation is the one the refusal names, which is this repo's standard of evidence: the
+    consumer said what it wants typed, so that is what gets typed. The remainder rides as the
+    skill's arguments, which is what a user does when they type `/using-the-ledger <task>`.
+
+    A model-invoked skill is left alone deliberately — `codebase-rescue` and its three siblings
+    trigger off their `description`, and typing the name would test a door no cold user uses.
+    """
+    if is_user_invoked(skill):
+        return f"/{skill} {case['prompt']}"
+    return case["prompt"]
+
+
+def seed_files(case: dict, evals_dir: pathlib.Path, workdir: pathlib.Path) -> list[str]:
+    """Copy the case's declared `files` into its workdir. Returns what landed, for the report.
+
+    `files` was in the schema and validated by `--validate` from the beginning, and **nothing ever
+    copied it** — a declared mechanism with no carrier, which is this repo's signature defect
+    sitting inside the harness written to catch it. It is implemented here because two cases need
+    a precondition a fixture cannot carry: a ledger with the pins they record against. That cannot
+    live in `tests/fixtures/slop-repo` for two independent reasons — `ledger.json` is gitignored
+    (it is a runtime artifact and this repo authors none), and case 4 asserts that a **missing**
+    ledger is reported as missing, so a fixture-wide one would break the case beside it.
+
+    An entry is either a path (copied under its own name) or `{"from": …, "to": …}` when the name
+    it must land under differs from the name it can be committed under. Both are validated.
+
+    Both sides go through `confined`, and that is not a second copy of `--validate`'s rule but the
+    only place it binds: `execute_case` never calls `validate`, so an eval file reaching this
+    function has had neither path looked at. `UnconfinedSeed` propagates rather than being caught
+    into a skipped seed — a case whose precondition was silently not placed runs against the bare
+    fixture and reports a verdict about the wrong thing, which is the failure the whole `files`
+    mechanism was implemented to end.
+    """
+    landed = []
+    for entry in case.get("files", []):
+        source = entry["from"] if isinstance(entry, dict) else entry
+        target = entry.get("to", source) if isinstance(entry, dict) else entry
+        destination = confined(workdir, target, "files `to`")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(confined(evals_dir, source, "files `from`"), destination)
+        landed.append(target)
+    return landed
+
+
 def execute_case(executable: str, skill: str, plugins: list[pathlib.Path], case: dict,
-                 fixture: pathlib.Path | None, workroot: pathlib.Path, args) -> Run:
+                 fixture: pathlib.Path | None, workroot: pathlib.Path, args,
+                 evals_dir: pathlib.Path | None = None) -> Run:
     """One case, in its own copy of the fixture (or its own empty directory when none is declared).
 
     The copy is not hygiene, it is the measurement: the checks read the `ledger.json` the run
@@ -748,9 +909,12 @@ def execute_case(executable: str, skill: str, plugins: list[pathlib.Path], case:
         workdir.mkdir(parents=True)
     else:
         shutil.copytree(fixture, workdir)
+    if evals_dir is not None:
+        seed_files(case, evals_dir, workdir)
     cmd = build_command(executable, plugins, args)
     started = time.monotonic()
-    proc = subprocess.run(cmd, input=case["prompt"], cwd=str(workdir), capture_output=True,
+    proc = subprocess.run(cmd, input=case_prompt(skill, case), cwd=str(workdir),
+                          capture_output=True,
                           text=True, encoding="utf-8", errors="replace", timeout=args.timeout)
     wall = time.monotonic() - started
     events, result = [], {}
@@ -842,7 +1006,7 @@ def execute(paths: list[pathlib.Path], fixture_override: str, report_path: pathl
                   f"fixture {fixture.name if fixture else '(empty dir)'})…", flush=True)
             try:
                 run_obj = execute_case(args.executable, skill, plugin_set, case, fixture,
-                                       workroot, args)
+                                       workroot, args, evals_dir=path.parent)
             except Exception as exc:
                 print(f"    ERROR {exc}")
                 results.append({"id": case["id"], "error": str(exc)})

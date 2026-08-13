@@ -102,6 +102,21 @@ class TestWritingTools(unittest.TestCase):
         self.assertEqual(drift["findings"], [],
                          f"generated layers must round-trip to zero drift, got: {drift['findings']}")
 
+    def test_contract_diff_errors_over_a_layer_that_read_nothing(self):
+        """The tool's own description calls an empty `findings` the evidence of zero drift, so the
+        one thing it may never do is answer `{"findings": []}` over a layer the extractor could not
+        read. The refusal used to cover the carrier alone, and this is the door the playbooks reach
+        for first — `reconcile_layers` refused the same file all along."""
+        import shapes
+        unreadable = os.path.join(self.tmp, "models.py")
+        with open(unreadable, "w", encoding="utf-8") as fh:
+            fh.write("# a models.py in an idiom the extractor does not read\nX = 1\n")
+        with self.assertRaises(shapes.EmptyExtraction) as caught:
+            tools.contract_diff(os.path.join(FIXTURES, "step0", "contract.json"),
+                                sqlalchemy=unreadable)
+        self.assertIn("sqlalchemy", str(caught.exception))
+        self.assertIn(unreadable, str(caught.exception))
+
     def test_generate_layers_can_restrict_to_a_subset(self):
         contract = os.path.join(FIXTURES, "step0", "contract.json")
         gen = tools.generate_layers(contract, os.path.join(self.tmp, "sub"), layers=["ddl"])

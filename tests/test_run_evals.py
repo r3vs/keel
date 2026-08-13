@@ -16,13 +16,16 @@ Two things are tested here and they are not the same thing:
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import pathlib
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("run_evals", ROOT / "scripts" / "run_evals.py")
@@ -267,6 +270,187 @@ class TestARelativeLedgerBelongsToTheRunAndNotToTheHarness(unittest.TestCase):
                               capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0,
                          f"{run_evals.DEFAULT_REPORT!r} is not gitignored — see .gitignore")
+
+
+class TestARunOfAUserInvokedSkillHasToLoadIt(unittest.TestCase):
+    """The 2026-08-13 live run measured an agent that never loaded the skill under test.
+
+    All four transcripts carry the host's own refusal — *"Skill using-the-ledger cannot be used with
+    Skill tool due to disable-model-invocation. Ask the user to run /using-the-ledger themselves"* —
+    because `execute_case` piped the bare prompt and **fifteen of the nineteen shipped skills** are
+    user-invoked. Every assertion about the skill's steering was then resolved against a run the
+    skill did not steer: a pass proved the MCP tools were discoverable, a fail proved nothing.
+
+    So the prompt now carries the invocation the refusal itself names. Asserted here at the level
+    this machine can reach — the string that is piped — because the level above it needs a
+    credentialed runner. `docs/measurements.md` carries that residual explicitly rather than
+    letting a green suite imply an observed run.
+    """
+
+    def test_a_user_invoked_skill_is_typed_by_name(self):
+        self.assertTrue(run_evals.is_user_invoked("using-the-ledger"),
+                        "the built SKILL.md no longer sets disable-model-invocation")
+        prompt = run_evals.case_prompt("using-the-ledger", {"prompt": "what is open?"})
+        self.assertEqual(prompt, "/using-the-ledger what is open?")
+
+    def test_a_model_invoked_skill_is_left_to_fire_off_its_description(self):
+        """`codebase-rescue` triggers on a situation nobody names, so typing the name would test a
+        door no cold user uses — the trigger IS what the case measures."""
+        self.assertFalse(run_evals.is_user_invoked("codebase-rescue"))
+        self.assertEqual(run_evals.case_prompt("codebase-rescue", {"prompt": "this repo is a mess"}),
+                         "this repo is a mess")
+
+    def test_the_answer_is_read_off_the_built_skill_and_not_a_list_here(self):
+        """A second copy of *which skills are user-invoked* is the drift every gate here exists to
+        catch, so the predicate is checked against the frontmatter rather than against a roster."""
+        source = (ROOT / "src" / "skills" / "using-the-ledger" / "SKILL.md").read_text("utf-8")
+        self.assertEqual(run_evals.is_user_invoked("using-the-ledger"),
+                         run_evals.declares_user_invoked(source))
+
+    def test_the_key_is_read_in_the_frontmatter_and_nowhere_else(self):
+        """The host parses the YAML block; a body is prose to it. This package's own bodies quote
+        the key — `which-skill` tabulates which skills set it, `writing-skills` documents setting
+        it — so a whole-file match would classify a MODEL-invoked skill as user-invoked and make the
+        runner type `/codebase-rescue`, testing a door no cold user uses on the one skill whose
+        entire case is the cold trigger."""
+        body_only = (
+            "---\nname: codebase-rescue\ndescription: rescue a misaligned codebase\n---\n\n"
+            "# Codebase Rescue\n\nFifteen of the nineteen shipped skills set\n"
+            "disable-model-invocation: true\nand are reached by typing the name.\n"
+        )
+        self.assertFalse(run_evals.declares_user_invoked(body_only),
+                         "the key was matched in the body — this skill fires off its description")
+        in_frontmatter = (
+            "---\nname: using-the-ledger\ndisable-model-invocation: true\n---\n\n# body\n"
+        )
+        self.assertTrue(run_evals.declares_user_invoked(in_frontmatter))
+        self.assertFalse(run_evals.declares_user_invoked("disable-model-invocation: true\n"),
+                         "a file with no frontmatter block at all declares nothing")
+
+
+class TestASeedNobodyCopiesIsACaseWithNoPrecondition(unittest.TestCase):
+    """`files` was in the eval schema and validated by `--validate` from the beginning, and nothing
+    ever copied it — a declared mechanism with no carrier, inside the harness written to catch that.
+
+    It is load-bearing now: two relay cases record against pins they did not create, and the seed
+    cannot live in the shared fixture for two independent reasons — `ledger.json` is a gitignored
+    runtime artifact, and case 4 asserts that a MISSING ledger is reported as missing.
+    """
+
+    def test_a_seed_lands_under_the_name_the_case_declared(self):
+        evals_dir = pathlib.Path(tempfile.mkdtemp())
+        (evals_dir / "seeds").mkdir()
+        (evals_dir / "seeds" / "fork.json").write_text('{"version": "0.31", "pins": []}', "utf-8")
+        workdir = pathlib.Path(tempfile.mkdtemp())
+        landed = run_evals.seed_files(
+            {"files": [{"from": "seeds/fork.json", "to": "ledger.json"}]}, evals_dir, workdir)
+        self.assertEqual(landed, ["ledger.json"])
+        self.assertTrue((workdir / "ledger.json").is_file())
+
+    def test_a_plain_path_keeps_its_own_name(self):
+        evals_dir = pathlib.Path(tempfile.mkdtemp())
+        (evals_dir / "notes.md").write_text("x", encoding="utf-8")
+        workdir = pathlib.Path(tempfile.mkdtemp())
+        run_evals.seed_files({"files": ["notes.md"]}, evals_dir, workdir)
+        self.assertTrue((workdir / "notes.md").is_file())
+
+    def test_every_declared_seed_exists_and_parses_as_a_ledger(self):
+        """`--validate` proves the file is there. This proves it is the thing the case needs: a
+        seed that does not parse is a case that runs against a ledger no tool can open, and the
+        failure would read as an adherence miss."""
+        for path in run_evals.find_eval_files():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            for case in data.get("evals", []):
+                for entry in case.get("files", []):
+                    if not (isinstance(entry, dict) and entry.get("to") == "ledger.json"):
+                        continue
+                    with self.subTest(skill=path.parent.parent.name, case=case["id"]):
+                        seed = json.loads((path.parent / entry["from"]).read_text("utf-8"))
+                        self.assertTrue(seed.get("pins"),
+                                        "a seeded ledger with no pins seeds nothing")
+
+
+class TestASeedNeitherReadsNorWritesOutsideItsOwnTree(unittest.TestCase):
+    """An eval file is DATA — this repo's corpus today, a contributor's PR tomorrow — and
+    `--execute` turns it into file copies on the operator's behalf.
+
+    Neither side was confined. `pathlib`'s `/` **discards the left operand** when the right is
+    absolute, so `evals_dir / "/etc/id_rsa"` is `/etc/id_rsa` and the seed read whatever the
+    operator could read; `to` was never validated at all, so `../../.ssh/authorized_keys` wrote
+    wherever they could write. Both are checked in BOTH places on purpose: `execute_case` does not
+    call `validate`, so a rule that lived only in the gate governed nothing at execution — which is
+    the same claiming-vs-doing shape as the `files` mechanism that was declared and never carried.
+    """
+
+    ESCAPES = ("../outside.json", "seeds/../../outside.json", "")
+
+    def setUp(self):
+        self.evals_dir = pathlib.Path(tempfile.mkdtemp())
+        self.workdir = pathlib.Path(tempfile.mkdtemp())
+        (self.evals_dir / "seeds").mkdir()
+        (self.evals_dir / "seeds" / "fork.json").write_text('{"pins": [1]}', encoding="utf-8")
+        self.outside = pathlib.Path(tempfile.mkdtemp()) / "outside.json"
+        self.outside.write_text('{"pins": []}', encoding="utf-8")
+
+    def test_seed_files_refuses_an_absolute_from(self):
+        with self.assertRaises(run_evals.UnconfinedSeed):
+            run_evals.seed_files({"files": [{"from": str(self.outside), "to": "ledger.json"}]},
+                                 self.evals_dir, self.workdir)
+        self.assertFalse((self.workdir / "ledger.json").exists())
+
+    def test_seed_files_refuses_an_absolute_to(self):
+        target = self.workdir.parent / "escaped.json"
+        with self.assertRaises(run_evals.UnconfinedSeed):
+            run_evals.seed_files({"files": [{"from": "seeds/fork.json", "to": str(target)}]},
+                                 self.evals_dir, self.workdir)
+        self.assertFalse(target.exists(), "the copy happened before the path was looked at")
+
+    def test_seed_files_refuses_traversal_on_either_side(self):
+        for escape in self.ESCAPES:
+            with self.subTest(side="from", path=escape), \
+                    self.assertRaises(run_evals.UnconfinedSeed):
+                run_evals.seed_files({"files": [{"from": escape, "to": "ledger.json"}]},
+                                     self.evals_dir, self.workdir)
+            with self.subTest(side="to", path=escape), \
+                    self.assertRaises(run_evals.UnconfinedSeed):
+                run_evals.seed_files({"files": [{"from": "seeds/fork.json", "to": escape}]},
+                                     self.evals_dir, self.workdir)
+
+    def test_a_windows_absolute_path_is_refused_on_a_posix_run_too(self):
+        """`PurePosixPath("C:\\\\x").is_absolute()` is False, so a POSIX-only test would pass the
+        string through to a join that discards the base the moment the same corpus is validated on
+        Windows. The corpus is portable; the refusal has to be."""
+        with self.assertRaises(run_evals.UnconfinedSeed):
+            run_evals.confined(self.evals_dir, r"C:\Windows\win.ini", "files `from`")
+
+    def test_a_legal_relative_seed_still_lands(self):
+        """The point is confinement, not refusal: the shipped corpus's own shape must survive."""
+        landed = run_evals.seed_files(
+            {"files": [{"from": "seeds/fork.json", "to": "nested/ledger.json"}]},
+            self.evals_dir, self.workdir)
+        self.assertEqual(landed, ["nested/ledger.json"])
+        self.assertTrue((self.workdir / "nested" / "ledger.json").is_file())
+
+    def test_validate_reports_an_unconfined_seed_rather_than_letting_execute_meet_it(self):
+        """`--validate` is the gate a PR passes, so an escaping path has to be a `problem` line and
+        not an exception out of the linter."""
+        evals = self.evals_dir / "skill" / "evals"
+        evals.mkdir(parents=True)
+        (evals / "evals.json").write_text(json.dumps({
+            "skill_name": "skill",
+            "evals": [{"id": 1, "prompt": "p", "expected_output": "e", "assertions": ["a"],
+                       "files": [{"from": str(self.outside), "to": "../escaped.json"}]}],
+        }), encoding="utf-8")
+        buffer = io.StringIO()
+        # `ROOT` only labels the problem lines, and this corpus is deliberately outside the repo —
+        # the point is a contributor's eval file, not one of ours.
+        with contextlib.redirect_stdout(buffer), \
+                unittest.mock.patch.object(run_evals, "ROOT", self.evals_dir):
+            code = run_evals.validate([evals / "evals.json"])
+        self.assertEqual(code, run_evals.EXIT_FAILED)
+        report = buffer.getvalue()
+        self.assertIn("files `from`", report)
+        self.assertIn("files `to`", report)
 
 
 if __name__ == "__main__":

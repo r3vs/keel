@@ -178,8 +178,8 @@ docstring is not the payload**: FastMCP splits a tool's docstring, sending the p
 as `description` and moving each `Args:` entry into the matching property's `description` inside
 `inputSchema` — checked on the wire against `ledger_summary`, whose `ledger: Path to ledger.json.`
 arrives inside the schema and not in the description. So counting docstrings sees about half the
-truth: ~51 k characters of docstring against ~98 k on the wire. And **the schema is most of the
-cost**: median description 372 characters inside a median tool object of ~1,410.
+truth: ~54 k characters of docstring against ~98 k on the wire. And **the schema is most of the
+cost**: median description 410 characters inside a median tool object of ~1,410.
 
 **Per host, and only the first row is a verified mechanism:**
 
@@ -259,7 +259,8 @@ its consumer. **No host's `initialize` was captured on the wire**, so this is me
 | **Pi**, through our own bridge | **no** — the bridge sends `capabilities: {}` | not rendered |
 
 **What our own call puts on the wire** — the link both positive rows depend on, and the one the
-audits left open. Verified here by execution, not reading: `server.py:233` calls
+audits left open. Verified here by execution, not reading: `server.py::_ask` — the one function
+every elicitation on this server now goes through — calls
 `ctx.elicit(message, choices)` with a `list[str]`; under the pinned `fastmcp==3.4.4`,
 `fastmcp/server/elicitation.py::_parse_list_syntax` takes the list branch and returns an
 `ElicitConfig` whose `.schema` is
@@ -323,12 +324,15 @@ tool's return value.
   extra key from a future FastMCP silently degrades the rich Select to nothing — version coupling,
   not stability. And `exec/src/lib.rs::canceled_mcp_server_elicitation_response` makes headless
   `codex exec` answer `Cancel` while still declaring the capability: `_client_can_elicit` returns
-  True with no human present, `ctx.elicit` yields a non-`AcceptedElicitation`, and `server.py:237`
+  True with no human present, `ctx.elicit` yields a non-`AcceptedElicitation`, and
+  `ledger_record_decision`'s `not isinstance(result, AcceptedElicitation)` branch
   raises rather than writing one. That is the correct refusal to fabricate, but it means a
   non-interactive Codex run **errors instead of degrading to the transcribed rung** — a real
   behaviour, not detectable from the capability, and a decision to make deliberately if we want it
-  to relay. **Read at `main` with no release tag pinned**, so treat the line numbers as a moving
-  target and the facts as of the audit date.
+  to relay. This is deliberately **not** what the `_ask` backstop changed: a cancel is a *value*, so
+  it still hard-refuses; only a door that never opened degrades. **Read at `main` with no release tag
+  pinned**, so treat the facts as of the audit date — and note that both citations here were line
+  numbers until the code moved under them, which is why they are symbols now.
 - **opencode — does not declare it, and would not render it.** `packages/opencode/src/mcp/index.ts::
   createClient()` is the sole construction site for real connections; its `CLIENT_OPTIONS.capabilities`
   contains `roots: {}` only, with `// elicitation: {},` commented out beside an issue link. That value
@@ -492,6 +496,14 @@ marketplace (`/plugin marketplace
 add r3vs/keel`), where the namespace protects both skills; the directory argument exists for the two
 hosts with no plugin format, and pointing it at `~/.claude/skills` is a supported-looking way to get
 an unsupported result.
+
+**The script now says so itself, and refuses by default.** Documenting a footgun the script hands
+over on request was half a fix: the person about to fire it is at a terminal, not in this file. Any
+target with a `.claude` component now prints the consequence above and stops — interactively it asks
+for the word `override`, and with no tty on stdin it exits 3 having placed nothing, so an unattended
+run cannot take the branch nobody would be there to read. There are exactly two ways through and
+both require somebody to mean it: `--claude-personal` up front, or typing `override` at the prompt
+— which only exists when a person is there to type it. Nothing gets through by scrolling past.
 
 `tests/test_name_collision.py` holds this shut, and its subject is the class rather than the
 instance: the colliding set is **derived** — `build.shipped_skills()` intersected with Claude Code's

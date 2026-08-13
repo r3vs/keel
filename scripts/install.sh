@@ -18,15 +18,80 @@
 # it. Verified 2026-07-17, not assumed: neither opencode nor Pi resolves a skill's relative paths
 # against the skill directory (both resolve against the USER'S project), so a skill reaching outside
 # itself would read something in their repo, or nothing at all.
+#
+# Usage:  bash scripts/install.sh [target-skills-dir] [--claude-personal]
+# The flag exists for exactly one case and is refused everywhere else — see the guard below.
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 core="$root/plugins/keel-core/adapters"
 
-skills_dir="${1:-$HOME/.agents/skills}"     # opencode + Pi both auto-discover this
+claude_personal=0
+skills_dir=""
+for arg in "$@"; do
+  case "$arg" in
+    --claude-personal) claude_personal=1 ;;
+    -*) echo "! unknown option: $arg" >&2; exit 2 ;;
+    *)
+      if [ -n "$skills_dir" ]; then
+        echo "! more than one target directory given: $skills_dir and $arg" >&2
+        exit 2
+      fi
+      skills_dir="$arg"
+      ;;
+  esac
+done
+skills_dir="${skills_dir:-$HOME/.agents/skills}"     # opencode + Pi both auto-discover this
 oc_dir="${OPENCODE_DIR:-$HOME/.config/opencode}"
 pi_dir="${PI_DIR:-$HOME/.pi/agent}"
 codex_dir="${CODEX_DIR:-$HOME/.codex}"
+
+# A target under .claude is not an install — it is an OVERRIDE, and it is the one consequence this
+# script can produce that no host reports. Claude Code: *"A skill at any of these levels also
+# overrides a bundled skill with the same name… a `code-review` skill in your project's
+# `.claude/skills/` replaces the bundled `/code-review`"* (code.claude.com/docs/en/skills). We ship
+# a skill called `code-review`, so pointing this script at ~/.claude/skills silently replaces the
+# host's own in every project that user opens — and the plugin namespace, which handles the
+# collision everywhere else, does not reach that level. `docs/packaging.md` has documented this for
+# a while; documenting a footgun the script hands over on request is only half the fix, so the
+# script now says it too, at the moment somebody is about to fire it.
+#
+# The default is refusal, not a warning that scrolls past: a `-p` or a typo'd path lands here, and
+# an unattended run has nobody to read the warning. `--claude-personal` is the way to mean it.
+case "/$skills_dir/" in
+  */.claude/*) claude_level=1 ;;
+  *)           claude_level=0 ;;
+esac
+if [ "$claude_level" -eq 1 ] && [ "$claude_personal" -eq 0 ]; then
+  cat >&2 <<WARN
+! $skills_dir is under .claude — that is an override, not an install.
+
+  Every skill here lands at Claude Code's personal/project level, where ours REPLACES the host's
+  bundled skill of the same name in every project you open. We ship 'code-review'; Claude Code
+  bundles one too. Nothing will tell you which one you got.
+
+  Claude Code's supported path is the marketplace, where the plugin namespace protects both:
+      /plugin marketplace add r3vs/keel
+      /plugin install codebase-rescue@keel
+
+  The directory argument exists for opencode and Pi, which have no plugin format:
+      bash scripts/install.sh                      # ~/.agents/skills — the default, and safe
+
+  If you want the override anyway, say so:
+      bash scripts/install.sh $skills_dir --claude-personal
+WARN
+  if [ -t 0 ]; then
+    printf 'Type "override" to continue: ' >&2
+    read -r reply
+    if [ "$reply" != "override" ]; then
+      echo "! stopped — nothing was placed." >&2
+      exit 3
+    fi
+  else
+    echo "! non-interactive, so refusing by default — nothing was placed." >&2
+    exit 3
+  fi
+fi
 
 if [ ! -d "$root/plugins" ]; then
   echo "! plugins/ not built — run: python scripts/build.py" >&2
