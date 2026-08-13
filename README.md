@@ -11,7 +11,42 @@
 
 **A boat without a keel doesn't sink. It just can't hold a line.**
 
+Two artifacts, diffed — everything else in this README is a consequence of one line:
+
+### `gap = diff(to-be, as-is)`
+
+**as-is** is extracted from your code, never guessed. **to-be** is elected by *you* in an interview,
+never reverse-engineered from the code — because code that is wrong describes itself perfectly.
+
 </div>
+
+---
+
+## Quickstart — 5 minutes
+
+**1. Install** (one line; `keel-core` follows automatically, bringing the MCP server, the agent
+roster and the enforcement hooks):
+
+| Host | Install |
+|---|---|
+| **Claude Code** · **Codex** | `/plugin marketplace add r3vs/keel` — then `/plugin install codebase-rescue@keel`. On Codex the same marketplace is `codex plugin marketplace add r3vs/keel`, and you add `keel-core` explicitly (Codex has no dependency resolution). |
+| **opencode** · **Pi** | `git clone https://github.com/r3vs/keel && cd keel && python scripts/build.py && bash scripts/install.sh` |
+
+**Prerequisite:** [`uv`](https://docs.astral.sh/uv/) on `PATH` — the MCP server is a PEP-723 script.
+No `pip install`, no virtualenv, no CLI.
+
+**2. Open *your* project** — not this repo — and type one of these. Each skill family has exactly one
+first command, and none of them is "start coding":
+
+| You have | Say this | What happens first |
+|---|---|---|
+| a codebase that already drifted | `this codebase is a mess — the frontend, backend and DB don't agree. rescue it.` | Phase 1 comprehends and pins; nothing is edited until you elect |
+| an empty repo | `forge a new project: <one paragraph about what it should do>` | the interview elects the to-be *before* any code exists |
+| no idea which of the 19 skills applies | `/which-skill <what you're trying to do>` | the map — the one skill you invoke by name |
+| an existing repo you just need to *understand* | `/rescue understand` | comprehension as the deliverable, no interview |
+
+**3. Don't skip Phase 1.** That is the whole discipline: the interview is where *you* elect the
+truth, and no agent may commit a decision you didn't make.
 
 ---
 
@@ -66,24 +101,6 @@ Your agent calls the `contract_diff` MCP tool. It gets back facts, not prose:
 
 Drift lives **between** files, in the joints. Every tool you own works inside one.
 
-## 60 seconds
-
-**Claude Code**
-```bash
-/plugin marketplace add r3vs/keel
-```
-```bash
-/plugin install codebase-rescue@keel
-```
-```text
-> this codebase is a mess — the frontend, backend and DB don't agree. rescue it.
-```
-
-That's it. `keel-core` follows automatically, bringing the MCP server, the agent roster and the
-enforcement hooks. Other hosts (Codex, opencode, Pi) → [Install](#install).
-
----
-
 ## What you actually install
 
 Four plugins. **Each has its own README with the full feature reference** — this page is the map,
@@ -99,15 +116,10 @@ those are the manuals.
 **Nothing external, ever.** A CI gate enforces that no source may point outside this repo — you
 install Keel, and you have everything a programmer and their coding agent need.
 
-## The one idea
+## The one idea, run in both directions
 
-Two artifacts, diffed:
-
-- **as-is** — what the code *actually* is. Extracted, never guessed.
-- **to-be** — what it *should* be. Derived from decisions **you elect in an interview**, never
-  reverse-engineered from the code. (Code that's wrong describes itself perfectly.)
-
-Everything else is a delta: **`gap = diff(to-be, as-is)`**.
+**`gap = diff(to-be, as-is)`** — the line from the top of this page, and the only one worth
+memorising. Both skills compute it; they differ only in which side already exists.
 
 ```mermaid
 flowchart LR
@@ -315,15 +327,12 @@ find.
 
 ## Install
 
-| Host | Command |
-|---|---|
-| **Claude Code** | `/plugin marketplace add r3vs/keel` → `/plugin install codebase-rescue@keel` |
-| **Codex** | `codex plugin marketplace add r3vs/keel` → `codex plugin install codebase-rescue` (add `keel-core` too — Codex has no dependency resolution) |
-| **opencode / Pi** | `git clone https://github.com/r3vs/keel && cd keel && python scripts/build.py && bash scripts/install.sh` |
+The commands are in [Quickstart](#quickstart--5-minutes) — one copy, at the top, so this page cannot
+drift against itself. What belongs here is the part the commands don't show.
 
-**Prerequisite:** [`uv`](https://docs.astral.sh/uv/) on `PATH` — the MCP server is a PEP-723 script.
-No `pip install`, no virtualenv, no CLI. (`run-workflow` additionally wants Node; without it the
-skill degrades rather than failing.)
+**Prerequisites:** [`uv`](https://docs.astral.sh/uv/) on `PATH`, and nothing else. `run-workflow`
+additionally wants Node — a prerequisite **scoped to that one skill**, not to the package; without
+Node it degrades to sequential execution rather than failing.
 
 **MCP is part of the install on every host that can take it** — you never hand-copy a server block.
 Claude Code and Codex read the plugin's own `.mcp.json`; opencode gets the same servers from a
