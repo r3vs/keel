@@ -1470,12 +1470,12 @@ async def contract_diff(
 
     Deterministic and tech-stack agnostic: each layer is read only through its own type system,
     never guessed from names or comments. Returns `{"findings": [...]}`; an empty `findings` is
-    zero drift, and IS the evidence.
+    zero drift, and IS the evidence — so a carrier with no entities ERRORS instead.
 
     Args:
         contract: Path to the contract carrier (the source of truth for correspondence).
         ddl: Optional path to Postgres DDL / migration SQL.
-        sqlalchemy: Optional path to SQLAlchemy 2 models.
+        sqlalchemy: Optional path to SQLAlchemy models (2.0 `mapped_column` or 1.x `Column`).
         pydantic: Optional path to Pydantic v2 schemas.
         typescript: Optional path to TypeScript interfaces.
         drizzle: Optional path to a Drizzle schema.
@@ -1516,6 +1516,13 @@ def reconcile_layers(layer_a: str, path_a: str, layer_b: str, path_b: str,
     the honest answer, not a result: the correspondence is a fact a carrier declares, so reach for
     `contract_diff` instead of reading this output as drift.
 
+    **It ERRORS instead of reporting no findings when a side extracted zero entities**, naming that
+    side and what its extractor needed to see: an empty diff over an empty parse is not a clean bill
+    of health. Read that error as a fact about the file you passed, not about the tool.
+
+    Findings may carry `structural_tier`, `relation_pair` or `entity_key_source` — classification
+    markers to cluster on when presenting. They never change a kind and never suppress a finding.
+
     Args:
         layer_a: Layer kind — ddl | sqlalchemy | pydantic | typescript | drizzle | prisma | django | graphql.
         path_a: Path to that layer's source file.
@@ -1540,6 +1547,8 @@ def propose_correspondence(layer_a: str, path_a: str, layer_b: str, path_b: str,
     the ledger as drift. Put them to the human, then pass what they elect back as
     `reconcile_layers(correspondence=...)`, where the pairing becomes a declared fact and the diff
     is deterministic again.
+
+    It ERRORS when a side extracted zero entities — no candidates out of nothing.
 
     Args:
         layer_a: Layer kind — ddl | sqlalchemy | pydantic | typescript | drizzle | prisma | django | graphql.
