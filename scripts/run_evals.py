@@ -73,6 +73,50 @@ MCP_PREFIX = r"mcp__(?:plugin_[\w-]+_)?keel__"
 #: credentials leaves one, and `git add -A` on a release commit would carry it in.
 DEFAULT_REPORT = "eval-report.json"
 
+
+class UnconfinedSeed(ValueError):
+    """A `files` entry naming a path outside the directory the harness owns on that side."""
+
+
+#: The stand-in `--validate` checks a `to` against. The real workdir is minted per case by
+#: `execute_case` and does not exist when a PR is validated, so the containment `--validate` can
+#: decide is the one that depends on the path's SHAPE and not on the tree — which is every case
+#: `confined` refuses, since absoluteness and `..` are both properties of the string.
+NOTIONAL_WORKDIR = ROOT / ".eval-workdir"
+
+
+def confined(base: pathlib.Path, candidate: object, what: str) -> pathlib.Path:
+    """`base / candidate`, resolved — and only if it is still under `base`.
+
+    An eval file is DATA. This repo's corpus today, a contributor's PR tomorrow, and `--execute`
+    reads it and then copies files on the operator's behalf. Neither side was looked at: a `from`
+    of `/etc/id_rsa` read whatever the operator could read, because `pathlib`'s `/` **discards the
+    left operand** when the right is absolute, and a `to` of `../../.ssh/authorized_keys` wrote
+    wherever they could write, because `to` was never validated at all. Confinement is checked here
+    rather than at each site so `--validate` (the gate a PR passes) and `seed_files` (the copy a run
+    performs) cannot disagree about what a legal seed is — `execute_case` does not call `validate`,
+    so a rule enforced only there governs nothing at execution.
+
+    Absolute is refused BEFORE resolution and in both syntaxes, because the interpreter that opens
+    the file is not always the one that wrote it: `PurePosixPath("C:\\\\x").is_absolute()` is False,
+    so a POSIX-only test passes a Windows path through to a `pathlib` join that then discards the
+    base on Windows. Traversal is refused AFTER resolution, which also settles a symlink pointing
+    out of the tree — `..` is the spelling, escaping is the property.
+    """
+    if not isinstance(candidate, str) or not candidate:
+        raise UnconfinedSeed(f"{what} {candidate!r} names no path")
+    if pathlib.PurePosixPath(candidate).is_absolute() or \
+            pathlib.PureWindowsPath(candidate).is_absolute():
+        raise UnconfinedSeed(f"{what} {candidate!r} is absolute; a seed path is relative to "
+                             f"{base.name!r} and the harness copies nothing from outside it")
+    root = base.resolve()
+    resolved = (root / candidate).resolve()
+    if resolved == root or not resolved.is_relative_to(root):
+        raise UnconfinedSeed(f"{what} {candidate!r} escapes {base.name!r} (resolves to "
+                             f"{resolved}); a seed neither reads nor writes outside its own tree")
+    return resolved
+
+
 JUDGE_PROMPT = """You are a strict eval judge. Below is the full transcript of an agent \
 working on a task, followed by ONE assertion about the required behavior.
 
@@ -515,12 +559,26 @@ def validate(paths: list[pathlib.Path]) -> int:
             # and seeding one is the only way a case can record against pins it did not create.
             # Both forms are copied by `seed_files`; both are checked here, because a seed that
             # does not exist is a case that silently runs against the bare fixture.
+            #
+            # Both SIDES are checked, through the same `confined` the copy itself calls. A seed is
+            # a path an eval file names and the harness then acts on, so `from` may not read outside
+            # the eval directory and `to` may not write outside the workdir — and the workdir does
+            # not exist at validate time, so the containment is decided on the shape of the path
+            # rather than on the tree it will land in.
             for entry in case.get("files", []):
                 source = entry.get("from") if isinstance(entry, dict) else entry
-                if not isinstance(source, str) or not source:
-                    problems.append(f"{label}: files entry {entry!r} names no source")
-                elif not (path.parent / source).exists():
-                    problems.append(f"{label}: listed file {source!r} does not exist")
+                target = entry.get("to", source) if isinstance(entry, dict) else entry
+                try:
+                    resolved = confined(path.parent, source, "files `from`")
+                except UnconfinedSeed as refusal:
+                    problems.append(f"{label}: {refusal}")
+                else:
+                    if not resolved.exists():
+                        problems.append(f"{label}: listed file {source!r} does not exist")
+                try:
+                    confined(NOTIONAL_WORKDIR, target, "files `to`")
+                except UnconfinedSeed as refusal:
+                    problems.append(f"{label}: {refusal}")
             for assertion in case.get("assertions", []):
                 corpus.add((skill_dir, cid, assertion))
         total_cases += len(cases)
@@ -745,13 +803,36 @@ def build_command(executable: str, plugins: list[pathlib.Path], args) -> list[st
 #: second copy of it is the drift every gate in this repo exists to catch.
 USER_INVOKED = re.compile(r"^disable-model-invocation:\s*true\s*$", re.M)
 
+#: The leading `---`-fenced YAML block, and nothing after it. The host reads the key there and
+#: nowhere else, so this predicate must too: `SKILL.md` bodies in this package quote the key in
+#: prose — `which-skill` tabulates it, `writing-skills` documents writing it — and a body match
+#: would tell the runner to type `/codebase-rescue`, i.e. to test a door no cold user uses on the
+#: one skill whose whole case is the cold trigger. A frontmatter block is the file's FIRST line
+#: `---` through the next `---` on its own line; a file with no such block has no frontmatter at
+#: all, which is a different fact from "the key is absent" only to a human.
+FRONTMATTER = re.compile(r"\A---\r?\n(.*?)^---\s*$", re.S | re.M)
+
+
+def frontmatter(text: str) -> str:
+    """The YAML block a host parses, or `""` when the file opens with no block at all."""
+    found = FRONTMATTER.match(text)
+    return found.group(1) if found else ""
+
+
+def declares_user_invoked(text: str) -> bool:
+    """Does this SKILL.md's FRONTMATTER set the key — the whole predicate, over a string, so it can
+    be exercised against a body that merely mentions it without building a plugin to hold one."""
+    return bool(USER_INVOKED.search(frontmatter(text)))
+
 
 def is_user_invoked(skill: str) -> bool:
     plugin = plugin_for(skill)
     if plugin is None:
         return False
     path = plugin / "skills" / skill / "SKILL.md"
-    return path.is_file() and bool(USER_INVOKED.search(path.read_text(encoding="utf-8")))
+    if not path.is_file():
+        return False
+    return declares_user_invoked(path.read_text(encoding="utf-8"))
 
 
 def case_prompt(skill: str, case: dict) -> str:
@@ -792,14 +873,21 @@ def seed_files(case: dict, evals_dir: pathlib.Path, workdir: pathlib.Path) -> li
 
     An entry is either a path (copied under its own name) or `{"from": …, "to": …}` when the name
     it must land under differs from the name it can be committed under. Both are validated.
+
+    Both sides go through `confined`, and that is not a second copy of `--validate`'s rule but the
+    only place it binds: `execute_case` never calls `validate`, so an eval file reaching this
+    function has had neither path looked at. `UnconfinedSeed` propagates rather than being caught
+    into a skipped seed — a case whose precondition was silently not placed runs against the bare
+    fixture and reports a verdict about the wrong thing, which is the failure the whole `files`
+    mechanism was implemented to end.
     """
     landed = []
     for entry in case.get("files", []):
         source = entry["from"] if isinstance(entry, dict) else entry
         target = entry.get("to", source) if isinstance(entry, dict) else entry
-        destination = workdir / target
+        destination = confined(workdir, target, "files `to`")
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(evals_dir / source, destination)
+        shutil.copyfile(confined(evals_dir, source, "files `from`"), destination)
         landed.append(target)
     return landed
 

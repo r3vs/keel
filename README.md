@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-1236%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-1246%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -354,7 +354,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 17 composable ones, with the runtime **largely
-implemented**: 34 modules, 69 MCP tools, **1236 tests green in CI**, 4 hosts.
+implemented**: 34 modules, 69 MCP tools, **1246 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were
@@ -363,7 +363,13 @@ correspondence on that repo → standalone extraction is Plan A).
 
 What is **not yet**: the Go/Java/Rust/C# stacks are fixture-verified only — do not trust them on a
 real repo yet. The per-item TDD loop is agent-orchestrated at runtime rather than deterministic. The
-evals ship with assertions but have not been executed end-to-end against a live agent runner.
+evals have now been executed end-to-end against a live agent runner — once, on 2026-08-13, for
+**one skill of nineteen**, four cases, **1 PASS / 3 FAIL / 15 manual** — and the run's own top
+finding was that the harness never loaded the skill it was measuring. Three limits survive it: the
+ledger write tools were never granted, so **no live agent has yet written a `ledger.json` this
+harness could read** and the `pin(…)` / `log_entry(…)` predicates remain proven only against
+synthetic ledgers; n=1 per case against a non-deterministic agent; and the fixes those FAILs bought
+have not themselves been re-run. `docs/measurements.md` carries the whole record, FAIL by FAIL.
 
 If that list looks unusually blunt for a README, that's deliberate. This repo's signature bug class
 is **claiming-vs-doing** — a document asserting a mechanism that doesn't exist. Five instances were

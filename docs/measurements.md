@@ -56,7 +56,7 @@ demo.
 
 ### Comprehension (`understand` mode)
 
-```
+```bash
 python scripts/measure_public.py --repo <keystone> --label keystonejs/keystone --comprehension
 ```
 
@@ -81,7 +81,7 @@ came out at 13 steps.
 
 ### Cross-layer reconciliation (Prisma ↔ GraphQL, 61 pairs)
 
-```
+```bash
 python scripts/measure_public.py --repo <keystone> --label keystonejs/keystone \
     --pair-dirs 'examples/*' --a prisma=schema.prisma --b graphql=schema.graphql
 ```
@@ -186,12 +186,12 @@ the graph correctly pointing at the layer the next section then failed to read.
 
 ### Cross-layer reconciliation — 0 entities, 0 fields, 0 findings
 
-```
+```bash
 python scripts/measure_public.py --repo <dispatch> --label Netflix/dispatch \
     --a sqlalchemy=src/dispatch/incident/models.py --b pydantic=src/dispatch/incident/models.py
 ```
 
-```
+```text
 entities: {"sqlalchemy": 0, "pydantic": 0}
 findings: 0
 ```
@@ -379,7 +379,7 @@ fact — and it is left as an open decision rather than implemented in a measure
 
 ## Repo 1 re-run — `keystonejs/keystone`, 61 pairs, identical command
 
-```
+```bash
 python scripts/measure_public.py --repo <keystone> --label keystonejs/keystone \
     --pair-dirs 'examples/*' --a prisma=schema.prisma --b graphql=schema.graphql
 ```
@@ -425,7 +425,7 @@ signal-to-noise ratio barely moved, because the noise that remains is the 1,263 
 
 ### The exact command the null was recorded under
 
-```
+```bash
 python scripts/measure_public.py --repo <dispatch> --label Netflix/dispatch \
     --a sqlalchemy=src/dispatch/incident/models.py --b pydantic=src/dispatch/incident/models.py
 ```
@@ -444,7 +444,7 @@ not match by name, and the engine refuses to guess past that, exactly as designe
 
 ### Extended across the service — 65 `models.py` files
 
-```
+```bash
 python scripts/measure_public.py --repo <dispatch> --label Netflix/dispatch \
     --pair-dirs 'src/dispatch/**' --a sqlalchemy=models.py --b pydantic=models.py
 ```
@@ -483,7 +483,7 @@ split, in the one place where it costs correspondence rather than just noise.
 
 ### With the correspondence elected — a stated condition, not a result
 
-```
+```bash
 python scripts/measure_public.py --repo <dispatch> --label Netflix/dispatch \
     --pair-dirs 'src/dispatch/**' --propose --min-overlap 0.3 \
     --a sqlalchemy=models.py --b pydantic=models.py

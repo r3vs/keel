@@ -23,7 +23,8 @@ The decisions ledger is the single source of truth the whole package runs on. Th
   proposed-default; `blocker`/`high` never go to silent default.
 
 ## Use it to
-- read the current pins/decisions before acting — `ledger_summary`, never by opening the file;
+- read the current state before acting — `ledger_summary` for the counts, `interview_next` for the
+  open questions, `ledger_frontier` for what is takeable — never by opening the file;
 - add a finding as a pin (with `confidence`/`provenance`; deterministic static findings carry
   `extracted` and skip fp-check);
 - record an elected decision (interview only) with a `flip_criteria`;
@@ -38,8 +39,9 @@ what the spec says it means.
 
 | you want | MCP tool |
 |---|---|
-| the state, before acting | `ledger_summary` |
-| the next real questions | `interview_next` (create them first with `interview_expand`) |
+| the state, before acting | `ledger_summary` (counts, by state / rung / door — not pin bodies) |
+| the next real questions, with their prompts and options | `interview_next` (create them first with `interview_expand`) |
+| what is open, unblocked and unclaimed — and who holds the rest | `ledger_frontier` |
 | the opening policy offers, before asking anything | `interview_seed_policies` (offers only — a Policy exists once the human elects it) |
 | what a rule would decide, before proposing it | `policy_preview` (writes nothing; `would_decide` is what the user is really electing) |
 | the human accepted a policy | `ledger_record_policy` (creates it and cascades it — nothing else does either) |
@@ -57,6 +59,36 @@ resolved, it *refuses* a ledger that is not there instead of answering "no pins"
 shape the spec guarantees rather than whatever a hand-parse made of a file the schema has since
 moved on from. An agent that opens the file to read it has already left the channel, and the write
 is the next thing it will do by hand.
+
+### It answers a question; it does not hand you the pin
+
+`ledger_summary` is a projection — counts by state, by rung, by door — and each read tool above is
+the same shape: `interview_next` returns the questions with their prompts, options and proposals,
+`ledger_frontier` returns id, title and state. None of them returns a pin's `as_is`, `to_be` or
+`provenance`, and that is deliberate rather than missing: a ledger is routinely hundreds of pins, so
+a tool that answered with all of them would spend the context it was called to inform.
+
+**A pin's whole body is a `ledger://` resource, not a tool** — three of them, read-only and through
+the same guarded path every write door uses:
+
+| you want | resource |
+|---|---|
+| the same counts, as an attachment | `ledger://summary//abs/path/to/ledger.json` |
+| the pin index — id, kind, state, severity, title | `ledger://pins//abs/path/to/ledger.json` |
+| one pin, whole | `ledger://pin/<pin_id>//abs/path/to/ledger.json` |
+
+The doubled slash is the absolute path beginning, not a typo. In Claude Code a human attaches one by
+typing `@keel:ledger://…`; the URI carries the path because the server has no notion of "the current
+project" and inventing one is the working-directory bug this whole channel exists to close.
+
+**The residual, stated so nobody plans around a door that may not open.** All three are URI
+*templates*, and MCP lists templates separately from concrete resources: probed on the shipped
+server, `resources/list` came back empty and only `resources/templates/list` named them. A host that
+offers a picker over the first list will not show these. They are readable when the URI is known and
+they are not discoverable by browsing — and on Pi they are unreachable outright, because the bridge
+speaks `initialize` / `tools/list` / `tools/call` and nothing else. So: when you need a pin's body
+and the resource door is not available to you, say so and work from `interview_next` — do not fall
+back to opening `ledger.json`, which is the hand-parse this page exists to refuse.
 
 The reads are automatable **and so is every non-electing write** — add a finding, plan its
 remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidence` (what you

@@ -92,7 +92,17 @@ class TestTheAppsJavaScriptGateIsWired(unittest.TestCase):
         """`build.py` skips `__tests__` when it copies `src/workflow/` into keel-core. That is what
         lets this gate be added without moving a shipped byte, and it is asserted rather than
         assumed because the exclusion is one string in one condition."""
-        for path in ROOT.glob("plugins/*/skills/*/engine/**/*"):
+        vendored = list(ROOT.glob("plugins/*/skills/*/engine/**/*"))
+        # The glob is held to a non-empty result first, because everything below it is a claim about
+        # what the vendored engine does NOT contain — and a `for` over nothing asserts that of an
+        # empty tree just as happily. Rename the destination in `build.py` and this test would keep
+        # reporting green over a directory it can no longer see, which is the exact shape of the
+        # vacuous guard the file beside it exists to close.
+        self.assertTrue(vendored,
+                        "no vendored engine found under plugins/*/skills/*/engine — either the "
+                        "build has not run or `build.py` now vendors it somewhere else; this "
+                        "assertion is about the tree it lands in, so it cannot be checked blind")
+        for path in vendored:
             self.assertNotIn("__tests__", path.parts,
                              f"{path} shipped a dev-only test directory")
 

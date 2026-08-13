@@ -241,6 +241,38 @@ def contract_tables(path: str | pathlib.Path) -> dict[str, str]:
 # refusal above rather than a silent miss.
 _MAX_IMPORT_HOPS = 2
 
+#: What says "the project stops here" when an ABSOLUTE import is matched against directories on
+#: disk. Not a heuristic about content — each of these is a file a packaging tool or a VCS puts at
+#: a project root and nowhere else, so the test is existence, not inspection.
+_PROJECT_MARKERS = ("pyproject.toml", "setup.cfg", "setup.py", ".git")
+
+
+def _project_ancestors(path: pathlib.Path) -> list[pathlib.Path]:
+    """The directories `from a.b import C` may be resolved against, nearest first: every ancestor
+    of `path` up to and INCLUDING the first that carries a project marker.
+
+    Unbounded, this walk ran to the filesystem root, and the consequence is a wrong extraction
+    rather than a missing one. Extraction routinely runs over a checkout under a shared parent —
+    `~/src/<repo>` beside `~/src/<other>`, a container's `/app` beside `/usr/lib/python3/models.py`
+    — and the first `models.py`/`schemas.py` an ancestor happens to hold is grafted in as the base
+    class of somebody else's DTO. The engine then reports fields the file under test never
+    declared, with `confidence: extracted` on them, which is the one label that means *this was
+    read, not inferred*.
+
+    The marker is INCLUSIVE because a src-layout project imports its own top package by the name of
+    a directory sitting beside `pyproject.toml`, so the root itself must stay in the list. And when
+    no marker exists anywhere above the file, every ancestor is returned — the same reach as before.
+    That is the graceful degradation this runtime owes a caller who pointed it at a loose file: a
+    bound that turns "no project here" into "resolve nothing" would silently extract less on exactly
+    the inputs a first-time user tries.
+    """
+    out: list[pathlib.Path] = []
+    for parent in path.parents:
+        out.append(parent)
+        if any((parent / marker).exists() for marker in _PROJECT_MARKERS):
+            break
+    return out
+
 
 def _base_names(node: ast.ClassDef) -> list[str]:
     """Base class names as bare identifiers: `pydantic.BaseModel` → `BaseModel`, `Generic[T]` →
@@ -269,7 +301,9 @@ class _ModuleBatch:
     module. The batch is the fix and its limit is stated: **at most `_MAX_IMPORT_HOPS` files, all
     parsed, none imported.** A module path is matched against directories on disk (the source file's
     ancestors, so `from dispatch.models import X` inside `<root>/src/dispatch/incident/models.py`
-    finds `<root>/src/dispatch/models.py`); a name that does not resolve stays unresolved.
+    finds `<root>/src/dispatch/models.py`); a name that does not resolve stays unresolved. An
+    ABSOLUTE import stops at the project root — `_project_ancestors` says why, and it is a
+    correctness bound rather than a performance one.
 
     Degrades rather than fails: an unreadable or unparsable NEIGHBOUR yields no classes, never an
     exception, because an extractor that dies on somebody else's syntax error reads nothing at all.
@@ -330,7 +364,7 @@ class _ModuleBatch:
                     root = root.parent
                 roots = [root]
             else:                              # absolute: `from dispatch.models import X`
-                roots = list(pathlib.Path(path).resolve().parents)
+                roots = _project_ancestors(pathlib.Path(path).resolve())
             for root in roots:
                 for tail in (parts[:-1] + [parts[-1] + ".py"], parts + ["__init__.py"]):
                     candidate = root.joinpath(*tail)
@@ -1545,7 +1579,8 @@ def drift_check(contract_path: str, sqlalchemy: Optional[str] = None,
     and rescue's contract-reconciliation core, pointed at a shared-types-style carrier.
 
     `backend` routes the TS/GraphQL layers to the tree-sitter parse when "auto"/"treesitter"
-    (the other layers already use `ast`/robust parsers); default "regex" keeps it stdlib-only.
+    (the other layers already use `ast`/robust parsers); the default is "auto", and passing
+    "regex" is what keeps it stdlib-only.
 
     **Honesty rule 3 applies to every side, not only to the carrier**, and that is the whole reason
     the extraction happens up front here instead of inside each branch. Each layer below is matched

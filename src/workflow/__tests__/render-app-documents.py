@@ -59,7 +59,12 @@ from ledger import Ledger  # noqa: E402
 #: content out of somebody else's repo — a title, a source, a severity — which is the whole reason
 #: the two apps carry an escaping mechanism each.
 HOSTILE_TITLE = "A <!--<script> double escape"
-HOSTILE_SOURCE = "policy:</script><img src=x onerror=alert(1)>"
+#: The id `map.render` DERIVES out of the `source` below, and the one the decision card then prints.
+#: Split out because the derived value is the payload with the `policy:` prefix eaten, so a check
+#: that only knows the source string is looking for bytes the page can never emit — green whether
+#: the derivation escapes or not. The two are one constant apart so they cannot drift.
+HOSTILE_POLICY_ID = "</script><img src=x onerror=alert(1)>"
+HOSTILE_SOURCE = "policy:" + HOSTILE_POLICY_ID
 HOSTILE_SEVERITY = "<img src=x onerror=alert(1)>"
 HOSTILE_RULE = "<b>bold rule</b>"
 
@@ -116,6 +121,14 @@ def _hostile(path: pathlib.Path) -> dict:
         "id": "ev_0001", "pin_id": "pin_0001", "outcome": "left as it is",
         "source": HOSTILE_SOURCE, "evidence": "transcribed",
     })
+    # The pin has to POINT at the event, or the page never builds a decision card: `map.py` renders
+    # one under `if(p.decision)` and nothing else reads `decision_log` into the detail pane. Without
+    # this line the hostile `source` was on disk and on no rendered surface, so the node gate's
+    # "this string never reached the markup sink" passed over a sink the string could not reach —
+    # a guard green because its subject was absent, which is the vacuous shape this repo keeps
+    # finding. `map.render` derives `policy:<id>` out of `source` (pre-v0.11 events carry the id
+    # nowhere else), so the card renders that id, and the id is content.
+    led.data["pins"][0]["decision"] = {"event_id": "ev_0001", "outcome": "left as it is"}
     return led.data
 
 
@@ -141,7 +154,8 @@ def main(argv: list[str]) -> int:
             {"name": "map app (well-formed ledger)", "file": "map-wellformed.html", "app": "map",
              "hostile": []},
             {"name": "map app (hostile ledger)", "file": "map-hostile.html", "app": "map",
-             "hostile": [HOSTILE_TITLE, HOSTILE_SOURCE, HOSTILE_SEVERITY, HOSTILE_RULE]},
+             "hostile": [HOSTILE_TITLE, HOSTILE_SOURCE, HOSTILE_POLICY_ID, HOSTILE_SEVERITY,
+                         HOSTILE_RULE]},
         ],
     }, indent=2), encoding="utf-8")
     return 0

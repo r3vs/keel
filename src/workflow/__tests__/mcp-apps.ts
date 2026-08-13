@@ -73,7 +73,11 @@ function test(name: string, fn: () => void): void {
     console.log(`  ✓ ${name}`);
   } catch (e) {
     failed++;
-    console.log(`  ✗ ${name}\n      ${e instanceof Error ? e.message : String(e)}`);
+    // The stack, indented, for an Error: this runs in CI where the log IS the debugger, and a
+    // bare `message` off an assertion thrown three frames inside a render says what was expected
+    // and never says where. `String(e)` stays for the non-Error throw, which has no stack to print.
+    const detail = e instanceof Error ? (e.stack ?? e.message) : String(e);
+    console.log(`  ✗ ${name}\n${detail.replace(/^/gm, '      ')}`);
   }
 }
 
@@ -83,6 +87,22 @@ function test(name: string, fn: () => void): void {
 // ---------------------------------------------------------------------------------------------
 
 type DocSpec = { name: string; file: string; app: 'interview' | 'map'; hostile: string[] };
+
+/**
+ * Wall clocks on the two subprocesses, declared rather than left at `spawnSync`'s default of none.
+ *
+ * A hung interpreter is the failure this gate is most likely to meet in someone else's CI, and with
+ * no timeout it is not a failure at all — it is a job that runs until the runner's own limit kills
+ * it, attributing the death to the workflow rather than to the step. With one, `spawnSync` returns
+ * with `error.code === 'ETIMEDOUT'` and the messages below name what timed out.
+ *
+ * The two numbers are apart because the work is: the probe runs `print(sys.version)` and any value
+ * above a couple of seconds is already generous, while the renderer imports `ledger`, `map` and
+ * `apps` and builds three documents — seconds on a warm machine, and the ceiling exists to catch a
+ * hang, not to police it.
+ */
+const PROBE_TIMEOUT_MS = 15_000;
+const RENDER_TIMEOUT_MS = 120_000;
 
 /**
  * The interpreter is CHOSEN and then NAMED, in that order, and the naming is not politeness.
@@ -97,11 +117,16 @@ function interpreter(): { cmd: string; banner: string } {
   for (const cmd of candidates) {
     const probe = spawnSync(cmd, ['-c', 'import sys; print(sys.version.split()[0], sys.executable)'], {
       encoding: 'utf8',
+      timeout: PROBE_TIMEOUT_MS,
     });
     if (!probe.error && probe.status === 0) {
       return { cmd, banner: `${cmd} -> ${probe.stdout.trim()}` };
     }
-    tried.push(cmd);
+    // WHY it was rejected, not merely that it was: `ETIMEDOUT` here means an interpreter that
+    // exists and hangs, which is a different thing to go and look at than one that is not on PATH,
+    // and the list below is the only place either fact is ever reported.
+    const code = (probe.error as NodeJS.ErrnoException | undefined)?.code;
+    tried.push(`${cmd} (${code ?? `exit ${probe.status}`})`);
   }
   throw new Error(
     `no usable Python (tried: ${tried.join(', ')}). The two apps' documents are rendered by ` +
@@ -113,11 +138,17 @@ function render(): { dir: string; docs: DocSpec[] } {
   const dir = mkdtempSync(path.join(tmpdir(), 'keel-apps-'));
   const { cmd, banner } = interpreter();
   console.log(`  renderer: ${banner}`);
-  const proc = spawnSync(cmd, [RENDERER, dir], { cwd: ROOT, encoding: 'utf8' });
+  const proc = spawnSync(cmd, [RENDERER, dir], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: RENDER_TIMEOUT_MS,
+  });
   if (proc.error || proc.status !== 0) {
+    const timedOut = (proc.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
     throw new Error(
-      `could not render the app documents with \`${cmd}\`:\n` +
-        `${proc.error ? proc.error.message : ''}${proc.stderr ?? ''}`,
+      `could not render the app documents with \`${cmd}\`` +
+        (timedOut ? ` — it hung for ${RENDER_TIMEOUT_MS} ms and was killed` : '') +
+        `:\n${proc.error ? proc.error.message : ''}${proc.stderr ?? ''}`,
     );
   }
   const manifest = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8')) as {
@@ -556,6 +587,15 @@ try {
           'loses the value is not an escape');
       assert.ok(all.includes('&lt;!--&lt;script&gt;'),
         'the double-escape payload is not on the page as text');
+      // The DERIVED value, asserted positively, because the raw pass above cannot see it: the
+      // policy id is the `source` with `policy:` eaten, so a page that never renders the derivation
+      // passes every negative check by emitting nothing. This is the one string that can only be on
+      // the page if `map.render`'s Python derivation ran AND the card's own interpolation escaped
+      // it — remove either half and this fails, which is what the negative checks could not do.
+      assert.ok(all.includes('&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;'),
+        'the policy id derived from the event `source` is not on the page — either the decision ' +
+          'card never rendered (nothing then exercises the derived path, and the raw checks above ' +
+          'are vacuous) or the escape dropped the value');
     });
   }
 } finally {

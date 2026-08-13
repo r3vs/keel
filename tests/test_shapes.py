@@ -431,6 +431,64 @@ class TestRefusesToDiffNothing(unittest.TestCase):
                         "class UserRead(BaseModel):\n    id: str\n", encoding="utf-8")
         self.assertEqual(list(shapes.extract_pydantic(main)), ["UserRead"])
 
+    def test_an_absolute_import_does_not_reach_past_the_project_root(self):
+        """The ancestor walk used to run to the filesystem root, so `from dispatch.models import
+        DispatchBase` matched the FIRST `dispatch/models.py` any ancestor happened to hold —
+        a sibling checkout under a shared `~/src`, a container's `/app` beside site-packages. The
+        cost is not a missing extraction but a wrong one: somebody else's base class is grafted in
+        and its fields are reported with `confidence: extracted`, the one label that means *read*.
+        """
+        outer = pathlib.Path(tempfile.mkdtemp())
+        foreign = outer / "dispatch"
+        foreign.mkdir()
+        (foreign / "__init__.py").write_text("", encoding="utf-8")
+        (foreign / "models.py").write_text(
+            "from pydantic import BaseModel\n\n\n"
+            "class DispatchBase(BaseModel):\n    leaked: str\n", encoding="utf-8")
+
+        project = outer / "project"
+        (project / "app").mkdir(parents=True)
+        (project / "pyproject.toml").write_text("[project]\nname = 'p'\n", encoding="utf-8")
+        dto = project / "app" / "dto.py"
+        dto.write_text("from dispatch.models import DispatchBase\n\n\n"
+                       "class UserRead(DispatchBase):\n    id: str\n", encoding="utf-8")
+
+        out = shapes.extract_pydantic(str(dto))
+        self.assertNotIn("leaked", out.get("UserRead", {}),
+                         "a base class from OUTSIDE the project was resolved and its fields "
+                         "reported as extracted from this file")
+
+        # ...and the bound did not cost the case it exists inside: the same absolute import, with
+        # the module where the project actually keeps it, still resolves.
+        local = project / "dispatch"
+        local.mkdir()
+        (local / "__init__.py").write_text("", encoding="utf-8")
+        (local / "models.py").write_text(
+            "from pydantic import BaseModel\n\n\n"
+            "class DispatchBase(BaseModel):\n    tenant_id: str\n", encoding="utf-8")
+        out = shapes.extract_pydantic(str(dto))
+        self.assertIn("tenant_id", out["UserRead"],
+                      "the project's own absolute import stopped resolving")
+
+    def test_with_no_project_marker_anywhere_the_reach_is_unchanged(self):
+        """Degrade gracefully: a loose file under no project must resolve exactly as far as it did
+        before, or a first-time user pointing the engine at a scratch directory silently extracts
+        less — a bound that turns *no project here* into *resolve nothing*."""
+        loose = pathlib.Path(tempfile.mkdtemp()) / "a" / "b" / "c.py"
+        loose.parent.mkdir(parents=True)
+        loose.write_text("", encoding="utf-8")
+        self.assertEqual(shapes._project_ancestors(loose), list(loose.parents))
+
+    def test_the_marker_directory_itself_stays_in_the_walk(self):
+        """A src-layout project imports its top package by the name of a directory sitting BESIDE
+        `pyproject.toml`, so an exclusive bound would break the common case it was written for."""
+        root = pathlib.Path(tempfile.mkdtemp())
+        (root / "pyproject.toml").write_text("", encoding="utf-8")
+        (root / "pkg").mkdir()
+        leaf = root / "pkg" / "mod.py"
+        leaf.write_text("", encoding="utf-8")
+        self.assertEqual(shapes._project_ancestors(leaf), [root / "pkg", root])
+
     def test_every_extractor_states_its_preconditions(self):
         """An enumeration that asserts a completeness it does not have is this repo's signature
         defect. A stack in EXTRACTORS with no `_EXTRACTOR_EXPECTS` entry refuses with a generic
@@ -725,10 +783,6 @@ class TestGraphQLIdIsOpaque(unittest.TestCase):
     """117 of keystone's 130 `type_mismatch` findings — 90% of the class — were a Prisma
     `String @id`/`Int @id` under a GraphQL `ID!`."""
 
-    def uuid_side(self, layer):
-        return {"id": {"name": "id", "type": "uuid", "nullable": False,
-                       "confidence": "extracted"}}, layer
-
     def test_an_id_does_not_assert_against_string_int_or_uuid(self):
         gql = {"id": {"name": "id", "type": "uuid", "nullable": False, "confidence": "extracted"}}
         for other in ("string", "int", "uuid"):
@@ -752,7 +806,12 @@ class TestGraphQLIdIsOpaque(unittest.TestCase):
         exact only while `ID` is the sole GraphQL type either backend canonicalizes to `uuid` — so
         this fails the day a second one is added, rather than silently widening the rule."""
         self.assertEqual([k for k, v in shapes._GQL_TYPES.items() if v == "uuid"], ["ID"])
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
+        # Removed again on the way out. A test that widens `sys.path` and leaves it widened decides
+        # what every test after it imports, and the ordering that exposes it is unittest's, not
+        # anybody's intent — which makes the failure land somewhere else entirely.
+        runtime = os.path.join(os.path.dirname(__file__), "..", "src", "runtime")
+        sys.path.insert(0, runtime)
+        self.addCleanup(lambda: sys.path.remove(runtime) if runtime in sys.path else None)
         import treesitter_extract
         ts_map = treesitter_extract.STACKS["graphql"]["type_map"]
         self.assertEqual([k for k, v in ts_map.items() if v == "uuid"], ["ID"],
