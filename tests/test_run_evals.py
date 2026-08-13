@@ -269,5 +269,83 @@ class TestARelativeLedgerBelongsToTheRunAndNotToTheHarness(unittest.TestCase):
                          f"{run_evals.DEFAULT_REPORT!r} is not gitignored — see .gitignore")
 
 
+class TestARunOfAUserInvokedSkillHasToLoadIt(unittest.TestCase):
+    """The 2026-08-13 live run measured an agent that never loaded the skill under test.
+
+    All four transcripts carry the host's own refusal — *"Skill using-the-ledger cannot be used with
+    Skill tool due to disable-model-invocation. Ask the user to run /using-the-ledger themselves"* —
+    because `execute_case` piped the bare prompt and **fifteen of the nineteen shipped skills** are
+    user-invoked. Every assertion about the skill's steering was then resolved against a run the
+    skill did not steer: a pass proved the MCP tools were discoverable, a fail proved nothing.
+
+    So the prompt now carries the invocation the refusal itself names. Asserted here at the level
+    this machine can reach — the string that is piped — because the level above it needs a
+    credentialed runner. `docs/measurements.md` carries that residual explicitly rather than
+    letting a green suite imply an observed run.
+    """
+
+    def test_a_user_invoked_skill_is_typed_by_name(self):
+        self.assertTrue(run_evals.is_user_invoked("using-the-ledger"),
+                        "the built SKILL.md no longer sets disable-model-invocation")
+        prompt = run_evals.case_prompt("using-the-ledger", {"prompt": "what is open?"})
+        self.assertEqual(prompt, "/using-the-ledger what is open?")
+
+    def test_a_model_invoked_skill_is_left_to_fire_off_its_description(self):
+        """`codebase-rescue` triggers on a situation nobody names, so typing the name would test a
+        door no cold user uses — the trigger IS what the case measures."""
+        self.assertFalse(run_evals.is_user_invoked("codebase-rescue"))
+        self.assertEqual(run_evals.case_prompt("codebase-rescue", {"prompt": "this repo is a mess"}),
+                         "this repo is a mess")
+
+    def test_the_answer_is_read_off_the_built_skill_and_not_a_list_here(self):
+        """A second copy of *which skills are user-invoked* is the drift every gate here exists to
+        catch, so the predicate is checked against the frontmatter rather than against a roster."""
+        source = (ROOT / "src" / "skills" / "using-the-ledger" / "SKILL.md").read_text("utf-8")
+        self.assertEqual(run_evals.is_user_invoked("using-the-ledger"),
+                         "disable-model-invocation: true" in source)
+
+
+class TestASeedNobodyCopiesIsACaseWithNoPrecondition(unittest.TestCase):
+    """`files` was in the eval schema and validated by `--validate` from the beginning, and nothing
+    ever copied it — a declared mechanism with no carrier, inside the harness written to catch that.
+
+    It is load-bearing now: two relay cases record against pins they did not create, and the seed
+    cannot live in the shared fixture for two independent reasons — `ledger.json` is a gitignored
+    runtime artifact, and case 4 asserts that a MISSING ledger is reported as missing.
+    """
+
+    def test_a_seed_lands_under_the_name_the_case_declared(self):
+        evals_dir = pathlib.Path(tempfile.mkdtemp())
+        (evals_dir / "seeds").mkdir()
+        (evals_dir / "seeds" / "fork.json").write_text('{"version": "0.31", "pins": []}', "utf-8")
+        workdir = pathlib.Path(tempfile.mkdtemp())
+        landed = run_evals.seed_files(
+            {"files": [{"from": "seeds/fork.json", "to": "ledger.json"}]}, evals_dir, workdir)
+        self.assertEqual(landed, ["ledger.json"])
+        self.assertTrue((workdir / "ledger.json").is_file())
+
+    def test_a_plain_path_keeps_its_own_name(self):
+        evals_dir = pathlib.Path(tempfile.mkdtemp())
+        (evals_dir / "notes.md").write_text("x", encoding="utf-8")
+        workdir = pathlib.Path(tempfile.mkdtemp())
+        run_evals.seed_files({"files": ["notes.md"]}, evals_dir, workdir)
+        self.assertTrue((workdir / "notes.md").is_file())
+
+    def test_every_declared_seed_exists_and_parses_as_a_ledger(self):
+        """`--validate` proves the file is there. This proves it is the thing the case needs: a
+        seed that does not parse is a case that runs against a ledger no tool can open, and the
+        failure would read as an adherence miss."""
+        for path in run_evals.find_eval_files():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            for case in data.get("evals", []):
+                for entry in case.get("files", []):
+                    if not (isinstance(entry, dict) and entry.get("to") == "ledger.json"):
+                        continue
+                    with self.subTest(skill=path.parent.parent.name, case=case["id"]):
+                        seed = json.loads((path.parent / entry["from"]).read_text("utf-8"))
+                        self.assertTrue(seed.get("pins"),
+                                        "a seeded ledger with no pins seeds nothing")
+
+
 if __name__ == "__main__":
     unittest.main()

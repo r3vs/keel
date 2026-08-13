@@ -2036,10 +2036,11 @@ def instructions_diff(ledger: str, root: str = ".", generated: list[str] | None 
 # fenced, and closed when the pin settles. It is the same three properties as every projection in
 # this package: one source, a generated view, a round-trip that proves they still agree.
 #
-# `tracker_diff` is the one to reach for first: it costs a single request, writes on neither side,
-# and answers the question a team actually has. Note what neither tool takes — a token. The server
-# reads it from its own environment; an agent that could pass a credential is an agent that has
-# read one.
+# `tracker_diff` is the one to reach for first: it writes on neither side and answers the two
+# questions a team actually has — what has drifted, and who is waiting in a thread. It costs the
+# index request plus one per indexed issue that has comments, capped and declared. Note what
+# neither tool takes — a token. The server reads it from its own environment; an agent that could
+# pass a credential is an agent that has read one.
 
 @mcp.tool(annotations={"title": "Project the Ledger into GitHub Issues", **_RW})
 def tracker_project(ledger: str, repo: str) -> dict:
@@ -2068,13 +2069,22 @@ def tracker_project(ledger: str, repo: str) -> dict:
 
 @mcp.tool(annotations={"title": "Tracker Drift (issues vs the ledger)", **_RO})
 def tracker_diff(ledger: str, repo: str) -> dict:
-    """Is the issue tracker still what the ledger projects? WRITES NOTHING, on either side.
+    """Is the issue tracker still what the ledger projects, and is anyone waiting in it? WRITES
+    NOTHING, on either side.
 
     Reports the plan `tracker_project` would execute, computed by the same planner so the two can
     never disagree: `create` (an open pin with no issue), `update` (the region drifted), `reopen` /
     `close` (the pin's state and the issue's disagree), `hand_edited` (someone wrote into the
     projection — put it in the ledger instead), `orphan` (an issue naming a pin the ledger does not
     hold — reported, never touched) and `in_sync`.
+
+    It also returns **`awaiting_human_review`**: every comment on a projected issue, attributed to
+    that issue's pin, with author, timestamp and a clipped excerpt. Comments this projection wrote
+    are excluded. This is a READING and nothing more — a comment reopens no pin and elects nothing;
+    take one that belongs on the ledger to `interview_next` → `ledger_record_decision`. A comment
+    never moves `in_sync`, because only a human electing could ever clear it. When the tracker
+    cannot be reached the section is `null`, never `[]`: "nobody is waiting" is not an answer an
+    unread tracker gets to give.
 
     Args:
         ledger: Path to ledger.json.

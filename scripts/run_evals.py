@@ -510,9 +510,17 @@ def validate(paths: list[pathlib.Path]) -> int:
             if cid in seen_ids:
                 problems.append(f"{label}: duplicate id")
             seen_ids.add(cid)
-            for fixture in case.get("files", []):
-                if not (path.parent / fixture).exists():
-                    problems.append(f"{label}: listed file {fixture!r} does not exist")
+            # `files` is a path, or `{"from": …, "to": …}` when the name a seed must LAND under is
+            # not a name this repo can commit — `ledger.json` is gitignored as a runtime artifact,
+            # and seeding one is the only way a case can record against pins it did not create.
+            # Both forms are copied by `seed_files`; both are checked here, because a seed that
+            # does not exist is a case that silently runs against the bare fixture.
+            for entry in case.get("files", []):
+                source = entry.get("from") if isinstance(entry, dict) else entry
+                if not isinstance(source, str) or not source:
+                    problems.append(f"{label}: files entry {entry!r} names no source")
+                elif not (path.parent / source).exists():
+                    problems.append(f"{label}: listed file {source!r} does not exist")
             for assertion in case.get("assertions", []):
                 corpus.add((skill_dir, cid, assertion))
         total_cases += len(cases)
@@ -732,8 +740,73 @@ def build_command(executable: str, plugins: list[pathlib.Path], args) -> list[st
     return cmd
 
 
+#: Skills the host will not let the MODEL load — `disable-model-invocation: true`. Read off the
+#: BUILT SKILL.md, never listed here: which skills are user-invoked is the frontmatter's fact and a
+#: second copy of it is the drift every gate in this repo exists to catch.
+USER_INVOKED = re.compile(r"^disable-model-invocation:\s*true\s*$", re.M)
+
+
+def is_user_invoked(skill: str) -> bool:
+    plugin = plugin_for(skill)
+    if plugin is None:
+        return False
+    path = plugin / "skills" / skill / "SKILL.md"
+    return path.is_file() and bool(USER_INVOKED.search(path.read_text(encoding="utf-8")))
+
+
+def case_prompt(skill: str, case: dict) -> str:
+    """The text piped to the runner — the case's prompt, prefixed with `/<skill>` when the host
+    will not let the model reach that skill on its own.
+
+    **This is the fix for a whole class of runs that measured nothing.** Fifteen of the nineteen
+    shipped skills set `disable-model-invocation: true`, and the raw prompt was piped for all of
+    them. The consequence is in the host's own words, captured in the 2026-08-13 transcripts:
+    *"Skill using-the-ledger cannot be used with Skill tool due to disable-model-invocation. Ask
+    the user to run /using-the-ledger themselves."* The agent tried, was refused, and answered the
+    prompt with the skill's prose never in its context — so every assertion about the skill's
+    steering was resolved against a run the skill did not steer. A pass proved the package's tools
+    were discoverable; a fail proved nothing at all.
+
+    The invocation is the one the refusal names, which is this repo's standard of evidence: the
+    consumer said what it wants typed, so that is what gets typed. The remainder rides as the
+    skill's arguments, which is what a user does when they type `/using-the-ledger <task>`.
+
+    A model-invoked skill is left alone deliberately — `codebase-rescue` and its three siblings
+    trigger off their `description`, and typing the name would test a door no cold user uses.
+    """
+    if is_user_invoked(skill):
+        return f"/{skill} {case['prompt']}"
+    return case["prompt"]
+
+
+def seed_files(case: dict, evals_dir: pathlib.Path, workdir: pathlib.Path) -> list[str]:
+    """Copy the case's declared `files` into its workdir. Returns what landed, for the report.
+
+    `files` was in the schema and validated by `--validate` from the beginning, and **nothing ever
+    copied it** — a declared mechanism with no carrier, which is this repo's signature defect
+    sitting inside the harness written to catch it. It is implemented here because two cases need
+    a precondition a fixture cannot carry: a ledger with the pins they record against. That cannot
+    live in `tests/fixtures/slop-repo` for two independent reasons — `ledger.json` is gitignored
+    (it is a runtime artifact and this repo authors none), and case 4 asserts that a **missing**
+    ledger is reported as missing, so a fixture-wide one would break the case beside it.
+
+    An entry is either a path (copied under its own name) or `{"from": …, "to": …}` when the name
+    it must land under differs from the name it can be committed under. Both are validated.
+    """
+    landed = []
+    for entry in case.get("files", []):
+        source = entry["from"] if isinstance(entry, dict) else entry
+        target = entry.get("to", source) if isinstance(entry, dict) else entry
+        destination = workdir / target
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(evals_dir / source, destination)
+        landed.append(target)
+    return landed
+
+
 def execute_case(executable: str, skill: str, plugins: list[pathlib.Path], case: dict,
-                 fixture: pathlib.Path | None, workroot: pathlib.Path, args) -> Run:
+                 fixture: pathlib.Path | None, workroot: pathlib.Path, args,
+                 evals_dir: pathlib.Path | None = None) -> Run:
     """One case, in its own copy of the fixture (or its own empty directory when none is declared).
 
     The copy is not hygiene, it is the measurement: the checks read the `ledger.json` the run
@@ -748,9 +821,12 @@ def execute_case(executable: str, skill: str, plugins: list[pathlib.Path], case:
         workdir.mkdir(parents=True)
     else:
         shutil.copytree(fixture, workdir)
+    if evals_dir is not None:
+        seed_files(case, evals_dir, workdir)
     cmd = build_command(executable, plugins, args)
     started = time.monotonic()
-    proc = subprocess.run(cmd, input=case["prompt"], cwd=str(workdir), capture_output=True,
+    proc = subprocess.run(cmd, input=case_prompt(skill, case), cwd=str(workdir),
+                          capture_output=True,
                           text=True, encoding="utf-8", errors="replace", timeout=args.timeout)
     wall = time.monotonic() - started
     events, result = [], {}
@@ -842,7 +918,7 @@ def execute(paths: list[pathlib.Path], fixture_override: str, report_path: pathl
                   f"fixture {fixture.name if fixture else '(empty dir)'})…", flush=True)
             try:
                 run_obj = execute_case(args.executable, skill, plugin_set, case, fixture,
-                                       workroot, args)
+                                       workroot, args, evals_dir=path.parent)
             except Exception as exc:
                 print(f"    ERROR {exc}")
                 results.append({"id": case["id"], "error": str(exc)})

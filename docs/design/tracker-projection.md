@@ -1,7 +1,10 @@
 # The tracker projection — design note
 
 **Status:** implemented (`src/runtime/tracker.py`, `mcp:tracker_project` / `mcp:tracker_diff`,
-`tests/test_tracker.py`). One open decision is recorded at the end and is deliberately unbuilt.
+`tests/test_tracker.py`). The one open decision — an inbound path from an issue comment — was
+**elected on 2026-08-13**; the record is at the end. Its elected half (read-only surfacing) is
+built; the write half stays deliberately unbuilt, with the reasoning kept as the record of what was
+not chosen.
 
 ## The gap
 
@@ -49,6 +52,12 @@ end-to-end version: projecting twice leaves `ledger.json` byte-identical.
 The rendered body says the same thing to the human reading it — *answering in a comment here decides
 nothing, no tool reads it* — because the instinct is exactly the opposite and a rule the team
 discovers by being surprised by it is a rule that has already cost somebody an afternoon.
+
+Since the 2026-08-13 election, `tracker_diff` **reads** those comments and lists them
+(`awaiting_human_review`). That does not soften the sentence above by a word: reading a thread is
+not writing a ledger, the module's imports are unchanged, and the AST gates are unchanged. What
+changed is only that a comment nobody with the ledger open would ever have seen is now in front of
+the person who can act on it.
 
 ## Host facts, each read at GitHub's own docs
 
@@ -136,9 +145,53 @@ Both are facts about the boundary an agent crosses rather than about the project
   user's name, their layout and often their client. `tools._tracker_label` reduces it to a
   cwd-relative path, or to the bare filename when it is outside.
 
-## Open decision — an issue comment as a reopen signal (designed, NOT built)
+## ELECTION RECORD — the inbound path, elected 2026-08-13
 
-The one direction that would be worth having, and the reason it is not here.
+**Elected by the maintainer on 2026-08-13**, in a session interview, with the three forks below put
+verbatim as the options. **Outcome: read-only surfacing.** An issue comment is *read* and listed;
+it writes nothing, on any path. `tracker_diff` gained an `awaiting_human_review` section — one entry
+per comment on a projected issue, `{issue_number, pin_id, author, created_at, excerpt}`, with
+comments carrying this projection's own fence excluded so the projector cannot report itself. The
+human reads that list and reopens the way they always did: in the interview.
+
+`flip_criteria` for this election: a team demonstrably working the queue and still losing answers to
+threads — i.e. the surfacing is used and is insufficient, rather than the write path being wanted on
+the strength of it being obvious.
+
+**What the three forks did with that outcome**, which is the whole reason this shape was the one
+available:
+
+1. **Whose comment counts? — moot.** Nobody's comment writes anything, so there is no bar to set.
+   The authentication question exists only on a write path, and asking *whose input is trustworthy
+   enough to move state* has no answer to give when no state moves. What replaces it is a rule for
+   the reader, stated in the shipped playbook: a comment is evidence that an answer exists
+   somewhere, never the answer — the same standing rule `core/knowledge-sources.md` applies to every
+   other piece of external content.
+2. **What does the ledger record as the source? — moot.** Nothing is recorded, so `reopen`'s closed
+   `source` vocabulary gains no member and the spec does not move. This is the fork that made the
+   split worth having: it is the *only* one of the three that costs a schema change, and the
+   surfacing half needed none of it.
+3. **Does a door invalidate the window? — preserved, and it is the point.** There is no new door.
+   The module still constructs no `Ledger`, imports no write door, and
+   `tests/test_tracker.py::TestTheTrackerIsAWindowAndNotADoor` still holds both by AST, with the
+   tools' half held one layer up. Reading a thread is not writing a ledger, so the guarantee stays
+   *structural* rather than becoming a claim about which code path was taken — which is the weaker
+   form this repo keeps replacing.
+
+The cost paid, named rather than discovered: `tracker_diff` was documented as costing a single
+request and now costs the index plus one per indexed issue that has comments. The listing's own
+`comments` count makes empty threads free, `COMMENT_ISSUE_CAP` bounds the rest (a declared
+HYPOTHESIS, spent in the plan's severity-first order so blockers are read first), and a walk that
+stops early — the cap, the rate-limit reserve, a dead transport — says which of the three ended it.
+An unreachable tracker returns `awaiting_human_review: null`, never `[]`: *nobody is waiting* is not
+an answer a tracker nobody read gets to give, which is the same rule as *a missing ledger is not an
+empty one*.
+
+### What was NOT chosen, kept as the record of what it would still cost
+
+The full inbound arc remains **designed and unbuilt**, and the reasoning below is preserved as
+written rather than deleted, because it is what the election refused and what a future one would
+have to answer again.
 
 **The proposal.** A comment on a projected issue matching a declared form (say `/keel reopen
 <reason>`) becomes a `ReopenEvent` on the pin, the way a production `flip_signal` does. It is
@@ -146,7 +199,7 @@ attractive for the same reason the rest of this is: the team is already in that 
 reopen is the one ledger write that is *not* an election — the feedback loop and the challenger
 both reopen without deciding, so an inbound reopen would not violate "only the human elects".
 
-**Why it stays unbuilt.** Three questions have to be elected before any of it is written, and each
+**Why it stayed unbuilt.** Three questions have to be elected before any of it is written, and each
 one is a fork a maintainer must answer rather than an implementation detail:
 
 1. **Whose comment counts?** An issue comment box is unauthenticated input from anyone who can see
@@ -162,5 +215,6 @@ one is a fork a maintainer must answer rather than an implementation detail:
    that argument becomes a claim about which code path is taken, which is exactly the weaker form
    of guarantee this repo keeps replacing.
 
-Recorded here rather than left as a good idea nobody wrote down. Building it on a hunch would put
-an unauthenticated comment box on the write path of the single source of truth.
+Building it on a hunch would put an unauthenticated comment box on the write path of the single
+source of truth. Surfacing was elected precisely because it buys the visibility that motivated the
+proposal while paying none of that.

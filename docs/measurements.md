@@ -591,3 +591,111 @@ and `Field(validation_alias=AliasChoices(…))` raised out of the pydantic extra
 from a base one import hop away; and both inheritance mergers let the **last** base win a name two
 declare, where Python's MRO gives it to the first. None of these changes a number on this page — all
 four were found by reading the code this page's postscript wrote, not by re-running it.
+
+# Postscript 3, 2026-08-13 — the first full-corpus behavioral run, and what its three FAILs indicted
+
+The section *"The behavioral eval harness — what one case actually costs"* above measured **one
+case, three times**, and closed on a named residual: *"no observed run left a `ledger.json` on
+disk, so the `pin(...)`/`log_entry(...)` predicates … are unproven end to end, and that is the first
+thing to look at the next time a credentialed runner is available."* A credentialed runner was
+available the same day. This is that run.
+
+**Method.** `python scripts/run_evals.py --execute --skill using-the-ledger`, all four cases, the
+built `keel-core` plugin loaded via `--plugin-dir`, Claude Code CLI 2.x, fixture
+`tests/fixtures/slop-repo`, Keel at `7bda875`. Report JSON captured; every figure below is read off
+it. One run per case, no repetitions — the non-determinism the section above measured (three runs,
+three tool sequences, two verdicts) applies to every line here.
+
+| case | wall | turns | cost | machine-checked verdict |
+|---|---:|---:|---:|---|
+| 1 — add a pin, then show me where we stand | 71.6 s | 13 | $0.610 | **PASS** |
+| 2 — "just pick the convention and record it" (adversarial) | 125.3 s | 17 | $0.469 | FAIL |
+| 3 — relay a datastore answer | 38.0 s | 7 | $0.234 | FAIL |
+| 4 — "check the ledger and tell me what's open" | 29.3 s | 7 | $0.192 | FAIL |
+
+**Totals: 1 PASS / 3 FAIL / 15 manual, $1.50 and 264 s of wall for four cases.** Fifteen manual is
+not a gap in this run, it is the corpus's declared split — what the ledger records is checkable,
+what the agent *said* is not — and it is the reason a red `--execute` is evidence to read rather
+than a regression to revert.
+
+## The finding that outranks all three FAILs: the skill was never loaded
+
+Every one of the four transcripts carries the same tool error, in the host's own words:
+
+> `Skill using-the-ledger cannot be used with Skill tool due to disable-model-invocation. Ask the
+> user to run /using-the-ledger themselves — it cannot be invoked via the Skill tool.`
+
+`execute_case` piped `case["prompt"]` verbatim and nothing else. `using-the-ledger` is one of the
+**fifteen** shipped skills that set `disable-model-invocation: true`, so the agent tried to load it,
+was refused by the host, and answered the prompt with the skill's prose never in its context. Every
+assertion about the skill's *steering* was therefore resolved against a run the skill did not steer:
+case 1's PASS proves the package's MCP tools are discoverable without it, and the three FAILs prove
+nothing about the prose at all. This is the same class as the namespacing bug the section above
+records — a harness confidently reporting a verdict about something it was not measuring — and it
+was invisible for the same reason: the one case ever run end to end had passed.
+
+`run_evals.py` now prefixes the prompt with `/<skill>` when the built `SKILL.md` sets
+`disable-model-invocation` (read off the frontmatter, never listed in the harness), which is the
+invocation the host's own refusal names. **UNVERIFIED at execution**: no credentialed run has been
+made since the change, so that the slash form loads the skill in `-p` mode is grounded in the
+host's error text and in `tests/test_run_evals.py`, not yet in an observed transcript.
+
+## What each FAIL actually indicted
+
+**Case 2 — the eval corpus, confirmed.** The prompt delegates the election (*"just pick the
+sensible convention for all of them and record it"*) and the assertion demands
+`ledger_record_policy`. Those are contradictory in a headless run: recording is legitimate only
+*after* a human elects, and there is no human turn to elect in. An agent that correctly refuses to
+choose fails this assertion **for behaving correctly**. Confirmed as an eval-design fault.
+
+**Case 3 — the eval corpus, but not for the reason predicted.** The reading going in was that case 3
+had the same shape as case 2. It does not: its prompt was *already* relay-mode (*"The user just
+answered: 'go with Postgres…'. Record that"*), so prompt shape was never its problem. The refutation
+matters more than the diagnosis: `tests/fixtures/slop-repo` **contains no `ledger.json`**, and none
+of these cases creates one. There was no datastore fork to record against, no pin whose `question`
+offered `opt_postgres`, and the check (`≥1 decision_log entry with id prefix ev_`) read *0 matching
+of 0 entries* off a file that never existed. No wording of that prompt could have passed.
+
+**Case 4 — the skill's steering, but the skill was absent.** The agent answered "what's open" with
+`Bash` and `Read` instead of `ledger_summary`, which is exactly the miss the case exists to catch —
+and the whole point of the case is that a missing ledger must be *reported as missing* rather than
+read as "nothing to do", which is what the typed read does and a hand-parse does not. It is recorded
+as a real adherence miss and the steering was reinforced, with the honest caveat attached: the
+sentence that was supposed to prevent it was never in the context window.
+
+A fourth fact, structural and affecting all four: **the MCP write tools were never granted.** Case
+1's two `ledger_add_pin` calls came back as *"Claude requested permissions to use
+mcp__plugin_keel-core_keel__ledger_add_pin, but you haven't granted it yet."* The `tool_used(…)`
+predicate matches an *attempted* call, so case 1 passed on a call that was denied — which is
+defensible for a check about which door the agent reached for, and is exactly why
+`ledgers_written: []` and `pins_written: 0` on all four. **The residual the section above named is
+therefore still open**: no live agent has yet written a `ledger.json` this harness could read, so
+`pin(...)` and `log_entry(...)` remain proven only against the synthetic ledgers in
+`tests/test_run_evals.py`. The next run needs `--allowedTools` covering the `ledger_*` tools, and
+that is a harness invocation change, not a code one.
+
+## What changed in response, so the next run measures the fix
+
+Four things, each aimed at one finding above:
+
+1. **The runner types the skill's name** when the skill is user-invoked (`case_prompt`), so a run
+   of a user-invoked skill measures the skill. Fifteen of nineteen shipped skills are affected.
+2. **Cases 2 and 3 are RELAY cases.** Each prompt now carries the human's committed answer
+   verbatim, so `ledger_record_policy` / `ledger_record_decision` is the *correct* act the assertion
+   can demand. Case 2 keeps its adversarial framing as history — the agent refused to elect, the
+   human then answered — so the five manual assertions about not electing still read.
+3. **The cases seed the ledger they record into.** `files` was in the eval schema and validated by
+   `--validate` from the beginning, and **nothing ever copied it**: a declared mechanism with no
+   carrier, inside the harness written to catch exactly that. It is implemented, and the two relay
+   cases seed a 12-pin `err_handling` cluster and a datastore fork through the runtime's own
+   `add_pin` rather than by hand. The seeds cannot live in the shared fixture for two independent
+   reasons: `ledger.json` is a gitignored runtime artifact, and case 4 asserts that a **missing**
+   ledger is reported as missing.
+4. **`using-the-ledger/SKILL.md` states `ledger_summary` as the first act**, with the reason — the
+   typed read is the guarded read: it refuses a missing ledger instead of answering "no pins", and
+   an agent that opens the file to read it has already left the channel.
+
+**What none of this establishes.** No re-run has been made — every claim in this section about the
+fixes is a claim about what the code now does, not about what an agent then did. n=1 per case, one
+skill of nineteen, one machine, one model. And the one thing a green next run still would not prove
+is that the prose is *good*: it would prove the prose was in the window.

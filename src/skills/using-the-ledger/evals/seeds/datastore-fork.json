@@ -1,0 +1,67 @@
+{
+  "version": "0.31",
+  "pins": [
+    {
+      "id": "pin_0001",
+      "kind": "open_decision",
+      "title": "datastore for the events service",
+      "severity": "high",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "interview",
+          "detail": "framed in Phase 1, still open"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": null,
+      "to_be": null,
+      "question": {
+        "prompt": "Which datastore backs the events service?",
+        "options": [
+          {
+            "id": "opt_postgres",
+            "label": "Postgres",
+            "implication": "one engine to operate; partitioning is ours"
+          },
+          {
+            "id": "opt_dynamo",
+            "label": "DynamoDB",
+            "implication": "no ops; a second consistency model to reason about"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": []
+    },
+    {
+      "id": "pin_0002",
+      "kind": "acceptance_criterion",
+      "title": "an event is queryable within 2s of ingest",
+      "severity": "high",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "interview",
+          "detail": "elected in Phase 1"
+        }
+      ],
+      "anchors": [],
+      "state": "detected",
+      "as_is": null,
+      "to_be": null,
+      "question": null,
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": []
+    }
+  ],
+  "decision_log": [],
+  "policies": [],
+  "fog": []
+}

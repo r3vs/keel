@@ -18,6 +18,7 @@ The classes map to the properties, not to the functions:
   * `TestItReportsRatherThanDestroys` — orphans, duplicates, hand edits, foreign labels.
   * `TestItDegradesIntoAResult` — no token, no network, no repo, no budget.
   * `TestTheTrackerIsAWindowAndNotADoor` — structural: nothing here can write the ledger.
+  * `TestCommentsAreSurfacedAndNeverActedOn` — the elected inbound path, which reads and stops.
 """
 from __future__ import annotations
 
@@ -60,19 +61,27 @@ class FakeResponse:
 class FakeGitHub:
     """An in-memory repository behind a `urlopen`-compatible callable.
 
-    It implements only what the module calls — list issues, create one, patch one — and records
-    every request, because half of what these tests assert is about what was NOT sent (no second
-    create, no write at all on a clean run, nothing after the reserve is reached).
+    It implements only what the module calls — list issues, create one, patch one, read one
+    thread — and records every request, because half of what these tests assert is about what was
+    NOT sent (no second create, no write at all on a clean run, nothing after the reserve is
+    reached, and no request at all against a thread the listing said was empty).
     """
 
     def __init__(self, issues=None, remaining=None, reset_at=1_700_000_000,
-                 drop_labels=False, page_size=100):
+                 drop_labels=False, page_size=100, comments=None, report_counts=True):
         self.issues = [dict(i) for i in (issues or [])]
         self.requests: list = []
         self.remaining = remaining
         self.reset_at = reset_at
         self.drop_labels = drop_labels        # the documented no-push-access behaviour
         self.page_size = page_size
+        #: `{issue_number: [comment, …]}`. Comments are a separate endpoint on GitHub and a
+        #: separate store here, which is what makes "the empty thread costs no request" checkable.
+        self.comments: dict = dict(comments or {})
+        #: Whether the ISSUE listing stamps a `comments` count. GitHub's issue resource carries
+        #: one; a host that does not send it must be read as *unknown* and fetched anyway, so both
+        #: modes exist here rather than one being assumed.
+        self.report_counts = report_counts
         self._next_number = max([i.get("number", 0) for i in self.issues] + [0]) + 1
 
     # -- helpers --------------------------------------------------------------------------------
@@ -99,6 +108,8 @@ class FakeGitHub:
         payload = json.loads(request.data.decode("utf-8")) if request.data else None
         self.requests.append((method, url, payload))
 
+        if method == "GET" and "/comments?" in url:
+            return self._thread(url)
         if method == "GET" and "/issues?" in url:
             return self._list(url)
         if method == "POST" and url.endswith("/issues"):
@@ -106,6 +117,13 @@ class FakeGitHub:
         if method == "PATCH" and "/issues/" in url:
             return self._patch(int(url.rsplit("/", 1)[1]), payload)
         raise AssertionError(f"the module made a call this fake does not implement: {method} {url}")
+
+    def _thread(self, url: str):
+        """`GET /repos/{repo}/issues/{n}/comments`. The number is parsed out of the path, so a
+        module that built the URL off the issue's server-supplied `comments_url` instead of from
+        the validated repo would land somewhere this fake cannot answer."""
+        number = int(url.split("/issues/")[1].split("/")[0])
+        return FakeResponse(200, [dict(c) for c in self.comments.get(number, [])], self._headers())
 
     def _list(self, url: str):
         # Parsed, never substring-matched: `per_page=100` contains `page=`, and reading the page
@@ -118,7 +136,13 @@ class FakeGitHub:
         matching = [i for i in self.issues if tracker.INDEX_LABEL in
                     [label_name(x) for x in i.get("labels", [])]]
         start = (page - 1) * self.page_size
-        chunk = matching[start:start + self.page_size]
+        # Copied, and stamped with the thread's size the way GitHub's issue resource is. The count
+        # is what lets the module skip an empty thread; a fake that never sent one would make the
+        # "no request against an empty thread" property untestable and the unknown-count path the
+        # only one ever exercised.
+        chunk = [dict(issue, **({"comments": len(self.comments.get(issue.get("number"), []))}
+                                if self.report_counts else {}))
+                 for issue in matching[start:start + self.page_size]]
         extra = {}
         if start + self.page_size < len(matching):
             extra["link"] = (f'<{tracker.API}/repos/{REPO}/issues?state=all&page={page + 1}>; '
@@ -146,6 +170,11 @@ class FakeGitHub:
 
 def label_name(label) -> str:
     return label.get("name") if isinstance(label, dict) else label
+
+
+def a_comment(body, author="dana", created_at="2026-08-13T09:00:00Z", cid=1) -> dict:
+    """One issue comment, in GitHub's own shape: the author is nested under `user`."""
+    return {"id": cid, "user": {"login": author}, "created_at": created_at, "body": body}
 
 
 def raising(exc):
@@ -718,6 +747,207 @@ class TestOneDeadIssueIsNotEvidenceAboutTheRepository(unittest.TestCase):
                                          io.BytesIO(b'{"message":"Not Found"}'))
         out = tracker.project(a_ledger().data, REPO, token="t", urlopen=_open)
         self.assertEqual(out["reason"], "not_found")
+
+
+class TestCommentsAreSurfacedAndNeverActedOn(unittest.TestCase):
+    """The inbound path elected on 2026-08-13 — `docs/design/tracker-projection.md`.
+
+    The election was *read-only surfacing*: a comment on a projected issue is listed under
+    `awaiting_human_review` with the pin its issue carries, and nothing else ever happens to it.
+    So the properties under test are one capability and three refusals — it surfaces; it does not
+    report its own output as somebody waiting; it does not answer "nobody is waiting" about a
+    tracker it never read; and it does not acquire a write path on either side while doing so.
+
+    The last one is the load-bearing one. The two forks this election made moot (whose comment
+    counts, what the ledger records as the source) are moot only for as long as no comment reaches
+    a writer, and `TestTheTrackerIsAWindowAndNotADoor` proves that structurally for the module.
+    What is asserted here is the end-to-end version at the new surface: a diff that read a thread
+    sent no non-GET request and left `ledger.json` byte-identical.
+    """
+
+    def _seeded(self, comments=None, **kw):
+        """A ledger projected into a fake tracker, with `comments` keyed by PIN rather than by
+        issue number — the numbers are the fake's to allocate, and a test that hard-coded them
+        would be asserting against the fixture's arithmetic instead of the module's attribution."""
+        led, api = a_ledger(), FakeGitHub(**kw)
+        project(led, api)
+        for pin_id, thread in (comments or {}).items():
+            number = [i["number"] for i in api.issues if pin_id in i["body"]][0]
+            api.comments[number] = thread
+        return led, api
+
+    def test_a_comment_is_surfaced_against_the_pin_its_issue_carries(self):
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment("we agreed on opt_db in standup", "dana")]})
+        out = diff(led, api)
+        waiting = out["awaiting_human_review"]
+        self.assertEqual(len(waiting), 1)
+        entry = waiting[0]
+        self.assertEqual(entry["pin_id"], pin_id)
+        self.assertEqual(entry["author"], "dana")
+        self.assertEqual(entry["created_at"], "2026-08-13T09:00:00Z")
+        self.assertIn("opt_db in standup", entry["excerpt"])
+        self.assertEqual(entry["issue_number"],
+                         [i["number"] for i in api.issues if pin_id in i["body"]][0])
+        self.assertEqual(out["comments"]["surfaced"], 1)
+
+    def test_the_projection_does_not_report_its_own_output_as_a_human_waiting(self):
+        """A comment carrying this module's own fence is the projector talking to itself. Counting
+        it would inflate the one number a maintainer acts on with the tool's own noise — the same
+        class as a clean scan that did not run."""
+        led = a_ledger()
+        pin = led.readable_pins()[0]
+        led, api = self._seeded({pin["id"]: [
+            a_comment(tracker.wrap(pin["id"], tracker.render(pin)), "keel-bot"),
+            a_comment("and a person, in the same thread", "dana", cid=2)]})
+        out = diff(led, api)
+        self.assertEqual([e["author"] for e in out["awaiting_human_review"]], ["dana"])
+        self.assertEqual(out["comments"]["excluded_own"], 1)
+        self.assertEqual(out["comments"]["comments_read"], 2, "the fence hid the comment beside it")
+
+    def test_a_bare_begin_marker_is_own_output_too(self):
+        """Half a fence is as much this module's output as a whole one — a truncated quote of a
+        projected body still came from here, and `_defuse` guarantees nothing else emits one."""
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment(f"<!-- keel:pin v1 id={pin_id} -->\ntrailing")]})
+        self.assertEqual(diff(led, api)["awaiting_human_review"], [])
+
+    def test_no_token_says_unavailable_rather_than_nobody_is_waiting(self):
+        """The section is `null`, never `[]`. An empty list is the answer *nobody is waiting*, and
+        a tracker that was never reached has not earned it — the same rule as `_open_existing`'s
+        refusal to read a missing ledger as an empty one."""
+        out = tracker.diff(a_ledger().data, REPO, token="", urlopen=FakeGitHub())
+        self.assertFalse(out["available"])
+        self.assertEqual(out["reason"], "no_token")
+        self.assertIsNone(out["awaiting_human_review"])
+        self.assertFalse(out["comments"]["available"])
+        self.assertEqual(out["comments"]["reason"], "no_token")
+        self.assertIn("nobody is waiting on you", out["comments"]["detail"])
+
+    def test_a_dead_network_leaves_the_section_unanswered_too(self):
+        out = tracker.diff(a_ledger().data, REPO, token="t",
+                           urlopen=raising(urllib.error.URLError("no route to host")))
+        self.assertIsNone(out["awaiting_human_review"])
+        self.assertEqual(out["comments"]["reason"], "network")
+
+    def test_reading_comments_writes_on_neither_side(self):
+        """The end-to-end half of the window/door invariant, at the surface the election added."""
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment("bumping this")]})
+        before = pathlib.Path(led.path).read_bytes()
+        api.requests.clear()
+        out = diff(led, api)
+        self.assertEqual([m for m, _u, _p in api.requests if m != "GET"], [],
+                         "the read-only door sent a write")
+        self.assertEqual(pathlib.Path(led.path).read_bytes(), before)
+        self.assertTrue(out["awaiting_human_review"])
+
+    def test_a_comment_never_moves_in_sync(self):
+        """`in_sync` means the projection matches the ledger, and re-projecting is what clears it.
+        Nothing this tool does clears a comment — only a human electing — so folding one into the
+        flag would make it permanently false on any tracker a team actually talks in."""
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment("still waiting on this")]})
+        out = diff(led, api)
+        self.assertTrue(out["in_sync"])
+        self.assertEqual(len(out["awaiting_human_review"]), 1)
+
+    def test_an_empty_thread_costs_no_request(self):
+        """The listing's own `comments` count says the thread is empty, so nothing is fetched. This
+        is the whole reason `tracker_diff` stays cheap on a tracker that is mostly quiet."""
+        led, api = self._seeded()
+        api.requests.clear()
+        out = diff(led, api)
+        self.assertEqual([u for _m, u, _p in api.requests if "/comments?" in u], [])
+        self.assertEqual(out["comments"]["issues_read"], 0)
+        self.assertEqual(out["awaiting_human_review"], [])
+
+    def test_an_absent_count_is_unknown_and_is_read_rather_than_assumed_empty(self):
+        """A host that sends no `comments` count says nothing about the thread. Reading silence as
+        emptiness is the same error as reading a missing rate-limit header as an exhausted budget —
+        and here it would silently drop every comment on Enterprise or behind a stripping proxy."""
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment("read me")]}, report_counts=False)
+        out = diff(led, api)
+        self.assertEqual(out["comments"]["issues_read"], 2)
+        self.assertEqual(len(out["awaiting_human_review"]), 1)
+
+    def test_a_long_comment_is_clipped_and_the_clip_is_declared(self):
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment("x " * 4000)]})
+        excerpt = diff(led, api)["awaiting_human_review"][0]["excerpt"]
+        self.assertLessEqual(len(excerpt), tracker.COMMENT_EXCERPT_MAX)
+        self.assertIn("clipped", excerpt)
+
+    def test_a_dead_thread_does_not_end_the_read_of_the_others(self):
+        """One issue transferred or deleted between the index and the read is not evidence about
+        the other forty threads — the same lesson `TestOneDeadIssueIsNotEvidenceAboutTheRepository`
+        records one endpoint over, paid again at the endpoint the election added."""
+        led = a_ledger()
+        first, second = (p["id"] for p in led.readable_pins()[:2])
+        led, api = self._seeded({first: [a_comment("this thread is gone")],
+                                 second: [a_comment("this one is not")]})
+        dead = [i["number"] for i in api.issues if first in i["body"]][0]
+
+        original = api._thread
+
+        def _one_is_dead(url):
+            if f"/issues/{dead}/comments" in url:
+                raise urllib.error.HTTPError(url, 404, "Not Found",
+                                             {"x-ratelimit-remaining": "4999"},
+                                             io.BytesIO(b'{"message":"Not Found"}'))
+            return original(url)
+        api._thread = _one_is_dead
+        out = diff(led, api)
+        self.assertTrue(out["available"], "one dead thread ended a read-only report")
+        self.assertEqual([e["pin_id"] for e in out["awaiting_human_review"]], [second])
+        self.assertEqual([t["issue"] for t in out["comments"]["threads_incomplete"]], [dead])
+
+    def test_the_walk_stops_inside_the_rate_limit_reserve_and_says_so(self):
+        """The drift plan is complete and the comment list is not, so the two facts are reported as
+        two: `stopped` names what ended the walk, and the list is a floor rather than a total."""
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment("nobody will read me this hour")]})
+        api.remaining = tracker.RATE_LIMIT_RESERVE
+        out = diff(led, api)
+        self.assertEqual(out["comments"]["stopped"]["reason"], "rate_limit")
+        self.assertEqual(out["awaiting_human_review"], [])
+        self.assertEqual([u for _m, u, _p in api.requests if "/comments?" in u], [])
+
+    def test_the_caller_can_ask_for_the_drift_plan_alone(self):
+        led, api = self._seeded()
+        out = tracker.diff(led.data, REPO, token="t0ken", urlopen=api, comments=False)
+        self.assertIsNone(out["awaiting_human_review"])
+        self.assertEqual(out["comments"]["reason"], "not_requested")
+
+    def test_a_deleted_account_is_a_blank_author_and_not_a_traceback(self):
+        """GitHub answers `"user": null` for a comment whose account is gone. This module's
+        standing rule is that reading is never the operation that fails."""
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        ghost = dict(a_comment("written by someone who left"), user=None)
+        led, api = self._seeded({pin_id: [ghost]})
+        self.assertEqual(diff(led, api)["awaiting_human_review"][0]["author"], "")
+
+    def test_project_does_not_pay_for_the_read(self):
+        """The election added a section to the READ door. `tracker_project` is the write door and
+        its cost profile is unchanged — it fetches no thread, so a projection run is not quietly
+        multiplied by a tracker's conversation volume."""
+        led = a_ledger()
+        pin_id = led.readable_pins()[0]["id"]
+        led, api = self._seeded({pin_id: [a_comment("hello")]})
+        api.issues[0]["title"] = "renamed, so there is something to write"
+        api.requests.clear()
+        out = project(led, api)
+        self.assertEqual([u for _m, u, _p in api.requests if "/comments?" in u], [])
+        self.assertNotIn("awaiting_human_review", out)
 
 
 # ── small readers over the fake, kept out of the assertions themselves ────────────────────────

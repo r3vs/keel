@@ -1,0 +1,484 @@
+{
+  "version": "0.31",
+  "pins": [
+    {
+      "id": "pin_0001",
+      "kind": "design_concern",
+      "title": "payments handler swallows the gateway error and returns 200",
+      "severity": "blocker",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0002",
+      "kind": "design_concern",
+      "title": "auth middleware raises a bare Exception across the module boundary",
+      "severity": "high",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0003",
+      "kind": "design_concern",
+      "title": "webhook receiver logs and continues on a schema mismatch",
+      "severity": "medium",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0004",
+      "kind": "design_concern",
+      "title": "report export catches BaseException",
+      "severity": "medium",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0005",
+      "kind": "design_concern",
+      "title": "user importer returns None on a parse failure",
+      "severity": "medium",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0006",
+      "kind": "design_concern",
+      "title": "search indexer retries forever on a 4xx",
+      "severity": "medium",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0007",
+      "kind": "design_concern",
+      "title": "mailer discards the SMTP error",
+      "severity": "low",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0008",
+      "kind": "design_concern",
+      "title": "avatar upload raises a str",
+      "severity": "low",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0009",
+      "kind": "design_concern",
+      "title": "session refresh returns False for three different failures",
+      "severity": "low",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0010",
+      "kind": "design_concern",
+      "title": "csv parser mixes exceptions and error returns in one function",
+      "severity": "medium",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0011",
+      "kind": "design_concern",
+      "title": "admin bulk-delete reports success on a partial failure",
+      "severity": "high",
+      "confidence": "extracted",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": {
+        "observed": "the failure path is neither raised nor returned consistently"
+      },
+      "to_be": null,
+      "question": {
+        "prompt": "What is this project's error convention at a module boundary?",
+        "options": [
+          {
+            "id": "opt_result_type",
+            "label": "every handler returns a Result; no bare raises across a module boundary",
+            "implication": "touch every handler; the error type becomes part of the contract"
+          },
+          {
+            "id": "opt_exceptions",
+            "label": "keep raising, but only typed domain exceptions",
+            "implication": "cheaper now; the boundary stays implicit"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    },
+    {
+      "id": "pin_0012",
+      "kind": "design_concern",
+      "title": "legacy billing shim converts every error to a 402",
+      "severity": "medium",
+      "confidence": "inferred",
+      "provenance": [
+        {
+          "source": "static_analysis",
+          "detail": "ast-grep rule err-handling-01"
+        }
+      ],
+      "anchors": [],
+      "state": "needs_input",
+      "as_is": null,
+      "to_be": null,
+      "question": {
+        "prompt": "The shim is scheduled for deletion. Does the convention reach it?",
+        "options": [
+          {
+            "id": "opt_leave_shim",
+            "label": "leave it; it dies in Q4"
+          },
+          {
+            "id": "opt_rewrite_shim",
+            "label": "rewrite it with the rest"
+          }
+        ],
+        "allow_freeform": true
+      },
+      "brainstorm": null,
+      "decision": null,
+      "depends_on": [],
+      "remediation": [],
+      "cluster_id": "err_handling"
+    }
+  ],
+  "decision_log": [],
+  "policies": [],
+  "fog": []
+}

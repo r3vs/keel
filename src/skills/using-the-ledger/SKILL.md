@@ -23,7 +23,7 @@ The decisions ledger is the single source of truth the whole package runs on. Th
   proposed-default; `blocker`/`high` never go to silent default.
 
 ## Use it to
-- read the current pins/decisions before acting;
+- read the current pins/decisions before acting — `ledger_summary`, never by opening the file;
 - add a finding as a pin (with `confidence`/`provenance`; deterministic static findings carry
   `extracted` and skip fp-check);
 - record an elected decision (interview only) with a `flip_criteria`;
@@ -50,6 +50,13 @@ what the spec says it means.
 | the work was done but correctness is not establishable | `ledger_mark_correctness_unknown` |
 | the human said not now | `ledger_defer` (an election: it settles the pin, so it is quoted like any other) |
 | the tracker your team reads, brought level with the ledger | `tracker_project` · `tracker_diff` (read-only) — see `references/tracker-projection.md` |
+
+**`ledger_summary` is the first act, before anything else on this page** — not `Read`, not `cat`,
+not a `jq` over `ledger.json`. The typed read is the guarded read: it resolves the path the host
+resolved, it *refuses* a ledger that is not there instead of answering "no pins", and it returns the
+shape the spec guarantees rather than whatever a hand-parse made of a file the schema has since
+moved on from. An agent that opens the file to read it has already left the channel, and the write
+is the next thing it will do by hand.
 
 The reads are automatable **and so is every non-electing write** — add a finding, plan its
 remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidence` (what you
@@ -120,6 +127,10 @@ in front of — generated, fenced, closed when the pin settles.
 Both are windows. Neither is a door: an answer typed into an issue comment, like a decision written
 into the `AGENTS.md` region, elects nothing and is read by no tool. Both report a hand-edited region
 instead of overwriting it, because what somebody wrote there may be the only copy of a real
-decision — and the fix for both is the same, to put it in the ledger and re-project. The full
-playbook, including what each drift verdict means and what stays the team's:
-`references/tracker-projection.md`.
+decision — and the fix for both is the same, to put it in the ledger and re-project.
+
+`tracker_diff` does now **show** you the comments — `awaiting_human_review`, one entry per comment
+on a projected issue, carrying the pin it belongs to. Reading is not writing: the queue exists so a
+fork answered in a thread stops being invisible to everyone holding the ledger, and every entry ends
+in the interview, in a pin, or in nothing. The full playbook, including what each drift verdict
+means, how to work that queue, and what stays the team's: `references/tracker-projection.md`.
