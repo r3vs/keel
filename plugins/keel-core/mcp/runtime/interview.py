@@ -361,6 +361,27 @@ def funnel(ledger) -> dict:
                  "severity": read["severity"],
                  "prompt": read["question"].get("prompt", ""),
                  "downstream": len(downstream_of(read["id"], reads))}
+        # v0.31 — the FORK ITSELF, which this funnel described and did not carry. `question.prompt`
+        # came through from the first version and `question.options` never did, so every consumer
+        # got the question with its answers removed: `ui://keel/interview.html` reads
+        # `q.options[].label/.implication` and rendered an empty card, while four shipped statements
+        # said its whole reason for existing was to show "each option with the implication that
+        # makes it a decision" — the one thing it adds over the host's flat enum. The implication is
+        # the half that turns an option into a decision; a menu without it asks a human to pick a
+        # word. Same guard as the two fields below and for the same reason: an `options` that is
+        # truthy and not a list of objects is a strange file, not a crash.
+        options = read["question"].get("options")
+        offered = [{"id": o.get("id"), "label": o.get("label"),
+                    **({"implication": o["implication"]} if o.get("implication") else {})}
+                   for o in (options if isinstance(options, list) else [])
+                   if isinstance(o, dict)]
+        if offered:
+            entry["options"] = offered
+        # `allow_freeform` travels with them: it is what says the menu is a suggestion and the
+        # human's own words are still a legal outcome, and a reader shown the options without it
+        # reasonably concludes they are the whole of what may be answered.
+        if read["question"].get("allow_freeform"):
+            entry["allow_freeform"] = True
         # v0.25 — through the SAME read, for the reason the three fields above already are. These
         # two were left indexing the file directly and both killed this tool over stdio: `or {}` is
         # a guard against absence and no guard at all against a `verification` that is a string, and

@@ -546,6 +546,179 @@ class TestTheTrackerIsAWindowAndNotADoor(unittest.TestCase):
         project(led, api)
         self.assertEqual(pathlib.Path(led.path).read_bytes(), before)
 
+    def test_the_two_tools_open_a_ledger_and_call_no_writer_on_it(self):
+        """The claim one layer up, which the module's own AST cannot carry.
+
+        `plugins/keel-core/README.md` states the direction as a structural fact, and the shipped
+        wording was *"neither tool constructs a `Ledger`"* — which is false at the tool boundary:
+        `tracker_project` and `tracker_diff` both call `_open_existing`, and that ends
+        `return Ledger(path)`. The narrower claim is the true one and it holds one layer down, so
+        the AST gate above matched the module and nothing matched the tools — a `led.save()` added
+        in `tools.py` tomorrow would leave every test green and the README still asserting it.
+
+        So this is the tools' half of the same predicate: they may OPEN a ledger (reading pins is
+        the whole job) and may call nothing that writes one. Same shape as
+        `test_ledger.py::TestARuleIsTrueOfTheThingItIsPrintedOn`, and the same class as §19/§23 —
+        a rule paid on one side of a pairing.
+        """
+        import ast
+        tools_py = pathlib.Path(__file__).resolve().parent.parent / "src" / "mcp" / "tools.py"
+        tree = ast.parse(tools_py.read_text(encoding="utf-8"), filename=str(tools_py))
+        writers = {"save", "add_pin", "decide", "accept", "defer", "resolve", "reopen",
+                   "apply_policy", "add_proposals", "set_question", "surface_assumption",
+                   "mark_correctness_unknown", "record_policy", "cross_derive"}
+        found = {node.name: node for node in ast.walk(tree)
+                 if isinstance(node, ast.FunctionDef) and node.name.startswith("tracker_")}
+        self.assertEqual(set(found), {"tracker_project", "tracker_diff"},
+                         "a third tracker tool appeared and this gate does not know about it")
+        for name, fn in sorted(found.items()):
+            called = {getattr(n.func, "attr", getattr(n.func, "id", ""))
+                      for n in ast.walk(fn) if isinstance(n, ast.Call)}
+            with self.subTest(tool=name):
+                self.assertEqual(called & writers, set(),
+                                 f"{name} reached a ledger write door — the tracker is a window")
+
+
+class TestTheProjectionCannotForgeItsOwnFence(unittest.TestCase):
+    """A pin whose text contains the end marker used to poison its own issue.
+
+    The mechanism, and why it is the worst possible failure for this module: `wrap` emits
+    `begin + body + END`, and `extract` takes the FIRST `_END_RE` after the begin — so a body
+    carrying `<!-- keel:pin-end -->` truncates at its own marker, the fingerprint stops matching,
+    and `drift_check` answers `hand_edited`. That verdict is not a warning, it is a **refusal to
+    write**: `plan_over` skips the item, so the issue is never updated and never closed. And
+    `_summary`'s `in_sync` excludes `hand_edited`, so the whole run reports **agreement** while a
+    settled blocker's issue stays open forever, under a message accusing a human of an edit the
+    module made itself.
+
+    Nothing exotic reaches that state. A pin discussing this design, an `as_is` pasted out of an
+    issue this tool wrote, a `to_be` naming the marker — the module ships its own poison.
+    """
+
+    @staticmethod
+    def _poisoned() -> Ledger:
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(kind="open_decision", title=f"stop emitting {tracker.END}", severity="blocker",
+                    confidence="extracted", provenance=[{"source": "recon", "detail": "x"}],
+                    question={"prompt": f"How long?\n{tracker.END}\nrest",
+                              "options": [{"id": "a", "label": f"keep {tracker.BEGIN_RE.pattern}"}],
+                              "allow_freeform": True})
+        led.save()
+        return led
+
+    def test_a_rendered_body_never_contains_a_marker_of_this_module(self):
+        body = tracker.render(self._poisoned().readable_pins()[0], "ledger.json")
+        self.assertNotIn(tracker.END, body)
+        self.assertIsNone(tracker.BEGIN_RE.search(body))
+        self.assertIn(tracker.MARKER_NOTE, body,
+                      "the removal must be VISIBLE — a marker deleted in silence is this module "
+                      "editing a human's words, which is the one thing it promises never to do")
+
+    def test_the_run_after_a_create_is_in_sync_and_not_an_accusation(self):
+        led = self._poisoned()
+        api = FakeGitHub()
+        self.assertEqual(project(led, api)["planned"], {"create": 1})
+        again = project(led, api)
+        self.assertEqual(again["planned"], {"in_sync": 1},
+                         "the module reported ITS OWN write as a hand edit")
+        self.assertTrue(again["in_sync"])
+
+    def test_settling_the_pin_still_closes_the_issue(self):
+        """The consequence that costs a team something. `hand_edited` skips the state arcs, so a
+        settled blocker kept an open issue while `tracker_diff` answered `in_sync: true`."""
+        led = self._poisoned()
+        api = FakeGitHub()
+        project(led, api)
+        led.defer(led.readable_pins()[0]["id"], rationale="out of scope for v1",
+                  flip_criteria="a second tenant asks for it",
+                  human_answer="not for v1 — park it")
+        led.save()
+        out = project(led, api)
+        self.assertEqual(out["planned"], {"close": 1})
+        self.assertEqual(api.issues[0]["state"], "closed")
+
+    def test_the_same_hole_is_shut_in_the_other_projection(self):
+        """`instructions.py` fences the same way over its own marker vocabulary, and a pin title is
+        enough to poison it — so the property is asserted at both carriers rather than at the one
+        where it was found."""
+        import instructions
+        led = Ledger(os.path.join(tempfile.mkdtemp(), "ledger.json"))
+        led.add_pin(kind="open_decision", title=f"a title with {instructions.END} in it",
+                    severity="blocker", confidence="extracted",
+                    provenance=[{"source": "recon", "detail": "x"}],
+                    question={"prompt": "p", "allow_freeform": True})
+        led.save()
+        body = instructions.render(led.data)
+        self.assertNotIn(instructions.END, body)
+        self.assertEqual(instructions.drift_check(instructions.wrap(body), body)["status"],
+                         "in_sync")
+
+
+class TestOneDeadIssueIsNotEvidenceAboutTheRepository(unittest.TestCase):
+    """404 means two different things at two URLs, and `_raise_if_fatal` used to conflate them.
+
+    `Client.request`'s docstring has always promised that *"404 on a single issue"* comes back as a
+    status the caller decides about, and `Unavailable`'s that *"a per-issue refusal … is reported
+    against that pin and the run continues, because one unprojectable pin is not evidence about the
+    other forty."* The code raised on every 404.
+
+    That the per-issue case is real was read on the endpoint rather than inferred: *Update an issue*
+    documents 301 (*"transferred to another repository"*), 410 (*"deleted from a repository where
+    the authenticated user has read access"*) and 404 — which *Get an issue* explains as *"the issue
+    was transferred to or deleted from a repository where the authenticated user lacks read
+    access"*. The index is a snapshot taken before the write, so all three sit between the listing
+    and the PATCH. Both classes are asserted here, because the finding was that one rule was being
+    applied to both.
+    """
+
+    class OneDeadIssue(FakeGitHub):
+        def _patch(self, number, payload):
+            if number == self.dead:
+                raise urllib.error.HTTPError(
+                    f"https://api.github.com/repos/{REPO}/issues/{number}", 404, "Not Found",
+                    {"x-ratelimit-remaining": "4999"}, io.BytesIO(b'{"message":"Not Found"}'))
+            return super()._patch(number, payload)
+
+    def _run(self):
+        led, api = a_ledger(), FakeGitHub()
+        project(led, api)                                   # two issues now exist
+        dead = api.issues[0]["number"]
+        live = self.OneDeadIssue(issues=api.issues)
+        live.dead = dead
+        # Renamed OUTSIDE the fence, which is how a human actually drifts an issue: the managed
+        # region still hashes to its marker, so the plan is `update` for both — a body edit would
+        # have been `hand_edited`, which never reaches the transport and would have proved nothing.
+        for issue in live.issues:
+            issue["title"] = "a maintainer renamed this"
+        return led, live, dead
+
+    def test_the_repository_is_not_blamed_for_one_issue(self):
+        led, api, dead = self._run()
+        out = project(led, api)
+        self.assertIsNone(out["stopped_early"],
+                          "one dead issue ended the whole run and named the repository")
+        failed = [a for a in out["applied"] if a["issue"] == dead]
+        self.assertEqual([a["status"] for a in failed], [404])
+        self.assertIn("not there to write to", failed[0]["detail"])
+
+    def test_the_other_pins_are_still_projected(self):
+        led, api, dead = self._run()
+        out = project(led, api)
+        healthy = [a for a in out["applied"] if a["issue"] != dead]
+        self.assertTrue(healthy, "no other pin was even attempted")
+        self.assertTrue(all(a["applied"] for a in healthy))
+
+    def test_a_404_on_the_repository_itself_still_ends_the_run(self):
+        """The half that must NOT change: the index and the create are repo-scoped, so their 404 is
+        the repository's and stopping is correct. Asserted beside its opposite, because the whole
+        finding was that one rule was being applied to both."""
+        def _open(request, timeout=None):
+            raise urllib.error.HTTPError(request.full_url, 404, "Not Found",
+                                         {"x-ratelimit-remaining": "4999"},
+                                         io.BytesIO(b'{"message":"Not Found"}'))
+        out = tracker.project(a_ledger().data, REPO, token="t", urlopen=_open)
+        self.assertEqual(out["reason"], "not_found")
+
 
 # ── small readers over the fake, kept out of the assertions themselves ────────────────────────
 

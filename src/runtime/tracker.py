@@ -179,6 +179,37 @@ def _clip(text: str, limit: int, hint: str) -> str:
     return text[: max(limit - len(hint), 1)].rstrip() + hint
 
 
+#: What a keel marker found INSIDE rendered content is replaced with. Visible and self-describing,
+#: for the same reason `_clip` declares its ellipsis: a marker removed in silence is a projection
+#: quietly editing a human's words, which is the one thing this module promises never to do.
+MARKER_NOTE = "⟨keel marker removed — this text is ledger content, not a fence⟩"
+
+
+def _defuse(body: str) -> str:
+    """`body`, with any text that would parse as this module's own fence replaced by a note.
+
+    The projection writes `begin + body + END`, and `extract` finds its region with `BEGIN_RE` and
+    then the **first** `_END_RE` after it. So a pin whose rendered text contains
+    `<!-- keel:pin-end -->` — a prompt quoting this design, a `to_be` describing the marker, an
+    `as_is` pasted out of an issue this tool wrote — truncates its own region on the very next
+    read: the fingerprint stops matching, `drift_check` answers `hand_edited`, and the projection
+    accuses a human of editing bytes **it wrote itself**. The issue is then never updated and never
+    closed, while `_summary` still reports `in_sync: true`, because `hand_edited` is not one of the
+    four write actions. A blocker's issue sits open forever under a report that says all is well.
+
+    Fixed at the step where content ENTERS the region rather than by making `extract` cleverer.
+    That is the same rule `apps.py` states for DOM construction and the one `map.py` learned twice:
+    the guarantee belongs at the dangerous step, not in the order of the lines around it. Taking
+    the LAST end marker instead would trade this bug for a worse one — a human who pastes the
+    marker *below* the fence would have their own text silently swallowed into the managed region,
+    and "everything outside the fence is preserved byte for byte" is the promise this module is.
+
+    Both markers, not just the end one: a begin marker inside the body is what `apply` would later
+    cut from, so it is the same failure one line up.
+    """
+    return _END_RE.sub(MARKER_NOTE, BEGIN_RE.sub(MARKER_NOTE, body))
+
+
 def _payload(value: Any) -> str:
     """A pin's free-form `as_is` / `to_be` as a deterministic fenced block, or `""`.
 
@@ -264,8 +295,17 @@ def render(pin: dict, ledger_path: str = "ledger.json") -> str:
     # `provenance` entries are objects (`{"source": …, "detail": …}`), and the SOURCE is what a
     # reader weighs — `str()` on the whole entry would put a Python dict repr in a human's tracker.
     # A bare string is accepted too, because `pin_read` guarantees the list and not its members.
+    #
+    # `.get`, not `[…]`: `provenance` is NOT in `ledger.PIN_GUARANTEED`, so `pin_read` repairs a
+    # null or wrongly-typed one to `[]` and materializes an ABSENT one not at all. Every other
+    # field this function indexes with brackets is on that guaranteed set; this was the one that
+    # was not, and a pin simply missing the key took both tracker tools down with a bare `KeyError`
+    # while `instructions_diff`, `render_map` and `ledger_summary` read the same file fine.
+    # `ledger.pin_read`'s standing rule is that reading a ledger is never the operation that fails
+    # on it, and this module's docstring says it must never raise into a tool call.
+    entries = read.get("provenance")
     provenance = []
-    for entry in read["provenance"]:
+    for entry in entries if isinstance(entries, list) else []:
         name = str(entry.get("source") or "").strip() if isinstance(entry, dict) else str(entry)
         if name.strip():
             provenance.append(name.strip())
@@ -302,7 +342,9 @@ def render(pin: dict, ledger_path: str = "ledger.json") -> str:
     if outcome:
         lines += ["", f"**Elected outcome** `{outcome}`"]
 
-    return "\n".join(lines).rstrip() + "\n"
+    # Defused LAST, over the assembled body: every line above interpolates ledger content, so a
+    # per-field guard is a rule six sites have to remember and one new field would quietly skip.
+    return _defuse("\n".join(lines).rstrip()) + "\n"
 
 
 def wrap(pin_id: str, body: str) -> str:
@@ -473,12 +515,36 @@ class Client:
 
     # -- one call -------------------------------------------------------------------------------
 
-    def request(self, method: str, url: str, payload: Optional[dict] = None) -> tuple:
+    def request(self, method: str, url: str, payload: Optional[dict] = None,
+                repo_scoped: bool = True) -> tuple:
         """`(status, data, headers)`. Raises `Unavailable` only for run-ending conditions.
 
         Everything else — 400, 404 on a single issue, 422 — comes back as a status the caller
         decides about, because the caller is the only thing that knows whether one pin failing ends
         the run (it does not) or the repo being absent does (it does).
+
+        `repo_scoped` is what makes that sentence true of 404, and it is the caller's to set
+        because a 404 means two different things at two different URLs.
+
+        On `/repos/{repo}/issues` — the index listing and the create — it is the **repository**:
+        absent, renamed, or invisible to this token, since *"GitHub uses a `404 Not Found` response
+        instead of a `403 Forbidden` response to avoid confirming the existence of private
+        repositories"*. Nothing else in the run can succeed, so it ends the run.
+
+        On `/repos/{repo}/issues/{n}` it is that **one issue**, and this is documented on the
+        endpoint itself rather than inferred from the repo case. *Update an issue* lists, beside
+        200: **301** *"the issue was transferred to another repository"*, **410** *"if the issue was
+        deleted from a repository where the authenticated user has read access"*, and **404** — the
+        same status *Get an issue* explains as *"if the issue was transferred to or deleted from a
+        repository where the authenticated user lacks read access"*. The index is a snapshot taken
+        at the start of the run, so all three are reachable between the listing and the write.
+        Treating them as the repo case told an operator "no such repository" about a repo whose
+        index had just answered 200, and aborted forty healthy pins over one dead issue.
+
+        **403 deliberately stays run-ending**, and the same page is why: *Update an issue* documents
+        403 as insufficient permission to modify — which on a token is a fact about the repository,
+        not about the issue — and it is also half of the rate-limit signal. So the narrow fix is
+        narrow: only 404 changes meaning with the URL.
         """
         body = None
         if payload is not None:
@@ -513,10 +579,10 @@ class Client:
                 data = json.loads(raw)
             except (ValueError, UnicodeDecodeError):
                 data = None                     # a non-JSON body is reported by status, not guessed
-        self._raise_if_fatal(status, data)
+        self._raise_if_fatal(status, data, repo_scoped)
         return status, data, headers
 
-    def _raise_if_fatal(self, status: int, data: Any) -> None:
+    def _raise_if_fatal(self, status: int, data: Any, repo_scoped: bool = True) -> None:
         message = (data or {}).get("message") if isinstance(data, dict) else None
         if status in (403, 429) and (self.retry_after is not None or self.remaining == 0):
             raise Unavailable(
@@ -529,7 +595,7 @@ class Client:
         if status == 403:
             raise Unavailable("forbidden", f"the token lacks access to {self.repo} (403). "
                                            f"{message or ''}".strip())
-        if status == 404:
+        if status == 404 and repo_scoped:
             raise Unavailable("not_found", f"no such repository, or the token cannot see it: "
                                            f"{self.repo} (404).")
         if status >= 500:
@@ -912,10 +978,21 @@ def project(data: dict, repo: str, token: Optional[str] = None, urlopen: Optiona
                     payload.update({"state": "closed", "state_reason": "completed"})
                 elif action == "reopen":
                     payload.update({"state": "open", "state_reason": "reopened"})
+                # `repo_scoped=False`: this URL names ONE issue, so its 404 is that issue's and
+                # not the repository's — see `Client.request`. Reported against this pin and the
+                # run continues, which is what `Unavailable`'s docstring has always promised.
                 status, _issue, _ = client.request(
-                    "PATCH", f"{API}/repos/{repo}/issues/{item['issue']}", payload)
+                    "PATCH", f"{API}/repos/{repo}/issues/{item['issue']}", payload,
+                    repo_scoped=False)
                 if status != 200:
-                    applied.append({**_bare(item), "applied": False, "status": status})
+                    entry = {**_bare(item), "applied": False, "status": status}
+                    if status == 404:
+                        entry["detail"] = (
+                            f"issue #{item['issue']} was not there to write to (404) — GitHub "
+                            f"documents that as transferred to, or deleted from, a repository "
+                            f"this token cannot read. The index was a snapshot taken before this "
+                            f"write, so it is about this pin alone; the rest of the run continued.")
+                    applied.append(entry)
                     continue
         except Unavailable as exc:
             stopped = exc.as_result()

@@ -1953,6 +1953,12 @@ def ledger_pin_resource(pin_id: str, path: str) -> dict:
 # it, and `connectDomains: []` / `resourceDomains: []` is that fact stated to the host rather than
 # left for it to infer. No `permissions` are requested at all: neither app wants a camera, a
 # microphone, geolocation or the clipboard, and the quiet way to ask for nothing is to ask.
+#
+# One object, two resources, and therefore two sets of bytes to hold to it: for a round only the
+# interview app's were read, so the map app carried the identical claim with nothing checking it —
+# a `<link>` added in `map.py` would have broken a contract declared here.
+# `test_neither_app_is_anything_but_a_whole_document_that_fetches_nothing` now walks every `ui://`
+# resource this server serves, so a third app inherits the gate along with the declaration.
 
 _APP_CSP = ResourceCSP(connect_domains=[], resource_domains=[])
 

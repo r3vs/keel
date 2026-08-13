@@ -135,9 +135,14 @@ because a decision written into the projection belongs in the ledger.
 
 The pair above carries the ledger to the *agent*; this one carries it to the *team*, and it is the
 same shape a second time: one source, a generated projection, managed markers, and a drift check
-computed by the same planner the writer executes. The direction is one-way by construction — neither
-tool constructs a `Ledger` or imports a write door, so an issue box (unauthenticated input) can never
-become a decision. Two host facts decide the design: every pull request answers as an issue, so the
+computed by the same planner the writer executes. The direction is one-way by construction, and the
+construction is precise rather than sweeping: the projection module — everything that reads an
+issue — imports only the READ half of the ledger and **constructs no `Ledger`**. The two tools
+above do open one, through the same guarded loader every read tool uses, and then call no writer on
+it. Both halves are gates over the shipping code's own AST, because the sentence is worth exactly
+what checks it: what exists nowhere is a path from an issue body back into `ledger.json`, so an
+issue box (unauthenticated input) can never become a decision. Two host facts decide the design:
+every pull request answers as an issue, so the
 index skips anything carrying `pull_request`; and **GitHub silently drops labels when the token
 lacks push access** — the label *is* the idempotency key, so a run that lost it stops rather than
 duplicating every pin forever. Neither tool takes a token: a secret an agent can pass is a secret an

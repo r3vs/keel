@@ -91,7 +91,8 @@ def _corpus(shapes: dict, stronger: dict, good: dict, kindname: str) -> list:
             out.append((f"{kindname}.{path} is {probe_label} (declared {shape})", record))
         # A path whose rule is STRONGER than its shape is also violated by absence — `id`, `state`
         # and `severity` are required, and "missing" is exactly how the first six reproductions of
-        # this class arrived.
+        # this class arrived. Absence of an OPTIONAL path is not a violation and is therefore not
+        # here; it is a legal ledger, and `_sparse` below is the corpus for that half.
         if path in stronger:
             record = copy.deepcopy(good)
             _drop_at(record, path)
@@ -110,6 +111,45 @@ def broken_pins() -> list:
 def broken_policies() -> list:
     """`(label, policy)` for every violation `POLICY_SHAPES` can describe."""
     return _corpus(POLICY_SHAPES, POLICY_STRONGER, GOOD_POLICY, "policy")
+
+
+def _sparse(shapes: dict, stronger: dict, good: dict, kindname: str) -> list:
+    """`(label, record)` for every OPTIONAL declared path, dropped one at a time.
+
+    These are **legal** records, and that is the whole point of keeping them out of `_corpus`. The
+    two corpora answer two different questions and a reader has to be able to tell which one a case
+    belongs to: a broken record must be REFUSED by a write door and REPORTED by `nonconforming`; a
+    sparse one must be accepted by both — and, the part nobody had a case for, **read without
+    raising**.
+
+    The gap this closes was exactly the size of `_corpus`'s `if path in stronger`. Absence was
+    generated only for paths carrying a stronger rule, so ~100 malformed pins contained not one
+    that merely omitted `provenance` — and `ledger.pin_read` is precisely what makes that the
+    dangerous case: a null or wrongly-typed value is REPAIRED into the result, so every probe in
+    `PROBES` leaves the key present, while an absent one is materialized only for `PIN_GUARANTEED`.
+    So `read["provenance"]` survived the entire corpus and died on the one shape it did not
+    contain. Both tracker tools went down with a bare `KeyError` on a file that
+    `instructions_diff`, `render_map` and `ledger_summary` all read without complaint.
+    """
+    out = []
+    for path in shapes:
+        if path in stronger:
+            continue                          # required: its absence is a violation, see `_corpus`
+        record = copy.deepcopy(good)
+        _drop_at(record, path)
+        out.append((f"{kindname}.{path} is absent (optional — legal, and still must not raise)",
+                    record))
+    return out
+
+
+def sparse_pins() -> list:
+    """`(label, pin)` for every optional path of `PIN_SHAPES`, omitted. Legal, sparse, readable."""
+    return _sparse(PIN_SHAPES, PIN_STRONGER, GOOD_PIN, "pin")
+
+
+def sparse_policies() -> list:
+    """`(label, policy)` for every optional path of `POLICY_SHAPES`, omitted."""
+    return _sparse(POLICY_SHAPES, POLICY_STRONGER, GOOD_POLICY, "policy")
 
 
 #: The fields a reader dispatches on AFTER the kind — every branch of `summary`'s log loop and of

@@ -21,3 +21,10 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# `scripts/run_evals.py --execute` writes its report here by default, and the documented
+# invocation is run FROM the repo root. It lands even on the runner-unavailable path (exit 3),
+# so a developer who merely tries `--execute` on a machine without credentials leaves one — and a
+# release commit's `git add -A` would carry a machine-specific, timestamped artifact into the tree.
+# Same rule as every line above: the tool generates it, nobody authors it.
+eval-report.json

@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import pathlib
+import subprocess
 import tempfile
 import unittest
 
@@ -163,6 +165,104 @@ class TestAnUnavailableRunnerIsItsOwnAnswer(unittest.TestCase):
             with self.subTest(skill=skill):
                 self.assertIsNotNone(run_evals.plugin_for(skill),
                                      f"no plugins/*/skills/{skill} — run scripts/build.py")
+
+
+class TestEveryRunCanReachTheToolsItIsMeasuredOn(unittest.TestCase):
+    """`--plugin-dir` loads a directory; it resolves no `dependencies`.
+
+    Verified at the consumer on this CLI: `--plugin-dir plugins/keel-kit` alone answers
+    `mcp_servers: []` in its `init` event, while adding `--plugin-dir plugins/keel-core` brings up
+    `plugin:keel-core:keel` and makes `mcp__plugin_keel-core_keel__ledger_summary` callable from a
+    keel-kit skill's session. Only `keel-core` carries a plugin-root `.mcp.json`; the other three
+    name it in `dependencies`, which is what a MARKETPLACE resolves and a directory load does not.
+
+    So five of the six eval skills used to run with no `ledger_*` tool at all: every `pin(...)` and
+    `log_entry(...)` check read a ledger the agent had no door to write, `tool_used(…ledger_resolve)`
+    could not match on any run, and `tool_absent(…)` passed for the one reason that proves nothing.
+    `docs/measurements.md` never saw it because the only case it drove end to end was a `keel-core`
+    one. CI runs `--execute --checked-only`, so those cases ran and spent budget.
+    """
+
+    def test_the_command_carries_every_plugin_that_declares_an_mcp_server(self):
+        carriers = run_evals.mcp_plugins()
+        self.assertTrue(carriers, "no built plugin declares MCP servers — run scripts/build.py")
+        for path in run_evals.find_eval_files():
+            skill = path.parent.parent.name
+            with self.subTest(skill=skill):
+                names = [p.name for p in run_evals.plugin_dirs_for(skill)]
+                self.assertEqual(names[0], run_evals.plugin_for(skill).name,
+                                 "the skill's own plugin must stay first")
+                for carrier in carriers:
+                    self.assertIn(carrier.name, names)
+                self.assertEqual(len(names), len(set(names)), "a plugin dir was passed twice")
+
+    def test_the_flag_is_repeated_rather_than_joined(self):
+        """`--plugin-dir <path>`, *"repeatable: --plugin-dir A --plugin-dir B.zip"* — one flag per
+        directory. A comma-joined pair is a path that does not exist, and the CLI would load
+        nothing while the command still looked right."""
+        class _Args:
+            model = permission_mode = allowed_tools = ""
+            max_budget_usd = 5.0
+        dirs = run_evals.plugin_dirs_for("test-driven-development")
+        cmd = run_evals.build_command("claude", dirs, _Args())
+        self.assertEqual(cmd.count("--plugin-dir"), len(dirs))
+        for path in dirs:
+            self.assertIn(str(path), cmd)
+
+
+class TestARelativeLedgerBelongsToTheRunAndNotToTheHarness(unittest.TestCase):
+    """`ledger.json` is the natural spelling for an agent standing in the project.
+
+    The MCP server resolves it against ITS cwd, which is the workdir the harness handed the run.
+    The harness resolved it against its own — the repo root, which is where `--execute` is
+    documented to be run from and where anyone who has dogfooded Keel has a `ledger.json`. So a run
+    that wrote nothing was credited with somebody else's pins, and the report listed the label
+    `ledger.json` twice with no way to tell which was which. Latent in CI only because that file is
+    gitignored and absent from a fresh checkout.
+    """
+
+    def setUp(self):
+        self.harness_cwd = pathlib.Path(tempfile.mkdtemp())
+        self.workdir = pathlib.Path(tempfile.mkdtemp())
+        self._old = os.getcwd()
+        os.chdir(self.harness_cwd)
+
+    def tearDown(self):
+        os.chdir(self._old)
+
+    def test_a_stray_ledger_beside_the_harness_is_not_an_artifact_of_the_run(self):
+        (self.harness_cwd / "ledger.json").write_text(json.dumps({"version": "0.31", "pins": [
+            {"id": f"pin_{i}", "kind": "open_decision", "state": "needs_input"}
+            for i in range(4)]}), encoding="utf-8")
+        (self.workdir / "ledger.json").write_text(
+            json.dumps({"version": "0.31", "pins": []}), encoding="utf-8")
+        run = make_run(self.workdir, tools=[
+            ("mcp__plugin_keel-core_keel__ledger_add_pin", {"ledger": "ledger.json"})])
+        self.assertEqual([led["path"] for led in run.ledgers], ["ledger.json"])
+        self.assertEqual(run.pins(), [],
+                         "the run's empty ledger was topped up from the harness's cwd")
+        self.assertFalse(run_evals.pin(kind="open_decision", min_count=4)(run)[0])
+
+    def test_an_absolute_ledger_outside_the_copy_is_still_the_runs(self):
+        """The property the relative fix must not cost: naming an absolute path is legitimate, and
+        a harness that only globs its copy reports `0 pins` for a run that wrote a full ledger."""
+        elsewhere = pathlib.Path(tempfile.mkdtemp()) / "out.json"
+        elsewhere.write_text(json.dumps({"version": "0.31", "pins": [
+            {"id": "pin_1", "kind": "defect", "state": "detected"}]}), encoding="utf-8")
+        run = make_run(self.workdir, tools=[("mcp__keel__ledger_add_pin",
+                                             {"ledger": str(elsewhere)})])
+        self.assertTrue(run_evals.pin(kind="defect")(run)[0])
+        self.assertIn(str(elsewhere), [led["path"] for led in run.ledgers],
+                      "a ledger outside the copy must be labelled by its absolute path")
+
+    def test_the_report_default_is_a_gitignored_path(self):
+        """`--execute` writes it into the cwd even on the runner-unavailable path, and the
+        documented invocation is from the repo root. Every other artifact this repo generates is
+        ignored; this one escaped, and a release commit's `git add -A` would have carried it."""
+        proc = subprocess.run(["git", "check-ignore", run_evals.DEFAULT_REPORT], cwd=str(ROOT),
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0,
+                         f"{run_evals.DEFAULT_REPORT!r} is not gitignored — see .gitignore")
 
 
 if __name__ == "__main__":

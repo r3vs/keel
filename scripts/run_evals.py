@@ -66,6 +66,13 @@ EXIT_OK, EXIT_FAILED, EXIT_USAGE, EXIT_NO_RUNNER = 0, 1, 2, 3
 #: match below, and the alternation is the record of which is which.
 MCP_PREFIX = r"mcp__(?:plugin_[\w-]+_)?keel__"
 
+#: Where `--execute` writes its report when nobody says otherwise — resolved against the CWD, and
+#: the documented invocation is from the repo root. A module constant rather than a literal in
+#: `add_argument` so the `.gitignore` entry has something to be checked against: the file lands
+#: even on the runner-unavailable path (exit 3), so anyone who merely TRIES `--execute` without
+#: credentials leaves one, and `git add -A` on a release commit would carry it in.
+DEFAULT_REPORT = "eval-report.json"
+
 JUDGE_PROMPT = """You are a strict eval judge. Below is the full transcript of an agent \
 working on a task, followed by ONE assertion about the required behavior.
 
@@ -136,17 +143,32 @@ class Run:
         # A harness that only globs the workdir reports "0 pins" for a run that wrote a full ledger
         # somewhere else — a false FAIL, which is worse than a manual. Found by running it: the
         # first green case called `ledger_add_pin` and left the workdir empty.
-        named = {pathlib.Path(str(t["input"]["ledger"])).expanduser()
+        #
+        # A RELATIVE argument is joined to the WORKDIR, which is the cwd the run actually had
+        # (`execute_case` passes `cwd=workdir`), not the harness's. `ledger.json` is the natural
+        # spelling for an agent standing in the project, and the MCP server resolves it against its
+        # own cwd — the workdir. Resolving it here against the harness's instead attributed a stray
+        # `ledger.json` beside the repo root to the run: a run whose ledger was empty passed
+        # `pin(kind="open_decision", min_count=4)` off somebody's dogfooding file, and the report
+        # printed the label `ledger.json` twice with no way to tell the two apart. Latent in CI only
+        # because `ledger.json` is gitignored and absent from a fresh checkout — and the repo root
+        # is exactly where `--execute` is documented to be run from.
+        #
+        # Everything is `.resolve()`d before the union for the same reason: `/tmp` is a symlink to
+        # `/private/tmp` on the macOS leg, so a globbed path and a named one can be the same file
+        # under two spellings — which double-counts its pins and makes `relative_to` below miss.
+        root = workdir.resolve()
+        named = {(root / pathlib.Path(str(t["input"]["ledger"])).expanduser()).resolve()
                  for t in self.tools if isinstance(t["input"].get("ledger"), str)}
         self.ledgers: list[dict] = []
-        for path in sorted(set(workdir.rglob("ledger.json")) | named):
+        for path in sorted({p.resolve() for p in workdir.rglob("ledger.json")} | named):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
             if isinstance(data, dict):
                 try:
-                    label = str(path.relative_to(workdir))
+                    label = str(path.relative_to(root))
                 except ValueError:
                     label = str(path)          # outside the copy; reported as the absolute path
                 self.ledgers.append({"path": label, "data": data})
@@ -588,6 +610,39 @@ def plugin_for(skill: str) -> pathlib.Path | None:
     return None
 
 
+def mcp_plugins() -> list[pathlib.Path]:
+    """Every built plugin that declares MCP servers. Read off `plugins/`, never named here.
+
+    **`--plugin-dir` resolves no dependencies.** Three of the four plugins declare
+    `dependencies: [{name: keel-core}]`, which is *marketplace* resolution; a direct directory load
+    performs none of it. Verified at the consumer rather than reasoned about: on this CLI,
+    `--plugin-dir plugins/keel-kit` alone reports `mcp_servers: []` in its `init` event, and adding
+    `--plugin-dir plugins/keel-core` brings up `plugin:keel-core:keel` and makes
+    `mcp__plugin_keel-core_keel__ledger_summary` callable from a keel-kit skill.
+
+    Only `keel-core` carries a plugin-root `.mcp.json` today, so before this every case for a skill
+    living anywhere else ran with **no `ledger_*` tool at all**: `tool_used(…ledger_resolve)` could
+    not match on any run, every `pin(…)` / `log_entry(…)` check read a ledger the agent had no door
+    to write, and `tool_absent(…)` passed for the one reason that proves nothing — the tool was
+    never there to call. `docs/measurements.md` never caught it because the only case it exercised
+    end to end was a `keel-core` one.
+
+    Loading the extra directory is not a thumb on the scale: `dependencies` is exactly what a
+    marketplace install resolves, so a user who installs `codebase-rescue` HAS `keel-core`. The run
+    that omitted it was the unfaithful one.
+    """
+    return [p for p in sorted((ROOT / "plugins").glob("*"))
+            if p.is_dir() and (p / ".mcp.json").is_file()]
+
+
+def plugin_dirs_for(skill: str) -> list[pathlib.Path]:
+    """The `--plugin-dir` set for one skill: the plugin that carries it, plus the MCP carriers."""
+    primary = plugin_for(skill)
+    if primary is None:
+        return []
+    return [primary] + [p for p in mcp_plugins() if p != primary]
+
+
 def preflight(executable: str, skills: list[str], probe_timeout: int) -> tuple[bool, str, dict]:
     """Can this machine host a behavioral run? Returns (ok, reason, detail).
 
@@ -636,17 +691,19 @@ def preflight(executable: str, skills: list[str], probe_timeout: int) -> tuple[b
                       sorted(answer["modelUsage"]) or None}
 
 
-def build_command(executable: str, plugin: pathlib.Path, args) -> list[str]:
+def build_command(executable: str, plugins: list[pathlib.Path], args) -> list[str]:
     """The headless invocation, verified at the consumer (`claude --help`, CLI 2.x) rather than
     remembered. Each flag is here for a stated reason:
 
       -p / --output-format stream-json / --verbose
           `-p` is headless; `stream-json` is the ONLY format that carries tool_use blocks, and the
           tool calls are half of what the checks read. `--verbose` is required alongside it.
-      --plugin-dir plugins/<plugin>
-          loads the BUILT plugin for this session only — skills, hooks and the plugin-root
+      --plugin-dir plugins/<plugin>   (repeatable — `--plugin-dir A --plugin-dir B`, per `--help`)
+          loads the BUILT plugins for this session only — skills, hooks and the plugin-root
           `.mcp.json` (so the `keel` MCP server, hence the `ledger_*` tools). Without it the run
-          measures Claude Code, not Keel.
+          measures Claude Code, not Keel. It is a LIST because a direct directory load resolves no
+          `dependencies`: the skill's own plugin plus every MCP carrier, per `plugin_dirs_for`,
+          which is what a marketplace install of that plugin actually gives a user.
       --setting-sources ''
           the developer's own user/project settings are not part of what a user installs, and a
           personal skill or permission rule leaking in makes the result unreproducible.
@@ -661,9 +718,11 @@ def build_command(executable: str, plugin: pathlib.Path, args) -> list[str]:
     The PROMPT is not here. It goes over stdin, because `--allowedTools` is variadic and would eat
     a trailing positional — see `preflight` for the failure that taught this.
     """
-    cmd = [executable, "-p", "--output-format", "stream-json", "--verbose",
-           "--plugin-dir", str(plugin), "--no-session-persistence",
-           "--setting-sources", "", "--max-budget-usd", str(args.max_budget_usd)]
+    cmd = [executable, "-p", "--output-format", "stream-json", "--verbose"]
+    for plugin in plugins:
+        cmd += ["--plugin-dir", str(plugin)]
+    cmd += ["--no-session-persistence",
+            "--setting-sources", "", "--max-budget-usd", str(args.max_budget_usd)]
     if args.model:
         cmd += ["--model", args.model]
     if args.permission_mode:
@@ -673,7 +732,7 @@ def build_command(executable: str, plugin: pathlib.Path, args) -> list[str]:
     return cmd
 
 
-def execute_case(executable: str, skill: str, plugin: pathlib.Path, case: dict,
+def execute_case(executable: str, skill: str, plugins: list[pathlib.Path], case: dict,
                  fixture: pathlib.Path | None, workroot: pathlib.Path, args) -> Run:
     """One case, in its own copy of the fixture (or its own empty directory when none is declared).
 
@@ -689,7 +748,7 @@ def execute_case(executable: str, skill: str, plugin: pathlib.Path, case: dict,
         workdir.mkdir(parents=True)
     else:
         shutil.copytree(fixture, workdir)
-    cmd = build_command(executable, plugin, args)
+    cmd = build_command(executable, plugins, args)
     started = time.monotonic()
     proc = subprocess.run(cmd, input=case["prompt"], cwd=str(workdir), capture_output=True,
                           text=True, encoding="utf-8", errors="replace", timeout=args.timeout)
@@ -756,7 +815,7 @@ def execute(paths: list[pathlib.Path], fixture_override: str, report_path: pathl
     for path in paths:
         skill = path.parent.parent.name
         data = json.loads(path.read_text(encoding="utf-8"))
-        plugin = plugin_for(skill)
+        plugin_set = plugin_dirs_for(skill)
         # An eval file with no `fixture` gets an EMPTY directory, and for the two that declare none
         # that is the correct fixture rather than a fallback: greenfield-forge's as-is starts empty
         # by definition, and screenshot-to-code builds from an image, not from a tree. What is NOT
@@ -778,10 +837,11 @@ def execute(paths: list[pathlib.Path], fixture_override: str, report_path: pathl
                                 "error": f"fixture {fixture} does not exist"})
                 failed += 1
                 continue
-            print(f"[{skill}] case {case['id']} (plugin {plugin.name}, "
+            print(f"[{skill}] case {case['id']} "
+                  f"(plugins {'+'.join(p.name for p in plugin_set)}, "
                   f"fixture {fixture.name if fixture else '(empty dir)'})…", flush=True)
             try:
-                run_obj = execute_case(args.executable, skill, plugin, case, fixture,
+                run_obj = execute_case(args.executable, skill, plugin_set, case, fixture,
                                        workroot, args)
             except Exception as exc:
                 print(f"    ERROR {exc}")
@@ -849,7 +909,7 @@ def main() -> int:
                              "own `fixture` field")
     parser.add_argument("--skill", default="", help="only this skill (dir name)")
     parser.add_argument("--case", type=int, default=0, help="--execute: only this case id")
-    parser.add_argument("--report", default="eval-report.json", help="report path")
+    parser.add_argument("--report", default=DEFAULT_REPORT, help="report path")
     parser.add_argument("--timeout", type=int, default=1800, help="per-case timeout, seconds")
     parser.add_argument("--probe-timeout", type=int, default=120,
                         help="--execute: timeout for the credential probe, seconds")

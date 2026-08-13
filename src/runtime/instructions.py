@@ -211,6 +211,32 @@ def _fingerprint(body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
 
 
+#: What a keel marker found INSIDE the rendered region is replaced with — visible and
+#: self-describing, because a marker removed in silence is a projection editing the ledger's words.
+MARKER_NOTE = "⟨keel marker removed — this text is ledger content, not a fence⟩"
+
+
+def _defuse(body: str) -> str:
+    """`body`, with any text that would parse as this module's own fence replaced by a note.
+
+    `extract` finds the region with `BEGIN_RE` and then the **first** `_END_RE` after it, so a pin
+    titled ``Stop emitting <!-- keel:end -->`` — or any elected rule that quotes this design —
+    truncates its own region on the next read. The fingerprint stops matching and `drift_check`
+    answers `hand_edited`: the projection accusing a human of editing bytes it wrote itself, and
+    then refusing to regenerate in order to protect an edit nobody made. `AGENTS.md` goes stale
+    silently, which is the one failure this carrier exists to prevent.
+
+    Fixed where content ENTERS the region rather than by making `extract` prefer the LAST end
+    marker: that would silently swallow a human's own text below the fence into the managed region,
+    and "everything outside the markers is preserved byte for byte" is the promise this module is.
+
+    `tracker.py` carries the identical guard over its own marker vocabulary, and the two are kept
+    as two rather than shared: the markers differ, and a helper parameterised over both regexes
+    would be one import that makes each projection depend on the other's fence.
+    """
+    return _END_RE.sub(MARKER_NOTE, BEGIN_RE.sub(MARKER_NOTE, body))
+
+
 def _order(pin: dict) -> tuple:
     """Severity then id, through the schema's own ordering — and the table this module used to keep
     is gone (v0.23).
@@ -525,7 +551,10 @@ def render(data: dict, max_lines: int = MAX_LINES, ledger_path: str = "ledger.js
 
     if not body:
         body = ["", "*No decisions elected yet — run the skill's interview before writing code.*"]
-    return "\n".join(head + body).rstrip() + "\n"
+    # Defused LAST, over the assembled region: every section above interpolates ledger content
+    # (pin titles, rule text, generated paths), so a per-site guard is a rule each new section has
+    # to remember.
+    return _defuse("\n".join(head + body).rstrip()) + "\n"
 
 
 def wrap(body: str) -> str:

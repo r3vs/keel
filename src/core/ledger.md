@@ -134,12 +134,18 @@ Summary of what matters here:
 - Only the interview commits decisions; the brainstorm only writes `proposals[]`; the challenger
   and the feedback loop only reopen — and *reopening is appended before anything moves*, including
   the cross-derivation arc, which may never rewrite the pin's `question`.
-- **Every surface outside this file is a projection of it, and projections are one-way.** The map,
-  the interview, the `AGENTS.md` region and the issue tracker (`tracker_project`) all render from
-  the ledger and none of them is read back into it: an answer typed into a generated issue or into
-  a managed region elects nothing, because no tool reads it. That is the same anti-divergence
-  property the ledger enforces on the codebases these skills touch, applied to the ledger's own
-  audience — a second place a decision can be written is a second place it can disagree.
+- **A GENERATED surface is a projection, and a projection is one-way.** The map, the `AGENTS.md`
+  managed region and the issue tracker (`tracker_project`) all render from the ledger and none of
+  them is read back into it: an answer typed into a generated issue or into a managed region elects
+  nothing, because no tool reads it. That is the same anti-divergence property the ledger enforces
+  on the codebases these skills touch, applied to the ledger's own audience — a second place a
+  decision can be written is a second place it can disagree.
+  **The interview and the brainstorm are not on that list, and the distinction is the point.** They
+  are the ledger's *doors*, not its projections: the interview is the only surface that commits a
+  decision (bullet above) and the brainstorm writes `proposals[]`. Both read and write one
+  `ledger.json` and hold no state of their own — which is what the spec means by "three surfaces
+  read and write" — so they add no second place for a decision to live. What has no write path is
+  everything **generated**: a rendering nobody authors, and therefore a rendering nobody may answer.
 
 **Runtime:** the spec's load-bearing rules are not left to care — they are implemented once, for
 every skill, in the ledger runtime (stdlib-only, tested in CI): pin CRUD with kind validation,

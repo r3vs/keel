@@ -810,10 +810,18 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
     #: `PIN_FIELDS` already declared, and this unchanged gate went red: `verification: "observed"`
     #: killed `interview_next` over stdio. So the cases come from the schema the rule is about —
     #: see `tests/shape_corpus.py`.
+    #: Both corpora, because this gate's claim is about READING and the two are read the same way.
+    #: `broken_pins` is every shape the schema refuses; `sparse_pins` is every shape it ALLOWS and
+    #: nobody had generated — an optional path simply omitted. The second half exists because
+    #: `pin_read` repairs a null or wrongly-typed value into its result and materializes an absent
+    #: one only for `PIN_GUARANTEED`, so a bracket index on a non-guaranteed path survives all ~100
+    #: malformations and dies on the legal file. That is how `read["provenance"]` shipped, taking
+    #: both tracker tools down with a bare `KeyError` — while this very gate was green, and while
+    #: `instructions_diff`, `render_map` and `ledger_summary` read the same file fine.
     @staticmethod
     def BROKEN_PINS():
-        from shape_corpus import broken_pins
-        return broken_pins()
+        from shape_corpus import broken_pins, sparse_pins
+        return broken_pins() + sparse_pins()
 
     @staticmethod
     def _read_only_ledger_tools():
@@ -904,10 +912,10 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         """The same corpus one collection over. `policies` was the collection whose CONTAINER was
         guarded a round before its FIELDS were, so it is exactly the half a pin-shaped corpus
         cannot see."""
-        from shape_corpus import broken_policies
+        from shape_corpus import broken_policies, sparse_policies
         tmp = tempfile.mkdtemp()
         roster = self._read_only_ledger_tools()
-        for index, (label, broken) in enumerate(broken_policies()):
+        for index, (label, broken) in enumerate(broken_policies() + sparse_policies()):
             path = _ledger_with_pins(tempfile.mkdtemp(dir=tmp))
             with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)

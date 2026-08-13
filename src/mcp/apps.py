@@ -61,16 +61,27 @@ already had.
   new rendering code and no new dependency, and the page never enters the model's context the way
   wrapping it in a tool result would.
 
-Untrusted content, and why the JS never touches innerHTML
----------------------------------------------------------
+Untrusted content, and why the JS in THIS file never touches innerHTML
+----------------------------------------------------------------------
 Every string these apps render — pin titles, option labels, implications — is agent-authored
 content out of somebody else's repo. `map.py` learned this twice (its `esc` did not escape; then a
 chained-`replace` pass let inlined content be rewritten by a later substitution) and both times the
 lesson was that **inlining is the dangerous step**, so the guarantee belongs at the step rather
-than in the order of the lines around it. Here the step is DOM construction, so the rule is
-structural and absolute: data-derived strings reach the document through `textContent` only. There
-is no `innerHTML` in this file, and `test_the_interview_app_never_builds_dom_from_a_string` fails
-if one appears.
+than in the order of the lines around it.
+
+The two documents reach it by two different routes, and saying otherwise was a rule true of one
+side of a pairing. **The interview app**, whose JS lives here, takes the step out of play: data
+arrives at runtime and goes in through `textContent` only, there is no `innerHTML` in this file,
+and `test_the_interview_app_never_builds_dom_from_a_string` fails if one appears. **The map app**
+is `map.py`'s page, which has exactly one sink (`mount`) fed only by a tagged template that escapes
+everything not already an assembled fragment; that count and that exclusivity are asserted in
+`tests/test_map.py`, and `test_the_map_apps_wrapper_adds_no_second_markup_sink` holds the served
+bytes to the same one sink after `map_app` splices its note in. Two mechanisms, two gates, each
+named where it applies.
+
+What IS true of both, and is asserted of both, is self-containment: neither document fetches, links
+or imports anything, which is what the shared `connectDomains: []` / `resourceDomains: []` in
+`server.py::_APP_CSP` declares to the host on their behalf.
 """
 
 #: The concrete app, linked from `interview_next` via `_meta.ui.resourceUri`.
@@ -189,6 +200,8 @@ button:disabled{opacity:.5;cursor:default}
 .id{color:var(--mut);font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .prompt{margin:7px 0 9px}
 .fan{color:var(--mut);font-size:12px}
+.sect{margin-top:10px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--mut)}
 ul{margin:8px 0 0;padding:0;list-style:none}
 li{padding:7px 0 7px 13px;border-left:2px solid var(--line);margin-bottom:5px}
 li .lab{font-weight:550}
@@ -238,6 +251,11 @@ function renderEntry(q){
 
   if (q.blocked_by) card.appendChild(el('div', 'blocked', 'blocked by: ' + q.blocked_by));
 
+  // The fork's own options, and then the brainstorm's proposals. Two lists and not one, because
+  // they are two different things: an option is something this pin OFFERS as an outcome (the
+  // carrier the offered-options rule anchors on), a proposal is something an agent suggested and
+  // nobody elected. Merging them would put an unelected suggestion in the menu a human chooses
+  // from, which is the offered-options rule dismantled in the presentation layer.
   var opts = q.options || [];
   if (opts.length){
     var ul = el('ul');
@@ -247,11 +265,30 @@ function renderEntry(q){
       // The implication is the half that turns an option into a decision, and it is exactly what
       // a flat enum row cannot carry.
       if (o.implication) li.appendChild(el('span', 'imp', o.implication));
-      if (o.recommended) li.appendChild(el('span', 'tag', 'brainstorm'));
       ul.appendChild(li);
     });
     card.appendChild(ul);
+    if (q.allow_freeform)
+      card.appendChild(el('div', 'fan', 'an answer in the human’s own words is allowed here'));
   }
+
+  var props = q.proposals || [];
+  if (props.length){
+    card.appendChild(el('div', 'sect', 'brainstorm proposals — suggested, not offered'));
+    var pl = el('ul');
+    props.forEach(function(p){
+      var li = el('li');
+      li.appendChild(el('span', 'lab', (p.summary || p.id || '')));
+      if (p.effort) li.appendChild(el('span', 'imp', 'effort: ' + p.effort));
+      if (p.recommended) li.appendChild(el('span', 'tag', 'recommended'));
+      pl.appendChild(li);
+    });
+    card.appendChild(pl);
+  }
+
+  if (q.already_elected && q.already_elected.outcome)
+    card.appendChild(el('div', 'blocked', 'already elected: ' + q.already_elected.outcome +
+                        ' — back on this list because ' + (q.pin_state || 'the pin reopened')));
   return card;
 }
 

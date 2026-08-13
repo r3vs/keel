@@ -1123,20 +1123,30 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
                 self.assertEqual(ui.get("csp", {}).get("resourceDomains", []), [])
                 self.assertNotIn("permissions", ui)
 
-    def test_the_interview_app_is_a_whole_document_that_fetches_nothing(self):
+    def test_neither_app_is_anything_but_a_whole_document_that_fetches_nothing(self):
         """Self-containment is the property the CSP above CLAIMS; this is the property itself.
 
         Asserted on the served bytes rather than on the source file, because what a host renders is
         what came down the wire. An external `<script src>` or a stylesheet link would need a
         `resourceDomains` entry the declaration does not have, so the two would disagree and the
         app would silently fail to load in a host that honours the policy.
+
+        **Both documents, because both carry the declaration.** `_APP_CSP` is one object passed to
+        two `@mcp.resource`s, and for a round only the interview app's bytes were read here — the
+        map app shipped a `connectDomains: []` / `resourceDomains: []` claim that nothing checked,
+        which is the same 'declaration with nothing gating it' shape the `contract_mismatch` behind
+        these apps was closed to remove. The map's body is `map.py`'s output plus the snapshot note,
+        so it is not covered by the interview app's tests by construction — a `<link>` to a font
+        added in `map.py` would have broken the CSP contract of a resource that lives in `server.py`.
         """
-        body = self._read("ui://keel/interview.html")["text"]
-        self.assertTrue(body.lstrip().lower().startswith("<!doctype html"))
-        self.assertIn("</html>", body)
-        for reach in ("src=\"http", "src='http", "href=\"http", "href='http",
-                      "fetch(", "XMLHttpRequest", "importScripts", "@import"):
-            self.assertNotIn(reach, body, f"the app reaches outside itself via {reach!r}")
+        for uri in ("ui://keel/interview.html", f"ui://keel/map/{_seeded_ledger(self, tempfile.mkdtemp())[0]}"):
+            with self.subTest(app=uri.split("/")[2]):
+                body = self._read(uri)["text"]
+                self.assertTrue(body.lstrip().lower().startswith("<!doctype html"))
+                self.assertIn("</html>", body)
+                for reach in ("src=\"http", "src='http", "href=\"http", "href='http",
+                              "fetch(", "XMLHttpRequest", "importScripts", "@import"):
+                    self.assertNotIn(reach, body, f"{uri} reaches outside itself via {reach!r}")
 
     def test_the_interview_app_speaks_the_handshake_the_extension_defines(self):
         """`ui/initialize` is a request and `ui/notifications/initialized` the notification that
@@ -1156,10 +1166,34 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         through `textContent`. `map.py` learned the same lesson twice, and both times the fix was
         to make the guarantee structural at the step where content enters rather than a rule
         somebody remembers. So: no `innerHTML`, no `outerHTML`, no `insertAdjacentHTML`, no
-        `document.write`, and no `eval`. One of those appearing is the regression."""
+        `document.write`, and no `eval`. One of those appearing is the regression.
+
+        **Scoped to this app on purpose, and the scope is the finding.** The map app takes the
+        other honest route to the same guarantee — one sink, `mount`, fed only by a tagged template
+        that escapes everything which is not an assembled fragment — so extending this test to it
+        would fail on a document that is not unsafe. What holds the map is
+        `tests/test_map.py::test_markup_reaches_the_document_through_exactly_one_sink` and the four
+        tests around it, which assert that the sink is unique and that only the tagged template can
+        produce an unescaped fragment. Two mechanisms, two gates, each named where it applies —
+        rather than one sentence claiming `textContent` of both, which is what `apps.py` used to say.
+        """
         body = self._read("ui://keel/interview.html")["text"]
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             self.assertNotIn(sink, body, f"{sink} is a way for a pin title to become markup")
+
+    def test_the_map_apps_wrapper_adds_no_second_markup_sink(self):
+        """The map app is `map.py`'s page plus a snapshot note, and `map.py`'s escaping rests on
+        there being exactly ONE `innerHTML` in the document — the count its own gate asserts. So the
+        property this wrapper owes is that it did not add a second one: `apps.map_app` injects the
+        note as markup, and a note built with a second sink would be a second escaping rule that no
+        gate asks about. Asserted on the SERVED bytes, which is where the two halves meet."""
+        path, _ = _seeded_ledger(self, tempfile.mkdtemp())
+        body = self._read(f"ui://keel/map/{path}")["text"]
+        self.assertEqual(body.count("innerHTML"), 1,
+                         "the served map page must carry exactly the one sink `map.py` gates; a "
+                         "second is a second escaping rule")
+        for sink in ("outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+            self.assertNotIn(sink, body, f"{sink} bypasses `map.py`'s `mount` and its escaping")
 
     def test_the_map_app_bakes_the_ledger_it_was_asked_for(self):
         """The renderer is `map.py`'s, unchanged, and the data is already inline — which is what
