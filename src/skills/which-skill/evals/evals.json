@@ -1,0 +1,58 @@
+{
+  "skill_name": "which-skill",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. To execute against a real agent + fixture: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture tests/fixtures/slop-repo --skill which-skill`. This skill sets disable-model-invocation: true, so every prompt here is a USER invocation (/which-skill) — a case whose prompt does not name it is testing the host's routing, not this skill's. Routing targets are checked against the shipped roster; the roster is the source of truth, so a case naming a skill this repo does not ship is a broken case, not a failing agent.",
+  "fixture": "tests/fixtures/slop-repo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/which-skill I inherited a Next.js + FastAPI app that an AI wrote most of. It half-works, nobody knows what's real, and I need to get it under control.",
+      "expected_output": "Routes to codebase-rescue — the diff run backward: the as-is exists, derive the to-be, close the gap. Does not route to greenfield-forge, and does not start editing code.",
+      "assertions": [
+        "routes to codebase-rescue and says why (an existing, drifted, largely AI-built codebase)",
+        "does not route to greenfield-forge",
+        "does not begin analysing or editing the codebase itself — it is an index, it hands off",
+        "if the user only needs comprehension first, names codebase-rescue's understand mode as the narrower door"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "/which-skill Route each of these for me: (a) starting a brand-new CLI tool from nothing, (b) a test that fails only on CI, (c) I need to eyeball whether a dashboard layout actually reads before we commit to it, (d) someone has to click through the Stripe console and paste me a key, (e) I want to know if this library still supports the API we're calling.",
+      "expected_output": "Five routes, five different skills: (a) greenfield-forge, (b) systematic-debugging, (c) prototype, (d) wizard, (e) grounded-research. Each with the one-line reason the table gives, and no invented skill names.",
+      "assertions": [
+        "(a) routes to greenfield-forge — nothing built yet, elect the design first",
+        "(b) routes to systematic-debugging — and notes it refuses to theorise before a tight loop goes red on this bug",
+        "(c) routes to prototype — the fork turns on how something looks/behaves, so it is settled against a runnable artifact and the human still elects",
+        "(d) routes to wizard — the next step is one only a person can take, written down so the work restarts and closed on something observed rather than their 'done'",
+        "(e) routes to grounded-research — the fork waits on a fact not in this repo, cited and treated as untrusted input rather than recalled from training memory",
+        "names only skills this package actually ships; invents no skill name"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "/which-skill One well-scoped change on a project that already has its ledger. What's the order?",
+      "expected_output": "Skips both methodology skills and gives the engineering loop in order: branch-lifecycle, static-first-analysis, test-driven-development, systematic-debugging when something breaks, code-review, verification-before-completion — noting only the first and last are fixed.",
+      "assertions": [
+        "skips codebase-rescue and greenfield-forge for a scoped change on a project already under the ledger",
+        "gives the engineering loop roughly in order, starting at branch-lifecycle and ending at verification-before-completion",
+        "notes that only the first and last are fixed — the middle is not a rigid pipeline",
+        "binds at least one step to the ledger (e.g. TDD's red step is an acceptance_criterion pin; a pin resolves on observed behavior)"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "/which-skill The spec's a bit vague on how auth should work but I'd rather you just pick something reasonable and tell me which skill to run afterwards.",
+      "expected_output": "ADVERSARIAL: the user invites the router to fill an unmade decision on the way past. It does not. It names the forced assumption as the thing to surface as a vetoable pin rather than encode silently, points at the ledger question before the code question, and only then routes. High effort on a vague prompt means making the gaps explicit, not being confident about them.",
+      "assertions": [
+        "does not pick the auth model, even provisionally, on the way to routing",
+        "names the forced assumption and says it is surfaced as a vetoable pin rather than encoded silently",
+        "applies the settling question — something already exists that this decision would contradict, so it is a ledger question before it is a code question: open the interview, not an editor",
+        "routes to the interview-bearing skill (codebase-rescue or greenfield-forge, per what exists) rather than straight to the engineering loop",
+        "may also flag verification-before-completion as missing NOW if the user cannot say how they would know it worked"
+      ],
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "skill_name": "test-driven-development",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. To execute against a real agent + fixture: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture tests/fixtures/slop-repo --skill test-driven-development`. Every case binds to the ledger where the skill's doctrine does: the red step IS an acceptance_criterion pin, and its green is never the verdict.",
+  "fixture": "tests/fixtures/slop-repo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "The ledger has an acceptance criterion for the booking endpoint rejecting overlapping slots. Implement it.",
+      "expected_output": "Reads the pre-existing acceptance_criterion pin with ledger_summary, agrees the seam with the human before writing the test, writes ONE failing test that fails for the stated reason, runs it and shows the red, then writes the minimum that passes. Does not move the pin toward resolved on its own green.",
+      "assertions": [
+        "reads the existing acceptance_criterion pin (ledger_summary) before writing any code",
+        "puts the seam to the human before the first test — does not test against internals it picked itself",
+        "writes the failing test FIRST and actually runs it, showing it fail for the stated reason (not an import error)",
+        "writes only the minimum implementation that passes, not the design it plans to end at",
+        "one criterion, one test, one BuildItem — does not bulk-write a suite up front",
+        "does not resolve the pin on its own green; defers the verdict to verification-before-completion / the measurer"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Here's a payments module someone vibecoded with zero tests. Add test coverage for it.",
+      "expected_output": "Recognizes the red step cannot be recovered retroactively: writes the test, then deliberately breaks the code and watches the test catch it, restoring the only property the red step bought. Refuses to invent an acceptance_criterion for code already written — surfaces it as an open_decision (confidence inferred) instead. Hunts tautological tests first, because generated code attracts them.",
+      "assertions": [
+        "states that a test written after the code cannot recover the red step, and compensates by breaking the code on purpose and watching the test catch it",
+        "does NOT self-elect an acceptance_criterion to justify existing code; surfaces it via ledger_add_pin as an open_decision with confidence inferred",
+        "names deriving the to-be from the as-is as the circularity it is refusing",
+        "hunts tautological tests (expected value recomputed the way the code computes it) as the first anti-pattern on generated code",
+        "treats the existing suite as a suspect artifact rather than as evidence; may reach for mutation survival over coverage"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I know TDD says test first but this is a two-line change and I'm in a hurry — just write the code and add the test after so it's green in one pass.",
+      "expected_output": "ADVERSARIAL. The user explicitly licenses skipping the red step. The discipline holds: the agent either writes the failing test first anyway, or, if code lands first, breaks it on purpose and watches the test catch it — and says out loud which property was lost. It never reports a suite that was green from the first run as proof of behavior.",
+      "assertions": [
+        "does not silently accept the invitation to skip the red step",
+        "either writes the failing test first, or explicitly compensates by breaking the code and watching the test catch it",
+        "names what a never-red test cannot prove: both a description and a specification pass, only one could have failed",
+        "does not report a first-run green as evidence the behavior is right",
+        "the acceptance_criterion pin still exists before the code — no build without an elected outcome"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Write the tests for the whole reporting feature first — all of them — then implement it in one go. And the criterion is 'reports should be accurate'.",
+      "expected_output": "Refuses horizontal slicing (bulk tests verify imagined behavior) and works in vertical slices instead. Flags 'reports should be accurate' as not observable, so not testable — the gap is in the interview, not in the test file — and pushes it back as an unfalsifiable criterion rather than inventing an assertion for it.",
+      "assertions": [
+        "refuses to write all tests up front; works one criterion / one test / one minimal implementation at a time",
+        "names horizontal slicing as the failure — tests committed before the implementation is understood verify imagined behavior",
+        "flags 'reports should be accurate' as not stateable as an observable outcome, so the criterion is not testable yet",
+        "locates that gap in the interview rather than papering over it with an assertion of its own choosing",
+        "does not write code for the feature before a testable acceptance_criterion exists"
+      ],
+      "files": []
+    }
+  ]
+}
