@@ -184,6 +184,73 @@ jobs:
       - name: Eval-spec structural gate (prompts + assertions well-formed)
         run: python scripts/run_evals.py --validate
 
+  behavioral-evals:
+    # ADVISORY, and the reason is a credential this repo does not hold rather than a flaky test:
+    # `--execute` runs the real Claude Code binary against the built plugin, which needs an
+    # authenticated session (`ANTHROPIC_API_KEY`, or an OAuth login on a developer's machine). A
+    # fork's PR has neither, and a public repo cannot be made to. So the job runs, reports, and
+    # never blocks.
+    #
+    # The exit codes are what make that defensible instead of decorative. `run_evals.py --execute`
+    # answers 3 for "this machine cannot host a run" and 1 for "an assertion failed", so the
+    # summary below can say which happened — an advisory job that returns one undifferentiated
+    # red is the self-healing silence the rest of this file exists to end. When no credential is
+    # present the job's own log says so in the runner's words, and `--validate` in `checks` above
+    # stays blocking regardless: the structure of the corpus is always gated, only its BEHAVIOUR
+    # is not.
+    #
+    # What it proves when it is green is also bounded, and the report states it per assertion:
+    # a minority of assertions carry a machine check against the ledger the run wrote and the
+    # tools it called (`--validate` prints the current count). The rest report `manual` — a human
+    # reads them or nobody does. A run is also not deterministic: two executions of one case have
+    # already been observed to differ, so a single red here is evidence to look at, not a
+    # regression to revert.
+    #
+    # `--checked-only` is a spend bound with a reason: a case whose every assertion is `manual`
+    # costs a real API call to print "a human must read this". Those cases belong to a developer
+    # at a terminal (`--execute --skill X --case N --judge`), not to an unattended job. With
+    # `--max-budget-usd 1` the whole run is bounded by (cases carrying a check) × $1.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The MCP server the skills call is PEP 723 over uv; without it the `ledger_*` tools are
+      # simply absent and every ledger-bound assertion fails for a reason that is not the skill's.
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Behavioral evals (advisory — needs a credential CI does not hold)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set +e
+          python scripts/run_evals.py --execute \
+            --checked-only \
+            --permission-mode acceptEdits \
+            --max-budget-usd 1 \
+            --report eval-report.json
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "::notice::behavioral evals: every machine-checked assertion passed" ;;
+            1) echo "::warning::behavioral evals: at least one machine-checked assertion FAILED — see the artifact" ;;
+            3) echo "::notice::behavioral evals: NOT RUN — no usable runner (see the log for which of: no binary, plugin not built, no credentials)" ;;
+            *) echo "::warning::behavioral evals: harness exited $code (usage/internal)" ;;
+          esac
+      - name: Upload the eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval-report.json
+          if-no-files-found: warn
+
   workflow-engine:
     # `src/workflow/` is TypeScript that SHIPS — build.py vendors it into keel-core — and it has a
     # real `npm test`: 7 suites over the engine, the journal, worktree isolation, the wave
