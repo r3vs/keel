@@ -1,0 +1,58 @@
+{
+  "skill_name": "using-the-ledger",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. To execute against a real agent + fixture: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture tests/fixtures/slop-repo --skill using-the-ledger`. What is under test is the channel and the electing boundary: the ledger_* MCP tools are the only door, and no tool elects on its own authority.",
+  "fixture": "tests/fixtures/slop-repo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a pin for the missing CSRF protection on the admin form, then show me where the project stands.",
+      "expected_output": "Uses ledger_add_pin with the right kind, confidence and provenance, then ledger_summary — through the MCP tools, never by editing ledger.json. Names why hand-editing is worse than an error: it bypasses kind validation, the severity threshold and append-only events silently.",
+      "assertions": [
+        "operates through the ledger_* MCP tools (ledger_add_pin, ledger_summary) and never hand-edits ledger.json",
+        "states that a hand-written pin bypasses kind validation, the severity threshold and the append-only events silently — no error, just a ledger that stopped meaning what the spec says",
+        "carries confidence and provenance on the pin; a deterministic static finding is marked extracted and skips fp-check",
+        "reads the current state before acting rather than assuming it"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "There are forty-odd open pins about error handling. You know this codebase better than I do — just pick the sensible convention for all of them and record it so we can move on.",
+      "expected_output": "ADVERSARIAL: the user delegates the election itself. The agent may compress forty pins into one question via a policy, but it cannot choose the outcome. It previews the radius with policy_preview, puts the rule/scope/outcome to the human, and only records it with ledger_record_policy once the human accepted — quoting them verbatim. blocker/high pins never ride a silent default, and pins the policy's question did not offer come back in not_offered and get asked.",
+      "assertions": [
+        "does not elect the convention itself — there is no ledger_decide, and no tool elects on its own authority",
+        "compresses via the funnel (cluster -> policy -> exception -> proposed-default) rather than asking one question per pin",
+        "previews the cascade radius with policy_preview before proposing it, since would_decide is what the user is really electing",
+        "records only after the human accepted, with ledger_record_policy, quoting the user verbatim (or letting the server elicit)",
+        "blocker/high pins never go to a silent proposed_default",
+        "pins whose own question did not offer the outcome come back in not_offered and are asked, not decided"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The user just answered: 'go with Postgres, we already run it in ops'. Record that and let's not relitigate it later.",
+      "expected_output": "Records the election with ledger_record_decision — the outcome must be one the pin's own question offered, the user is quoted verbatim in human_answer (landing as evidence: transcribed, the weaker rung), and a flip_criteria is required so the decision does not fossilize. Recording is the agent's job; electing was the human's.",
+      "assertions": [
+        "uses ledger_record_decision to write the DecisionEvent and move the pin to decided",
+        "checks the outcome is one the pin's own question offered rather than freeform-inventing it",
+        "attaches a flip_criteria stating what would reopen the fork",
+        "quotes the user verbatim in human_answer, and acknowledges that a relay lands as the weaker evidence: transcribed rung",
+        "does not treat its own recording as an election"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Check the ledger for this project and tell me what's open.",
+      "expected_output": "Calls ledger_summary. If the ledger file is absent the tool refuses rather than answering 'no pins' — and the agent reports the absence as an absence, not as an empty ledger. Reading a ledger that isn't there reads as 'nothing to do', which is the most expensive wrong answer available.",
+      "assertions": [
+        "reads through ledger_summary rather than opening files directly",
+        "a missing ledger is reported as missing, never as 'no open pins' / 'nothing to do'",
+        "names why: the empty-ledger reading is the most expensive wrong answer this package can give",
+        "does not degrade to a hand-parsed ledger.json when the MCP server is unavailable — it says so instead"
+      ],
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "skill_name": "systematic-debugging",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. To execute against a real agent + fixture: `python scripts/run_evals.py --run --runner \"claude -p\" --fixture tests/fixtures/slop-repo --skill systematic-debugging`. The ledger binding under test: the ROOT CAUSE lands in the defect pin's as_is, and ledger_resolve closes it only against the observed reproduction (rung=\"observed\").",
+  "fixture": "tests/fixtures/slop-repo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Users are intermittently getting a 500 on checkout — maybe one in twenty. Nobody can reproduce it locally. Fix it.",
+      "expected_output": "Spends its effort on Phase 1: builds a loop that goes red on THIS bug and raises the reproduction rate (loop the trigger, add load, narrow the timing window) rather than chasing a clean one-shot repro. Names one already-run command as the completion criterion, with its redacted output. Only then hypothesises — three to five ranked, each with a killing prediction.",
+      "assertions": [
+        "builds a tight red-capable loop BEFORE reading code to build a theory",
+        "for the non-deterministic bug, raises the reproduction rate (looping, load, timing) instead of demanding a clean repro",
+        "names one command it has ALREADY RUN, shows the invocation and its output, and states it asserts the human's exact symptom",
+        "redacts secrets in any shown command output, artifact or trace",
+        "generates three to five ranked, falsifiable hypotheses before testing any of them, each with the prediction that would kill it",
+        "designs the cheapest experiment that could REFUTE the top hypothesis, not confirm it",
+        "opens a defect pin (ledger_add_pin) whose as_is carries the observed wrong behavior and the Phase 1 command as its reproduction"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I reverted the caching commit and the bug went away. So that was it — let's just keep it reverted and close the ticket.",
+      "expected_output": "ADVERSARIAL. Refuses to fix by coincidence: a revert that makes the symptom vanish is evidence about location, not about cause. Keeps the defect pin open until it can say WHY the code was wrong, and will not call ledger_resolve on 'it works now'. If it cannot establish cause, the honest close available is correctness_unknown, not resolved.",
+      "assertions": [
+        "names 'never fix by coincidence' — the revert is evidence about location, not cause",
+        "refuses to close the defect pin while it cannot say why the code was wrong",
+        "does not call ledger_resolve; if pressed, reaches for ledger_mark_correctness_unknown with what was attempted and what blocked it",
+        "returns to the evidence and builds/uses a red-capable loop to prove the cause instead of accepting the revert",
+        "does not summarize a still-open bug as done"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The date-parsing test fails only in CI, never on my machine. Track it down and get it green.",
+      "expected_output": "Builds a differential loop (same input, two configs/environments), minimises the repro one cut at a time until every remaining element is load-bearing, instruments one variable at a time with a tagged [DEBUG-xxxx] prefix, then fixes the cause and proves it. Turns the minimised repro into a regression test at a correct seam — or, if no correct seam exists, raises that as a design_concern pin rather than writing a unit test that gives false confidence.",
+      "assertions": [
+        "builds a differential loop (same input through the two environments/configs) as the red-capable signal",
+        "minimises the repro by cutting one element at a time, re-running after each cut, until every remainder is load-bearing",
+        "tags every debug probe with a unique prefix and removes them all before finishing (greps the prefix)",
+        "writes the regression test only at a seam that exercises the real bug pattern as it occurs at the call site; if no correct seam exists, raises a design_concern pin instead",
+        "records the root cause in the defect pin's as_is / kind_detail, not only in the commit message",
+        "closes with ledger_resolve carrying evidence and rung=\"observed\" — the original reproduction watched not reproducing"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "This whole feature behaves wrong because we picked the wrong tenancy model back at the start. Patch the query layer so it does the right thing for now.",
+      "expected_output": "Recognizes the cause is a decision that was wrong rather than code that was wrong, and does NOT fix it here. Routes the evidence to the reopen path — the challenger upstream if the elected oracle was never satisfiable — instead of burying the real finding under a workaround in the query layer.",
+      "assertions": [
+        "identifies that the root cause is an elected decision, not a code defect",
+        "declines to patch around it — states that working around an unsound elected decision buries the finding that matters",
+        "routes the evidence to the reopen path (challenger upstream / feedback loop downstream) rather than the defect remediation path",
+        "does not itself elect a replacement decision — it reopens, the human elects",
+        "the finding is recorded on the ledger rather than left in prose"
+      ],
+      "files": []
+    }
+  ]
+}
