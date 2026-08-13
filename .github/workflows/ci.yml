@@ -7,6 +7,19 @@ name: consistency
 # copied elsewhere and driven with the working directory set to THEIR project. Nothing checked
 # that, so a `python runtime/ledger.py` which could never resolve after install shipped for months
 # — green the whole time. The "as shipped" checks are first-class here, not an afterthought.
+#
+# Three axes, added after an audit found each one blind in a way no gate could report:
+#
+#   * **Interpreter.** One Python version proved the package worked on one Python version. The
+#     shipped MCP server declares `requires-python = ">=3.10"` in its PEP 723 header, so a user's
+#     `uv` will happily run it on an interpreter this repo had never executed a test under.
+#   * **Platform.** Every leg was Linux, and the one recorded portability incident is a *Windows*
+#     PATH shadowing that ran two interpreters for the same command in two shells. One macOS leg
+#     is not Windows coverage, but it is the first non-Linux run this repo has ever had, and it is
+#     the axis where the stdlib path handling actually differs.
+#   * **Language.** `src/workflow/` ships 1,536 lines of TypeScript into `keel-core` and carries
+#     its own 7-suite test runner. CI ran it zero times. A test suite nothing executes is the
+#     same object as no test suite, stated at more length.
 
 on:
   push:
@@ -18,7 +31,19 @@ permissions:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # One matrix, two questions. The three ubuntu legs ask "does this work on the interpreters our
+    # users have?"; the macOS leg asks "is anything here Linux-shaped?" and pins to 3.12 because
+    # the point is the platform, not a second interpreter sweep.
+    strategy:
+      fail-fast: false          # a 3.14-only break must not hide a macOS-only one
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+    runs-on: ${{ matrix.os }}
+    name: checks (${{ matrix.os }}, py${{ matrix.python-version }})
     steps:
       # fetch-depth: 0 for the TAGS, not the history. `test_plugin_version.py` anchors "is this
       # version still true?" on the `{name}--v{version}` tag written at release, and the default
@@ -29,7 +54,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       # uv drives the MCP server (PEP 723, zero-install). Its absence is the one failure that is
       # SILENT at runtime — the host cannot spawn the server and the tools are simply not there —
@@ -37,8 +62,29 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       # --- the source is internally consistent -------------------------------------------------
+      # Ruff first: it is seconds, and a syntax error found here explains every failure below it.
+      # The rule set is a measured FLOOR — every family in `ruff.toml` reports zero on the tree as
+      # committed, with the known debt itemised rule by rule. See that file for the next tier.
+      #
+      # Pinned, for the same reason the extraction backend is: an unpinned linter turns "a new ruff
+      # shipped a rule" into a red PR about something the author did not write. Bumping it is a
+      # deliberate one-line change whose diff is the new findings.
+      #
+      # `python -m ruff`, not `ruff`: the module form runs the ruff belonging to the interpreter
+      # that just installed it. This repo has a recorded incident where a bare command resolved to
+      # a different install than the one it had just set up, and the local run of this very step
+      # reproduced it (`pip install ruff` put 0.16.2 in one prefix; `ruff --version` answered
+      # 0.15.8 from another on PATH). The result is identical on all four legs — target-version is
+      # pinned in `ruff.toml`, so the legs are not four opinions — and running it four times costs
+      # a second each, which is cheaper than a leg-specific step nobody can attribute a failure to.
+      - name: Python linter (the floor; ruff.toml declares the debt and the next tier)
+        run: |
+          python -m pip install "ruff==0.16.2"
+          python -m ruff check .
       - name: Drift linter (modules ↔ references ↔ SKILL; roster names AND permissions)
         run: python scripts/check_consistency.py
+      - name: Description-budget linter (a skill triggers off its description; length is a cost)
+        run: python scripts/check_description_budget.py
       - name: Pointer verifier (every *.md cross-reference resolves)
         run: python scripts/verify_pointers.py
       # A constant with no carrier is a hypothesis, and one hiding in code reads as a finding.
@@ -72,6 +118,16 @@ jobs:
       - name: Plugins built from src/ (generated, committed, must not drift)
         run: python scripts/build.py --check
 
+      # The manifests themselves, blocking. `claude plugin validate --strict` below is the better
+      # validator and cannot block (the CLI is not reliably installable), so its two documented
+      # catches — a misspelled field and a leftover field from another tool's manifest — reach
+      # nobody. Claude Code then *ignores unrecognized fields at load*: warning in one place,
+      # silence in the other, no gate in between. This is that gate, plus the invariants no other
+      # check owns: one version across four plugins and every catalog entry, `dependencies` that
+      # cannot leave this repo, and every plugin's `.mcp.json` rather than only keel-core's.
+      - name: Manifest validator (plugin.json + marketplace.json + .mcp.json, blocking)
+        run: python scripts/validate_manifests.py
+
       - name: Shell syntax (bootstrap + hooks + installer)
         run: bash -n src/tools/bootstrap.sh && bash -n src/hooks/session-start.sh && bash -n scripts/install.sh
 
@@ -82,7 +138,17 @@ jobs:
       # cannot be fetched here, `available(lang)` answers False and those tests skip again. So this
       # can only add coverage, never flake the build. Pinned to what the server ships — CI must test
       # the backend that reaches the user, and `test_treesitter.py` holds the two copies together.
+      #
+      # The tolerance is scoped to ONE leg, and the scope is the whole point. The pinned pack is a
+      # wheel-only distribution, so a Python newer than the pin has no wheel until its maintainer
+      # cuts one — a real, expected, temporary gap on 3.14 that must degrade coverage rather than
+      # fail a PR about something else. On every other leg the wheel exists, so a failed install is
+      # a broken environment and blocking it is correct: a blanket `continue-on-error: true` here
+      # would turn "21 tests silently stopped running" into the normal state, which is precisely
+      # the self-healing silence `test_treesitter.py` was written to end. Note it stays VISIBLE
+      # even where tolerated — the step is annotated as failed in the run summary, unlike `|| true`.
       - name: Extraction backend (the primary one, so the tests for it actually run)
+        continue-on-error: ${{ matrix.python-version == '3.14' }}
         run: python -m pip install "tree-sitter>=0.23" "tree-sitter-language-pack==1.12.5"
 
       # --- behaviour ---------------------------------------------------------------------------
@@ -94,9 +160,48 @@ jobs:
       - name: Eval-spec structural gate (prompts + assertions well-formed)
         run: python scripts/run_evals.py --validate
 
+  workflow-engine:
+    # `src/workflow/` is TypeScript that SHIPS — build.py vendors it into keel-core — and it has a
+    # real `npm test`: 7 suites over the engine, the journal, worktree isolation, the wave
+    # scheduler, the three warm SDK adapters and the ad-hoc script path. Until now nothing ran it,
+    # so the one part of the package written in another language had the coverage of a README.
+    # Blocking, deliberately: this is product code, not a nice-to-have.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # No `npm ci` and no `cache: npm`, because there is no lockfile and nothing to lock: the
+      # suite has zero runtime dependencies. `package.json` declares only OPTIONAL ones — the warm
+      # `@anthropic-ai/claude-agent-sdk` / `@openai/codex-sdk` / `@earendil-works/pi-coding-agent`
+      # adapters — and the tests never load them: every adapter takes a `loadSdk` injection and the
+      # suite passes fakes, including for the "fails loud when the SDK cannot load" cases. So
+      # installing them would not add coverage, and would make the run depend on three registries.
+      # The conditional is there so the day a real dependency appears, `npm ci` starts running
+      # instead of this step quietly becoming wrong.
+      - name: Install (only if a lockfile says there is something to install)
+        working-directory: src/workflow
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "no lockfile and no runtime dependencies — the suite runs on node's own test path"
+          fi
+      # Node 22 is required, not preferred: the runner is `node --experimental-strip-types` over
+      # `.ts` sources with no build step, which is how the engine stays one copy rather than a
+      # source and a compiled artifact that can disagree.
+      - name: Workflow engine tests (7 suites)
+        working-directory: src/workflow
+        run: npm test
+
   plugin-validate:
     # Claude Code's own validator, per plugin. --strict promotes manifest warnings to errors, which
     # is what catches a typo'd field that would otherwise degrade silently at install time.
+    # Still advisory, and the reason is unchanged: the CLI is not always installable in CI, so a
+    # blocking step here would fail PRs for a reason that has nothing to do with the PR. What DID
+    # change is that its silence is no longer total — `scripts/validate_manifests.py` runs in
+    # `checks` and blocks on the subset of this validator's findings we can assert ourselves.
     runs-on: ubuntu-latest
     continue-on-error: true  # the CLI is not always installable in CI; never block a PR on that
     steps:

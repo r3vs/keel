@@ -1,0 +1,68 @@
+# Ruff — the Python floor, and it is a FLOOR: everything here is what the tree passes TODAY
+# (measured with ruff 0.16.2, which is what `.github/workflows/ci.yml` pins — the counts below are
+# claims about that version, and bumping it is a deliberate PR whose diff is the new findings),
+# so a red run means the change under review introduced it. A linter whose baseline is already
+# red teaches one lesson only ("ignore the linter"), which is worse than not having one.
+#
+# Scope is the whole repo minus `plugins/`, deliberately: `ruff check .` picks up a new top-level
+# script the day it is written. An enumerated `src scripts tests` would not — this repo has a
+# recorded failure of exactly that class (a gate list asserting a completeness it did not have),
+# and there is no reason to build a third one.
+#
+# `plugins/` is excluded because it is generated: 38 of its `.py` files are byte copies of `src/`
+# (`build.py` vendors the runtime, the hook and the MCP adapter into `keel-core`), so linting it
+# would report every finding twice and invite the fix in the one tree this repo forbids editing.
+# The source copy is linted; the copies are proven identical by `build.py --check`, which is a
+# stronger guarantee than a second lint pass.
+extend-exclude = ["plugins"]
+
+# The shipped artifact's own floor, not the CI matrix's ceiling: `src/mcp/server.py` and
+# `decide.py` declare `# requires-python = ">=3.10"` in their PEP 723 headers, and uv honours it
+# on the user's machine. Linting at py312 would green-light syntax the server cannot run.
+target-version = "py310"
+
+# No `line-length`, deliberately. E501 is not in the floor and setting a limit that nothing
+# enforces is a declaration with no consumer — the exact shape this repo's gates exist to catch.
+# The measurement, so the next session does not repeat it: at 100 columns the tree reports 798
+# E501; at 120, 56; at 140, 21. So E501 is a real, bounded cleanup, not a free win. It belongs in
+# tier 2 at 120 if anyone wants it.
+
+[lint]
+# Tier 1 — the floor. Chosen by measurement, not taste: each family below reports ZERO findings
+# on the tree as committed (`ruff check --statistics`), so turning it on blocks regressions
+# without asking anyone to reformat code they did not touch.
+#
+#   E4/E7/E9  pycodestyle errors — imports, statements, and (E9) syntax/IO failures
+#   F         pyflakes — undefined names, unused imports, broken f-strings
+#   W         pycodestyle warnings — trailing whitespace, and W605 invalid escape sequences,
+#             which is a real bug class in a repo this full of regexes
+#   A         a local shadowing a builtin
+#   RSE, TID, YTT, INT — small, zero-finding, and each catches something a reviewer misses
+select = ["E4", "E7", "E9", "F", "W", "A", "RSE", "TID", "YTT", "INT"]
+
+# The debt, itemised. Every rule below is a member of a selected family that the tree violates
+# today; the count is what it was when this file was written. Naming them here rather than
+# dropping the family is the point — the family stays on, so a NEW E741 in a new file is still
+# caught the moment someone adds the rule back. Clearing one is a mechanical, self-contained PR:
+# delete the line, run `ruff check --fix` where the fix is safe, read the four that are not.
+ignore = [
+    "F401",  # 17× unused import — mostly `typing.Optional` left behind by a signature edit
+    "E741",  # 10× ambiguous name `l`, all of them a line/label loop variable
+    "E731",  #  2× lambda assigned to a name
+    "F541",  #  2× f-string with no placeholder
+    "F841",  #  2× assigned and never read — the only two with a chance of hiding a real defect
+    "E401",  #  1× multiple imports on one line
+    "E702",  #  1× two statements joined by a semicolon
+]
+
+# Tier 2 — the intended next tier, in the order the measurements say to take them, so the next
+# session picks up where this one stopped instead of re-measuring:
+#   RET (1), PIE (2), EXE (10), C4 (11), ISC (13), SIM (13), ARG (20), I (22), B (25), N (26),
+#   PERF (28), FURB (43), T20 (53), E501@120 (56), UP (160), PTH (454), PL (478), D (2150).
+# The first five are an afternoon each. `UP` and `PTH` are large but almost entirely autofixable;
+# `D` (docstrings) is listed for completeness and is probably wrong for this repo, whose long-form
+# rationale lives in module docstrings that no D rule has an opinion about.
+#
+# One caveat measured rather than assumed: `T20` (53 `print` calls) would fire on the gate scripts
+# themselves, whose entire output contract IS `print`. That one wants a per-file ignore for
+# `scripts/`, not a tree-wide fix.
