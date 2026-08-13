@@ -1749,6 +1749,60 @@ def instructions_diff(ledger: str, root: str = ".", generated: list[str] | None 
     return tools.instructions_diff(ledger, root, generated, max_lines, bridge)
 
 
+# -- the tracker projection: the same carrier, aimed at the humans ------------------------------
+#
+# The pair above carries the ledger to a fresh AGENT (the one file every host loads). This pair
+# carries it to the TEAM, in the tracker they already read — one issue per open pin, generated,
+# fenced, and closed when the pin settles. It is the same three properties as every projection in
+# this package: one source, a generated view, a round-trip that proves they still agree.
+#
+# `tracker_diff` is the one to reach for first: it costs a single request, writes on neither side,
+# and answers the question a team actually has. Note what neither tool takes — a token. The server
+# reads it from its own environment; an agent that could pass a credential is an agent that has
+# read one.
+
+@mcp.tool(annotations={"title": "Project the Ledger into GitHub Issues", **_RW})
+def tracker_project(ledger: str, repo: str) -> dict:
+    """Project every OPEN pin into a GitHub issue, and close the issues of settled pins. WRITES.
+
+    The ledger stays canonical; the issues are a generated window onto it. Each issue body carries
+    a fenced managed region (pin id, as-is/to-be, the open question, provenance) and everything
+    outside that fence — plus every label this projection does not own — is left untouched.
+
+    Idempotent by pin id: running it twice against an unchanged ledger writes nothing. Settling a
+    pin closes its issue; reopening it reopens it. It never deletes an issue, never overwrites a
+    region a human has edited (that is reported instead), and never writes the ledger from the
+    tracker — an answer typed into a comment decides nothing, because no tool reads it.
+
+    Needs `GITHUB_TOKEN` or `GH_TOKEN` in the server's environment, with **push access**: GitHub
+    silently drops labels for tokens without it, and the label is this projection's index. Missing
+    token, no network, or an exhausted rate limit each come back as `{"available": false, "reason":
+    …}` — never a partial write that reports success.
+
+    Args:
+        ledger: Path to ledger.json — the source this tracker view is a projection of.
+        repo: The target repository as `owner/name`.
+    """
+    return tools.tracker_project(ledger, repo)
+
+
+@mcp.tool(annotations={"title": "Tracker Drift (issues vs the ledger)", **_RO})
+def tracker_diff(ledger: str, repo: str) -> dict:
+    """Is the issue tracker still what the ledger projects? WRITES NOTHING, on either side.
+
+    Reports the plan `tracker_project` would execute, computed by the same planner so the two can
+    never disagree: `create` (an open pin with no issue), `update` (the region drifted), `reopen` /
+    `close` (the pin's state and the issue's disagree), `hand_edited` (someone wrote into the
+    projection — put it in the ledger instead), `orphan` (an issue naming a pin the ledger does not
+    hold — reported, never touched) and `in_sync`.
+
+    Args:
+        ledger: Path to ledger.json.
+        repo: The repository to compare against, as `owner/name`.
+    """
+    return tools.tracker_diff(ledger, repo)
+
+
 # -- RESOURCES: the ledger addressed as a thing, for the reader a tool cannot serve ---------------
 #
 # Why resources at all, when `ledger_summary` already answers this

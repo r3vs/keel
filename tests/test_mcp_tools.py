@@ -756,11 +756,29 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         "build_waves": {},
         "challenge_oracle": {},
         "instructions_diff": {},
+        # The tracker projection reads the ledger and renders every pin BEFORE it touches a
+        # transport, which is what makes it a member of this roster rather than a tool that would
+        # answer `no_token` on all hundred malformed pins and prove nothing. `setUp` below removes
+        # the token from the environment so the run can never leave the machine.
+        "tracker_diff": {"repo": "keel-test/not-a-real-repo"},
         "scope_check": {"pin_id": PIN, "changed": ["a.py"]},
         # `head` is declared even though it has a default: without it the tool shells out to git for
         # HEAD, so what it exercises would depend on the cwd the suite happens to run in.
         "readiness_assess": {"pin_id": PIN, "graph_path": GRAPH, "head": HEAD},
     }
+
+    def setUp(self):
+        """No test in this suite may leave the machine, and that is enforced rather than assumed.
+
+        `tracker_diff` reads a token out of the environment. A developer with `GH_TOKEN` exported —
+        anyone who has run `gh auth login` — would otherwise have this gate issue ~100 real HTTP
+        calls to a repository that does not exist, and a green run here would mean something
+        different from a green run in CI. The suite's own recorded lesson, one file over: a green
+        run is a claim about the environment that produced it.
+        """
+        self._token_env = {k: os.environ.pop(k) for k in ("GITHUB_TOKEN", "GH_TOKEN")
+                           if k in os.environ}
+        self.addCleanup(os.environ.update, self._token_env)
 
     def _call(self, name, path, tmp):
         """The declared payload with the two sentinels resolved against THIS fixture."""

@@ -94,6 +94,10 @@ EXPECTED_TOOLS = {
     # v0.31 — the fog register: the decisions this project can sense and cannot yet phrase, which
     # had two available homes before this (a badly-phrased pin, or nothing) and both were wrong.
     "ledger_fog", "ledger_add_fog", "ledger_graduate_fog", "ledger_clear_fog",
+    # the tracker projection — `generate_instructions` carries the ledger to a fresh AGENT, and
+    # this pair carries it to the TEAM, in the board they already read. Same shape: one source, a
+    # generated view inside managed markers, one planner shared by the writer and the drift check.
+    "tracker_project", "tracker_diff",
 }
 WRITE_TOOLS = {
     "generate_layers", "render_map", "generate_instructions", "generate_tokens",
@@ -106,6 +110,8 @@ WRITE_TOOLS = {
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
     "ledger_claim", "ledger_release",
     "ledger_add_fog", "ledger_graduate_fog", "ledger_clear_fog",
+    # writes ISSUES, never the ledger — the direction is one-way by construction (`tracker.py`)
+    "tracker_project",
 }
 READ_ONLY = EXPECTED_TOOLS - WRITE_TOOLS
 

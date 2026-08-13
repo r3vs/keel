@@ -1518,3 +1518,45 @@ def instructions_diff(ledger: str, root: str = ".", generated: list | None = Non
     out["path"] = str(agents)
     out["generated"] = sorted(str(g) for g in effective)
     return out
+
+
+# -- the ISSUE-TRACKER carrier: the same projection, aimed at the board a TEAM already reads -----
+#
+# `generate_instructions` above carries the ledger to a fresh AGENT; this pair carries it to the
+# humans, in the surface they stand in front of every morning. Same shape, deliberately: one
+# source, a generated projection inside managed markers, and a drift check computed by the same
+# planner the writer executes (`runtime/tracker.py` holds the argument in full).
+#
+# Two rules are enforced HERE rather than in the runtime, because both are facts about the boundary
+# an agent crosses rather than about the projection:
+#   * **no token parameter.** A secret an agent can pass is a secret an agent has read, and a tool
+#     argument is model context that ends up in transcripts. The server reads the token from the
+#     environment the host started it in — `GITHUB_TOKEN` / `GH_TOKEN` — which is where the user
+#     put it, and no agent ever holds it.
+#   * **no absolute local path in the body.** See `_tracker_label`.
+
+def _tracker_label(ledger: str) -> str:
+    """What a projected issue may NAME the ledger — never an absolute local path.
+
+    The `AGENTS.md` region writes into the user's own working copy, where an absolute path is at
+    worst ugly. This projection writes into a tracker that may be **public**, and stamping
+    `/home/<name>/clients/<client>/ledger.json` onto every issue is a disclosure nobody elected —
+    the user's name, their directory layout, and often who they are working for. So the label is
+    the path relative to the working directory when that is possible, and the bare filename when it
+    is not. Nothing about the projection depends on the string; it is a pointer for a human reader.
+    """
+    path = Path(ledger)
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def tracker_project(ledger: str, repo: str) -> dict:
+    import tracker
+    return tracker.project(_open_existing(ledger).data, repo, ledger_path=_tracker_label(ledger))
+
+
+def tracker_diff(ledger: str, repo: str) -> dict:
+    import tracker
+    return tracker.diff(_open_existing(ledger).data, repo, ledger_path=_tracker_label(ledger))
