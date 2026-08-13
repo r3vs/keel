@@ -273,6 +273,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      # For the MCP-apps gate below, and for nothing else in this job: the two apps' documents are
+      # rendered by `src/mcp/apps.py` and `src/runtime/map.py`, and the gate checks the bytes a host
+      # receives rather than a constant read out of a source file. Pinned to the matrix floor above
+      # so the renderer runs on an interpreter the package already claims.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
       # No `npm ci` and no `cache: npm`, because there is no lockfile and nothing to lock: the
       # suite has zero runtime dependencies. `package.json` declares only OPTIONAL ones — the warm
       # `@anthropic-ai/claude-agent-sdk` / `@openai/codex-sdk` / `@earendil-works/pi-coding-agent`
@@ -295,6 +302,23 @@ jobs:
       - name: Workflow engine tests (7 suites)
         working-directory: src/workflow
         run: npm test
+
+      # The two MCP Apps' JavaScript, parsed and RUN. It is a separate step rather than a line in
+      # `package.json`'s `test` script for one reason worth stating: that file is VENDORED into
+      # keel-core, so adding the gate to it would move shipped bytes for a dev-only check and force
+      # a version bump on four plugins. `__tests__/` is excluded from the vendored copy, so the gate
+      # itself costs the package nothing.
+      #
+      # What it guards is the one surface here that no gate reached. `src/mcp/apps.py` holds the
+      # interview app's script as a Python string and `src/runtime/map.py` holds the map's; both
+      # ship, and every check around them reads the bytes as TEXT. A missing brace or a renderer
+      # that throws on the first pin passed all of them and failed in the user's host as a blank
+      # page — `tests/test_map.py`'s own docstring warns that source-text matching "would pass on a
+      # renderer that never runs" and hands the DOM half to a human at `scripts/preview_map.py`.
+      # This runs it: a hand-rolled stub DOM (no jsdom, no dependency), both apps, a well-formed
+      # ledger and a hostile one. Blocking, like the suite above it.
+      - name: MCP apps JS (parse + render, well-formed and hostile)
+        run: node --experimental-strip-types src/workflow/__tests__/mcp-apps.ts
 
   plugin-validate:
     # Claude Code's own validator, per plugin. --strict promotes manifest warnings to errors, which

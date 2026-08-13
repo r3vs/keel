@@ -493,6 +493,13 @@ add r3vs/keel`), where the namespace protects both skills; the directory argumen
 hosts with no plugin format, and pointing it at `~/.claude/skills` is a supported-looking way to get
 an unsupported result.
 
+**The script now says so itself, and refuses by default.** Documenting a footgun the script hands
+over on request was half a fix: the person about to fire it is at a terminal, not in this file. Any
+target with a `.claude` component now prints the consequence above and stops — interactively it asks
+for the word `override`, and with no tty on stdin it exits 3 having placed nothing, so an unattended
+run cannot take the branch nobody would be there to read. `--claude-personal` is how someone who
+means it says so, and it is the only way through.
+
 `tests/test_name_collision.py` holds this shut, and its subject is the class rather than the
 instance: the colliding set is **derived** — `build.shipped_skills()` intersected with Claude Code's
 bundled roster — so a future skill named `debug`, `verify` or `simplify` inherits the requirement to

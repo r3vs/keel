@@ -101,6 +101,30 @@ class TestCollidingSkillsTeachTheQualifiedName(unittest.TestCase):
             with self.subTest(skill=skill):
                 self.assertIn(skill, packaging)
 
+    def test_the_installer_itself_refuses_the_override_by_default(self):
+        """The other half of the same residual, and the half that reaches somebody.
+
+        The test above proves this repo *documents* the override. A document is not where the
+        person about to run the command is looking: they are at a terminal with a path in their
+        hand. So the script says it too, and — because a warning that scrolls past is a warning an
+        unattended run cannot read — it **refuses** unless told otherwise.
+
+        Asserted as behaviour rather than as wording: a target with a `.claude` component, an
+        explicit opt-in flag, and a default that is refusal. What the message says is prose and may
+        be improved; that there is a branch at all is the gate.
+        """
+        script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+        self.assertIn(".claude/", script,
+                      "scripts/install.sh does not look at its target at all — pointing it at "
+                      "~/.claude/skills replaces the bundled /code-review with no warning from "
+                      "any host, and now from us either")
+        self.assertIn("--claude-personal", script,
+                      "there is no way to mean it: a guard with no opt-in is a guard someone "
+                      "removes rather than satisfies")
+        self.assertRegex(script, r"-t 0",
+                         "the guard does not distinguish a person from a script; a non-interactive "
+                         "run must refuse rather than fall through to the override")
+
 
 if __name__ == "__main__":
     unittest.main()
