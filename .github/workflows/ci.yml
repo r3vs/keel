@@ -116,6 +116,16 @@ jobs:
       - name: Stated-fact linter (a number in prose equals what computes it)
         run: python scripts/check_stated_facts.py
 
+      # The measured twin of the above, and the split between them is on exactness, not on subject:
+      # the linter above compares counts that must be EXACT, this one compares figures this repo
+      # MEASURED and published with their method (payload size, token estimate, longest
+      # description) against a re-measurement, inside a declared tolerance. It spawns the server
+      # over stdio, so it is the only gate that reads the tool surface the way a host does — which
+      # is also how it catches a description crossing the host's silent 2 KB cut, in BYTES, because
+      # the ceiling is stated in KB while every figure here is characters.
+      - name: Packaging-wire linter (the measured tool surface, re-measured on the wire)
+        run: python scripts/check_packaging_wire.py
+
       # The mirror of the above, one layer out: a field with no reader and a WRITE TOOL no playbook
       # names are the same bug — a capability the artifact carries and the workflow never reaches.
       # The server makes tools discoverable, which answers it for the tools an agent goes looking

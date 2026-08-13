@@ -78,7 +78,7 @@ OUT = ROOT / "plugins"
 # (2026-08-13): the root `.claude-plugin/marketplace.json` is `marketplace()`'s output, not an
 # authored file, so it moves with this constant and must be rebuilt after a bump — a `--check`
 # failure naming it is the bump, not a regression.
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 AUTHOR = {"name": "r3vs"}
 HOMEPAGE = "https://github.com/r3vs/keel"
 KEYWORDS = ["skills", "vibe-coding", "ai-generated-code", "codebase", "rescue", "greenfield",
@@ -267,7 +267,9 @@ PLUGINS = {
         # at the highest tagged version that satisfies this range."* Resolution reads
         # `{plugin-name}--v{version}` git tags, which is the same convention `test_plugin_version.py`
         # already anchors on — so this constraint and that gate are two readers of one tag.
-        # `^0.6` is `>=0.6.0 <0.7.0`: patch and minor of an 0.x line, held before the next minor.
+        # The range is DERIVED from VERSION and never written out here, because a literal in this
+        # comment is a claim that goes stale the next time the constant moves — at 0.7.0 the emitted
+        # range is `^0.7`, i.e. `>=0.7.0 <0.8.0`: patch of an 0.x line, held before the next minor.
         #
         # The failure mode is bounded and was checked rather than hoped: our marketplace entries use
         # relative `./plugins/<name>` sources, and *"for a relative-path plugin with no matching tag,

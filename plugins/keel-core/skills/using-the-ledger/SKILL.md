@@ -49,6 +49,7 @@ what the spec says it means.
 | surface a forced assumption | `ledger_surface_assumption` |
 | the work was done but correctness is not establishable | `ledger_mark_correctness_unknown` |
 | the human said not now | `ledger_defer` (an election: it settles the pin, so it is quoted like any other) |
+| the tracker your team reads, brought level with the ledger | `tracker_project` · `tracker_diff` (read-only) — see `references/tracker-projection.md` |
 
 The reads are automatable **and so is every non-electing write** — add a finding, plan its
 remediation, mark an item done, resolve a pin. `ledger_resolve` demands `evidence` (what you
@@ -108,3 +109,17 @@ prerequisite, and its absence fails loudly rather than degrading to a path that 
 **Reading a ledger that isn't there is not an empty ledger.** The tools refuse a missing path rather
 than answering "no pins", because that answer reads as "nothing to do" and is the most expensive
 wrong answer this package can give.
+
+## Where the ledger reaches people who never open it
+
+Two projections, one shape. A fresh agent gets the elected design through `generate_instructions`,
+which writes a fenced region into the `AGENTS.md` every host loads. A **team** gets the open pins
+through `tracker_project`, which writes one issue per open pin into the tracker they already stand
+in front of — generated, fenced, closed when the pin settles.
+
+Both are windows. Neither is a door: an answer typed into an issue comment, like a decision written
+into the `AGENTS.md` region, elects nothing and is read by no tool. Both report a hand-edited region
+instead of overwriting it, because what somebody wrote there may be the only copy of a real
+decision — and the fix for both is the same, to put it in the ledger and re-project. The full
+playbook, including what each drift verdict means and what stays the team's:
+`references/tracker-projection.md`.

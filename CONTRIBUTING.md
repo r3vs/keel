@@ -55,12 +55,24 @@ repo can — *"do the bytes under `plugins/<name>` still equal the bytes that sh
 number?"* — by diffing the working tree against the `{plugin-name}--v{version}` tag. Its anchor lives
 outside the tree, so with no tag there is nothing to diff and the assertion **skips**, quietly, at
 the moment it matters most. That file states the residual in its own docstring: *"tag at release, or
-this file is decoration."* This section is what stops it being decoration. As of 0.6.0 only 0.3.0
-and 0.4.0 were ever tagged, so the check has been skipping for every version since.
+this file is decoration."* This section is what stops it being decoration. Through 0.4.0 that was
+the whole story — only 0.3.0 and 0.4.0 were ever tagged, so the check skipped for every version in
+between.
+
+**It stopped being decoration at 0.7.0, and the event is worth recording because it is the first
+time the gate ever bit.** The four `--v0.6.0` tags were written locally, so the anchor existed; the
+merge that became 0.7.0 changed bytes under all four `plugins/<name>` paths (`keel-core` directly,
+the other three because they vendor `core/ledger.md`); all four assertions failed at once with
+*"differs from what shipped as 0.6.0, but the version is still 0.6.0"*; and the fix was the one the
+message names — bump `VERSION`, rebuild, and let the marketplace and every manifest restamp. Note
+what it cost to arm it: nothing but a tag existing. The gate then disarmed itself again the moment
+the number moved, which is the designed behavior, not a regression — an untagged version was served
+to nobody, so no install can be holding it.
 
 Tags are also load-bearing for **dependency resolution**, which is a second consumer and the reason
 the name shape is not ours to choose. Claude Code resolves a semver-constrained dependency — ours is
-`keel-kit` → `{"name": "keel-core", "version": "^0.6"}` — by listing tags on the hosting repository,
+`keel-kit` → `{"name": "keel-core", "version": "^<major>.<minor>"}`, derived from `VERSION` — by
+listing tags on the hosting repository,
 filtering to `keel-core--v*`, and fetching the highest that satisfies the range. Untagged, a
 relative-path plugin falls back to the marketplace's current copy and the constraint is checked at
 load instead of at fetch.
