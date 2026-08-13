@@ -17,14 +17,15 @@
     },
     {
       "id": 2,
-      "prompt": "/which-skill Route each of these for me: (a) starting a brand-new CLI tool from nothing, (b) a test that fails only on CI, (c) I need to eyeball whether a dashboard layout actually reads before we commit to it, (d) someone has to click through the Stripe console and paste me a key, (e) I want to know if this library still supports the API we're calling.",
-      "expected_output": "Five routes, five different skills: (a) greenfield-forge, (b) systematic-debugging, (c) prototype, (d) wizard, (e) grounded-research. Each with the one-line reason the table gives, and no invented skill names.",
+      "prompt": "/which-skill Route each of these for me: (a) starting a brand-new CLI tool from nothing, (b) a test that fails only on CI, (c) I need to eyeball whether a dashboard layout actually reads before we commit to it, (d) someone has to click through the Stripe console and paste me a key, (e) I want to know if this library still supports the API we're calling, (f) here is a mockup the designer already signed off on and I need it built.",
+      "expected_output": "Six routes, six different skills: (a) greenfield-forge, (b) systematic-debugging, (c) prototype, (d) wizard, (e) grounded-research, (f) screenshot-to-code. Each with the one-line reason the table gives, and no invented skill names.",
       "assertions": [
         "(a) routes to greenfield-forge — nothing built yet, elect the design first",
         "(b) routes to systematic-debugging — and notes it refuses to theorise before a tight loop goes red on this bug",
         "(c) routes to prototype — the fork turns on how something looks/behaves, so it is settled against a runnable artifact and the human still elects",
         "(d) routes to wizard — the next step is one only a person can take, written down so the work restarts and closed on something observed rather than their 'done'",
         "(e) routes to grounded-research — the fork waits on a fact not in this repo, cited and treated as untrusted input rather than recalled from training memory",
+        "(f) routes to screenshot-to-code, NOT prototype — the design is already approved, so the job is to build the image rather than to settle a fork with it; the image is evidence, not a spec",
         "names only skills this package actually ships; invents no skill name"
       ],
       "files": []

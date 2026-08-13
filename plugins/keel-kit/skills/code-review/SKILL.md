@@ -1,6 +1,7 @@
 ---
 name: code-review
 description: Review a change against the contract it claims to satisfy, and reopen rather than decide — a reviewer surfaces findings as pins, never elects the fix. Covers requesting a review, giving one, and receiving one without deferring to authority. Use before merging, when asked to review a diff or PR, or when responding to review feedback.
+disable-model-invocation: true
 license: MIT
 ---
 

@@ -29,11 +29,13 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
 ## [0.6.0] — unreleased
 
 ### Added
-- **`which-skill`, and the two skills that name what an agent must *not* do alone.** The package
-  had nineteen skills and no map; `which-skill` is the router over them, and the only
-  **user-invoked** one (`disable-model-invocation: true`, authored once, read by Claude Code and
-  Pi, derived into Codex's `agents/openai.yaml`; opencode is a stated residual because its only
-  door is the model's `skill` tool). Beside it: **`prototype`** — a fork about how something
+- **`which-skill`, and the two skills that name what an agent must *not* do alone.** The package had
+  grown past the point where anyone remembers what is in it and had no map; `which-skill` is the
+  router over them. It was the first **user-invoked** skill (`disable-model-invocation: true`,
+  authored once, read by Claude Code and Pi, derived into Codex's `agents/openai.yaml`; opencode is
+  a stated residual because its only door is the model's `skill` tool) — and by the end of this
+  release fifteen of the nineteen shipped skills carry that key; see *The invocation axis* below.
+  Beside it: **`prototype`** — a fork about how something
   behaves or looks is settled against a runnable artifact rather than by two people imagining the
   same words differently, and the human still elects; and **`wizard`** — the inverse of the
   assumptions doctrine, covering not what an agent does when it must guess but what it does when it
@@ -72,18 +74,43 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
 - **Eleven grammars beyond JS/TS in the comprehension graph** — Go · Rust · Java · C# · Ruby · PHP ·
   C · C++ · Kotlin · Swift · Scala, each one query table rather than one parser, so the graph stops
   being a two-language instrument on a polyglot repo.
-- **MCP surface beyond tools** — the server now also serves **resources**, **prompts**, **progress**
-  notifications and a **version**, so a host can discover what the package holds without a tool call
-  and can show a long scan advancing instead of hanging.
-- **Evals expanded** across the skills, and `run_evals.py --validate` widened with them.
+- **MCP surface beyond tools** — the server now also serves three read-only ledger **resource**
+  templates (`ledger://summary/…`, `ledger://pins/…`, `ledger://pin/{pin_id}/…`), three **prompts**
+  (Claude Code shows them as `/mcp__keel__*`), **progress** notifications on the three long scans,
+  and its own **version**. That last one was a bug, not a feature: with no `version=`, FastMCP had
+  been answering `initialize` with **its own** version, so every host displaying a server version
+  displayed the library's. It now reads the plugin manifest beside the vendored copy.
+- **Evals: 3 files / 17 cases → 9 / 41.** The engineering-loop five plus `which-skill` gained
+  `evals/evals.json`, each asserting the **ledger binding** rather than generic good practice — the
+  red step is a pre-existing `acceptance_criterion` pin, a root cause lands in the `defect` pin,
+  resolution demands `rung="observed"`, the reviewer reopens without deciding — and each carrying at
+  least one adversarial case where the *user* offers the shortcut ("the suite is green, close the
+  pin") and the assertion checks that the discipline held.
 
 ### Changed
-- **The trigger axis reworked.** A skill self-activates off its `description`, so the descriptions
-  are the routing table; they were rewritten to separate the skills along the axis a user's request
-  actually varies on rather than along the axis we happened to author them in.
-- **CI grew a matrix, a Node job, and manifest gates** — the tree-sitter backend is installed before
-  the suite on every leg (a missing backend used to skip 21 tests *green*), Node covers the vendored
-  workflow engine, and the plugin manifests are validated rather than eyeballed.
+- **The invocation axis, and the budget nobody had measured.** Claude Code keeps a listing of every
+  skill's name and description in context, capped at **1% of the context window**, and on overflow
+  *"drops descriptions starting with the skills you invoke least"*. Keel shipped eighteen
+  model-invoked skills of nineteen carrying **7,745** characters — and on a cold repo, where nothing
+  has been invoked, its own two flagships were first in the drop queue. That is a deadlock: a skill
+  whose description is gone cannot match, so it is never invoked, so it stays at the front. Fifteen
+  skills that a person can reach **by name** now set `disable-model-invocation: true`; the four whose
+  trigger is a *situation* nobody names stay model-invoked (`codebase-rescue`, `greenfield-forge`,
+  `systematic-debugging`, `screenshot-to-code`). Descriptions **7,745 → 1,178** characters, keeping
+  the verbatim phrases a person actually types, and both flagship bodies came under the 200-line
+  adherence limit with the detail moved into `references/guardrails.md`. `check_description_budget.py`
+  is the gate. Two costs are recorded rather than discovered later (`docs/open-gaps.md` §31): the key
+  is outside the Agent Skills spec, so claude.ai upload now hard-fails for fifteen skills instead of
+  one; and a user-invoked skill is unreachable *by the model*, so no playbook may ever tell an agent
+  to invoke a sibling skill.
+- **CI grew a matrix, a Node job, and manifest gates** — `checks` now runs Python 3.12/3.13/3.14 on
+  ubuntu plus a macOS leg, this repo's first non-Linux coverage ever. The tree-sitter backend is
+  installed before the suite (a missing backend used to skip 21 tests *green*), tolerated **only** on
+  3.14 where the pinned wheel may not exist yet — a blanket tolerance would make that silence normal.
+  `src/workflow/`'s 7 TypeScript suites ship inside `keel-core` and had been run by CI zero times;
+  they are now a blocking job on node 22. Plus `ruff` as a measured floor and
+  `validate_manifests.py`, which blocks on the subset of `claude plugin validate --strict` we can
+  assert ourselves — that validator cannot block, since the CLI is not reliably installable.
 - **`keel-kit` now constrains its dependency on `keel-core` to `^0.6`** instead of tracking whatever
   the marketplace last published. Every kit skill calls keel-core's MCP tools by name, so a core
   release that renames one breaks the kit's prose while both manifests stay valid. Verified at the

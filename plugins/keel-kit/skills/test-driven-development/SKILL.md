@@ -1,6 +1,7 @@
 ---
 name: test-driven-development
 description: Write the failing test first, then the code that passes it — with the red step recorded as an acceptance_criterion pin in the decisions ledger, so what the test proves is the same object the interview elected. Use when implementing any BuildItem, fixing a defect, or when asked to add tests to existing code.
+disable-model-invocation: true
 license: MIT
 ---
 

@@ -1,0 +1,4 @@
+# GENERATED FILE - do not edit. Source: `disable-model-invocation` in this skill's SKILL.md;
+# regenerate with: python scripts/build.py
+policy:
+  allow_implicit_invocation: false

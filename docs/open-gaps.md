@@ -3729,9 +3729,9 @@ the consequence in the column that matters:
 > — same page, *Control who invokes a skill*
 
 Against those two facts the package as shipped was a **self-reinforcing deadlock**, and the numbers
-are the argument: eighteen shipped skills, every one model-invoked but the router, **7,009
+are the argument: nineteen shipped skills, every one model-invoked but the router, **7,745
 characters** of description permanently in context, and the two longest entries were the two
-flagships — `codebase-rescue` at 827 and `greenfield-forge` at 848. Now run the drop order against
+flagships — `codebase-rescue` at 824 and `greenfield-forge` at 845. Now run the drop order against
 the user this package exists for. A **cold** user has invoked nothing, so every Keel skill sits at
 the front of the least-invoked queue; the two longest are the most expensive characters in it; and a
 skill whose description is not in context cannot match a request, so it is never invoked, so it
@@ -3761,7 +3761,7 @@ otherwise reach for:
 This is the package's own thesis turned on the package. Everything here is built so a decision has a
 carrier and the carrier is checked; the skills' **trigger** had a carrier — the `description` — that
 nobody had ever measured against the budget it competes in. The result was the worst available
-allocation: seventeen composable skills, each of which a human can reach by name, were each paying
+allocation: fifteen composable skills, each of which a human can reach by name, were each paying
 permanent rent in the one place where the two skills that *cannot* be reached by name have to win.
 
 The asymmetry is what makes it a defect rather than a preference. `/test-driven-development` is a
@@ -3771,14 +3771,19 @@ nobody has heard of cannot be summoned by a user who does not know it is install
 ### What was done
 
 - **Invocation split.** Model-invoked: `codebase-rescue`, `greenfield-forge`, `systematic-debugging`
-  — the three whose trigger is a *situation* rather than a name. Every other shipped skill sets
+  and `screenshot-to-code` — the four whose trigger is a *situation* rather than a name. The fourth
+  arrived from a different branch mid-flight and is the strongest case of the four: its trigger is
+  not even text, since a pasted image is not a command anyone types. Every other shipped skill sets
   `disable-model-invocation: true`; `which-skill` already did, and `writing-skills` is dev-only and
   never travels. Fifteen skills now carry the key and the build derives fifteen Codex sidecars.
 - **Descriptions tightened, keeping the verbatim user phrases.** Abstract nouns lose to the words a
   person actually types, so *"this codebase is a mess"*, *"the frontend and backend don't match"*,
   *"pick up where I left off"*, *"make this production-ready"*, *"I want to build X"* and
-  *"scaffold a new codebase"* all survived the cut. **7,009 → 1,061 characters**, an 85% reduction,
-  with the flagships at 376 and 363.
+  *"scaffold a new codebase"* all survived the cut. **7,745 → 1,178 characters**, an 85% reduction,
+  with the flagships at 355 and 363. `screenshot-to-code` took the deepest single cut, 748 → 196:
+  its description was explaining the *method* (palette fact-checking, vetoable inferences, elicited
+  states) inside a listing the host truncates, while its body already carried every one of those
+  clauses in more detail. Nothing was lost, only moved to where it is read.
 - **Progressive disclosure on the two flagship bodies.** 286 → 197 and 277 → 199 lines. Nothing was
   deleted: the guardrails, the learning-layer composition and the prerequisites moved into a new
   `references/guardrails.md` per skill, and the phase prose was compressed onto detail the phase
@@ -3841,6 +3846,16 @@ repo where nothing has been invoked yet.
    somebody writes *"invoke the `test-driven-development` skill"* into a playbook, which would read
    as ordinary composition and be blocked at runtime. There is no gate for that; it is written here
    so the next session recognizes it.
+5. **The pool is now full, and that was learned by a merge rather than by a gate.** This round was
+   authored on a tree without `screenshot-to-code`; the skill landed from a parallel branch already
+   model-invoked and carrying a 748-character description, and the total went to 1,809 against a
+   1,200 budget the moment the two were merged. The gate caught it — that is the gate working — but
+   note *what* it caught: a budget is a shared pool, so the cost of a new model-invoked skill is paid
+   by every existing one, and nothing warns the author of the new skill that they are spending
+   somebody else's characters. At **1,178 / 1,200** the headroom is 22 characters. The next skill
+   that needs a situation-trigger cannot simply be added: it forces either a real cut elsewhere or a
+   re-derivation of `LISTING_BUDGET_CHARS` with the arithmetic in the file's comment updated to match.
+   Raising the constant to make a red gate green would discard the only measurement anyone has.
 
 ---
 

@@ -53,6 +53,39 @@ def interview_next(ledger: str) -> dict:
     return interview.funnel(_open_existing(ledger))
 
 
+# -- the ledger as a READ SURFACE (what the MCP resources project) --------------------------------
+# These have no `@mcp.tool` of their own and are not meant to: an agent that wants pins calls
+# `ledger_summary` / `interview_next` / `ledger_frontier`, each of which answers a question. What a
+# *resource* is for is the other consumer — a human typing `@keel:ledger://…` — and the rule that
+# makes it safe is that it reads through `_open_existing` and `pin_read` like every tool does.
+# A second parser over ledger.json is the divergence this package exists to find, so there is none.
+
+def ledger_pins(ledger: str) -> dict:
+    """The pin index: id, kind, state, severity, title — through the guarded read.
+
+    Deliberately not the whole pin. A ledger is routinely hundreds of pins and a resource is
+    *attached to a prompt*, not summarized into one, so the full payload would spend the context it
+    was fetched to inform. `ledger_pin` is the drill-down.
+    """
+    from ledger import pin_read
+    led = _open_existing(ledger)
+    pins = [pin_read(p) for p in led.readable_pins()]
+    return {"source": ledger, "count": len(pins),
+            "pins": [{k: p[k] for k in ("id", "kind", "state", "severity", "title") if k in p}
+                     for p in pins]}
+
+
+def ledger_pin(ledger: str, pin_id: str) -> dict:
+    """One pin, whole, through the same guarded read the write doors use.
+
+    `Ledger.pin` raises `LedgerError` on an unknown id rather than returning an empty record — the
+    read path's standing refusal, and the right one here too: a resource that answered `{}` for a
+    mistyped id would read as "that pin has nothing on it".
+    """
+    from ledger import pin_read
+    return {"source": ledger, "pin": pin_read(_open_existing(ledger).pin(pin_id))}
+
+
 # -- ledger writes (non-electing only; electing an outcome is the human interview's job) ----------
 
 def _open_or_create(path: str):
@@ -1298,10 +1331,19 @@ def image_palette(image: str) -> dict:
 
 
 def palette_verify(image: str, claimed: list | None = None, contract: str = "",
-                   tolerance: float = 0.0, contrast_pairs: list | None = None) -> dict:
+                   tolerance: float = 0.0, contrast_pairs: list | None = None,
+                   coverage_floor: float = 0.0) -> dict:
+    """`coverage_floor` reaches the engine now; it accepted the parameter and nothing could pass it.
+
+    Both overrides use `0.0` as "the declared default", matching `tolerance` one line up. That is a
+    real (small) loss of range and it is the right one: a floor of exactly zero makes `coverage >=
+    floor` true for every claim, which is the vacuous verdict `verify_palette` was just taught to
+    refuse — so the one value the sentinel costs is the one value nobody should pass.
+    """
     import visual
     out = visual.verify_palette(image, _claimed_colors(claimed, contract),
-                                tolerance=tolerance or None)
+                                tolerance=tolerance or None,
+                                coverage_floor=coverage_floor or None)
     if contract:
         out["contract"] = contract
     if contrast_pairs:

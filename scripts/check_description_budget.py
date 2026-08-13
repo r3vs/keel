@@ -13,10 +13,10 @@ a hard ceiling:
 > — https://code.claude.com/docs/en/skills#skill-descriptions-are-cut-short
 
 Read the drop order against a package this size and it closes on itself. Keel shipped eighteen
-model-invoked skills carrying ~7,000 characters of description; the two longest were the two
-flagships, at ~830 and ~850. For a **cold** user — the one the package is for — every Keel skill has
-an invocation count of zero, so Keel's entries are first to lose their descriptions, and the two
-longest are the most expensive to keep. A skill whose description is not in context cannot match a
+model-invoked skills of nineteen carrying **7,745** characters of description; the two longest were
+the two flagships, at 824 and 845. For a **cold** user — the one the package is for — every Keel
+skill has an invocation count of zero, so Keel's entries are first to lose their descriptions, and
+the two longest are the most expensive to keep. A skill whose description is not in context cannot match a
 request; a skill that never matches is never invoked; a skill that is never invoked stays at the
 front of the drop queue. Nothing in that loop is broken enough to fail a test.
 

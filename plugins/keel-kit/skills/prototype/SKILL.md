@@ -1,6 +1,7 @@
 ---
 name: prototype
 description: Answer one design question with throwaway code instead of more conversation — a runnable state/logic demo, or several radically different UI variations to react to. Raises an open_decision from talk to something observed, and the human still elects. Use when a decision turns on how something behaves or looks and arguing about it on paper has stopped converging.
+disable-model-invocation: true
 license: MIT
 ---
 

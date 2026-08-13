@@ -1,6 +1,7 @@
 ---
 name: static-first-analysis
 description: Use the strongest deterministic static signal before model judgment, and in-loop on the diff — type-checkers/compilers, LSP/SCIP navigation, and architecture-fitness / dependency-constraint checks. Deterministic findings carry high confidence and skip the false-positive gate. Use when analyzing, refactoring, or validating code.
+disable-model-invocation: true
 license: MIT
 ---
 

@@ -36,9 +36,13 @@ Plus composable helpers: **`using-the-ledger`**, **`grounded-research`**, **`sta
 the pixels, everything the image cannot show elicited instead of invented), and
 **`writing-skills`** (meta, dev-only — it never ships).
 
-**`which-skill`** is the map over all of them, and the package's one **user-invoked** skill: a router
-has nothing to tell the model that the descriptions do not already carry, so it pays no context load
-and costs you one name to remember instead.
+**`which-skill`** is the map over all of them, and almost everything it routes to is **user-invoked**:
+fifteen of the nineteen shipped skills set `disable-model-invocation: true` and are reached by typing
+the name. Only four fire off a description — `codebase-rescue`, `greenfield-forge`,
+`systematic-debugging`, `screenshot-to-code` — because only those trigger on a situation nobody
+names. The host's always-on skill listing is capped at 1% of the context window and drops
+descriptions starting with the least-invoked skill, so entries are a shared budget: every skill that
+keeps its description spends the characters the two flagships need to fire cold.
 
 **Everything a programmer and their coding agent need is here. The user installs no external
 plugin, ever** — a gate enforces it (no marketplace source may leave this repo). So the generic
@@ -60,9 +64,18 @@ MCP (opt-in — it needs a container and a key).
 
 ## How to activate
 
-Each skill triggers from its `description` when the task matches (a messy/misaligned codebase →
-rescue; a new project from scratch → forge). You can also invoke one explicitly. Do **not** start
-coding before the skill's Phase 1 — that is the anti-slop discipline both skills enforce.
+**Four** skills trigger from their `description` when the task matches: a messy/misaligned codebase →
+rescue; a new project from scratch → forge; something broken → `systematic-debugging`; a pasted
+mockup → `screenshot-to-code`. Every other skill you invoke **by name** (`/test-driven-development`,
+`/prototype`, `/branch-lifecycle` …), with `/which-skill` as the map when you cannot remember what is
+here. Do **not** start coding before the skill's Phase 1 — that is the anti-slop discipline both
+skills enforce.
+
+The cost of that split, stated because it is a trap rather than a detail: a user-invoked skill is
+unreachable by the model — *"If Claude tries anyway, Claude Code blocks the call"* — so a playbook
+must never instruct an agent to *invoke a sibling skill*. That reads as ordinary composition and
+fails at runtime. Nothing in this package does it today; rescue and forge carry the loop's doctrine
+through their own vendored `references/`, not by calling the sibling.
 
 ## Agent roster
 

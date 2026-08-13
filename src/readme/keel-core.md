@@ -259,12 +259,15 @@ The map over everything the package installs — which skill fits the situation 
 the engineering loop chains, and the two things people reach for that are not skills (the phase
 boundary, and what to do with a forced assumption).
 
-It is the package's **only user-invoked** skill, and the reason is the axis rather than taste: a
-router has nothing to tell the model that the skills' own descriptions do not already carry, so
-paying permanent context load for it would buy nothing. `disable-model-invocation: true` is authored
-once — Claude Code and Pi both read that key, and the build derives Codex's `agents/openai.yaml`
-from it. It lives in the core rather than the kit because every other plugin depends on the core, and
-a map that ships with only part of the install is a map with holes.
+It was the **first** user-invoked skill, and the reason is the axis rather than taste: a router has
+nothing to tell the model that the skills' own descriptions do not already carry, so paying permanent
+context load for it would buy nothing. That argument has since generalized to most of the package —
+fifteen of the nineteen shipped skills now set `disable-model-invocation: true`, because the host's
+skill listing is capped at 1% of the context window and drops descriptions starting with the
+least-invoked skill, so a package that spends the whole budget loses precisely the entries a cold
+user needs. The key is authored once — Claude Code and Pi both read it, and the build derives Codex's
+`agents/openai.yaml` from it. `which-skill` lives in the core rather than the kit because every other
+plugin depends on the core, and a map that ships with only part of the install is a map with holes.
 
 *Use when: you cannot remember what is here. Type it; nothing else can.*
 

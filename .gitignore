@@ -16,6 +16,7 @@ docs/audits/
 
 node_modules/
 __pycache__/
+.ruff_cache/
 *.pyc
 .venv/
 venv/

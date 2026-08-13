@@ -151,6 +151,35 @@ def spec_version() -> str:
     return ledger.SCHEMA_VERSION
 
 
+def _budget():
+    """`check_description_budget.py`'s own numbers, asked of the gate rather than recomputed here.
+
+    Two copies of "how long are the model-invoked descriptions" would be the duplication this file
+    exists to catch, committed by the file that catches it.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_cdb", pathlib.Path(__file__).resolve().parent / "check_description_budget.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    total = sum(len(mod.description_of(s)) for s in mod.model_invoked())
+    return total, mod.LISTING_BUDGET_CHARS - total
+
+
+def listing_chars() -> str:
+    """Returned already comma-grouped, because the comparison is against `str(truth)`.
+
+    `render` is display-only — `main()` compares `match.group(1) == str(truth)` — so a carrier whose
+    prose spelling is `1,178` has to *be* `1,178`, or the gate reports a number as stale against
+    itself.
+    """
+    return f"{_budget()[0]:,}"
+
+
+def listing_headroom() -> int:
+    return _budget()[1]
+
+
 #: Each fact: what it is, how the prose spells it, and the function that knows the answer. The
 #: patterns capture exactly one group, and each is annotated with the site it was written for, so a
 #: pattern that stops matching anything is visible as a pattern nobody uses rather than as coverage.
@@ -191,6 +220,33 @@ FACTS = (
             re.compile(r"\(shared, v(0\.\d+)\)"),                   # CLAUDE.md's architecture list
             re.compile(r"\(v(0\.\d+)\) is authoritative"),          # CLAUDE.md's conventions list
             re.compile(r"decisions-ledger spec \(v(0\.\d+)\)"),     # keel-core.md's core listing
+        ),
+    },
+    # Added 2026-08-13, at the merge that proved the need. `screenshot-to-code` arrived from a
+    # parallel branch still model-invoked with a 748-character description, and the total jumped to
+    # 1,809 against a 1,200 budget. `check_description_budget.py` caught that, because it gates the
+    # *ceiling*. What had no gate was the number once CLAUDE.md restated it — and this one drifts
+    # more easily than the others, because the budget is a SHARED POOL: editing any one skill's
+    # description moves a number written in a file that skill has nothing to do with.
+    #
+    # Only CLAUDE.md is covered, and deliberately so. `docs/open-gaps.md` §31 states the same two
+    # numbers and is in EXCLUDED — it is a dated register whose entries record what was true on the
+    # day of a round, exactly like CHANGELOG.md. Patterns aimed at it would match nothing here, which
+    # is the fake coverage the note above the FACTS table warns about.
+    {
+        "label": "the listing characters Keel's model-invoked descriptions occupy",
+        "carrier": listing_chars,
+        "render": str,
+        "patterns": (
+            re.compile(r"([\d,]+) / 1,200"),          # CLAUDE.md's invocation-axis bullet
+        ),
+    },
+    {
+        "label": "the characters left in Keel's share of the listing budget",
+        "carrier": listing_headroom,
+        "render": str,
+        "patterns": (
+            re.compile(r"~(\d+) to spare"),           # CLAUDE.md's invocation-axis bullet
         ),
     },
 )

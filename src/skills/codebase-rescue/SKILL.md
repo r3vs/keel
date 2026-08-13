@@ -2,7 +2,7 @@
 name: codebase-rescue
 description: >-
   Rescue a misaligned, often AI-generated codebase — reconcile backend, frontend and database
-  into one aligned state. Trigger on the user's own words: "this codebase is a mess", "the
+  into one aligned state. Trigger on: "this codebase is a mess", "the
   frontend and backend don't match", "pick up where I left off", "make this production-ready",
   "review my whole app", vibecoded, slop, half-finished. Prefer it to ad-hoc file reading across
   layers.

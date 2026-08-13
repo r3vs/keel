@@ -1,6 +1,7 @@
 ---
 name: project-memory
 description: Maintain durable, cross-session project memory — conventions, gotchas, "why" notes, user preferences, and the decisions that shaped the codebase. Use to record something worth remembering, or to recall project context at the start of a task. Complements the decisions ledger (which is decision-memory) with lighter project facts.
+disable-model-invocation: true
 license: MIT
 ---
 

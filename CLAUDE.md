@@ -47,6 +47,13 @@ package exists to find, sitting in its own front door.
 - **`src/runtime/` + `src/mcp/`** — the deterministic spine and its MCP adapter. `build.py` vendors
   the runtime into each skill that runs it (the portable floor) *and* the MCP server serves it as
   typed tools — which is what makes the capability **discoverable** rather than merely available.
+  The adapter now serves **three** surfaces, not one: 67 typed tools, three read-only ledger
+  **resource** templates (`ledger://summary/{path*}`, `ledger://pins/{path*}`,
+  `ledger://pin/{pin_id}/{path*}` — the `{path*}` wildcard is load-bearing, since a bare `{path}`
+  compiles to `[^/]+` and matches no absolute path), and three **prompts** Claude Code surfaces as
+  `/mcp__keel__*`. The server also reports its own identity from the plugin manifest beside the
+  vendored copy (`dev` in the source tree); with no `version=`, FastMCP had been answering
+  `initialize` with its **own** version, so every host showing a server version showed the library's.
 - **`plugins/`** — **generated build output; the only thing that ships.** Four plugins
   (`keel-core`, `codebase-rescue`, `greenfield-forge`, `keel-kit`), each with both a
   `.claude-plugin/` and a `.codex-plugin/` manifest. opencode and Pi link their skills straight out
@@ -61,12 +68,20 @@ package exists to find, sitting in its own front door.
   something behaves or looks is settled against a runnable artifact, and the human still elects),
   `wizard` (the inverse of the assumptions doctrine — not what an agent does when it must guess, but
   what it does when it must wait, and why "I did it" is `self_check` rather than an observation).
-- **The map, and the one user-invoked skill** — `which-skill` routes over everything above. It sets
-  `disable-model-invocation: true`, which is authored once and read by Claude Code **and Pi**; the
-  build derives Codex's `agents/openai.yaml` from it, and opencode is a stated residual (its only
-  door is the model's `skill` tool, so denying it removes the skill from the human too). The choice
-  and its two costs live in `src/core/writing-for-agents.md`; the per-host mechanism in
-  `docs/packaging.md`.
+- **The invocation axis, and the map over it.** Four skills stay model-invoked — `codebase-rescue`,
+  `greenfield-forge`, `systematic-debugging`, `screenshot-to-code` — because each fires on a
+  *situation nobody names* (the last most literally: a pasted image is not a command anyone types).
+  The other **fifteen** set `disable-model-invocation: true` and are reached by typing the name,
+  with `which-skill` as the map. This is a budget, not a preference: Claude Code's always-on skill
+  listing is capped at **1% of the context window** and, on overflow, *drops descriptions starting
+  with the skills you invoke least* — so nineteen model-invoked entries cost the two flagships their
+  trigger for exactly the cold user the package exists for. `scripts/check_description_budget.py` is
+  the gate (1,178 / 1,200 characters, ~22 to spare, so the next situation-triggered skill forces a
+  real cut or a re-derivation); `docs/open-gaps.md` §31 holds the evidence and five residuals. The
+  key is authored once and read by Claude Code **and Pi**; the build derives Codex's
+  `agents/openai.yaml` from it, and opencode is a stated residual (its only door is the model's
+  `skill` tool, so denying it removes the skill from the human too). The choice and its two costs
+  live in `src/core/writing-for-agents.md`; the per-host mechanism in `docs/packaging.md`.
 - **Complete-package layer** — composable skills (`using-the-ledger`, `grounded-research`,
   `static-first-analysis`, `project-memory`, `learning-layer`, `documentation-lifecycle`,
   `maintainer-assist`, `screenshot-to-code`, `which-skill`), a memory subsystem (ledger +
@@ -121,7 +136,10 @@ running an app.
 ```bash
 python scripts/build.py                # src/ -> plugins/. The ONE generation step; the only thing that ships.
 python scripts/build.py --check        # the drift gate: plugins/ still equals what src/ generates
+python scripts/validate_manifests.py   # plugin.json + marketplace.json + .mcp.json, blocking (--strict is advisory)
+python -m ruff check .                 # the Python floor; ruff.toml declares the debt and the next tier
 python scripts/check_consistency.py    # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
+python scripts/check_description_budget.py  # the listing budget Keel spends in the host; two flagship line caps
 python scripts/verify_pointers.py      # every *.md cross-reference resolves; exits 1 on dangling
 python scripts/check_hypotheses.py     # every tuned number in the runtime is declared (AST, not grep)
 python scripts/check_schema_fields.py  # every field the ledger spec declares is READ by something that ships
@@ -130,6 +148,7 @@ python scripts/check_tool_carriers.py  # every WRITE tool the server exposes is 
 python scripts/verify_commands.py      # every agent-facing COMMAND resolves after install; exits 1 on drift
 python scripts/run_evals.py --validate # each skill's evals.json is well-formed (structure, not behaviour)
 python -m unittest discover -s tests   # ledger runtime, MCP tools + server, ledger gate, installed package
+(cd src/workflow && npm test)          # the 7 TypeScript suites that ship inside keel-core (node 22)
 bash src/tools/bootstrap.sh            # toolchain + uv (idempotent, best-effort, never hard-fails)
 bash scripts/install.sh                # link the built skills into ~/.agents/skills (opencode + Pi)
 ```
@@ -137,9 +156,19 @@ bash scripts/install.sh                # link the built skills into ~/.agents/sk
 **That list is the whole set of gates, and it was read off its consumer** — `.github/workflows/ci.yml`
 runs every line above except bare `python scripts/build.py` (generating is what a developer does; CI
 only verifies the result with `--check`) and the two `bash` lines, which it syntax-checks with
-`bash -n` rather than executing. CI additionally installs the tree-sitter backend before the tests,
-and runs `claude plugin validate --strict` per plugin in a second job that is `continue-on-error`, so
-it advises and never blocks — neither is a gate you run here.
+`bash -n` rather than executing. CI additionally installs the tree-sitter backend before the tests
+(tolerated on the 3.14 leg alone, where the pinned wheel may not exist yet — a blanket tolerance
+would normalize the 21 silently-skipped tests `test_treesitter.py` was written to end), and runs
+`claude plugin validate --strict` per plugin in a third job that is `continue-on-error`, so it
+advises and never blocks — neither is a gate you run here.
+
+Two shapes in that file are newer than the one-line-per-gate reading. The `checks` job is a
+**matrix** — Python 3.12/3.13/3.14 on ubuntu plus one macOS 3.12 leg, `fail-fast: false` — so a green
+run is a claim about four environments rather than one, and macOS is this repo's first non-Linux
+coverage ever (treat a first failure there as a finding about the code, not about the workflow). And
+`npm test` runs in its own **blocking** `workflow-engine` job on node 22, because `src/workflow/` is
+TypeScript that ships inside `keel-core`: it is product code with its own runner, and a suite nothing
+executes is the same object as no suite.
 
 The completeness claim matters because `docs/open-gaps.md` tells a cold session to "run every gate"
 by pointing at this list: an omission here is a gate nobody runs before committing, which is exactly
@@ -317,7 +346,12 @@ agent definition); `permissionMode` is ignored for plugin subagents; and the plu
 property for permission rules at all. Selective `Bash(...)` rules live only in the **user's own**
 `settings.json`, session-wide — which a plugin cannot write. And we deliberately grant `Bash` to the
 read-only roles (they need it for static analysis), so blunt denial is not available either. That is
-what the ledger gate closes at runtime. Full details: `docs/packaging.md`.
+what the ledger gate closes at runtime. Full details: `docs/packaging.md` — including its section
+*"The tool surface is a budget, and it is the host's to spend"*, which names a previously-silent
+assumption: 67 tools are affordable only because hosts **defer** them (verified default on Claude
+Code; one proxy tool on Pi; loaded up front on opencode per its own docs; **UNVERIFIED** on Codex,
+so the doc plans for the conservative case). That budget and the skill-listing budget above are the
+same lesson at two layers — a surface this package does not own, spent by a number nobody measured.
 
 > Loose thread, flagged rather than guessed: the manifest has a top-level `settings` — *"Only the
 > documented allowlisted keys are applied"* — and that allowlist is **not documented anywhere**.
@@ -396,5 +430,12 @@ is not this one.
 - **Read the relevant reference before executing or editing a phase/module — do not work from
   memory.** `SKILL.md` states this as a rule, and the playbooks carry detail that `SKILL.md`
   deliberately omits.
+- **One authored version, and the release is a tag.** `VERSION` in `scripts/build.py` is the only
+  hand-written version; every manifest **and** the root `.claude-plugin/marketplace.json` are stamped
+  from it, so a bump requires regenerating **both** paths — `git checkout -- plugins/` alone leaves
+  the root marketplace stale at a different version than the manifests it serves. Tag
+  `{name}--v{version}` **annotated** at merge, or `tests/test_plugin_version.py` skips green: the
+  eight existing tags are lightweight, so annotating is a change of practice, not a restatement. See
+  `CONTRIBUTING.md` § Release.
 - Runtime artifacts (`ledger.json`, `graph.json`, `*.skill`, `.audit/`, `docs/audits/`) are
   gitignored — the skill generates them; they are never authored or committed here.

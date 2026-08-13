@@ -20,7 +20,7 @@ gate written for exactly its failure shape.
 
 ## Facts
 - This repo is a **package of agent skills** — the deliverable is prose a future agent executes,
-  plus a runtime spine (`src/runtime/`, core stdlib-only, **1017 tests green in CI**),
+  plus a runtime spine (`src/runtime/`, core stdlib-only, **1061 tests green in CI**),
   `scripts/run_evals.py`, and the ast-grep rule pack. **Step-0 verdicts, both now on trustworthy
   data**: greenfield STRONG (full generation is Plan A); rescue's VibraFlow **re-run on a fresh
   graph 2026-07-14** → **WEAK** cross-layer correspondence, so standalone extraction is Plan A and
@@ -39,6 +39,16 @@ gate written for exactly its failure shape.
   it there, then `python scripts/build.py`. A skill never points at `src/core/` directly (the linter
   errors on a bare `core/x.md` under a skill). **20 skills are authored; 19 ship** —
   `writing-skills` is our contributor guide in a skill's clothes, held back by `DEV_ONLY_SKILLS`.
+- **A skill's `description` is rent on a budget the package does not own.** Claude Code keeps every
+  skill's name and description in context, capped at 1% of the window, and on overflow drops
+  descriptions *starting with the least-invoked skill* — which on a cold repo is all of ours. So
+  only skills whose trigger is a **situation nobody names** stay model-invoked (today:
+  `codebase-rescue`, `greenfield-forge`, `systematic-debugging`, `screenshot-to-code`); everything a
+  person can reach by typing its name sets `disable-model-invocation: true`. The practical
+  consequence for anyone adding a skill: **the budget is a shared pool, so a new model-invoked
+  description is spent out of the existing ones**, and it is nearly exhausted.
+  `scripts/check_description_budget.py` prints the live total and holds the ceiling — read it there
+  rather than restating a number here. Evidence and five residuals: `docs/open-gaps.md` §31.
 - **One authored version string, and the release is a git tag.** `VERSION` in `scripts/build.py` is
   the only place a version is written by hand; every `.claude-plugin/` manifest, every
   `.codex-plugin/` manifest and the root `.claude-plugin/marketplace.json` are **stamped from it by

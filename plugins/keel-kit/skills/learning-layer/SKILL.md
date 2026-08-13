@@ -8,6 +8,7 @@ description: >-
   be coached rather than handed answers. Delivery is never blocked by teaching; the teaching is a
   passive, opt-out byproduct that fades as the user improves. Not a tutorial generator and not a
   separate "learn mode" — it wraps real work.
+disable-model-invocation: true
 license: MIT
 ---
 

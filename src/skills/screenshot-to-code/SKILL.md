@@ -1,14 +1,9 @@
 ---
 name: screenshot-to-code
 description: >-
-  Turn a screenshot, mockup, Figma frame, design image or UI video into real code — by treating the
-  image as EVIDENCE, not a specification. The palette a model reads off the picture is fact-checked
-  against the actual pixels before it becomes a contract; every semantic inference (this is a nav,
-  this blue means primary) becomes a vetoable pin; and everything an image structurally cannot show
-  — hover/focus/error states, breakpoints, real data, behavior on click, a11y semantics — is elicited
-  instead of invented. Use when a user pastes or points at a screenshot, mockup, Figma frame or
-  design file and wants it built, says "make it look like this", "clone this UI", "match this
-  design", or wants a design converted into design tokens and components.
+  Build UI from a screenshot, mockup, Figma frame or design image — the picture is evidence, not a
+  spec. Trigger on a pasted UI image, "make it look like this", "clone this UI", "match this
+  design".
 license: MIT
 ---
 

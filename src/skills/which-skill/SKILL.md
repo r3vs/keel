@@ -16,11 +16,11 @@ model that the skills' own descriptions do not already carry, so paying permanen
 it would buy nothing. That was the original argument, and it now generalizes: the host loads a
 listing of skill names and descriptions whose budget is **1% of the model's context window**, and on
 overflow it *"drops descriptions starting with the skills you invoke least"*
-(`https://code.claude.com/docs/en/skills`). A package that spent the whole budget on eighteen
+(`https://code.claude.com/docs/en/skills`). A package that spent the whole budget on nineteen
 entries would lose exactly the descriptions a cold user needs — the ones that have never been
-invoked *because* they have never matched. So only three skills stay model-invoked
-(`codebase-rescue`, `greenfield-forge`, `systematic-debugging`); every other one below is reached by
-typing its name, which is what this map is for. The axis and its two costs:
+invoked *because* they have never matched. So only four skills stay model-invoked
+(`codebase-rescue`, `greenfield-forge`, `systematic-debugging`, `screenshot-to-code`); every other
+one below is reached by typing its name, which is what this map is for. The axis and its two costs:
 `references/core/writing-for-agents.md`.
 
 ## Start here: what is in front of you?
@@ -36,9 +36,10 @@ typing its name, which is what this map is for. The axis and its two costs:
 Rescue and forge are the two methodology skills, and they are model-invoked precisely because they
 should activate off the description when the task matches — a cold user does not know this package
 exists to name it. Everything below is what runs *inside* them, each useful on its own, and each
-**typed by name**: `/branch-lifecycle`, `/prototype`, `/using-the-ledger`. The one exception is
-`systematic-debugging`, which stays model-invoked because *"it's broken"* is a situation, not a
-skill somebody remembers to reach for.
+**typed by name**: `/branch-lifecycle`, `/prototype`, `/using-the-ledger`. Two more stay
+model-invoked on the same test — the trigger is a situation, not a name somebody reaches for:
+`systematic-debugging`, because *"it's broken"* is a situation, and `screenshot-to-code`, whose
+trigger is not even text — a pasted image is not a command anyone types.
 
 ## The engineering loop
 
