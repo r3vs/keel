@@ -100,10 +100,11 @@ done
 git push --follow-tags
 ```
 
-Use `-a`. The eight tags **on the remote** are lightweight, which carries no tagger, date or message
-— fine for a string match, useless for asking later *who released this and when*. The four
-`--v0.6.0` tags are the first annotated ones, so this is a practice that started rather than a rule
-being restated. `claude plugin tag --push`, run from a plugin directory, does the same job and
+Use `-a`. The remote holds two generations: the eight 0.3.0/0.4.0 tags are lightweight, which
+carries no tagger, date or message — fine for a string match, useless for asking later *who
+released this and when* — and the four `--v0.7.0` tags are annotated, the first annotated tags
+ever to reach `origin` (pushed by the maintainer, 2026-08-13). The practice started locally with
+the four `--v0.6.0` tags; 0.7.0 is where it first reached a resolver. `claude plugin tag --push`, run from a plugin directory, does the same job and
 additionally validates the plugin, checks that `plugin.json` and the marketplace entry agree on the
 version, and refuses on a dirty tree; prefer it when the CLI is available and treat the loop above
 as the portable equivalent.
@@ -130,9 +131,12 @@ git push --follow-tags
 ```
 
 Today those first two disagree by exactly the four `--v0.6.0` tags: annotated in the clone, absent
-from `origin`. Absent is the state `tests/test_plugin_version.py` reads as *"this version was never
-released"*, and it skips — so the local tags buy the gate nothing until somebody with push rights
-runs the third command.
+from `origin` — and staying that way deliberately. Absent is the state `tests/test_plugin_version.py`
+reads as *"this version was never released"*, which for 0.6.0 is the truth: it was served to
+nobody (the number moved to 0.7.0 before any tag could be pushed), so a late push would anchor a
+comparison no install can be holding. The 0.7.0 release closed the loop the designed way — the
+maintainer ran the third command from their own clone, and the four annotated `--v0.7.0` tags are
+what the resolver now sees.
 
 **The version fallback chain — why the pin is worth keeping.** Claude Code resolves a plugin's
 version from the first of these that is set:

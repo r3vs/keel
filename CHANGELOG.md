@@ -11,15 +11,18 @@ the annotated git tag `{plugin-name}--v{version}` (see `CONTRIBUTING.md` § Rele
 "do I need to update?" by comparing that string and nothing else.
 
 **Which of these were actually tagged, stated rather than implied, and where those tags live**:
-only **0.3.0** and **0.4.0** are tagged **on `origin`**, and those eight are *lightweight*, not
-annotated. 0.1.0, 0.2.0, 0.4.1 and 0.5.0 moved the manifest number without any tag at all. The four
-`--v0.6.0` tags are annotated and exist **only in the clone** — pushing a tag needs maintainer
-credentials a session does not hold, so they reach no resolver (`CONTRIBUTING.md` § Release has the
-verified account and the two commands that tell the sides apart). That local anchor was still
-enough to make `tests/test_plugin_version.py` bite for the **first time** at 0.7.0, after skipping
-green since 0.4.0: bytes moved under all four `plugins/<name>` paths while the number stood still,
-and all four assertions failed at once. The gate's declared residual — "tag at release, or this file
-is decoration" — is why tagging is written down as a step.
+`origin` holds **0.3.0** and **0.4.0** (eight *lightweight* tags) and — since 2026-08-13 —
+**0.7.0**, the first four **annotated** tags ever to reach the remote, pushed by the maintainer
+from their own clone because pushing a tag needs credentials a session does not hold
+(`CONTRIBUTING.md` § Release has the verified account and the two commands that tell the sides
+apart). 0.1.0, 0.2.0, 0.4.1 and 0.5.0 moved the manifest number without any tag at all. The four
+`--v0.6.0` tags are annotated and exist **only in the clone**, deliberately left there: 0.6.0 was
+served to nobody, so a late push would anchor a comparison no install can be holding. That local
+anchor was still enough to make `tests/test_plugin_version.py` bite for the **first time** at
+0.7.0, after skipping green since 0.4.0: bytes moved under all four `plugins/<name>` paths while
+the number stood still, and all four assertions failed at once. The gate's declared residual —
+"tag at release, or this file is decoration" — is why tagging is written down as a step. 0.8.0's
+four tags are the open maintainer step at its merge.
 
 **Dates are the merge/commit dates of the range, best-effort.** Three versions landed on 2026-07-24;
 that is what the history says, not a transcription error.
@@ -30,7 +33,69 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
-## [0.7.0] — unreleased
+## [0.8.0] — 2026-08-13
+
+### Added
+- **`tracker_diff` surfaces human issue comments as `awaiting_human_review` — the inbound half of
+  the tracker projection, elected rather than assumed.** The maintainer elected **read-only
+  surfacing** from the three recorded forks, presented verbatim in a session interview; the
+  election record replaces the open decision in `docs/design/tracker-projection.md`,
+  `flip_criteria` included. Comments never write the ledger: each surfaced item carries issue, pin,
+  author and a bounded excerpt; the projection's own comments are excluded **by marker, not
+  author** (an author check would silently break the day the token changes); an unavailable
+  tracker is `null`, never `[]`, so "nothing to review" cannot be impersonated by "could not
+  look". Reopening stays a human act through the interview, one-way stays structural (still no
+  `Ledger` constructed, still held by the AST test), and the schema is unchanged.
+- **The two MCP apps' JavaScript has a gate.** The apps' JS had shipped inside Python strings that
+  nothing ever parsed, let alone ran. CI's `workflow-engine` job (blocking, node 22) now extracts
+  both documents as `apps.py` and `map.py` actually render them and executes the scripts against
+  well-formed **and hostile** pins under a stub DOM — a `<script>`-shaped pin title must land as
+  text, not as markup.
+- **The first live behavioral eval run in the package's history — and it indicted the harness
+  before the skill.** `using-the-ledger` against the real `claude` CLI ($1.50 / 264 s): 1 PASS /
+  3 FAIL / 15 manual. The adversarial reading of the FAILs found the skill was **never in context
+  in any of the four runs** — the harness piped a bare prompt, and a user-invoked skill
+  (`disable-model-invocation: true`) is exactly what the host refuses to load that way, a cost
+  0.6.0 recorded and the harness then paid — so the runner now types `/<name>` for user-invoked
+  skills, read off the built frontmatter. One FAIL was eval design (a recording demanded with no
+  human present to elect — rewritten as relay-mode); one read "0 of 0 entries" off a fixture whose
+  `ledger.json` never existed (seed ledgers are now built at runtime through the real `Ledger`
+  API). MCP **write** tools were permission-denied throughout, so the ledger-reading predicates'
+  live-artifact residual **remains open** — restated, not closed. The run, both refutations, costs
+  and residuals: `docs/measurements.md` Postscript 3.
+
+### Fixed
+- **`_client_can_elicit` treated a declared capability as a working channel.** An unavailable-class
+  failure at `ctx.elicit` now degrades to the transcribed-relay refusal exactly as if the
+  capability had never been declared, while `Declined`/`Cancelled` keep their hard-refusal
+  semantics — a human's "no" and a channel's absence are different answers. This was
+  `docs/design/mcp-apps.md` §6's "fix first, independently of any bump" item, closed before any host
+  negotiates protocol 2026-07-28, i.e. before it could ever fire.
+- **Five shape-engine gaps, closed and re-measured on the corpus that found them** (the point of
+  recording extractor gaps as findings instead of quietly fixing them): `EmptyExtraction` refusal
+  when a side parses nothing — an empty diff can no longer impersonate a clean bill of health,
+  **including on `drift_check`**, the door the playbooks open first, which the first fix missed
+  and the adversarial pass caught; SQLAlchemy 1.x idiom (`= Column(...)`, derived
+  `__tablename__`); Pydantic base-chain following; `graphql` joining `_STRINGLY_LAYERS` (90% of
+  keystone's `type_mismatch` noise was one missing tuple entry); structural-tier/relation-pair
+  classification for the remainder. `docs/measurements.md` carries the dated before/after re-runs
+  on both public repos.
+- **A seed `files` entry was a path nobody looked at.** The eval harness's fixture-seeding
+  mechanism was declared and dead; implementing it made every entry a write to a path an eval
+  author chose, so both `--validate` and the runner now confine seed paths inside the fixture —
+  `..`, absolute paths and symlink escapes refuse instead of writing.
+- **`install.sh` now guards the `~/.claude/skills` footgun instead of only documenting it** —
+  0.7.0 recorded that installing there replaces the bundled skill in every project the user opens;
+  the installer now refuses that target unless explicitly forced.
+
+### Changed
+- **`VERSION` 0.7.0 → 0.8.0**; the suite grew 1,158 → 1,246 tests.
+- **All three dependents now constrain `keel-core` symmetrically** (`^0.8`, derived from
+  `VERSION`): `codebase-rescue` and `greenfield-forge` had been tracking whatever the marketplace
+  last published while `keel-kit` alone carried the constraint 0.6.0 introduced — same exposure,
+  one protected consumer.
+
+## [0.7.0] — 2026-08-13
 
 ### Added
 - **Two `ui://` MCP Apps, and the reason both of them only read.** `ui://keel/interview.html` (the
@@ -78,7 +143,7 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
   file: this is the first bump this repo made because `tests/test_plugin_version.py` demanded it
   rather than because someone decided a release had happened.
 
-## [0.6.0] — unreleased
+## [0.6.0] — 2026-08-13 (tags clone-only, deliberately — 0.6.0 was served to nobody)
 
 ### Added
 - **`which-skill`, and the two skills that name what an agent must *not* do alone.** The package had
