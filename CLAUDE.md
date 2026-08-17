@@ -365,7 +365,7 @@ plugins — in four different shapes, so the shapes are generated, never hand-ke
 |---|---|---|---|---|
 | skills | plugin `skills/` | `.agents/skills` | `.opencode`/`.claude`/`.agents` | `.pi`/`.agents` |
 | plugin | `.claude-plugin/` + `dependencies` | `.codex-plugin/` (no deps) | a JS/TS **module** | `pi` key in package.json |
-| hooks | `hooks.json`, 27 events | `hooks.json`, 10 events | **TS only** — hooks *are* the plugin API | **TS only** — extension events |
+| hooks | `hooks.json`, 27 events | `hooks.json`, 11 events | **TS only** — hooks *are* the plugin API | **TS only** — extension events |
 | MCP | yes | yes | yes | **no** (via an extension) |
 | instructions | **CLAUDE.md only** | AGENTS.md | AGENTS.md | AGENTS.md/CLAUDE.md |
 

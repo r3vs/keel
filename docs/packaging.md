@@ -573,6 +573,29 @@ agent the ordinary way, as vendored prose, and the reminder is simply absent rat
 reimplemented as something it is not. If either host grows a non-blocking advisory return, the
 adapter is four lines and the rule already lives in one place.
 
+**The Codex half of that row was asserted from the table above before it was checked, which is the
+error this page exists to warn about** — the `./` bug shipped for months because a *type* was cited
+instead of the function that consumes the value. It is now checked, and it holds on both halves it
+depends on: Codex's `PreToolUse` fires for shell commands **matched as `Bash`** (the same matcher
+string this hook registers), and a command hook's stdout `systemMessage` is honored and *"surfaced
+as a warning in the UI or event stream"* — so the nudge both fires and speaks there, rather than
+running silently. Verified against the current hooks reference (`learn.chatgpt.com/docs/hooks`,
+formerly `developers.openai.com/codex/hooks`, now a 308).
+
+Two things that reference settles which are **not** about this hook, recorded because they were read
+first-hand and cost nothing to keep:
+
+- **`permissionDecision: "ask"` is *"parsed but not supported yet"* on Codex.** That is the exact
+  mechanism `keel-core`'s README gives the ledger gate for a write into host memory — deliberately
+  *ask*, never deny. On Codex that rung is currently unavailable, so that path degrades to whatever
+  the fallback is rather than prompting. Pre-existing and out of this change's scope; flagged here
+  rather than left for the next reader to rediscover.
+- The events list published there is **eleven**, not the ten this repo's table in `CLAUDE.md` states
+  (`SessionStart`, `SessionEnd`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `PreCompact`,
+  `PostCompact`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `Stop`). A count restated from
+  a doc that has since moved is exactly the drift class the gates cover for numbers this repo
+  computes — this one is not computed, so it is corrected by reading, here.
+
 Both tables are **parsed, never grepped** — "GitHub" appears in the knowledge-sources prose twice as
 ordinary English (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a registry), and a
 word-match would "find" a server nobody declared. Correspondence comes from a declared fact or not
