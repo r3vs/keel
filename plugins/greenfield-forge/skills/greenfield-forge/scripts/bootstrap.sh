@@ -79,6 +79,15 @@ install_binary osv-scanner  osv-scanner  "https://github.com/google/osv-scanner/
 install_binary trivy        trivy        "https://github.com/aquasecurity/trivy/releases"
 install_binary rg           ripgrep      "https://github.com/BurntSushi/ripgrep/releases"
 
+# `fd` is the navigation half of the search doctrine (core/search-strategy.md), not a finder.
+# Debian and Ubuntu ship it as `fdfind` — the name `fd` was already taken — so `have fd` is false on
+# a machine that has the tool. Checked here rather than left to prose that only ever says `fd`.
+if ! have fd && have fdfind; then
+  ok "fd (present as fdfind — alias fd=fdfind, or call fdfind directly)"
+else
+  install_binary fd fd "apt install fd-find (binary: fdfind) | cargo install fd-find | https://github.com/sharkdp/fd/releases"
+fi
+
 # --- Python-based tools ----------------------------------------------------------------
 if have pipx || have pip3 || have pip; then
   PIP="pipx install"; have pipx || PIP="python3 -m pip install --user"

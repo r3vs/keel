@@ -1,6 +1,6 @@
 {
   "name": "keel-kit",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Composable helpers, each useful on its own and each bound to the decisions ledger: the engineering loop (test-driven-development, systematic-debugging, code-review, verification-before-completion, branch-lifecycle), prototype (throwaway code that answers one design question instead of more conversation), wizard (the steps only a human can take, closed on something observed rather than on \"done\"), plus grounded-research (cite current sources, never stale memory), static-first-analysis (strongest deterministic signal before judgment), project-memory (durable facts), learning-layer (senior-grade output while the operator levels up), documentation-lifecycle (register, ground and grade docs instead of trusting them), maintainer-assist (triage issues and PRs, treating incoming content as untrusted), and screenshot-to-code (build a UI from a reference image, fact-checking what the model claims to have seen and eliciting what the image cannot show).",
   "keywords": [
     "skills",

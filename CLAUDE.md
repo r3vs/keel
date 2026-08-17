@@ -286,6 +286,21 @@ are all unified under this one principle — which is why there is deliberately 
   grounding, confidence, and untrusted-input discipline; and how an agent surfaces its **own** forced
   assumptions as vetoable pins instead of encoding them silently (the anti-slop rule turned on the
   agent itself).
+- **The same binaries do two jobs, and only one of them produces pins** (`src/core/search-strategy.md`,
+  `src/core/rule-authoring.md`). `static-analysis.md` covers running `rg` / `ast-grep` / `semgrep` as
+  **analyzers**, whose reports `findings_gate` turns into pins. Searching with them is a different job
+  under different rules — a grep hit is a location, not a finding, so it inherits neither `extracted`
+  confidence nor the fp-check bypass — and *authoring* a structural rule is a third. That third one
+  existed as an instruction with no method: rescue's ast-grep pack says "add one YAML file per new
+  placeholder shape" and stopped there, at exactly the step where rules go wrong silently in both
+  directions (verified on `ast-grep 0.45.1`: a wrong `language:` matches nothing and exits 1 —
+  indistinguishable from a clean repo — while a malformed pattern matches everything and exits 0).
+  Hence the loop: decompose, test a positive **and** a negative example, `--debug-query=ast` when it
+  will not match, then register the rule as a generator so `generator_screen` can mute it loudly.
+  The navigation doctrine also gets a mechanism, because prose gets skipped: `hooks/search-nudge.py`
+  is a **warn-only** `PreToolUse` on `Bash`, separate matcher from the ledger gate precisely because
+  that one denies and this one must never. Claude Code + Codex only; the opencode/Pi residual is
+  declared in `docs/packaging.md` (neither host has a non-blocking advisory return).
 - **The ledger reaches a fresh agent only through `AGENTS.md`** (`src/core/instruction-files.md`,
   engine `runtime/instructions.py` / `mcp:generate_instructions`). The ledger is the single source of
   truth and **no host loads it**; each one loads exactly one file unprompted, so the elected design is

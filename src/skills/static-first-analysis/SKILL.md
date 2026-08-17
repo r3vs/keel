@@ -18,6 +18,16 @@ cheap, deterministic, and high-confidence — reach for it before model judgment
 - **Architecture-fitness** (import-linter, dependency-cruiser, ArchUnit, ts-arch) — enforce the
   elected boundaries; a violation is a `design_concern` (rescue) or a CI gate (greenfield).
 
+## Before the analysis: finding the code at all
+Locating something in an unfamiliar tree is the other job these same binaries do, and it runs by
+different rules — `references/core/search-strategy.md`. The one that matters here: **a grep hit is a
+location, not a finding.** It earns none of the `extracted` confidence and none of the fp-check
+bypass this page grants a type error, because nothing deterministic computed it. Scope before you
+search (type, path, shape), count before you read, and reach for `ast-grep` the moment the question
+has syntax in it. Writing a structural rule rather than running one is
+`references/core/rule-authoring.md` — the loop that stops a rule from matching nothing, or everything,
+without saying so.
+
 ## How to use it well
 - **In-loop, not just batch**: run on the diff as you edit, via the language server where possible.
 - **Confidence from determinism**: deterministic findings skip the heavy fp-check — reserve that

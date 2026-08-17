@@ -562,6 +562,16 @@ be one thing, generated. So each fact lives once and the build derives every hos
 | the agent roster + its write verb | the table in `src/core/agents.md` | `disallowedTools` (Claude) · `permission.edit` (opencode) |
 | the required MCP servers | the table in `src/core/knowledge-sources.md` | `.mcp.json` (Claude + Codex) · the opencode plugin's `config()` hook |
 | the ledger gate's rule | `src/hooks/ledger-gate.py` | `hooks.json` (Claude + Codex) · thin TS adapters (opencode + Pi) that carry no logic |
+| the search-tool nudge | `src/hooks/search-nudge.py` | `hooks.json` (Claude + Codex) — **no opencode/Pi adapter, stated below** |
+
+The nudge's missing adapters are a **declared residual, not an oversight**. The ledger gate earns its
+two TS adapters because it *denies*: a rule that blocks on one host and not another is a rule the
+user cannot rely on. The nudge only prints a sentence, and neither opencode's `tool.execute.before`
+nor Pi's `tool_call` has a warn channel — both offer block-or-nothing, and the one thing this hook
+must never do is block a shell search. So on those two hosts `core/search-strategy.md` reaches the
+agent the ordinary way, as vendored prose, and the reminder is simply absent rather than
+reimplemented as something it is not. If either host grows a non-blocking advisory return, the
+adapter is four lines and the rule already lives in one place.
 
 Both tables are **parsed, never grepped** — "GitHub" appears in the knowledge-sources prose twice as
 ordinary English (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a registry), and a
