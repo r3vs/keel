@@ -498,12 +498,14 @@ is not this one.
   from it, so a bump requires regenerating **both** paths — `git checkout -- plugins/` alone leaves
   the root marketplace stale at a different version than the manifests it serves. Tag
   `{name}--v{version}` **annotated** at merge, or `tests/test_plugin_version.py` skips green — and
-  that gate is not decoration: the four `--v0.6.0` tags exist, so the moment this branch's work
-  changed `plugins/`, all four plugins failed it and `VERSION` had to move to `0.7.0`. Pushing the
-  tag is a **maintainer** step, not a session step, and the distinction is a verified finding rather
-  than a caution: `git tag -a` is local and session credentials are scoped to the work branch, so
-  `git push --follow-tags` returns 403 on `refs/tags` while the branch push succeeds — the tags look
-  done and reach nobody. `CONTRIBUTING.md` § Release carries the full account and the
+  that gate is not decoration: at 0.6.0 the four local tags existed, so the moment that branch's
+  work changed `plugins/`, all four plugins failed it and `VERSION` had to move to `0.7.0`. Pushing
+  the tag turns on **the credential, not on who runs the command** — a branch-scoped token returns
+  403 on `refs/tags` while the branch push in the same command succeeds (observed at 0.6.0), and a
+  maintainer-scoped one accepts both, session or not (observed at 0.10.0, pushed by a session). The
+  failure mode is the same either way: `git tag -a` is local, so the tags look done and reach
+  nobody — verify the two sides separately, from the machine that publishes.
+  `CONTRIBUTING.md` § Release carries the full account and the
   remote-vs-local tag inventory; do not restate the counts here.
 - Runtime artifacts (`ledger.json`, `graph.json`, `*.skill`, `.audit/`, `docs/audits/`) are
   gitignored — the skill generates them; they are never authored or committed here.

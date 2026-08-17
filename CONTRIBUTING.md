@@ -102,21 +102,26 @@ git push --follow-tags
 
 Use `-a`. The remote holds two generations: the eight 0.3.0/0.4.0 tags are lightweight, which
 carries no tagger, date or message — fine for a string match, useless for asking later *who
-released this and when* — and the four `--v0.7.0` tags are annotated, the first annotated tags
-ever to reach `origin` (pushed by the maintainer, 2026-08-13). The practice started locally with
-the four `--v0.6.0` tags; 0.7.0 is where it first reached a resolver. `claude plugin tag --push`, run from a plugin directory, does the same job and
+released this and when* — and everything from `--v0.7.0` on is annotated (0.7.0 · 0.8.0 · 0.9.0 ·
+0.10.0, sixteen tags). 0.7.0 is where the practice first reached a resolver.
+`claude plugin tag --push`, run from a plugin directory, does the same job and
 additionally validates the plugin, checks that `plugin.json` and the marketplace entry agree on the
 version, and refuses on a dirty tree; prefer it when the CLI is available and treat the loop above
 as the portable equivalent.
 
-**Step 4 is a maintainer step, and an agent session cannot do it for you.** Learned at the 0.6.0
-release: the credentials a Claude Code session runs under are scoped to the **work branch**, so
-`git push --follow-tags` comes back **403 on `refs/tags/*`** while the branch push in the same
-command succeeds. Steps 1–3 are all local — `git tag -a` writes into the clone — so a session
-finishes them, reports the tags created, and everything *looks* released while the resolver on every
-other machine still sees nothing. That is the same self-healing silence this whole section exists to
-end, one layer further out: not a gate that skips green, but a release step that returns success for
-the half it could do.
+**Step 4 turns on the credential, not on who runs it — and this section said otherwise until
+0.10.0.** It used to read *"an agent session cannot do it for you"*, generalized from the 0.6.0
+release, where a session's credentials were scoped to the **work branch** and `git push
+--follow-tags` came back **403 on `refs/tags/*`** while the branch push in the same command
+succeeded. The narrow fact is right and unchanged; the general one was refuted at 0.10.0, where a
+session created and pushed all four annotated tags from the maintainer's clone on the maintainer's
+own token, `refs/tags` and all. So the question is never *"is this a session?"* but *"is this
+credential scoped past the branch?"*, and the failure the old wording protected against is worse
+than either answer: steps 1–3 are all local — `git tag -a` writes into the clone — so a run finishes
+them, reports the tags created, and everything *looks* released while the resolver on every other
+machine sees nothing. That is the same self-healing silence this whole section exists to end, one
+layer further out: not a gate that skips green, but a release step that returns success for the half
+it could do.
 
 So verify the two sides separately, from the machine that will publish, rather than trusting the
 transcript:
@@ -130,13 +135,13 @@ git ls-remote --tags origin
 git push --follow-tags
 ```
 
-Today those first two disagree by exactly the four `--v0.6.0` tags: annotated in the clone, absent
-from `origin` — and staying that way deliberately. Absent is the state `tests/test_plugin_version.py`
-reads as *"this version was never released"*, which for 0.6.0 is the truth: it was served to
-nobody (the number moved to 0.7.0 before any tag could be pushed), so a late push would anchor a
-comparison no install can be holding. The 0.7.0 release closed the loop the designed way — the
-maintainer ran the third command from their own clone, and the four annotated `--v0.7.0` tags are
-what the resolver now sees.
+Measured on 2026-08-17, those first two now **agree**: every tag in the clone is on `origin`, and the
+four `--v0.6.0` tags this paragraph used to describe as clone-only are absent from both. Absent is
+the state `tests/test_plugin_version.py` reads as *"this version was never released"*, which for
+0.6.0 is the truth: the number moved to 0.7.0 before any tag could be pushed, so it was served to
+nobody and a late push would anchor a comparison no install can be holding. Run the commands anyway
+at each release — the two sides agreeing is a measurement, not a property, and the whole point of
+this block is that the losing side fails quietly.
 
 **The version fallback chain — why the pin is worth keeping.** Claude Code resolves a plugin's
 version from the first of these that is set:

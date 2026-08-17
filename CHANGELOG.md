@@ -10,19 +10,27 @@ and the root `.claude-plugin/marketplace.json` are stamped from it by the build,
 the annotated git tag `{plugin-name}--v{version}` (see `CONTRIBUTING.md` § Release). A host decides
 "do I need to update?" by comparing that string and nothing else.
 
-**Which of these were actually tagged, stated rather than implied, and where those tags live**:
-`origin` holds **0.3.0** and **0.4.0** (eight *lightweight* tags) and — since 2026-08-13 —
-**0.7.0**, the first four **annotated** tags ever to reach the remote, pushed by the maintainer
-from their own clone because pushing a tag needs credentials a session does not hold
-(`CONTRIBUTING.md` § Release has the verified account and the two commands that tell the sides
-apart). 0.1.0, 0.2.0, 0.4.1 and 0.5.0 moved the manifest number without any tag at all. The four
-`--v0.6.0` tags are annotated and exist **only in the clone**, deliberately left there: 0.6.0 was
-served to nobody, so a late push would anchor a comparison no install can be holding. That local
-anchor was still enough to make `tests/test_plugin_version.py` bite for the **first time** at
-0.7.0, after skipping green since 0.4.0: bytes moved under all four `plugins/<name>` paths while
-the number stood still, and all four assertions failed at once. The gate's declared residual —
-"tag at release, or this file is decoration" — is why tagging is written down as a step. 0.8.0's
-four tags are the open maintainer step at its merge.
+**Which of these were actually tagged, stated rather than implied, and where those tags live** —
+re-measured with `git ls-remote --tags origin` on 2026-08-17, not recalled: `origin` holds **0.3.0**
+and **0.4.0** as eight *lightweight* tags, and **0.7.0 · 0.8.0 · 0.9.0 · 0.10.0** as sixteen
+**annotated** ones. 0.1.0, 0.2.0, 0.4.1 and 0.5.0 moved the manifest number without any tag at all.
+**0.6.0 has no tag anywhere** — the four annotated ones this paragraph used to describe as living
+"only in the clone" are absent from the clone too, which is the state
+`tests/test_plugin_version.py` reads as *"this version was never released"*, and for 0.6.0 that is
+the truth: it was served to nobody. That local anchor was still enough to make the gate bite for the
+**first time** at 0.7.0, after skipping green since 0.4.0: bytes moved under all four
+`plugins/<name>` paths while the number stood still, and all four assertions failed at once. The
+gate's declared residual — "tag at release, or this file is decoration" — is why tagging is written
+down as a step.
+
+**And the reason given for who pushes them was wrong, corrected at 0.10.0.** This file said a tag
+push "needs credentials a session does not hold". It needs credentials scoped **wider than the work
+branch**, which is a property of the *credential*, not of what runs the command: the four
+`--v0.10.0` tags were created and pushed **by an agent session**, from the maintainer's own clone on
+the maintainer's own token, and `refs/tags` accepted them. The 403 that taught the old rule was a
+hosted session on a branch-scoped token, and that case is unchanged. `CONTRIBUTING.md` § Release
+carries the two commands that tell the sides apart — run them from the machine that will publish
+rather than trusting either sentence.
 
 **Dates are the merge/commit dates of the range, best-effort.** Three versions landed on 2026-07-24;
 that is what the history says, not a transcription error.
