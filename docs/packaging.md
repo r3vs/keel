@@ -211,8 +211,34 @@ bytes**, so a check written against `len(s)` would report headroom the host does
 gate measures `len(s.encode("utf-8"))` for the ceiling and characters for the prose, because those
 are the units each claim is actually made in. `docs/open-gaps.md` §31 residual 1 records the twin of
 this — a *"character budget"* that *"scales at 1% of the model's context window"*, a window measured
-in tokens — and the same rule applies: when a host states a limit, adopt its unit rather than the
-one your own numbers happen to be in.
+in tokens — **now settled in favour of characters** (a *fraction* setting applied to the window
+yields a character count), which is the reading the gate already encoded.
+
+### The skill-listing ceiling is the user's to raise, and they have to be told
+
+The listing budget is the other surface this package does not own, and unlike the tool surface the
+user can move it. `skillOverrides` cannot name a Keel entry — *"Plugin skills are not affected by
+`skillOverrides`"* — but that says nothing about the ceiling those entries compete under, and this
+package spent months concluding it did. Three levers, all in the user's settings, none shippable by
+us:
+
+| Lever | What it does |
+|---|---|
+| `skillListingBudgetFraction` | raises the fraction itself — *"(e.g. `0.02` = 2%)"*, doubling the whole listing budget |
+| `SLASH_COMMAND_TOOL_CHAR_BUDGET` | sets the budget to a fixed character count outright |
+| `skillOverrides: "name-only"` on the user's **own** skills | lists them without a description, freeing room Keel's entries then compete for |
+
+**Why a user would want to.** Fifteen of Keel's nineteen skills set `disable-model-invocation: true`
+and are reached by typing their name, because at 1% the two flagships have to outbid everything else
+to fire for a cold user. A user who raises the fraction is buying back the ability for the model to
+reach more of them unprompted — the cost the invocation axis pays, refunded by a setting we cannot
+write. The package's default must remain correct at 1%; that is a floor, not a recommendation.
+
+**And it is measurable rather than derived.** `/doctor` estimates the listing's context cost and its
+biggest contributors; the Skills row in `/context` reports the size *after* the budget is applied,
+so it matches what the model receives (accurate since v2.1.196); `--debug` logs a warning when the
+listing overflows. Anyone with Keel installed can replace this package's derived 1,200 with the
+figure their own host reports — which nobody has yet done, and §31 residual 1 says so in place.
 
 **What we deliberately do not use.** Claude Code offers two escapes from deferral — `alwaysLoad: true`
 per server in `.mcp.json`, and `"anthropic/alwaysLoad": true` in an individual tool's `_meta` — and

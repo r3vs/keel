@@ -3845,7 +3845,9 @@ The numbering is a citation — `docs/packaging.md` and `check_packaging_wire.py
 *"§31 residual 1"* — so a closed item keeps its number and says so in place rather than being
 deleted and the rest renumbered underneath the pointers.
 
-1. **The budget number is a hypothesis about hosts, and its unit is the soft spot.** The doc calls it
+1. **The budget number is a hypothesis about hosts, and its unit is the soft spot. — CLOSED
+   2026-08-17**, by re-reading the page rather than by re-deriving anything; the number does not
+   move, because the reading already encoded is the one that was right. The doc calls it
    a *"character budget"* that *"scales at 1% of the model's context window"* — a window measured in
    tokens — and the override `SLASH_COMMAND_TOOL_CHAR_BUDGET` is *"a fixed character count"*. Reading
    1% of 200,000 as 2,000 **characters** is the conservative reading; if it is really 2,000 tokens
@@ -3853,6 +3855,39 @@ deleted and the rest renumbered underneath the pointers.
    would be silent, which is why the strict reading is the one encoded. It is also a **Claude Code**
    number applied to a package that ships to four hosts: opencode and Codex publish no equivalent
    budget, so for them the gate is prudence rather than a constraint.
+
+   **What settled it, and what it cost to leave open.** The same page now documents
+   `skillListingBudgetFraction` — *"(e.g. `0.02` = 2%)"* — a **fraction** applied to the window that
+   yields the character budget, with `SLASH_COMMAND_TOOL_CHAR_BUDGET` given as the same quantity
+   spelled as *"a fixed character count"*. A fraction of a token-measured window producing a
+   character count is precisely the arithmetic the gate encodes, so 1% of 200,000 is 2,000
+   **characters** and the four-times-larger alternative is **refuted**, not merely unlikely. The
+   architectural consequence is the one worth stating: the fifteen skills moved to
+   `disable-model-invocation: true` were **not** cut against a phantom ceiling. Had the unit gone the
+   other way, the original 7,745 characters would have nearly fit and this round would have been
+   largely unnecessary — which is why leaving a load-bearing unit unverified for five days was the
+   real exposure, not the number itself.
+
+   **Two findings from the same read, both against claims this section makes above.**
+
+   - *"The user cannot free budget for our skills"* (§31 Verified) is **too strong**. `skillOverrides`
+     genuinely cannot name a plugin skill — that part holds — but the user has three levers on the
+     ceiling itself: `skillListingBudgetFraction`, `SLASH_COMMAND_TOOL_CHAR_BUDGET`, and
+     `"name-only"` on **their own** low-priority skills, which frees room Keel's entries then
+     compete for. None is ours to ship; all are ours to *tell them about*, and a package that
+     stays silent is spending a budget it does not own. Now stated in `docs/packaging.md`.
+   - **The listing is observable, three ways**, which this section treated as unknowable: `/doctor`
+     estimates *"the listing's context cost and its biggest contributors"*; the Skills row in
+     `/context` reports *"the size of the listing after the budget is applied, so it matches what
+     the model receives"* (accurate since v2.1.196; before that it could read several times high);
+     and an over-budget listing warns in the debug log under `--debug`. **Still open as a
+     measurement**: nobody has run them against an installed Keel. A derived 1,200 sitting beside
+     three instruments that report the real figure is a derivation waiting to be replaced — and the
+     replacement needs a real install on a real host, which is why it is named here rather than
+     claimed.
+   - Not binding, recorded so it is not rediscovered as a constraint: each entry's combined
+     `description` + `when_to_use` is capped at 1,536 characters *"regardless of budget"*
+     (`skillListingMaxDescChars`). Keel's longest entry is 363.
 2. **`code-review` collides with a bundled skill of the same name, and the namespace saves it —
    partly. — CLOSED 2026-08-13**, by executing the recommendation recorded here rather than
    revisiting it. Claude Code bundles `/code-review` (*"bundled skills, such as `/doctor`,
