@@ -41,6 +41,41 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.11.0] — 2026-08-18
+
+### Changed
+- **The front door was selling 16% of the engine.** `README.md` opened on the contract↔DB enum
+  mismatch, spent its comparison table on it, and folded everything else into a `<details>`. §34
+  measured that framing wrong in the only way that settles it: `shapes.py` + `generate.py` +
+  `treesitter_extract.py` are **2,612 of the runtime's ~17.1k lines (16%)**, while `ledger.py` alone
+  is 26%. The layer differ is the first carrier written and the most verified one — it is not the
+  thesis. The page now leads with the thesis (*a claim is computed from a carrier or elected by a
+  human*), lists the **ten carriers** with the layer diff as one row, and states the 16% in the
+  paragraph that introduces them, because a reader who finds that number in `docs/` after the pitch
+  has been told two different things by the same repo.
+- **"Agreement" now names all four things that stop agreeing**, not just the schema one: layers with
+  each other, code with what was elected, docs with code, and — the row nothing else on the machine
+  is looking at — **the agent's report with what the agent did**. That last one carries the
+  literature's own direction of travel (inaccurate self-reporting at 22.58% and *rising in share*
+  while implementation errors decline), which is the case for this package rather than a
+  restatement of its features.
+- **The capabilities that had no surface got one.** Seven capability groups replace the single tool
+  fold: comprehension (tours, domain view, blast radius, impact overlay — with the keystone
+  measurement attached), finding *plus its honesty layer* (`coverage_gaps`, `module_coverage`,
+  `generator_screen`), the whole design/UI axis (DTCG, the pixel facts, `render_agreement`, the
+  taste lens in both directions), deciding (`policy_preview`, the **fog register**, the challenger,
+  the premortem, `cross_derive`), building (waves, worktrees, the claim leases, `scope_check`),
+  verifying, and remembering (**`memory_audit`**, the two projections, `fingerprint_scan`). The
+  MCP server is now described as the **four surfaces** it actually serves — 73 tools, 3 `ledger://`
+  resources, 3 prompts, 2 `ui://` apps — rather than as a tool count; `run-workflow` and the
+  role→tier→profile model policy get sections instead of clauses; and Status gains the four
+  interaction edges, so where the carriers are *not* is on the same page as where they are.
+- **`keel-core`'s box score said 2 hooks over a table listing 3.** `search-nudge.py` shipped at
+  0.9.0 and the summary cell above it was never moved — the same claim-with-a-carrier-one-call-away
+  class `check_stated_facts.py` exists for, in a count that gate does not yet compute. Bytes moved
+  under a released number, which is why this entry has a version at all: `tests/test_plugin_version.py`
+  failed on `keel-core` against the `--v0.10.0` tag, exactly as designed.
+
 ## [0.10.0] — 2026-08-17
 
 ### Added

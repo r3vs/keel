@@ -24,7 +24,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 | MCP tools | **73** | the deterministic engine, typed and discoverable |
 | MCP apps | **2** | `ui://keel/interview.html` · `ui://keel/map/{path*}` — read surfaces, never write |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
-| Hooks | **2** | a session banner and the pre-edit ledger gate |
+| Hooks | **3** | a session banner, the pre-edit ledger gate, and the warn-only search nudge |
 | Skills | **3** | `using-the-ledger`, `which-skill`, `run-workflow` |
 | Shared doctrine | **16 docs** | the ledger spec, the interview funnel, the shape engine, … |
 | MCP servers declared | **4** | `keel` · `context7` · `deepwiki` · `playwright` |
