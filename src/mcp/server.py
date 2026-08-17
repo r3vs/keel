@@ -1243,6 +1243,61 @@ def ledger_add_fog(ledger: str, area: str, sensed: str, provenance: list,
     return tools.ledger_add_fog(ledger, area, sensed, provenance, cluster_hint)
 
 
+@mcp.tool(annotations={"title": "Ledger — Record that a Module Was Applied", **_RW_CREATE})
+def ledger_record_run(ledger: str, module: str, skill: str, derived_from: str, targets: list,
+                      at_commit: str, findings: list | None = None) -> dict:
+    """Record that a catalog module ran, over a scope somebody else can re-derive.
+
+    A dispatch gate proves a step is *reachable*; nothing observed that a `type: judgment` module was
+    ever *applied*. A deterministic module has a report on disk, so its absence is already a
+    coverage gap. A judgment module has an agent for an engine and leaves no artifact — so its
+    silence and a clean result were the same thing in the file.
+
+    What is recorded is the **scope, never a verdict**. There is nowhere here to say "clean": a flag
+    like that is a self-report, and an agent that skipped the work writes it just as happily. What
+    makes this evidence instead is that it can be **contradicted** — the targets are named, the tool
+    call that produced them is named, and the commit anchors it, so re-running is what settles it.
+
+    `findings` may be empty, and that is the case this exists for. Then `module_coverage` turns a
+    dispatched module with no run at this commit into an `incompleteness` pin: *unchecked*, never
+    *clean*.
+
+    Args:
+        ledger: Path to ledger.json.
+        module: The catalog module id that was applied (e.g. `design-taste`).
+        skill: The skill whose catalog declares it — two catalogs carry the same ids.
+        derived_from: What produced the target set (`mcp:design_scan`, `mcp:render_agreement`, a
+            named rule). A scope nobody can re-derive is a sentence, not a record.
+        targets: The concrete files, URLs or nodes read. Required, and may not be empty.
+        at_commit: The commit the targets were read at — without it the claim cannot go stale.
+        findings: Pin ids this run produced. May be empty; must exist in this ledger.
+    """
+    return tools.ledger_record_run(ledger, module, skill, derived_from, targets, at_commit,
+                                   findings)
+
+
+@mcp.tool(annotations={"title": "Module Coverage (dispatched vs actually applied)", **_RO})
+def module_coverage(ledger: str, skill: str, at_commit: str,
+                    phases: list | None = None) -> dict:
+    """Which of a skill's modules were applied at this commit — and which were not. WRITES NO FILE.
+
+    The join between the module catalog (what is dispatched) and the ledger's run register (what was
+    recorded). Every gap carries a ready `pin` payload for `ledger_add_pin`, composed here so the
+    wording stays deterministic: an un-run module is **unchecked, not clean**, and that distinction
+    is precisely the one that inverts when an agent writes the sentence from memory.
+
+    Narrow with `phases` to what was actually in scope — a mode that runs Phase 1 alone is not
+    missing Phase 5, and the ledger does not know which phases a session covered.
+
+    Args:
+        ledger: Path to ledger.json.
+        skill: `codebase-rescue` or `greenfield-forge` — whose catalog to expect.
+        at_commit: The commit to ask about. A run recorded against another state does not count.
+        phases: Optional phases in scope; omit to expect the whole catalog.
+    """
+    return tools.module_coverage(ledger, skill, at_commit, phases)
+
+
 @mcp.tool(annotations={"title": "Ledger — Graduate Fog into a Pin the Human Phrased", **_RW})
 def ledger_graduate_fog(ledger: str, fog_id: str, question: dict, human_answer: str,
                         kind: str = "open_decision", title: str = "", severity: str = "medium",

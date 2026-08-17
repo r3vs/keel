@@ -74,6 +74,7 @@ EXPECTED_TOOLS = {
     # reference-image evidence: the computed half of "build me this screenshot". Read-only over
     # an image the user supplied — the one claim about a reference picture that is a fact.
     "image_palette", "palette_verify", "render_agreement",
+    "ledger_record_run", "module_coverage",
     # cost & token telemetry — the measurer's surface
     "spend_report",
     # landing-zone readiness: D0 evidence (read-only) + the D2 verdict (write)
@@ -115,6 +116,7 @@ WRITE_TOOLS = {
     "build_graph", "understand_codebase", "fingerprint_scan", "graph_map",
     "ledger_claim", "ledger_release",
     "ledger_add_fog", "ledger_graduate_fog", "ledger_clear_fog",
+    "ledger_record_run",
     # writes ISSUES, never the ledger — the direction is one-way by construction (`tracker.py`)
     "tracker_project",
 }

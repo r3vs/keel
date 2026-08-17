@@ -821,6 +821,25 @@ def ledger_add_fog(ledger: str, area: str, sensed: str, provenance: list,
     return out
 
 
+def ledger_record_run(ledger: str, module: str, skill: str, derived_from: str, targets: list,
+                      at_commit: str, findings: list | None = None) -> dict:
+    """Record that a catalog module was applied, over a scope somebody else can re-derive."""
+    led = _open_or_create(ledger)
+    record = led.record_run(module, skill, derived_from, targets, at_commit, findings)
+    out = {"run_id": record["id"], "module": record["module"], "skill": record["skill"],
+           "targets": len(record["scope"]["targets"]), "findings": len(record["findings"])}
+    _saved(ledger, led)
+    return out
+
+
+def module_coverage(ledger: str, skill: str, at_commit: str, phases: list | None = None) -> dict:
+    """Which dispatched modules have a run at this commit, and which have none."""
+    import coverage
+    led = _open_existing(ledger)
+    ran = led.runs_view(at_commit=at_commit)["modules"]
+    return coverage.module_report(skill, ran, at_commit, phases=phases)
+
+
 def ledger_graduate_fog(ledger: str, fog_id: str, question: dict, human_answer: str,
                         kind: str = "open_decision", title: str = "", severity: str = "medium",
                         confidence: str = "inferred") -> dict:

@@ -108,6 +108,11 @@ catalog like any other fork.
 
 ## How it binds
 
+- **Record the pass, including the empty one.** `mcp:ledger_record_run` — module `design-taste`, the
+  render targets it read, `derived_from` the call that produced them (`mcp:render_agreement`), and
+  the commit. A lens that found nothing and a lens nobody ran are the same silence otherwise, and
+  the honest half of a judgment module is that its *scope* is checkable even when its verdict is
+  not. There is nowhere in that record to say the UI is fine; it says what was looked at.
 - **`design_concern` pins**, `confidence: inferred`, through fp-check — never `extracted`, and never
   a `contract_mismatch` (that kind is reserved for the deterministic token violation).
 - **Options with tradeoffs.** "Leave as-is" (`state: accepted`) is a legitimate elected outcome; the

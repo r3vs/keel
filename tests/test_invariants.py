@@ -170,7 +170,11 @@ class TestEveryWritePassesAGovernedChannel(unittest.TestCase):
                     # v0.31: the register's two readers. `fog` looks one patch up and raises on an
                     # unknown id (it is `pin`'s twin, and `pin` is here); `fog_view` returns the
                     # patches plus the age of the oldest. Neither assigns.
-                    "fog", "fog_view"}
+                    "fog", "fog_view",
+                    # v0.32: the run register's reader. It groups the records by module and assigns
+                    # nothing on the ledger — the `setdefault`/`+=` in it are on a local dict it
+                    # builds and returns, which is `fog_view`'s shape one collection over.
+                    "runs_view"}
         out = set()
         for name, fn in inspect.getmembers(ledgermod.Ledger, inspect.isfunction):
             if name.startswith("_") or name in readonly:

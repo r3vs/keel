@@ -30,6 +30,12 @@ built* work instead of *closed gaps*.
 - **paved road (`scaffold`/`configure`)** — the harness actually runs: tests execute, the linter
   runs, the CI config is valid, the SessionStart hook works. Capture the evidence, don't assume it.
 
+**Record what was applied, not only what it found.** Each module of this phase closes with
+`mcp:ledger_record_run` (targets, what derived them, the commit) — the empty run included — and
+`mcp:module_coverage` reports the phase-5 modules with no run at this commit as `module-unrun` pins.
+A validate step nobody ran and a validate step that found nothing read identically otherwise, and
+this phase is the one place where that confusion is expensive.
+
 ## Rules
 
 - **Green build ≠ done.** Require the specific evidence above per kind. For decision-bearing items

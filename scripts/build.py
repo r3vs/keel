@@ -616,6 +616,14 @@ def plugin_payload(name: str, spec: dict) -> dict:
         # opens them. Consumer: `interview._CATALOG_CANDIDATES[0]`.
         out["mcp/runtime/assets/decision-catalog.json"] = read(
             SKILLS / "greenfield-forge" / "assets" / "decision-catalog.json")
+        # Same reasoning, one register later (v0.32): `coverage.module_gaps` joins the ledger's run
+        # records against the modules a skill DISPATCHES, and the catalog that declares them ships
+        # in a different plugin. Without the bytes here the join has no left-hand side, and an
+        # un-run module reads exactly like a module with nothing to say.
+        # Consumer: `coverage._CATALOG_DIR`.
+        for catalog in ("codebase-rescue", "greenfield-forge"):
+            out[f"mcp/runtime/assets/modules/{catalog}.json"] = read(
+                SKILLS / catalog / "modules.json")
         # Claude Code reads this at the plugin root; Codex's manifest points at it. Two hosts, one
         # file, zero user action.
         out[".mcp.json"] = mcp_json()

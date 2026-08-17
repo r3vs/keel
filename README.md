@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-1332%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-1343%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -108,7 +108,7 @@ those are the manuals.
 
 | Plugin | What it is | Ships |
 |---|---|---|
-| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **71 MCP tools** · 2 `ui://` apps · 6 agents · 2 hooks · 3 skills · 4 MCP servers |
+| **[`keel-core`](plugins/keel-core/README.md)** | the spine — auto-installed as a dependency of the other three | **73 MCP tools** · 2 `ui://` apps · 6 agents · 2 hooks · 3 skills · 4 MCP servers |
 | **[`codebase-rescue`](plugins/codebase-rescue/README.md)** | **curative** — align a codebase that already drifted | 5 modes · 5 phases · 31 analysis modules · `/rescue` |
 | **[`greenfield-forge`](plugins/greenfield-forge/README.md)** | **preventive** — build one that can't drift | 5 modes · 7 phases · 17 modules · `/forge` |
 | **[`keel-kit`](plugins/keel-kit/README.md)** | the composable engineering loop, each skill bound to the ledger | 14 skills |
@@ -199,7 +199,7 @@ so *why* survives, not just *what*.
 carry high confidence and skip the false-positive gate. Model judgment is *labelled as such*, every
 time. If Keel can't prove something, it says so instead of sounding confident.
 
-### The engine: 35 modules, 16.7k lines, Python stdlib only — reaching your agent as 71 typed MCP tools
+### The engine: 35 modules, 16.7k lines, Python stdlib only — reaching your agent as 73 typed MCP tools
 
 Your agent **discovers** these. It is never told a file path. Full signatures and semantics:
 [`keel-core`](plugins/keel-core/README.md).
@@ -208,9 +208,9 @@ What it actually finds when pointed at somebody else's code — repo, commit, me
 the null results too: [`docs/measurements.md`](docs/measurements.md).
 
 <details>
-<summary><b>All 71 tools</b></summary>
+<summary><b>All 73 tools</b></summary>
 
-**Ledger (29)** — the append-only source of truth. None of these elect anything; the two recording
+**Ledger (30)** — the append-only source of truth. None of these elect anything; the two recording
 tools write down an election the **human** made and refuse a relay with no quote.
 `ledger_summary` · `interview_next` · `policy_preview` (what a policy would decide, before setting
 it) · `ledger_add_pin` · `ledger_record_decision` · `ledger_record_policy` (one election, cascaded
@@ -230,6 +230,8 @@ back out of finished work) · `ledger_challenge` (refute an elected oracle befor
 `ledger_fog` · `ledger_add_fog` (a decision you can sense and cannot yet phrase — the register has
 nowhere to put a question, on purpose) · `ledger_graduate_fog` (the human phrased it: it becomes a
 pin **and leaves the register**) · `ledger_clear_fog` (there was no fork here after all) ·
+`ledger_record_run` (a module was **applied**, over a scope somebody else can re-derive — and
+nowhere to say it was clean) ·
 `memory_audit` (the ledger audited as a *memory* — six of the eight documented ways a durable store
 rots, and the two it says plainly it cannot decide from the file)
 
@@ -265,8 +267,10 @@ planner the writer executes)
 `build_graph` · `understand_codebase` · `explain_node` · `graph_query` · `guided_tour` ·
 `domain_view` · `graph_map` · `blast_radius` (staleness-gated) · `impact_overlay`
 
-**Findings & quality (9)**
+**Findings & quality (10)**
 `findings_gate` (SARIF/OSV → false-positive gate) · `coverage_gaps` (what did **not** run) ·
+`module_coverage` (which *modules* have no run recorded — a judgment module leaves no report, so
+its silence used to read as a clean sweep) ·
 `design_scan` (frontend slop / a11y) · `tokens_diff` · `docs_claims` (docs as claims; flag the
 dangling ones, and the same check on drafts we are about to write) · `doc_register` ·
 `doc_freshness` (graded by distance, not a flag) · `generator_observe` · `generator_screen`
@@ -357,7 +361,7 @@ repos solved it), `playwright` (rendered-DOM extraction). Per-host detail:
 ## Status — stated honestly, because that's the whole point
 
 Design-complete across 2 methodology skills + 17 composable ones, with the runtime **largely
-implemented**: 35 modules, 71 MCP tools, **1332 tests green in CI**, 4 hosts.
+implemented**: 35 modules, 73 MCP tools, **1343 tests green in CI**, 4 hosts.
 
 What is **verified**: the shape engine pulled 113 tables / 1290 fields out of a real production
 Drizzle schema; the generators round-trip to zero drift; both step-0 feasibility verdicts were

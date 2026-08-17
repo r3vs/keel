@@ -130,6 +130,13 @@ over-reports; this gate is non-negotiable.
 > exists yet). Both read each stack's own type system and guess nothing; see
 > `references/contract-reconciliation.md` before using either.
 >
+> **Modules are recorded too, not just tools.** Each module in this phase closes with
+> `mcp:ledger_record_run` — the targets it read, what produced them, the commit — **including the
+> ones that found nothing**, because that is the case the register exists for. `mcp:module_coverage`
+> then reports which phase-1 modules have no run at this commit, and each gap carries the
+> `module-unrun` pin payload to write. A judgment module leaves no report on disk, so without this
+> its silence and a clean result are the same thing in the file.
+>
 > **Coverage is recorded, not assumed.** After running the tools, the `coverage_gaps` tool
 > (given the tokei languages and the `.audit/*.sarif` reports)
 > turns every EXPECTED-but-absent capability into a visible `coverage-gap` pin. A finder whose tool did

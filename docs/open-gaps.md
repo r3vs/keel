@@ -4252,7 +4252,7 @@ python -m unittest tests.test_memaudit
 
 ---
 
-## 35. A capability can ship with an author, an attribution and no dispatch — **CLOSED 2026-08-17** (one residual, and it needs an election)
+## 35. A capability can ship with an author, an attribution and no dispatch — **CLOSED 2026-08-17** (its one residual closed by §37 the same day)
 
 ### Verified
 
@@ -4312,12 +4312,14 @@ phase-5 entry does not pass. Verified by mutation: disarming the check fails two
 
 ### What is still open
 
-**Dispatch is not execution, and the runtime half has no carrier.** The gate proves a step is
-reachable; nothing observes that a `type: judgment` module ran. `coverage.py` already answers this
+**Dispatch is not execution, and the runtime half has no carrier** — **CLOSED by §37 the same day**,
+once the election it needed was made. The gate proves a step is
+reachable; nothing observed that a `type: judgment` module ran. `coverage.py` already answered this
 for *tools* — a deterministic module whose engine did not run becomes an `incompleteness` pin rather
 than a silent zero — and the same question over *modules* cannot be answered from findings, because
-absence of a finding is not absence of a run (§34's trap, one layer up). Closing it means an explicit
-"module applied" record, which is a schema field, which is an election. Do not infer it.
+absence of a finding is not absence of a run (§34's trap, one layer up). Closing it meant an explicit
+"module applied" record, which is a schema field, which is an election: ledger v0.32's
+`analysis_runs`. It was never inferred, and inferring it stays forbidden.
 
 ### Prove it
 
@@ -4410,8 +4412,7 @@ to know what was attempted.
 
 With the target stated, residual 2 stops being a question about which renderer wins. They were never
 competitors: the detector renders to compute membership and contrast, Playwright renders to produce
-the picture and to observe behavior. What was missing was the **tie**, and `render_agreement`
-(tool #71) is it:
+the picture and to observe behavior. What was missing was the **tie**, and `render_agreement` is it:
 
 - *facts from `kind: "source"`* → `mismatch`. No fact read off JSX covers what a browser laid out.
 - *geometry* → **declared** or **inferred**, and the report says which. Declared (`"390x844@2.625"`)
@@ -4436,11 +4437,10 @@ existing, so the constant can no longer be the reason.
 
 ### What is still open
 
-- **The empty case.** A lens that produces no pin leaves no trace, and absence of a finding is not
-  absence of a run. That is §35's residual, unchanged: it needs an explicit applied-record, which is
-  a schema field, which is an election.
-- **Nothing forces the call.** `render_agreement` makes the render-first claim checkable; whether the
-  agent runs it is the same D2 line every judgment module sits on.
+- **The empty case** and **nothing forces the call** were both closed by **§37** later the same day,
+  once the schema bump they needed was elected: the lens now records the pass it made — the empty one
+  included — and a dispatched module with no record at this commit surfaces as a `module-unrun` pin
+  instead of as silence. What §37 leaves standing is narrower and is stated there.
 - **Half the URL question is unanswerable by construction** — and is labeled rather than closed.
 
 ### Prove it
@@ -4464,7 +4464,72 @@ python scripts/check_consistency.py && python scripts/build.py --check
 
 ---
 
-## Do not re-litigate
+## 37. A judgment module that found nothing and one that never ran wrote the same ledger — **CLOSED 2026-08-17** (ledger v0.32; two residuals, both stated as limits rather than as work)
+
+### Verified
+
+The gap §35 left open and §36 inherited, read off the files rather than argued: **nothing in this
+repo could distinguish a clean pass from an absent one.** `design-taste` finding no tell and
+`design-taste` never being dispatched produce byte-identical `ledger.json` files, and every gate we
+own is blind to the difference by construction — `check_consistency.py` grades *reachability* in the
+source tree, `coverage.py` graded only *tools* (a `type: deterministic` module whose engine left no
+call becomes an `incompleteness` pin), and findings cannot answer it because absence of a finding is
+not absence of a run. That is §34's trap one layer up, and it bites hardest on exactly the modules
+that have no deterministic engine to leave a trace: **21 of the 58** shipped modules are
+`type: judgment`.
+
+### What landed
+
+**A run register in the ledger, because a register beside the single source of truth is the stateless
+twin this package exists to find.** Ledger **v0.32**: a fifth collection `analysis_runs`, optional
+like `fog`, so a v0.31 file missing it is *older*, not *nonconforming* (asserted, because the
+tolerant read is the one that silently stops checking).
+
+**An `AnalysisRun` records a scope and never a verdict**, and that is the whole design. A boolean
+`applied: true` would round-trip through any test and be worthless — an agent that skipped the work
+writes it just as happily and nothing can contradict it. So `record_run` refuses five ways: no
+`targets` (*"I looked at it"*), no `at_commit` (a claim that cannot go stale), no `derived_from` (a
+scope nobody can reproduce), no `module`, no `skill` (two catalogs carry the same id). `findings`
+must name pins this ledger already holds. There is nowhere in the shape to say the surface was fine.
+
+**The join is what makes it bite.** `coverage.module_report(skill, ran, at_commit, phases)` reads the
+module catalog — vendored beside the runtime by `build.py` for both skills, since a skill ships as
+another plugin and no catalog reads exactly like no gaps — and turns every dispatched module with no
+run at this commit into an `incompleteness` pin, `kind_detail: module-unrun`, wording that says
+**unchecked** and never *clean*. Its `confidence` is `extracted`, deliberately: the absence of a
+record is a fact about the file, not an inference about the work. Three tools carry it —
+`render_agreement`, `ledger_record_run`, `module_coverage` — bringing the served surface to **73**.
+The doctrine lines are one sentence each, in the four places that dispatch it: the lens itself,
+`core/static-analysis.md` (*the same rule one level up*), rescue's Phase 1, greenfield's Phase 5.
+
+**What was rejected, so it is not rebuilt:** a `produced_by` field on pins. The run already lists its
+findings; a second carrier for one edge is the divergence this repo grades other people's code for.
+
+### What is still open — as limits, not as work
+
+- **That the module ran *well* is not knowable**, and the register never claims it. It is an
+  agent-written statement with named, re-derivable targets and a commit: **contradictable**, which is
+  the strongest honest property a D2 engine can have.
+- **An agent can still do nothing and record nothing.** The change is that this is no longer silence:
+  it surfaces as a `module-unrun` pin the next time anyone asks for coverage.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_analysis_runs
+python scripts/check_schema_fields.py && python scripts/check_tool_carriers.py
+```
+
+### Traps
+
+- **Never add an `outcome`, a `clean`, or a `verdict` to a run.** The moment the record can say the
+  surface was fine, it is a self-report — and `self_assessment` was removed from this schema once
+  already for exactly that.
+- **Never infer a run from its findings.** That inverts the sentence the register exists to protect:
+  a module that found nothing is the case being recorded, not the case being excluded.
+- **The collection is `analysis_runs`, not `runs`.** Measured: the short name collides with SARIF's
+  own `runs` key and with the generator registry's run counter at 6 sites, and the schema-index test
+  caught it. A collection name is a global in this repo whether or not it looks like one.
 
 Settled with evidence; re-opening these costs a session and lands where it started.
 
