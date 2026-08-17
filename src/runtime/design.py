@@ -144,6 +144,21 @@ def normalize(raw: list) -> list:
     return findings
 
 
+def _target(paths, viewport: str) -> dict:
+    """What the scan was pointed at, echoed back — the half of the report that was missing.
+
+    A report that says only what it found cannot answer *what it looked at*, and for this scanner
+    that is the difference between two jobs: pointed at files it reads source, pointed at a URL it
+    renders the page in a real browser. Only the second produces facts that cover a rendered
+    composition, so the caller reconciling a taste critique with these findings (`render_agreement`)
+    needs the distinction stated by the tool rather than remembered by the agent."""
+    urls = [p for p in paths if p.startswith(("http://", "https://"))]
+    files = [p for p in paths if p not in urls]
+    kind = "mixed" if urls and files else "render" if urls else "source"
+    return {"kind": kind, "renderer": "impeccable" if urls else None,
+            "urls": urls, "paths": files, "viewport": viewport or None}
+
+
 def scan(paths, timeout: int = 300, scope=None, viewport: str = "", no_advisory: bool = False) -> dict:
     """Run the detector over `paths` (files, directories, or URLs) and normalize. Returns
     `{"findings": [...]}`, or `{"unchecked": True, "reason": ...}` when the detector cannot run —
@@ -159,9 +174,10 @@ def scan(paths, timeout: int = 300, scope=None, viewport: str = "", no_advisory:
     The DESIGN.md contract is loaded by impeccable automatically when one governs the target — no
     flag needed; that is what makes a `design-system-*` hit a real `contract_mismatch`."""
     paths = [str(p) for p in (paths if isinstance(paths, (list, tuple)) else [paths])]
+    target = _target(paths, viewport)
     cmd = _detect_cmd()
     if cmd is None:
-        return {"unchecked": True,
+        return {"target": target, "unchecked": True,
                 "reason": "impeccable detector not runnable (needs Node ≥22.12 + npx, or a global "
                           "`impeccable`) — install it or accept the design layer as unchecked"}
     argv = cmd + ["detect", "--json"]
@@ -176,13 +192,14 @@ def scan(paths, timeout: int = 300, scope=None, viewport: str = "", no_advisory:
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as e:
-        return {"unchecked": True, "reason": f"impeccable detect could not run: {e}"}
+        return {"target": target, "unchecked": True,
+                "reason": f"impeccable detect could not run: {e}"}
     out = (proc.stdout or "").strip()
     if not out:
-        return {"findings": []}
+        return {"target": target, "findings": []}
     try:
         raw = json.loads(out)
     except ValueError:
-        return {"unchecked": True,
+        return {"target": target, "unchecked": True,
                 "reason": "impeccable detect returned non-JSON on stdout (version mismatch?)"}
-    return {"findings": normalize(raw)}
+    return {"target": target, "findings": normalize(raw)}

@@ -28,11 +28,15 @@ LENS = "references/core/design-taste.md"
 #: Engines that mean "this skill's output IS a rendered surface" — it scans one, or generates one.
 DESIGN_ENGINES = {"mcp:design_scan", "mcp:generate_tokens"}
 
-#: skill -> why it has a design engine and deliberately does NOT run the taste lens.
+#: The module id that elects what a reference image IS — see `test_the_exemption_is_elected`.
+ORACLE_ROLE = "oracle-role"
+
+#: skill -> why it has a design engine and does not dispatch the lens unconditionally. An entry is
+#: only legitimate while the skill ELECTS the oracle's role instead of assuming it.
 NO_LENS_OK = {
     "screenshot-to-code": (
-        "the reference image IS the elected oracle here; a lens that overruled it would re-decide "
-        "what the human handed over. A taste observation in that skill is a pin about the reference"
+        "the reference image may BE the specification, and a lens overruling it would re-decide "
+        "what the human handed over — so the skill asks which it is before either runs"
     ),
 }
 
@@ -108,6 +112,30 @@ class TestOneLensBothDirections(unittest.TestCase):
                 self.assertTrue(_has_design_engine(cats[skill]),
                                 f"{skill} no longer names a design engine, so the exemption "
                                 f"({why}) is exempting nothing and hides the next real gap")
+
+    def test_the_exemption_rests_on_an_election_and_not_on_this_file(self):
+        """§36's third residual: an exemption written here is MY judgment about someone's picture.
+
+        The exemption is legitimate only where the skill puts the question to the human — is this
+        image a specification to reproduce, or a direction to depart from? — because that answer, and
+        nothing else, decides whether a taste critique of it is help or insubordination. A user who
+        says "like this reference, but make it good" changes the oracle's role, and a constant in a
+        test file cannot notice. So the constant is not allowed to be the reason: the skill must
+        carry a module that elects it, and that module must produce a fork rather than record a
+        conclusion.
+        """
+        for skill in NO_LENS_OK:
+            modules = _catalogs()[skill]
+            elect = [m for m in modules if m["id"] == ORACLE_ROLE]
+            with self.subTest(skill=skill):
+                self.assertEqual(1, len(elect),
+                                 f"{skill} is exempt from the lens but elects nothing about what "
+                                 f"the image is for — the exemption is an assumption, not a scope")
+                self.assertIn("open_decision", elect[0].get("produces", []),
+                              "the oracle's role is a fork the human settles, not a value the "
+                              "skill records")
+                self.assertEqual(min(m.get("step", 99) for m in modules), elect[0].get("step"),
+                                 "every later step inherits the answer, so it cannot run second")
 
 
 if __name__ == "__main__":

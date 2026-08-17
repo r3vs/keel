@@ -47,7 +47,7 @@ package exists to find, sitting in its own front door.
 - **`src/runtime/` + `src/mcp/`** — the deterministic spine and its MCP adapter. `build.py` vendors
   the runtime into each skill that runs it (the portable floor) *and* the MCP server serves it as
   typed tools — which is what makes the capability **discoverable** rather than merely available.
-  The adapter now serves **four** surfaces, not one: 69 typed tools, three read-only ledger
+  The adapter now serves **four** surfaces, not one: 71 typed tools, three read-only ledger
   **resource** templates (`ledger://summary/{path*}`, `ledger://pins/{path*}`,
   `ledger://pin/{pin_id}/{path*}` — the `{path*}` wildcard is load-bearing, since a bare `{path}`
   compiles to `[^/]+` and matches no absolute path), three **prompts** Claude Code surfaces as
@@ -398,7 +398,7 @@ property for permission rules at all. Selective `Bash(...)` rules live only in t
 read-only roles (they need it for static analysis), so blunt denial is not available either. That is
 what the ledger gate closes at runtime. Full details: `docs/packaging.md` — including its section
 *"The tool surface is a budget, and it is the host's to spend"*, which names a previously-silent
-assumption: 69 tools are affordable only because hosts **defer** them (verified default on Claude
+assumption: 71 tools are affordable only because hosts **defer** them (verified default on Claude
 Code; one proxy tool on Pi; loaded up front on opencode per its own docs; **UNVERIFIED** on Codex,
 so the doc plans for the conservative case). That budget and the skill-listing budget above are the
 same lesson at two layers — a surface this package does not own, spent by a number nobody measured.

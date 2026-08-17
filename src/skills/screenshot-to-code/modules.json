@@ -3,6 +3,17 @@
   "note": "Source of truth for this skill's module catalog. `step` is the position in SKILL.md's procedure, not a phase of a multi-invocation workflow — this skill runs inside one. Every deterministic module names an `engine` (an `mcp:<tool>` validated against src/mcp/server.py by check_consistency.py, an `external:<tool>`, or an `agent:<how>`), so none free-rides on a sibling's mechanism. The catalog's own shape carries the skill's one idea: the modules split by TRUST, not by topic — `image-evidence` and `palette-fact-check` are D0 over decoded pixels, `visual-inference` and `pixel-comparison` are D2 over the same image, and reading one as the other is the failure this skill exists to prevent.",
   "modules": [
     {
+      "id": "oracle-role",
+      "step": 0,
+      "kind": "core",
+      "type": "judgment",
+      "engine": "mcp:ledger_add_pin",
+      "tools": [],
+      "produces": ["open_decision"],
+      "notes": "What is this image FOR — a specification to reproduce, or a direction to depart from? It is step 0 because every later step inherits the answer: under `specification` the picture is the oracle and a difference is a defect, so the taste lens must not overrule it; under `direction` the picture is evidence about intent, the pixel comparison stops being an oracle, and a departure is a `design_concern` the interview weighs. This was an assumption wearing the costume of a scope — the skill reproduced images because it is the reproduce-an-image skill — and a user saying `like this, but make it good` changed the oracle's role with nothing noticing. Elected by the human like any fork; unreachable human defaults to `specification` as a surfaced agent_assumption, because reproducing what someone handed over is the recoverable error.",
+      "reference": "references/reading-an-image.md"
+    },
+    {
       "id": "image-evidence",
       "step": 1,
       "kind": "core",

@@ -4337,7 +4337,7 @@ python scripts/check_consistency.py && python scripts/check_tool_carriers.py
 
 ---
 
-## 36. Taste was a rescue reference, so the half that GENERATES the UI had no lens — **CLOSED 2026-08-17** (no schema change)
+## 36. Taste was a rescue reference, so the half that GENERATES the UI had no lens — **CLOSED 2026-08-17** (three residuals closed the same day; no schema change)
 
 ### Verified
 
@@ -4396,21 +4396,57 @@ engine (`mcp:design_scan` / `mcp:generate_tokens`) must dispatch the lens, match
 where the reference image **is** the elected oracle — declared with its reason and checked for
 staleness.
 
+### The three residuals — closed the same day
+
+They looked like three problems and were two: an object that did not exist, and a judgment that was
+mine to make and should not have been.
+
+**1 + 2 — the render had no identity, so nothing could be tied to it.** `design.scan()` reported what
+it *found* and never what it *looked at*; a report with no target cannot answer "was this a render or
+a pile of JSX", which is the whole of residual 1. It now returns a `target` block —
+`kind: render | source | mixed`, the URLs, the paths, the viewport — on **every** return path
+including the `unchecked` ones, because a scan that could not run is exactly when a caller most needs
+to know what was attempted.
+
+With the target stated, residual 2 stops being a question about which renderer wins. They were never
+competitors: the detector renders to compute membership and contrast, Playwright renders to produce
+the picture and to observe behavior. What was missing was the **tie**, and `render_agreement`
+(tool #71) is it:
+
+- *facts from `kind: "source"`* → `mismatch`. No fact read off JSX covers what a browser laid out.
+- *geometry* → **declared** or **inferred**, and the report says which. Declared (`"390x844@2.625"`)
+  is exact: the declared viewport against the scanned one, and the declared scale **confirmed against
+  the pixels** — a declaration the image refutes is caught, so this is not a way to assert past the
+  check. Inferred claims only **1x/2x/3x**, deliberately: fractional device scale factors are real
+  (Pixel's 2.625, a 125% display), and an inference elastic enough to fit any ratio would agree with
+  a desktop capture judged against mobile facts. A taller image at a matching width is a full-page
+  capture — reported, not flagged, because a checker that cries about the normal case gets ignored.
+- *the URL* → **declared, never measured**. A PNG carries no address, and grading a string as
+  evidence is the confusion this package spends its determinism dial on.
+
+**3 — the exemption was a judgment sitting in a test file.** `screenshot-to-code` was exempt from the
+lens because the reference image is the oracle — which is true right up until a user says *"like this
+reference, but make it good"*, and then it is false with nothing noticing. So the skill now **elects**
+it: step 0, `oracle-role`, an `open_decision` — *specification* (the picture is the oracle, a
+difference is a defect, the lens must not overrule it) or *direction* (the picture is evidence about
+intent, the pixel comparison stops being an oracle, a departure is a `design_concern`). Unreachable
+human → default `specification` as a surfaced `agent_assumption`, because reproducing what someone
+handed over is the recoverable error. The test's exemption is now conditional on that election
+existing, so the constant can no longer be the reason.
+
 ### What is still open
 
-- **Render-first is doctrine with no gate.** Nothing computes that the lens looked at a render rather
-  than at source; it is the same D2 residual §35 names, and it stays open for the same reason (an
-  explicit applied-record is a schema field, i.e. an election).
-- **Two renderers, unreconciled.** `design_scan` renders through the detector's own browser;
-  `browser-verification` drives Playwright. Where both are available nothing says which render the
-  taste pass reads, and they can disagree (viewport, fonts, animation state).
-- **The exemption is a judgment.** If the user asks for *"like this reference, but better"*, the image
-  stops being the oracle and nothing detects the change of role.
+- **The empty case.** A lens that produces no pin leaves no trace, and absence of a finding is not
+  absence of a run. That is §35's residual, unchanged: it needs an explicit applied-record, which is
+  a schema field, which is an election.
+- **Nothing forces the call.** `render_agreement` makes the render-first claim checkable; whether the
+  agent runs it is the same D2 line every judgment module sits on.
+- **Half the URL question is unanswerable by construction** — and is labeled rather than closed.
 
 ### Prove it
 
 ```bash
-python -m unittest tests.test_design_taste
+python -m unittest tests.test_design_taste tests.test_render_agreement
 python scripts/check_consistency.py && python scripts/build.py --check
 ```
 

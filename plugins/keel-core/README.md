@@ -23,7 +23,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **70** | the deterministic engine, typed and discoverable |
+| MCP tools | **71** | the deterministic engine, typed and discoverable |
 | MCP apps | **2** | `ui://keel/interview.html` · `ui://keel/map/{path*}` — read surfaces, never write |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
@@ -33,7 +33,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 70 MCP tools
+## The 71 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
@@ -102,12 +102,13 @@ Django · SQLAlchemy · GraphQL · TypeScript · Pydantic**. What comes back is 
 Generating the layers is how `greenfield-forge` makes drift structurally impossible instead of
 merely detectable.
 
-### Reference image (2)
+### Reference image (3)
 
 | Tool | Does |
 |---|---|
 | `image_palette` | a screenshot's geometry and real color histogram, with per-color coverage |
 | `palette_verify` | do the colors a model read off that image actually occur in it? (+ WCAG on the claimed pairs) |
+| `render_agreement` | do the picture being judged and the facts backing the judgment describe the **same render**? (device-pixel-ratio geometry vs the scanned viewport; the URL reported as declared, never as evidence) |
 
 A stdlib PNG decode — no model, no network — so these are the only claims about a reference image
 that are facts. They exist to refute the other half: a token a vision model *says* it saw, which

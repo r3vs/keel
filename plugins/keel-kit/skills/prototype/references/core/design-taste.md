@@ -37,12 +37,25 @@ So the order is fixed, and it is the fp-check line applied to pixels:
    `image_palette` and `palette_verify` decode in the stdlib.
 2. **Spend the deterministic half first** — contrast, token membership, which colors actually occupy
    the frame and over what fraction of it. Facts, `confidence: extracted`, skipping fp-check.
-3. **Judge only what survives.** A taste claim that is really a contrast failure is a fact somebody
+3. **Tie the two together before judging: `render_agreement`.** There are two renderers in this pass
+   — the detector renders the URL to compute its facts, the screenshot is captured separately — and a
+   critique of the second backed by facts from the first is unfalsifiable in the most ordinary way:
+   nobody can tell which page it was about. The tool answers the two questions that decide it.
+   *Did the facts come from a render at all?* `design_scan` now reports its `target`, and a
+   `kind: "source"` scan read JSX, where none of the tells below is visible. *Is it the same
+   geometry?* Declare what the browser was driven at (`captured: "390x844@2.625"`) and the check is
+   exact — the declared scale is confirmed **against the pixels**, so asserting your way past it does
+   not work; declare nothing and only 1x/2x/3x are inferred, because a guess elastic enough to fit
+   any ratio would agree with a desktop capture judged against mobile facts. The URL is compared as
+   two *declared* strings — a PNG carries no address — and is reported as declared, never as
+   agreement.
+4. **Judge only what survives.** A taste claim that is really a contrast failure is a fact somebody
    downgraded to an opinion, and it will be argued with instead of fixed.
 
-When nothing can be rendered — no dev server, a component with no story, a target this host cannot
-run — the surface is **`unchecked`, with the reason**, never a clean bill. Same rule the engines
-themselves apply when a backend is missing.
+**`agree`, or the pass is `unchecked`.** A `mismatch` is not a detail to note in the write-up: it
+means the judgment and its evidence are about different pictures. Re-render, or say the surface was
+not looked at. Same when nothing can be rendered at all — no dev server, a component with no story, a
+target this host cannot run: **`unchecked`, with the reason**, never a clean bill.
 
 ## The tells (the "generated, not designed" catalog)
 
@@ -115,9 +128,12 @@ catalog like any other fork.
 validation — so a repo with no presentation layer produces nothing rather than something. A lens that
 picks its own scope finds what it went looking for.
 
-**It does not overrule an elected oracle.** When a reference image *is* the specification (building a
-UI from a screenshot), the picture decides: a taste observation there is a pin about the reference,
-handed to the human, not a licence to redesign what they handed over.
+**It does not overrule an elected oracle — and which oracle governs is elected, not assumed.** When a
+reference image *is* the specification, the picture decides: a taste observation there is a pin about
+the reference, handed to the human, not a licence to redesign what they handed over. When the same
+image was handed over as a *direction* — *"like this, but better"* — the lens is exactly what was
+asked for. The two are the same picture and opposite jobs, so the role is a fork the human elects
+before either runs (`screenshot-to-code`'s step 0), never a default the lens picks for itself.
 
 **The limit, stated rather than implied:** an agent engine is D2, and nothing computes whether a
 judgment lens actually ran. That holds for every `type: judgment` module in either catalog — which is

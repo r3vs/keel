@@ -28,14 +28,18 @@ the new baseline.
 2. **Run the deterministic half** — `design_scan` against the URL, at each elected breakpoint
    (`viewport`), so the mobile answer from the interview is actually checked rather than assumed.
    Every hit is a finding with a carrier; the `design-system-*` ones are contract violations.
-3. **Compare pictures for the judgment half.** State the specific difference in words — *"the card
+3. **Check that both halves are about the same render — `render_agreement`.** The scan renders the
+   URL itself; your screenshot was captured separately. Same page at two viewports is two designs,
+   and a difference named against the wrong one wastes the whole pass. `mismatch` → re-capture at
+   the scanned viewport before comparing anything.
+4. **Compare pictures for the judgment half.** State the specific difference in words — *"the card
    gutter is visibly wider than the reference"*, *"the heading weight is lighter"* — not a percentage.
    A named difference is a pin someone can decide; a diff score is a number nobody can act on.
-4. **Route each difference before fixing it.** This is where the loop earns its keep, and it is one
+5. **Route each difference before fixing it.** This is where the loop earns its keep, and it is one
    question: *is this a defect in what I built, or a decision nobody made?* A misapplied token is a
    defect — fix it. A gutter that differs because the reference's spacing scale was never elected is
    an `open_decision` — pin it, and stop trying to fix it in code.
-5. **Fix, re-render, repeat** — with a stopping rule.
+6. **Fix, re-render, repeat** — with a stopping rule.
 
 ## The stopping rule
 

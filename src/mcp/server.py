@@ -1821,6 +1821,43 @@ def palette_verify(image: str, claimed: list | None = None, contract: str = "",
                                 contrast_pairs=contrast_pairs, coverage_floor=coverage_floor)
 
 
+@mcp.tool(annotations={"title": "Render Agreement (do the facts and the picture describe one render?)",
+                       **_RO})
+def render_agreement(image: str, viewport: str = "", scan: dict | None = None,
+                     url: str = "", captured: str = "") -> dict:
+    """Tie a taste critique to the render its facts were computed on. WRITES NO FILE.
+
+    A design pass has two renderers: `design_scan` renders the URL itself to compute contrast and
+    token membership, while the picture the critique is read off is captured separately. Judging the
+    second while the facts came from the first — a different viewport, a different page, or JSX read
+    off disk — is a claim nobody can check, because nobody can tell which render it was about.
+
+    Two questions, only one of them arithmetic. **Did the facts come from a render at all?** A
+    `kind: "source"` scan read source files, and the tells a taste lens looks for are compositional —
+    not in the JSX. **Is it the same geometry?** Declare what the browser was driven at (`captured`)
+    and the check is exact — its viewport against the scanned one, its scale confirmed against the
+    pixels, so a declaration the image refutes is caught rather than believed. Declare nothing and
+    only 1x / 2x / 3x are inferred: a fractional device scale factor (Pixel's 2.625, a 125% display)
+    is real, and an inference that stretched to fit any ratio would agree with everything. A taller
+    image at a matching width is a full-page capture — reported, not flagged. The URL is compared as
+    two *declared* strings — a PNG carries no address — and never counted as agreement.
+
+    Returns `agree` / `mismatch` with the specific fields / `unchecked` with the reason. Never a
+    clean verdict on something it could not look at.
+
+    Args:
+        image: the screenshot the critique is being read off (PNG; other formats via a converter).
+        viewport: `"WxH"` in CSS pixels; omit when `scan` carries the one it ran at.
+        scan: the dict `design_scan` returned — its `target` block says what was looked at.
+        url: the address the picture was captured from, if you have it.
+        captured: what the browser was actually driven at — `"390x844@2.625"` (viewport@scale) or
+            `"1440x900"`. Pass it whenever the capture is not a plain 1x/2x/3x of the scanned
+            viewport; it is checked against the pixels, not taken on trust.
+    """
+    return tools.render_agreement(image, viewport=viewport, scan=scan, url=url,
+                                  captured=captured)
+
+
 @mcp.tool(annotations={"title": "Extract Design Tokens (as-is → candidate DTCG)", **_RO})
 def extract_tokens(css: str) -> dict:
     """Harvest the de-facto design tokens a codebase DECLARES as CSS custom properties into a

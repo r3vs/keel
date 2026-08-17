@@ -4,6 +4,28 @@ The evidence taxonomy behind `SKILL.md`'s three buckets, in the detail the skill
 omits. One sentence carries all of it: **a screenshot is one sample from a design, and a sample is
 not the population.**
 
+## Bucket 0 — what the image is FOR (elect it first; everything below inherits it)
+
+Before any bucket applies, one fork has to be settled, because the same picture and the same code are
+a pass under one answer and a finding under the other:
+
+| The image is | Then the picture is | And a deliberate departure from it is |
+|---|---|---|
+| **a specification** — *"build this"* | the **oracle**. The pixel comparison judges the build against it | a **defect** in the build |
+| **a direction** — *"like this, but better"* | **evidence about intent**, not the target | an **option**: the taste lens runs, and its findings are `design_concern` pins the interview weighs |
+
+**Elect it, never assume it.** This is an `open_decision` pin put to the human in the first round —
+one question, and it decides whether a taste critique of this UI is help or insubordination. It used
+to be settled by the skill *being* the reproduce-it skill, which is an assumption wearing the costume
+of a scope: a user who says *"like this reference, but make it good"* has changed the oracle's role,
+and nothing anywhere noticed.
+
+If the human is genuinely unreachable, default to **specification** and surface it as an
+`agent_assumption` (`references/core/assumptions.md`) — reproducing what someone handed over is the
+recoverable error; redesigning it uninvited is not. Under `direction`, the visual loop's pixel
+comparison stops being an oracle at all and the taste lens
+(`references/core/design-taste.md`) becomes the reading that matters.
+
 ## Bucket 1 — Computed (D0, `confidence: extracted`, skips fp-check)
 
 What `image_palette` and `palette_verify` return, and the complete list of what may be claimed at

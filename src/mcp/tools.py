@@ -1382,6 +1382,13 @@ def palette_verify(image: str, claimed: list | None = None, contract: str = "",
     return out
 
 
+def render_agreement(image: str, viewport: str = "", scan: dict | None = None,
+                     url: str = "", captured: str = "") -> dict:
+    import visual
+    return visual.render_agreement(image, viewport=viewport, scan=scan, url=url,
+                                   captured=captured)
+
+
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------
 # These read/write the graph.json + its projections on disk. The graph is the foundational
 # artifact the rest of the family consumes (phases communicate through disk, never a session).
