@@ -1483,6 +1483,26 @@ def claim_state(read: dict, now: Optional[datetime] = None) -> str:
     return "live" if (moment - stamped).total_seconds() < CLAIM_TTL_SECONDS else "stale"
 
 
+def policy_selects(applies_to: Any, pin: Any) -> bool:
+    """Whether a standing policy's scope selects a pin. Equality on every declared key, and nothing
+    else — the scope is a filter, never a matcher.
+
+    It is a module-level function rather than a line inside `policy_preview` because it now has a
+    **second** reader: `memaudit` asks the same question from outside the class, to find the pins two
+    policies both select. A scope predicate written twice is two scope predicates, and the second
+    one drifts — which is the whole thesis of this repository applied to nine lines of its own code.
+
+    The `null`-valued-key trap this used to fall into lives one layer up, at `policy_preview`, where
+    the key is validated against `PIN_FIELDS`: a key no pin carries reads as `None == None` here and
+    would select everything. That check belongs at the door that ACCEPTS a scope, not at the
+    predicate that applies one — `memaudit.overgeneralization` reports the same shape from the read
+    side, for files written before the door existed.
+    """
+    if not isinstance(applies_to, dict) or not isinstance(pin, dict):
+        return False
+    return all(pin.get(k) == v for k, v in applies_to.items())
+
+
 def read_collection(data: Any, name: str) -> list[dict]:
     """One of `LEDGER_COLLECTIONS` as a reader can index it — the CONTAINER half of the guarded
     read, for a caller holding raw ledger DATA rather than a `Ledger`.
@@ -2859,7 +2879,7 @@ class Ledger:
         excepted = frozenset(exceptions or [])
         out: dict = {bucket: [] for bucket in UNASKED_BUCKETS}
         for pin in self.readable_pins():
-            if not all(pin.get(k) == v for k, v in applies_to.items()):
+            if not policy_selects(applies_to, pin):
                 continue
             out[self.unasked_verdict(pin, default_outcome, excepted)].append(pin_read(pin)["id"])
         out["scope_note"] = self._absence_note(applies_to)

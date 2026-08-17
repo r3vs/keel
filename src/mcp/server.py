@@ -1663,6 +1663,26 @@ def coverage_gaps(langs: list[str], reports: list[str] | None = None) -> dict:
     return tools.coverage_gaps(langs, reports)
 
 
+@mcp.tool(annotations={"title": "Memory Audit (the ledger's own health)", **_RO})
+def memory_audit(ledger: str) -> dict:
+    """Audit the LEDGER ITSELF against the eight ways a durable memory fails.
+
+    Every other gate points at the user's code; this one points at the store everything else is
+    derived from. Six modes are decided from the file — a pin closed at an observed rung with no
+    evidence ref (nothing can ever invalidate it), a policy scope wider than the case that produced
+    it, a rule recorded without the reason for it, machine output pasted into a durable field, the
+    same statement written twice, two standing policies selecting one pin. Two modes are REPORTED AS
+    UNDECIDABLE rather than approximated: a fact never written and a memory never read leave no
+    trace in the file.
+
+    Findings decide nothing. Surface the ones that matter as pins and let the human elect.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.memory_audit(ledger)
+
+
 @mcp.tool(annotations={"title": "Render Visual Map", **_RW})
 def render_map(ledger: str, out: str, live: bool = False) -> dict:
     """Render the ledger as the self-contained visual HTML map. WRITES A FILE.

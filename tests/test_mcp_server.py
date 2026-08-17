@@ -95,6 +95,10 @@ EXPECTED_TOOLS = {
     # v0.31 — the fog register: the decisions this project can sense and cannot yet phrase, which
     # had two available homes before this (a badly-phrased pin, or nothing) and both were wrong.
     "ledger_fog", "ledger_add_fog", "ledger_graduate_fog", "ledger_clear_fog",
+    # the ledger audited as a MEMORY — every other gate here points at the user's code, and this is
+    # the first one pointed at the store the rest of them derive from. Read-only on purpose: an
+    # audit that can edit what it audits is not one.
+    "memory_audit",
     # the tracker projection — `generate_instructions` carries the ledger to a fresh AGENT, and
     # this pair carries it to the TEAM, in the board they already read. Same shape: one source, a
     # generated view inside managed markers, one planner shared by the writer and the drift check.

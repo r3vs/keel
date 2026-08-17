@@ -21,7 +21,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **69** | the deterministic engine, typed and discoverable |
+| MCP tools | **70** | the deterministic engine, typed and discoverable |
 | MCP apps | **2** | `ui://keel/interview.html` · `ui://keel/map/{path*}` — read surfaces, never write |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
@@ -31,13 +31,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 69 MCP tools
+## The 70 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (28)
+### Ledger — the single source of truth (29)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -72,6 +72,7 @@ holds no state of its own; it projects this file.
 | `ledger_add_fog` | record one, without inventing a question for it. The entry has nowhere to put a fork, which is the enforcement: if you can phrase it, it is a pin | ✎ |
 | `ledger_graduate_fog` | the human phrased it — it becomes a pin **and leaves the register**, so it lives in exactly one place. Phrasing the fork is framing the decision, so the words must be theirs | ✎ |
 | `ledger_clear_fog` | there was no fork here after all. Held to what `ledger_defer` is held to, because clearing stops the register asking | ✎ |
+| `memory_audit` | the ledger audited as a **memory**: a closing rung nothing can ever invalidate, a policy scope wider than the case behind it, a rule recorded without its reason, machine output pasted into a durable field, one statement written twice, two policies answering one pin. Names the two modes it cannot decide from the file rather than reporting them clean | |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview
 answer. The write tools record; they do not decide.

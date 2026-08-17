@@ -149,6 +149,34 @@ prerequisite, and its absence fails loudly rather than degrading to a path that 
 than answering "no pins", because that answer reads as "nothing to do" and is the most expensive
 wrong answer this package can give.
 
+## The store rots too — `memory_audit`
+
+Every other gate this package ships points at the user's code. `memory_audit` points at the ledger,
+and it is not optional hygiene: the map, `generate_instructions`, `tracker_project` and
+`settlement_verdict` all derive from this file, so a store that quietly rots takes every projection
+with it and nothing else here would say a word.
+
+Run it at a phase boundary and before any release. Six findings are computed from the file:
+
+- a pin **closed at `observed` with no `evidence` ref** — the strongest claim the schema allows,
+  and nothing recorded that could ever take it back. After an upstream change it still reads green.
+- a **policy scope wider than the case that produced it**, and the empty scope for what it is: a
+  universal default covering every pin written after it, which nobody was asked to grant.
+- a **rule recorded without its reason**, plus the cascade — a weak policy launders its weakness
+  into every decision it defaulted.
+- **machine output pasted into a durable field** (a traceback, a stack frame, an ANSI escape).
+- **one statement written twice**, after normalization only. Two pins that *mean* the same thing are
+  not caught, deliberately: that judgment is a model's, and a finding on a model's say-so is what
+  this package refuses everywhere.
+- **two standing policies selecting one pin** — the store answers twice and records no precedence.
+
+Two more are reported as **undecidable**, which is the part to read rather than skip: a fact that
+was never written and a memory that was never read leave no trace in the file. A clean audit is
+therefore a clean audit *of six modes*, and it says so.
+
+Findings decide nothing. Surface the ones that matter as pins and take them through the interview
+like anything else.
+
 ## Where the ledger reaches people who never open it
 
 Two projections, one shape. A fresh agent gets the elected design through `generate_instructions`,

@@ -136,7 +136,7 @@ durable memory without it.
 
 ## The tool surface is a budget, and it is the host's to spend
 
-**The assumption this package has been relying on silently, now written down: 69 MCP tools is
+**The assumption this package has been relying on silently, now written down: 70 MCP tools is
 affordable only because the host defers them.** Nothing in `src/mcp/server.py` decides that, nothing
 gates it, and it is false on at least one host we ship to. Naming it is the point of this section —
 it is a load-bearing bet on somebody else's product behaviour, which is the class of fact this repo
@@ -147,7 +147,7 @@ handshake, and size the `tools/list` result:
 
 | | |
 |---|---|
-| tools advertised | **69** |
+| tools advertised | **70** |
 | whole `tools/list` result | ~101 k characters of JSON — **≈25 k tokens** at ~4 chars/token |
 | median tool object | ~1,410 characters (the JSON: name + description + `inputSchema` + annotations) |
 | longest single description | 1,405 characters |
@@ -178,12 +178,12 @@ docstring is not the payload**: FastMCP splits a tool's docstring, sending the p
 as `description` and moving each `Args:` entry into the matching property's `description` inside
 `inputSchema` — checked on the wire against `ledger_summary`, whose `ledger: Path to ledger.json.`
 arrives inside the schema and not in the description. So counting docstrings sees about half the
-truth: ~54 k characters of docstring against ~98 k on the wire. And **the schema is most of the
+truth: ~54 k characters of docstring against ~104 k on the wire. And **the schema is most of the
 cost**: median description 410 characters inside a median tool object of ~1,410.
 
 **Per host, and only the first row is a verified mechanism:**
 
-| Host | Are the 69 loaded up front? | Verification |
+| Host | Are the 70 loaded up front? | Verification |
 |---|---|---|
 | **Claude Code** | **No, deferred by default** | VERIFIED in its docs: *"Tool search is enabled by default: MCP tools are deferred and discovered on demand"* — only tool **names** and the server `instructions` load at session start. Off in named cases: `ENABLE_TOOL_SEARCH=false`; a non-first-party `ANTHROPIC_BASE_URL`; `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; Microsoft Foundry on Azure (rejected server-side, unoverridable); Google Cloud Agent Platform models older than the 4.5 generation. `auto` is a middle setting: *"tools load upfront if they fit within 10% of the context window, deferred otherwise"* — at ≈25 k tokens we fit that only on a large window. |
 | **Codex** | **UNVERIFIED** | Its MCP documentation is silent on tool deferral, count limits and context budgeting, and the Rust source was not read at the consuming function. Absence of a documented mechanism is not absence of one. Plan for the full surface — that is the conservative direction. |

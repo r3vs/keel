@@ -761,6 +761,10 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         "ledger_summary": {},
         "ledger_frontier": {},
         "ledger_fog": {},
+        # Takes nothing but the ledger, and is the one read-only tool whose SUBJECT is the file's own
+        # shape — so the broken-ledger corpus below is not an incidental exercise of it, it is the
+        # workload. A store-health check that dies on an unhealthy store answers the wrong question.
+        "memory_audit": {},
         "interview_next": {},
         "interview_seed_policies": {},
         "policy_preview": {"rule": "the DB wins on nullability",

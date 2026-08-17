@@ -53,6 +53,15 @@ def interview_next(ledger: str) -> dict:
     return interview.funnel(_open_existing(ledger))
 
 
+def memory_audit(ledger: str) -> dict:
+    # Audits the store itself, so it reads the FILE rather than a `Ledger`'s view of it: the modes
+    # this answers are properties of what was written, and a guarded read that substitutes an empty
+    # value for a malformed one would hide the very field the finding is about. `memaudit.audit`
+    # does its own guarded read on top of the raw data, which is the same order `nonconforming` uses.
+    import memaudit
+    return memaudit.audit(_open_existing(ledger).data)
+
+
 # -- the ledger as a READ SURFACE (what the MCP resources project) --------------------------------
 # These have no `@mcp.tool` of their own and are not meant to: an agent that wants pins calls
 # `ledger_summary` / `interview_next` / `ledger_frontier`, each of which answers a question. What a
