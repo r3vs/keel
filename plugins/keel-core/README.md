@@ -256,6 +256,15 @@ hardcodes a model; the build reads the policy doc.
 |---|---|---|
 | `SessionStart` (startup / clear / compact) | `session-start.sh` | prints the mandatory workflow check — which skill applies, and the three non-negotiables |
 | `PreToolUse` on `Edit\|Write\|NotebookEdit\|MultiEdit` | `ledger-gate.py` | **denies product-code edits while `blocker`/`high` pins sit in `needs_input`** |
+| `PreToolUse` on `Bash` | `search-nudge.py` | **warns only** — points a shell `grep -r` / `find` at `rg`, `fd`, `ast-grep` or the host's own Grep/Glob tools, once per rule per session |
+
+The two sit on separate matchers on purpose, because they are allowed to do different things. The
+gate **denies**; the nudge only ever prints a sentence. A shell `grep` is not wrong — it is slower,
+noisier about generated files, and blind to structure — so `core/search-strategy.md` is worth
+arriving at the moment it applies, and never worth stopping work over. It stays silent on the cases
+where a nudge would simply be false: a pipe filter (`gh pr list | grep open`), a heredoc body, prose
+in a `--body` or `-m` value, an `echo`. And it speaks **once per rule per session**: the value is
+entirely in the first firing, and repeats only cost attention in the scrollback.
 
 The gate is what turns rule #1 from prose into a mechanism. Its behavior, precisely:
 

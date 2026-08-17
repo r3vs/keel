@@ -3,6 +3,13 @@
 Install with `scripts/bootstrap.sh` (Python + Node assumed). Every tool is best-effort: a
 missing tool degrades to model judgment, never a hard failure.
 
+**This page is the finding axis: tools run as analyzers, whose reports become pins.** Several of the
+same binaries — `rg`, `ast-grep`, `fd`, `tokei` — are also how an agent *navigates* an unfamiliar
+tree, and that is a different job with different rules: `references/core/search-strategy.md` holds
+it, and the confidence a scanner's finding earns does not transfer to a grep hit. When a structural
+rule has to be **written** rather than run, `references/core/rule-authoring.md` is the loop that
+keeps it from silently matching nothing (or everything).
+
 **Normalization is a command, not an aspiration.** Every tool below emits SARIF or JSON; the
 `findings_gate` tool turns that into pins — pass it the reports (`.audit/*.sarif .audit/*.json`).
 
@@ -31,6 +38,7 @@ a fact, where the same boundary expressed in prose stays an opinion.
 - **semgrep** (CE) — SAST, 30+ languages, `--config=auto`, SARIF. (OpenGrep fork for cross-file taint.)
 - **ast-grep** — tree-sitter structural search/rewrite; the engine for placeholder/stub rules.
 - **ripgrep** — fast text pass (TODO/FIXME/NotImplemented/empty-catch).
+- **fd** — file discovery by name/path. Debian and Ubuntu install the binary as `fdfind`.
 - **gitleaks** — secrets in working tree AND full git history.
 - **osv-scanner** + **trivy** — deps (SCA), IaC misconfig, license, SBOM.
 - **lizard** — cyclomatic complexity / function length, ~15 languages.

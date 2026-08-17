@@ -33,6 +33,79 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.9.0] — 2026-08-17
+
+### Added
+- **The navigation half of the tool surface, which had no doctrine at all.** `rg`, `ast-grep`,
+  `semgrep`, `tokei` and `scc` were already installed and already documented — but only as
+  *analyzers*, whose SARIF becomes pins. Nothing said how an agent **locates** something in a tree
+  it has not read. `core/search-strategy.md` is that half, and it states the boundary the shared
+  binaries hide: **a grep hit is a location, not a finding** — it earns neither `extracted`
+  confidence nor the fp-check bypass a type error earns. A search is a scoped query, not a sweep:
+  scope by type/path/shape before the first call, count before reading, collapse N walks into one
+  (`-e` union, or parallel tool calls — never `&&`), and on an empty result **change rung** on the
+  knowledge ladder rather than widening. Adapted from the ideas in `netresearch/file-search-skill`
+  and ast-grep's own prompting guidance; no prose copied (their docs are CC-BY-SA-4.0, ours MIT —
+  the facts and workflows are not copyrightable, the expression is).
+- **`core/rule-authoring.md` — an instruction that had shipped with no method.** The ast-grep pack
+  told an agent to "add one YAML file per new placeholder shape" and stopped at exactly the step
+  where rules go wrong silently, in **both** directions. Verified against `ast-grep 0.45.1`: a rule
+  whose `language:` does not match the file matches nothing and exits 1 — indistinguishable from a
+  clean repo — while the malformed pattern `def $$$ {{{` matched an ordinary function and exited 0.
+  Neither warns, so a rule's count says nothing about whether the rule is right; only a test does.
+  Hence the loop: decompose → compose → test a positive **and** a negative example →
+  `--debug-query=ast` when it will not match, where `$F` and `$$$A` render as `ERROR` nodes in a
+  *working* pattern and must not be "fixed". New rules register as generators, so `generator_screen`
+  can mute a bad one loudly rather than let it poison the stream.
+- **`hooks/search-nudge.py` — the doctrine's mechanism, because prose gets skipped.** `PreToolUse`
+  on `Bash`, **warn-only**, once per rule per session, on its own matcher: the ledger gate denies,
+  this one never may. Silent where a nudge would be false — a pipe filter, a heredoc body, prose in
+  `--body`/`-m`, an `echo`. Claude Code and Codex, both verified at the consumer rather than from
+  this repo's host table: Codex's `PreToolUse` fires on commands matched as `Bash`, and a hook's
+  `systemMessage` is surfaced as a warning. opencode and Pi get no adapter — both are
+  block-or-nothing, and blocking a shell search is the one thing this hook must not do. 29 tests,
+  most of them on the silent paths.
+  It scans **statements, not the command string** — split on the shell separators outside quotes,
+  each judged on its own. The whole-command spelling produced four wrong readings from one wrong
+  model: `cd src\ngrep -rn TODO .` was silent (no newline in `(?:^|[|&;])`), an `echo` prefix
+  covered whatever followed it, and a pipe filter *anywhere* excused a real tree sweep
+  *elsewhere*. And its quoted-string regex is an unrolled loop, because the backreferenced spelling
+  backtracks exponentially on an unterminated `-m "` — measured doubling every ~1.6 backslashes, so
+  ~34 of them stall the Bash call the hook exists to annotate.
+- **The first machine-checked eval for a doctrine that writes nothing.** A search produces no pin,
+  and the harness resolves assertions against artifacts — but `Run` already keeps each tool call's
+  **input**, the same fact `file_untouched` uses. So `shell_absent()` / `searched_with()` grade the
+  Bash command string, and `static-first-analysis/evals/evals.json` lands three cases with six
+  machine-checked assertions (the corpus goes 29 → 35 checks). Both predicates carry a test that
+  accepts the positive and rejects the negative — the rule `rule-authoring.md` states for an
+  ast-grep rule, applied to the checks that grade it. `shell_absent` compiles `MULTILINE`, and that
+  flag is the whole assertion: it grades *absence*, so a `^`-anchored pattern that stops at the
+  first line marks a violating multi-line run PASS. A check that cannot fail is worse than no
+  check, because it is counted as one.
+- **`fd` in `bootstrap.sh`**, with the name clash checked rather than assumed: Debian and Ubuntu
+  ship the binary as `fdfind`, so `have fd` is false on a machine that has the tool.
+
+### Fixed
+- **Four admiring backticks that were dependency edges.** A backticked `core/` pointer is a build
+  instruction, and `search-strategy` / `rule-authoring` had named each other plus `static-analysis`
+  and `trust-axes` for claims they merely *support* — so the mutual pair forced any skill wanting
+  either to vendor both. `static-first-analysis` had gone from 3 vendored core docs to 6, its
+  doctrine doubled by orientation. The evidence stays as plain text; a skill taking
+  `search-strategy` alone now inherits 3. This is the failure `core/writing-for-agents.md` records
+  against itself, caught the same way it says to catch it.
+- **`CLAUDE.md`'s host table said Codex has 10 hook events; the published list is 11.** A restated
+  count, so no gate covered it — corrected by reading. Recorded beside it, out of scope to fix:
+  `permissionDecision: "ask"` is *"parsed but not supported yet"* on Codex, which is exactly the
+  mechanism the ledger gate uses for a write into host memory.
+
+### Known gaps
+- **`docs/open-gaps.md` §33 — the search doctrine's only carrier is a transcript.** These are the
+  first `core/` doctrines that write nothing, so no blocking gate can falsify them: the eval's six
+  checks run only under `--execute`, which is `continue-on-error` because it needs an API key, and
+  eleven of that file's seventeen assertions are still `manual`. The register names the shape of the
+  fix (an offline correspondence gate in `check_tool_carriers.py`'s style) and three traps, the
+  first being *do not add a pin kind for a search*.
+
 ## [0.8.0] — 2026-08-13
 
 ### Added

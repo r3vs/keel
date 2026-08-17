@@ -3845,7 +3845,9 @@ The numbering is a citation — `docs/packaging.md` and `check_packaging_wire.py
 *"§31 residual 1"* — so a closed item keeps its number and says so in place rather than being
 deleted and the rest renumbered underneath the pointers.
 
-1. **The budget number is a hypothesis about hosts, and its unit is the soft spot.** The doc calls it
+1. **The budget number is a hypothesis about hosts, and its unit is the soft spot. — CLOSED
+   2026-08-17**, by re-reading the page rather than by re-deriving anything; the number does not
+   move, because the reading already encoded is the one that was right. The doc calls it
    a *"character budget"* that *"scales at 1% of the model's context window"* — a window measured in
    tokens — and the override `SLASH_COMMAND_TOOL_CHAR_BUDGET` is *"a fixed character count"*. Reading
    1% of 200,000 as 2,000 **characters** is the conservative reading; if it is really 2,000 tokens
@@ -3853,6 +3855,39 @@ deleted and the rest renumbered underneath the pointers.
    would be silent, which is why the strict reading is the one encoded. It is also a **Claude Code**
    number applied to a package that ships to four hosts: opencode and Codex publish no equivalent
    budget, so for them the gate is prudence rather than a constraint.
+
+   **What settled it, and what it cost to leave open.** The same page now documents
+   `skillListingBudgetFraction` — *"(e.g. `0.02` = 2%)"* — a **fraction** applied to the window that
+   yields the character budget, with `SLASH_COMMAND_TOOL_CHAR_BUDGET` given as the same quantity
+   spelled as *"a fixed character count"*. A fraction of a token-measured window producing a
+   character count is precisely the arithmetic the gate encodes, so 1% of 200,000 is 2,000
+   **characters** and the four-times-larger alternative is **refuted**, not merely unlikely. The
+   architectural consequence is the one worth stating: the fifteen skills moved to
+   `disable-model-invocation: true` were **not** cut against a phantom ceiling. Had the unit gone the
+   other way, the original 7,745 characters would have nearly fit and this round would have been
+   largely unnecessary — which is why leaving a load-bearing unit unverified for five days was the
+   real exposure, not the number itself.
+
+   **Two findings from the same read, both against claims this section makes above.**
+
+   - *"The user cannot free budget for our skills"* (§31 Verified) is **too strong**. `skillOverrides`
+     genuinely cannot name a plugin skill — that part holds — but the user has three levers on the
+     ceiling itself: `skillListingBudgetFraction`, `SLASH_COMMAND_TOOL_CHAR_BUDGET`, and
+     `"name-only"` on **their own** low-priority skills, which frees room Keel's entries then
+     compete for. None is ours to ship; all are ours to *tell them about*, and a package that
+     stays silent is spending a budget it does not own. Now stated in `docs/packaging.md`.
+   - **The listing is observable, three ways**, which this section treated as unknowable: `/doctor`
+     estimates *"the listing's context cost and its biggest contributors"*; the Skills row in
+     `/context` reports *"the size of the listing after the budget is applied, so it matches what
+     the model receives"* (accurate since v2.1.196; before that it could read several times high);
+     and an over-budget listing warns in the debug log under `--debug`. **Still open as a
+     measurement**: nobody has run them against an installed Keel. A derived 1,200 sitting beside
+     three instruments that report the real figure is a derivation waiting to be replaced — and the
+     replacement needs a real install on a real host, which is why it is named here rather than
+     claimed.
+   - Not binding, recorded so it is not rediscovered as a constraint: each entry's combined
+     `description` + `when_to_use` is capped at 1,536 characters *"regardless of budget"*
+     (`skillListingMaxDescChars`). Keel's longest entry is 363.
 2. **`code-review` collides with a bundled skill of the same name, and the namespace saves it —
    partly. — CLOSED 2026-08-13**, by executing the recommendation recorded here rather than
    revisiting it. Claude Code bundles `/code-review` (*"bundled skills, such as `/doctor`,
@@ -4035,6 +4070,78 @@ round — *which documents did I edit, and does the register know about each fin
   confidence this section is about.
 - **Do not read this section's existence as the completeness claim now being carried.** It is
   carried by nothing. What changed is that four known items are in the register instead of none.
+
+---
+
+## 33. The search doctrine's only carrier is a transcript nothing blocking reads — **OPEN**
+
+### Verified
+
+`src/core/search-strategy.md` and `src/core/rule-authoring.md` (added 2026-08-17) are the first
+doctrines in `src/core/` that **write nothing**. Every other one lands in an artifact this repo can
+re-read: a decision becomes a pin, a finding becomes a `defect`, an authored rule becomes a
+`generator` with a measured precision. A search leaves a tool call and nothing else.
+
+That is not a complaint about the doctrines — a search *should* not write to the ledger, and a pin
+per grep would be the sediment the ledger spec forbids. It is a statement about what can be
+**observed**, and the three places it bites were each checked rather than assumed:
+
+- **The eval's checks read the transcript, and the job that runs them is advisory.**
+  `static-first-analysis/evals/evals.json` grades six assertions with `shell_absent` /
+  `searched_with` against the Bash command strings in `run.tools`. Those run only under
+  `--execute`, which is `continue-on-error` in CI because it needs an `ANTHROPIC_API_KEY` no fork
+  holds. `--validate`, the blocking gate, proves the file parses — never that the behaviour happened.
+- **Eleven of that file's seventeen assertions carry no machine check at all.** They are reported
+  `manual`, which is the harness being honest, not the assertion being covered.
+- **Two of four hosts have no mechanism behind the prose.** `hooks/search-nudge.py` reaches Claude
+  Code and Codex (both verified at the consumer — Codex's `PreToolUse` fires on commands matched as
+  `Bash`, and a hook's `systemMessage` is surfaced as a warning). opencode's `tool.execute.before`
+  and Pi's `tool_call` are block-or-nothing, and blocking a shell search is the one thing this hook
+  must never do. So on those two the doctrine is prose with nothing behind it.
+
+### Why it matters
+
+This package's standing claim is that a doctrine with no carrier is a wish. §20–§27 spent seven
+rounds proving that of the ledger's own rules. These two doctrines are currently in the state those
+rounds were about: correct, shipped, and unfalsifiable by any blocking gate. A regression — someone
+rewording the tool table into a no-op, or a future skill quietly dropping the pointer — would be
+caught by nothing that runs on a pull request.
+
+### What done looks like
+
+Not "make search write to the ledger". Any of these, in increasing order of honesty:
+
+1. The `manual` assertions get machine checks, or are rewritten until they can have one. An
+   assertion that cannot be checked should say so in its own words rather than sit beside six that can.
+2. A blocking, offline check that does not need an API key — the shape to copy is
+   `check_tool_carriers.py`, which proves a *correspondence* (every write tool is named by a shipped
+   playbook) without running an agent. The analogue here: every tool the search doctrine names is
+   installed by `bootstrap.sh`, and every tool `bootstrap.sh` installs for navigation is named by the
+   doctrine. That is decidable from the two files.
+3. opencode or Pi grows a non-blocking advisory return, and the adapter — four lines, the rule
+   already lives in one place — closes the host gap.
+
+### How to prove it
+
+```bash
+python scripts/run_evals.py --validate                      # blocking: the file is well-formed
+python scripts/run_evals.py --execute --skill static-first-analysis   # needs a key; grades behaviour
+python -m unittest tests.test_run_evals                     # the two new predicates discriminate
+```
+
+The middle line is the one that currently proves the doctrine, and the one CI cannot be made to
+depend on.
+
+### Traps
+
+- **Do not add a pin kind for a search.** The doctrine is right that a grep hit is a location and
+  not a finding; giving it a ledger record would grant it exactly the standing the doctrine spends
+  its opening paragraph denying it.
+- **Do not close this by counting the 29 unit tests on `search-nudge.py`.** Those prove the hook's
+  rules fire and stay silent where they should. They say nothing about whether an agent that read
+  the doctrine searches differently, which is the claim.
+- **Do not widen the nudge to make it observable.** Its value is the first firing and its silence
+  everywhere else; a chattier hook would be easier to detect and worse at its job.
 
 ---
 

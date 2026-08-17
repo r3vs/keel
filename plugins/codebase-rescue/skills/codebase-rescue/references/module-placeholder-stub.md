@@ -26,7 +26,9 @@ semantic patterns (they need AST context), ripgrep for the pure-text fast first 
    the AST, not a regex). The reusable YAML rules live in `assets/ast-grep/` (one file per rule,
    wired by `sgconfig.yml`; the text-pass markers in `ripgrep-markers.txt`; see its README for
    run commands and the severity→pin routing). Grow the pack with experience
-   (variant-analysis: once you see a new placeholder shape, add a rule file).
+   (variant-analysis: once you see a new placeholder shape, add a rule file) — authored against
+   `references/core/rule-authoring.md`, because a rule that silently matches nothing reads exactly
+   like a repo with no placeholders in it.
 3. Cross-check with the graph: a placeholder on a reachable prod path (inbound edge from an
    entry point) is high/blocker (fake auth guarding a real route = blocker); the same shape on
    an unfinished/unreachable path is `incompleteness`, not a defect — route through completeness.

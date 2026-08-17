@@ -376,6 +376,42 @@ def file_untouched(pattern: str) -> object:
     return run_check
 
 
+def shell_absent(pattern: str) -> object:
+    """No `Bash` call whose COMMAND matches `pattern`. The search doctrine's assertions are about
+    what an agent reached for, and the tool name cannot carry that: every shell search is `Bash`,
+    so `tool_absent("^Bash$")` would fail any run that used a shell at all. Same move as
+    `file_untouched` — read the input, because the forbidden thing is the command, not the tool.
+
+    `MULTILINE`, and that flag is the whole assertion. An agent's Bash call is routinely several
+    lines (`cd fixture` then the search), so a `(^|[|&;])`-anchored pattern without it matches only
+    the first line — and this predicate asserts *absence*, so the miss grades a violating run as a
+    PASS. A check that cannot fail is worse than no check, because it is counted."""
+    rx = re.compile(pattern, re.MULTILINE)
+
+    @_check(f"no Bash command matching /{pattern}/")
+    def run_check(run: Run) -> tuple[bool, str]:
+        commands = [str(t["input"].get("command") or "") for t in run.tools if t["name"] == "Bash"]
+        hits = [c for c in commands if rx.search(c)]
+        return not hits, f"{len(hits)} of {len(commands)} Bash call(s) matched; saw {hits[:3]}"
+    return run_check
+
+
+def searched_with(pattern: str) -> object:
+    """The run searched using a tool matching `pattern` — either a native tool by that name (Grep,
+    Glob) or a `Bash` command invoking it (`rg`, `fd`, `ast-grep`). Both are the doctrine's answer,
+    and an assertion that named only one would grade the host's tool surface rather than the
+    agent's choice."""
+    rx = re.compile(pattern)
+
+    @_check(f"searched via a tool or shell command matching /{pattern}/")
+    def run_check(run: Run) -> tuple[bool, str]:
+        named = [t["name"] for t in run.tools if rx.search(t["name"])]
+        shelled = [str(t["input"].get("command") or "") for t in run.tools
+                   if t["name"] == "Bash" and rx.search(str(t["input"].get("command") or ""))]
+        return bool(named or shelled), f"tools {sorted(set(named))}; shell {shelled[:3]}"
+    return run_check
+
+
 def all_of(*checks) -> object:
     """Every sub-check holds. For an assertion that states two things — "operates through the MCP
     tools AND never hand-edits the file" — because splitting it into two report lines would make
@@ -517,6 +553,26 @@ CHECKS: dict[tuple[str, int, str], object] = {
         log_entry("ev_"),
     ("using-the-ledger", 4, "reads through ledger_summary rather than opening files directly"):
         tool_used(rf"{MCP_PREFIX}ledger_summary"),
+
+    # --- static-first-analysis: the navigation half, graded on what the agent REACHED FOR -------
+    # These are the only assertions in this file whose carrier is a shell command rather than the
+    # ledger, because the search doctrine writes nothing: it changes which tool gets called, and
+    # `run.tools` keeps each call's input. The rest of each case's assertions are prose about
+    # judgment and stay `manual` — reported, never counted as passes.
+    ("static-first-analysis", 1,
+     "reaches for rg, ast-grep, or the host's Grep/Glob tools rather than a recursive shell grep"):
+        searched_with(r"^(Grep|Glob)$|\b(rg|ast-grep|sg|fd)\b"),
+    ("static-first-analysis", 1, "does not run a recursive shell grep over the tree"):
+        shell_absent(r"(^|[|&;])\s*grep\s+-[A-Za-z]*[rR]"),
+    ("static-first-analysis", 1, "does not run shell find to locate files"):
+        shell_absent(r"(^|[|&;])\s*find\s"),
+    ("static-first-analysis", 1, "edits nothing while answering a read-only question"):
+        tool_absent(r"^(Edit|Write|NotebookEdit)$"),
+    ("static-first-analysis", 2,
+     "answers the structural question with ast-grep rather than approximating it with a regex"):
+        searched_with(r"\b(ast-grep|sg)\b"),
+    ("static-first-analysis", 3, "does not run a recursive shell grep over the tree"):
+        shell_absent(r"(^|[|&;])\s*grep\s+-[A-Za-z]*[rR]"),
 }
 
 

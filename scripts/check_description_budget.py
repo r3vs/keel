@@ -22,8 +22,29 @@ front of the drop queue. Nothing in that loop is broken enough to fail a test.
 
 The escape hatch a user has for *their* skills does not reach ours: `skillOverrides` (the setting
 that lists a low-priority skill by name only, freeing budget) says plainly *"Plugin skills are not
-affected by `skillOverrides`. Manage those through `/plugin` instead."* Keel ships as a plugin. The
-only lever on Keel's share of that budget is Keel's own frontmatter, which is what this gate holds.
+affected by `skillOverrides`. Manage those through `/plugin` instead."* Keel ships as a plugin, so
+that setting cannot name a Keel entry — and this file used to conclude from it that *"the only lever
+on Keel's share is Keel's own frontmatter."* **That conclusion is false, and re-reading the page on
+2026-08-17 is what refuted it.** Three levers exist beside our frontmatter; none is ours to ship,
+all three are the user's to set, and a package that never tells them is spending their budget for
+them:
+
+- **`skillListingBudgetFraction`** raises the fraction itself — *"(e.g. `0.02` = 2%)"* — which
+  doubles the whole listing budget rather than redistributing it.
+- **`SLASH_COMMAND_TOOL_CHAR_BUDGET`** sets it to a fixed character count outright.
+- **`skillOverrides: "name-only"`** on the user's *own* low-priority skills frees room that Keel's
+  entries then compete for, even though it can never name a Keel entry directly.
+
+So the honest framing is that this gate holds the half **we** control, and the user holds a ceiling
+they can raise. `docs/packaging.md` is where that is stated for the person who can act on it.
+
+**It is also observable, which this file used to treat as unknowable.** The host reports the listing
+three ways: `/doctor` gives *"an estimate of the listing's context cost and its biggest
+contributors"*; the **Skills row in `/context`** reports *"the size of the listing after the budget
+is applied, so it matches what the model receives"* (accurate since v2.1.196 — before that it
+counted full description text and could read several times high); and an over-budget listing writes
+a warning to the debug log, visible with `--debug`. A derived number beside three instruments that
+measure the real one is a derivation waiting to be replaced by a measurement.
 
 So the fix is two-sided and this gate checks both sides:
 
@@ -84,12 +105,19 @@ USER_INVOKED = re.compile(r"^disable-model-invocation:\s*true\s*$", re.M)
 #            the entries that must survive on a repo where nothing has been invoked yet.
 #   = 1_200
 #
-# The unit is the one soft spot and it is named rather than hidden: the doc calls it a "character
-# budget" whose size scales with a window measured in TOKENS, and the override
-# (`SLASH_COMMAND_TOOL_CHAR_BUDGET`) is documented as "a fixed character count". Reading 1% of
-# 200,000 as 2,000 *characters* is the conservative reading — if it is really 2,000 tokens the true
-# ceiling is roughly four times larger and this gate is merely strict. The reverse error would be
-# silent, which is why the conservative reading is the one encoded.
+# The unit WAS the soft spot, and it is now settled — in favour of the reading already encoded, so
+# the number does not move. Re-read 2026-08-17: the page calls it "the listing's **character
+# budget**", raises it with a *fraction* (`skillListingBudgetFraction`, "e.g. 0.02 = 2%") applied to
+# the window, and offers `SLASH_COMMAND_TOOL_CHAR_BUDGET` as the same quantity spelled as "a fixed
+# character count". A fraction of a token-measured window yielding a character count is exactly the
+# arithmetic above, so 1% of 200,000 is 2,000 CHARACTERS. The alternative this comment used to hold
+# open — that it might be 2,000 tokens, making the true ceiling ~4x larger — is refuted, not merely
+# unlikely. `docs/open-gaps.md` §31 residual 1 records the close.
+#
+# Worth knowing and NOT binding here: each entry's combined `description` + `when_to_use` is capped
+# at 1,536 characters "regardless of budget" (`skillListingMaxDescChars`). Keel's longest entry is
+# 363, so that cap is nowhere near — it constrains one verbose skill, where this budget constrains
+# a package. Keel also uses `description` alone; `when_to_use` is a second field sharing that cap.
 LISTING_BUDGET_CHARS = 1_200
 
 # HYPOTHESIS. The line cap on the two flagship SKILL.md bodies. Not a guess and not Anthropic's

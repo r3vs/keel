@@ -36,3 +36,12 @@ Once you see a new placeholder shape in the wild, add one YAML file per rule und
 (`id` = filename). Language note: rules are authored for `python` and `typescript` — the live
 stacks from the Phase-0 verdict. `.tsx` needs a `language: tsx` duplicate of the ts rules;
 add JavaScript variants the same way if the target repo is untyped.
+
+**Author it against `references/core/rule-authoring.md`, not from memory.** That instruction used
+to stop at "add one YAML file", which is the moment a rule is most likely to be wrong and least likely to be
+caught: a rule whose language does not match the file matches nothing and exits 1 — indistinguishable
+from a clean repo — and a malformed pattern matches *everything* and exits 0. Both were verified
+against `ast-grep 0.45.1`; neither prints a warning. The loop there (decompose → compose → test a
+positive **and** a negative example → `--debug-query=ast` when it will not match) is what separates
+the two, and a new rule is registered as a generator so `generator_screen` can mute it loudly if its
+precision does not hold up on real code.
