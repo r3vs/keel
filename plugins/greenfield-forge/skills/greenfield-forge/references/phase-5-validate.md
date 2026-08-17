@@ -20,6 +20,13 @@ built* work instead of *closed gaps*.
   kills the relevant mutants** (green-but-mutation-surviving does not validate).
 - **wired item** — the connection carries a real request/response end-to-end (not just typechecks);
   the boundary test is green.
+- **rendered UI slice** — the deterministic half first and at every elected breakpoint:
+  `design_scan` over the running URL with a `viewport`, `tokens_diff` against the DTCG contract.
+  Those are facts and they block. **Then** the taste lens (`references/core/design-taste.md`) reads
+  the *render* — the `design-taste` module in this phase — because generating a UI from one contract
+  is precisely the process most likely to land on the statistical center of everything the model has
+  seen, and nothing upstream of here is looking for that. Its output is `design_concern` pins:
+  options for the interview, never a merge gate.
 - **paved road (`scaffold`/`configure`)** — the harness actually runs: tests execute, the linter
   runs, the CI config is valid, the SessionStart hook works. Capture the evidence, don't assume it.
 

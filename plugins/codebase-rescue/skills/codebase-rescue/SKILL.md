@@ -180,7 +180,7 @@ Read the relevant file before executing a phase or module — do not work from m
 | the work touches more than one layer (DB ↔ ORM ↔ API ↔ frontend) | `references/contract-reconciliation.md` |
 | a UI is rendered and its tokens/fonts/colors/radii must match an elected `DESIGN.md` | `references/module-design-alignment.md` |
 | a UI claim needs to be *observed* in a real browser before a pin resolves | `references/browser-verification.md` |
-| reviewing or challenging how a UI *looks*, as judgment rather than as drift | `references/design-taste-lens.md` |
+| reviewing or challenging how a UI *looks*, as judgment rather than as drift | `references/core/design-taste.md` |
 | installing or normalizing the deterministic finding tools | `references/toolchain.md` |
 | running the interview | `references/phase-2-interview.md` · `references/core/interview-funnel.md` |
 | diffing field shapes, or deciding whether two types are equivalent | `references/core/shape-engine.md` |

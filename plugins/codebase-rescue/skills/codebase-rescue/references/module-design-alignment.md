@@ -120,8 +120,11 @@ skill (self-contained). Where subjective design quality matters, it is a **revie
 lens** — a judgment pin that DOES pass fp-check, authored here and adapted **with attribution** from
 Impeccable's rule catalog and Anthropic's `frontend-design` principles, kept on the read-only side of
 the roster. It is its own Phase-1 module, `design-taste` (`type: judgment`), and it inherits *this*
-module's scope: it reads the files the detector governs and never picks its own.
-Full playbook: `references/design-taste-lens.md`. Keeping fact (the detector) and taste
+module's scope: it reads what the detector governs — preferring the **render**, since the tells it
+looks for are compositional and invisible in source — and never picks its own.
+Full playbook: `references/core/design-taste.md`, which is shared core doctrine rather than a rescue
+reference because greenfield runs the same catalog **forward**, over directions nobody has built yet.
+Keeping fact (the detector) and taste
 (the critique) on opposite sides of the fp-check line is the same fact-vs-taste split this package
 draws everywhere.
 

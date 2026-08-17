@@ -4337,6 +4337,97 @@ python scripts/check_consistency.py && python scripts/check_tool_carriers.py
 
 ---
 
+## 36. Taste was a rescue reference, so the half that GENERATES the UI had no lens — **CLOSED 2026-08-17** (no schema change)
+
+### Verified
+
+§35 gave the taste lens a dispatch. It did not ask *where* the lens was allowed to run, and the
+answer was: one skill. Three facts, all read off the files rather than remembered:
+
+- **`greenfield-forge`'s 16 modules contained no design judgment at all.** It carried the whole
+  deterministic design contract — `design-propagation` (DTCG → CSS/Tailwind/DESIGN.md), `tokens_diff`,
+  `impeccable detect` in CI — and nothing that asked whether what came out reads as designed. The
+  lens lived at `src/skills/codebase-rescue/references/design-taste-lens.md`, i.e. inside the other
+  skill's distribution unit, so greenfield could not even vendor it.
+- **Every option in decision-catalog cluster 5b required a direction to already exist**: `capture`
+  (drive an external visual tool and approve what you see), `import` (a brand, a Figma export, a
+  component library), or `none_v1`. A project with no brand and no visual tool had no path to a
+  design system anyone elected — the fork's honest answer was "not yet", and nothing offered to
+  produce one.
+- **The lens's own claim had no carrier.** It said *"the `reviewer` applies the lens as its design
+  dimension"*; `src/core/agents.md` — the roster the build reads — contained **zero** occurrences of
+  the word, and `code-review` pointed only at `module-design.md`, which is about where a seam goes,
+  not about what a page looks like. The claiming-vs-doing class again, in the doc that grades it.
+
+### Why it matters
+
+Aligned-by-construction is orthogonal to designed. A DTCG contract enforced in CI guarantees every
+component uses a token from one set; it says nothing about whether that set, and the composition
+built from it, is the statistical center of everything the model has seen. The half of the package
+that **generates** a presentation layer was the half with no lens on it, and it is the half where
+generic output is produced rather than merely inherited.
+
+### What landed
+
+**One lens, two directions** — `src/core/design-taste.md`, shared doctrine, vendored into the four
+skills that name it. Rescue runs the catalog **backward** over a UI that exists (Phase 1, before the
+interview, because a taste finding is *input* to it); greenfield runs it **forward** twice — at Phase
+3 when the token contract is acquired, and at Phase 5 over the UI it just generated. Same catalog,
+same `design_concern` door, same rule that it never elects.
+
+Three things the move made explicit that the rescue-only version left implied:
+
+- **Look at the render, not at the source.** The tells are compositional and not one of them is
+  visible in JSX. `design_scan` takes URLs and a `viewport`; a screenshot is a PNG `palette_verify`
+  decodes. The computable half spends first and blocks; judgment is what survives it; a surface that
+  cannot be rendered is `unchecked`, never clean.
+- **Proposing is not inventing.** New option `propose_directions` in cluster 5b: two or three
+  *deliberately different* directions, each a DTCG set + a thesis + the tells it refuses + a rendered
+  artifact (the `prototype` discipline), each fact-checked against **its own render** before the fork
+  is put. The human elects; the agent recommends one with a reason and elects nothing. `prototype`'s
+  second row — *"what should this look like"* — carries the same rules, so the create loop is
+  reachable by typing `/prototype` as well as through the forge.
+- **The review dimension got its carrier**: a bullet in the roster, and a paragraph in `code-review`
+  that runs the deterministic half over the render before any taste is spent.
+
+`tests/test_design_taste.py` encodes the correspondence structurally: a catalog that names a design
+engine (`mcp:design_scan` / `mcp:generate_tokens`) must dispatch the lens, matched on the module's
+`reference` rather than on the word "taste" appearing in prose. One exemption — `screenshot-to-code`,
+where the reference image **is** the elected oracle — declared with its reason and checked for
+staleness.
+
+### What is still open
+
+- **Render-first is doctrine with no gate.** Nothing computes that the lens looked at a render rather
+  than at source; it is the same D2 residual §35 names, and it stays open for the same reason (an
+  explicit applied-record is a schema field, i.e. an election).
+- **Two renderers, unreconciled.** `design_scan` renders through the detector's own browser;
+  `browser-verification` drives Playwright. Where both are available nothing says which render the
+  taste pass reads, and they can disagree (viewport, fonts, animation state).
+- **The exemption is a judgment.** If the user asks for *"like this reference, but better"*, the image
+  stops being the oracle and nothing detects the change of role.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_design_taste
+python scripts/check_consistency.py && python scripts/build.py --check
+```
+
+### Traps
+
+- **Never let the lens elect a palette.** `brainstorm` proposes and recommends; the human elects on
+  the artifact. A direction chosen by the agent is the vibecoding failure mode with better prose.
+- **Never promote a taste finding to `contract_mismatch`.** That kind belongs to token membership,
+  which is computed. Blurring them is how a judgment starts getting believed like a fact.
+- **Do not backtick the lens from a widely-vendored core doc.** Measured: a pointer in `agents.md`
+  dragged it into **7** skills, 3 of which have no UI in any direction. See-also mentions stay plain
+  text; the closure is the cost.
+- **Three directions that differ only in accent hue are one direction with a color picker** — and
+  offering them is how a fork gets rubber-stamped while looking like a choice.
+
+---
+
 ## Do not re-litigate
 
 Settled with evidence; re-opening these costs a session and lands where it started.

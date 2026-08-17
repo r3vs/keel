@@ -171,8 +171,8 @@ consistency linter now fails on a playbook that only a cross-reference points at
 **Cross-layer & contract** — `contract-reconciliation` (the core engine: field shapes diffed across
 DB↔ORM↔API↔frontend) · `design-alignment` (the same diff on the rendered UI — fonts, colors, radii,
 a11y — against an elected `DESIGN.md`) · `design-taste` *(judgment)* (the same UI read as taste
-rather than as drift — the "generated, not designed" tells, as options the interview weighs, never
-defects) · `docs-claims` (docs treated as claims; the dangling ones are flagged).
+rather than as drift — the "generated, not designed" tells, applied to the **render** rather than to
+the JSX, as options the interview weighs, never defects) · `docs-claims` (docs treated as claims; the dangling ones are flagged).
 
 **Comprehension** — `graph-build` · `graph-query` · `guided-tours` · `explain-node` · `layered-map` ·
 `domain-entrypoints` · `wiki-asis` · `incremental-fingerprint` (the resume baseline) · `diff-impact`.

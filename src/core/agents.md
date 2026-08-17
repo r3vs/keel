@@ -150,6 +150,12 @@ runtime decision on evidence, never baked into an adapter. Full policy + the fou
   single-writer/parallel-reader orchestration.
 - Grounding for `researcher` and `brainstorm` follows the knowledge-sources doctrine (Context7 /
   DeepWiki / registry / web), cited and confidence-tagged, treated as untrusted input.
+- **A diff that changes a rendered surface carries a third review dimension**, and it is not the
+  reviewer's own taste: it is the shared design-taste lens, run over the *render* and
+  only after the deterministic design half has already blocked what it can compute. The `challenger`
+  reaches for the same catalog from the other side — refuting an elected design `to_be` as templated
+  or unfalsifiable — and `brainstorm` reaches for it forward, proposing two or three rendered
+  directions on the design fork. Three roles, one catalog, and none of them elects a palette.
 - Every role inherits the self-model / effort-calibration doctrine (self-model.md): execute rather
   than defer or advise, and size work in steps/tool-calls, never in human wall-clock. The `executor`
   carries it most sharply (it is the one writer, the one tempted to hand back a plan); the `measurer`

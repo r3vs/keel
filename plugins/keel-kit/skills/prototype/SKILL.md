@@ -26,6 +26,13 @@ Name the question first, out loud, in one sentence. Then:
 | *"does this state model / this logic hold up?"* | one self-contained runnable file — buttons to drive the machine by hand, plus a guided walkthrough of the cases that are hard to reason about on paper | the human has to be able to push it through the awkward transitions themselves |
 | *"what should this look like / feel like?"* | **several radically different variations**, switchable from one place | a single variation is a proposal wearing the costume of an experiment; the answer only appears in the contrast |
 
+**Second row, and the question is a *visual direction*? The variations are not free-form.** Each one
+carries a DTCG token set, a one-line thesis about the subject, and the slop tells it deliberately
+refuses — and before the human is asked anything, each is checked against **its own render**:
+`palette_verify` for tokens that occupy no pixels, `design_scan` for the contrast and membership
+facts. What reaches the fork is then three *seen and checked* things rather than three descriptions
+of taste. Catalog and procedure: `references/core/design-taste.md`.
+
 Getting the branch wrong wastes the whole prototype. If the question is genuinely ambiguous and the
 human is not reachable, pick by what surrounds it — a backend module is the first row, a page or a
 component the second — and **state the assumption at the top of the artifact**, where it is visible
