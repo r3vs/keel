@@ -143,6 +143,33 @@ class TestThePredicatesReadArtifacts(unittest.TestCase):
         guilty = make_run(self.tmp, tools=[("Edit", {"file_path": "/x/ledger.json"})])
         self.assertFalse(run_evals.file_untouched(r"ledger\.json$")(guilty)[0])
 
+    def test_shell_absent_reads_the_command_because_every_shell_search_is_named_Bash(self):
+        """The search doctrine's carrier is the command string; the tool name cannot carry it.
+
+        `tool_absent("^Bash$")` would fail any run that used a shell at all, so it would grade the
+        agent for opening a terminal rather than for which search it reached for.
+        """
+        recursive = r"(^|[|&;])\s*grep\s+-[A-Za-z]*[rR]"
+        innocent = make_run(self.tmp, tools=[("Bash", {"command": "rg -t py 'def is_'"})])
+        self.assertTrue(run_evals.shell_absent(recursive)(innocent)[0])
+        guilty = make_run(self.tmp, tools=[("Bash", {"command": "grep -rn TODO ."})])
+        self.assertFalse(run_evals.shell_absent(recursive)(guilty)[0])
+        # A pipe filter reads as a search to a careless regex; it is not one, and the doctrine's
+        # own hook stays out of it. Anchoring on a command boundary is what keeps them apart.
+        piped = make_run(self.tmp, tools=[("Bash", {"command": "gh pr list | grep open"})])
+        self.assertTrue(run_evals.shell_absent(recursive)(piped)[0])
+
+    def test_searched_with_accepts_the_native_tool_and_the_shell_spelling(self):
+        """Grep-the-tool and `rg`-in-a-shell are the same answer; an assertion naming one would
+        grade the host's tool surface instead of the agent's choice."""
+        pattern = r"^(Grep|Glob)$|\b(rg|ast-grep|sg|fd)\b"
+        native = make_run(self.tmp, tools=[("Grep", {"pattern": "is_admin"})])
+        self.assertTrue(run_evals.searched_with(pattern)(native)[0])
+        shelled = make_run(self.tmp, tools=[("Bash", {"command": "ast-grep -p 'f($$$A)'"})])
+        self.assertTrue(run_evals.searched_with(pattern)(shelled)[0])
+        neither = make_run(self.tmp, tools=[("Bash", {"command": "grep -rn x ."})])
+        self.assertFalse(run_evals.searched_with(pattern)(neither)[0])
+
     def test_a_failed_tool_call_is_distinguished_from_an_absent_one(self):
         run = run_evals.Run(self.tmp, [{"type": "user", "message": {"content": [
             {"type": "tool_result", "is_error": True, "content": "boom"}]}}], {}, 1.0)

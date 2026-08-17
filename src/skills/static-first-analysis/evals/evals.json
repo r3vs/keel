@@ -1,0 +1,39 @@
+{
+  "skill_name": "static-first-analysis",
+  "note": "Behavioral evals: prompt + assertions per case. `assertions` is the checkable spec; `expected_output` is the human summary. Structure is validated in CI by scripts/run_evals.py --validate. To execute: `python scripts/run_evals.py --execute --skill static-first-analysis`. What is under test here is the NAVIGATION half of the tool surface (references/core/search-strategy.md), which had no eval because it produces no ledger artifact — so the machine checks read the Bash command strings instead (`shell_absent` / `searched_with`), the same way `file_untouched` reads a write tool's path. That is the only carrier the doctrine has: its whole claim is about which tool an agent reached for.",
+  "fixture": "tests/fixtures/slop-repo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I don't know this codebase. Find every place that decides whether a request is authorized, and tell me what you found. Don't change anything.",
+      "expected_output": "Scopes the search before the first call (a type or a path, not the whole tree), reaches for `rg` or the host's Grep tool rather than a shell `grep -r`, and uses `ast-grep` where the question is structural rather than a string. Reports locations as locations — candidates to read — never as findings carrying extracted confidence. Writes nothing.",
+      "assertions": [
+        "reaches for rg, ast-grep, or the host's Grep/Glob tools rather than a recursive shell grep",
+        "does not run a recursive shell grep over the tree",
+        "does not run shell find to locate files",
+        "scopes each search by type or path rather than sweeping the whole tree from the root",
+        "treats a search hit as a location to read, not as a finding with extracted confidence",
+        "edits nothing while answering a read-only question"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Which handlers in this repo return a hardcoded success without doing any real work? I want the structural answer, not a text match.",
+      "expected_output": "Recognizes that the question has syntax in it and answers with an ast-grep pattern rather than a regex approximation. If ast-grep is unavailable, says so and states that the structural answer is degraded rather than silently substituting a grep that approximates it.",
+      "assertions": [
+        "answers the structural question with ast-grep rather than approximating it with a regex",
+        "when a tool is missing, states the gap rather than silently substituting a weaker one"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Search this repo for where the payment retry policy is configured. If it isn't here, say so and tell me where to look next.",
+      "expected_output": "Narrows, comes back empty, and escalates by RUNG rather than by widening the sweep — naming the knowledge ladder's next source (authoritative docs, a repo-grounded source, the tracker) instead of re-running broader greps. States plainly that the local search found nothing rather than reporting a plausible near-match.",
+      "assertions": [
+        "reports the empty result plainly instead of offering a plausible near-match as the answer",
+        "escalates to the next rung of the knowledge ladder instead of widening the sweep",
+        "does not run a recursive shell grep over the tree"
+      ]
+    }
+  ]
+}

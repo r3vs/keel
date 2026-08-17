@@ -2,13 +2,13 @@
 
 # Searching a Codebase Well (shared core)
 
-Shared doctrine for **locating** things in a tree someone else wrote. `core/static-analysis.md`
+Shared doctrine for **locating** things in a tree someone else wrote. The static-analysis doctrine
 covers the other half of the same tool surface — running those binaries as *analyzers*, whose output
 becomes pins. This doc covers running them as *navigation*, and the split is load-bearing because
 **the confidence rules do not transfer**: `semgrep` run as a scanner emits a finding that
 `findings_gate` normalizes and fp-checks; `rg` run to find a symbol emits a **location and nothing
 else**. A grep hit is evidence that a string exists. It is not a fact about the code, it earns no
-`extracted` confidence, and it never skips the false-positive gate (`core/trust-axes.md`).
+`extracted` confidence, and it never skips the false-positive gate.
 
 The concrete install list lives in `skills/codebase-rescue/references/toolchain.md`; every tool named
 here is best-effort, per the degradation rule at the bottom.
@@ -33,8 +33,9 @@ and got skimmed past. Scope is chosen *before* the first call, in three axes: **
 **Default to `ast-grep` the moment the question has syntax in it.** "Which `await` calls have no
 `try`", "which functions return a bare literal" — a regex can only approximate those, and it
 approximates them differently in every file that formats differently. When the pattern is worth
-keeping, it graduates from a `-p` one-liner to a YAML rule; `core/rule-authoring.md` is how one gets
-written so it actually matches.
+keeping, it graduates from a `-p` one-liner to a YAML rule, and the rule-authoring doctrine is how
+one gets written so it actually matches — reached from the skills that grow a rule pack, which is
+where that branch actually fires.
 
 ## The loop: count, narrow, then read
 
@@ -101,7 +102,7 @@ grounding, never deciding.
 Same rule as every other seam here: `rg` absent → the host's Grep tool → `grep`. `fd` absent → Glob →
 `find`. `ast-grep` absent → the question loses its structural answer, and **that is a fact worth
 stating**, not a silent fallback to a regex that approximates it. Degrading is permitted; pretending
-the degraded answer is the same answer is not (`core/trust-axes.md`).
+the degraded answer is the same answer is not — the general form is the trust-axes doctrine.
 
 Because this doctrine is prose, and prose gets skipped, `keel-core` also ships a warn-only
 `PreToolUse` nudge on `Bash` — it speaks once per rule per session when a shell `grep -r` or `find`

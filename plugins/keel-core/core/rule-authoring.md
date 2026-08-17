@@ -4,8 +4,8 @@
 
 How to write an `ast-grep` pattern or rule that will run over code nobody in this session has read —
 rescue's placeholder/stub pack, a one-off structural query, a mechanical Phase-4 rewrite. Finding
-*with* rules is `core/search-strategy.md`; running them as a scanner whose output becomes pins is
-`core/static-analysis.md`. This is the authoring step between them, and it exists because that step
+*with* rules is the search-strategy doctrine; running them as a scanner whose output becomes pins is
+the static-analysis one. This is the authoring step between them, and it exists because that step
 is where the package's own rule pack is grown at runtime: rescue's ast-grep pack tells an agent to
 add a YAML file per new placeholder shape it meets, which is an instruction to author a rule under
 exactly the conditions that make rules wrong.
@@ -18,7 +18,7 @@ ways — verified against `ast-grep 0.45.1`, because the whole point is that the
 - **Too specific, or the wrong language → matches nothing, exits 1.** A rule declared
   `language: typescript` run against a `.tsx` file that contains JSX matches *zero* nodes and prints
   nothing. It does not warn that the grammar rejected the file. Read as a result, that is "clean" —
-  and it is the `core/static-analysis.md` rule turned structural: **a check that could not run found
+  and it is the static-analysis rule turned structural: **a check that could not run found
   nothing, not zero.**
 - **Malformed → matches everything, exits 0.** The pattern `def $$$ {{{` is not valid Python and not
   a meaningful query, and `ast-grep` ran it happily and reported a match on an ordinary function. A
@@ -65,7 +65,7 @@ what comes back grounds the rule, it does not decide it, and the rule is still t
 5. **Ship it only once step 3 passed.** A rule is not done when it is written; it is done when it
    matched the example and rejected the counter-example. That is
    `verification-before-completion` applied to a rule, and the rung it earns is the one it observed
-   (`core/trust-axes.md`) — never the one the author intended.
+   (the trust-axes rung discipline) — never the one the author intended.
 
 ## Per-language duplication is not optional
 
@@ -73,7 +73,7 @@ what comes back grounds the rule, it does not decide it, and the rule is still t
 to be duplicated with `language: tsx` or it silently does not run on `.tsx` at all. The same holds for
 untyped JavaScript beside TypeScript. This is one instance of a wider trap — `rg -t ts` *includes*
 `.tsx` while `fd -e ts` excludes it, so three tools give three answers to the same question
-(`core/search-strategy.md`). Check the taxonomy per tool; never carry one tool's answer to the next.
+(search-strategy). Check the taxonomy per tool; never carry one tool's answer to the next.
 
 ## A rule flags candidates; it never pins
 

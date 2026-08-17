@@ -4038,6 +4038,78 @@ round — *which documents did I edit, and does the register know about each fin
 
 ---
 
+## 33. The search doctrine's only carrier is a transcript nothing blocking reads — **OPEN**
+
+### Verified
+
+`src/core/search-strategy.md` and `src/core/rule-authoring.md` (added 2026-08-17) are the first
+doctrines in `src/core/` that **write nothing**. Every other one lands in an artifact this repo can
+re-read: a decision becomes a pin, a finding becomes a `defect`, an authored rule becomes a
+`generator` with a measured precision. A search leaves a tool call and nothing else.
+
+That is not a complaint about the doctrines — a search *should* not write to the ledger, and a pin
+per grep would be the sediment the ledger spec forbids. It is a statement about what can be
+**observed**, and the three places it bites were each checked rather than assumed:
+
+- **The eval's checks read the transcript, and the job that runs them is advisory.**
+  `static-first-analysis/evals/evals.json` grades six assertions with `shell_absent` /
+  `searched_with` against the Bash command strings in `run.tools`. Those run only under
+  `--execute`, which is `continue-on-error` in CI because it needs an `ANTHROPIC_API_KEY` no fork
+  holds. `--validate`, the blocking gate, proves the file parses — never that the behaviour happened.
+- **Eleven of that file's seventeen assertions carry no machine check at all.** They are reported
+  `manual`, which is the harness being honest, not the assertion being covered.
+- **Two of four hosts have no mechanism behind the prose.** `hooks/search-nudge.py` reaches Claude
+  Code and Codex (both verified at the consumer — Codex's `PreToolUse` fires on commands matched as
+  `Bash`, and a hook's `systemMessage` is surfaced as a warning). opencode's `tool.execute.before`
+  and Pi's `tool_call` are block-or-nothing, and blocking a shell search is the one thing this hook
+  must never do. So on those two the doctrine is prose with nothing behind it.
+
+### Why it matters
+
+This package's standing claim is that a doctrine with no carrier is a wish. §20–§27 spent seven
+rounds proving that of the ledger's own rules. These two doctrines are currently in the state those
+rounds were about: correct, shipped, and unfalsifiable by any blocking gate. A regression — someone
+rewording the tool table into a no-op, or a future skill quietly dropping the pointer — would be
+caught by nothing that runs on a pull request.
+
+### What done looks like
+
+Not "make search write to the ledger". Any of these, in increasing order of honesty:
+
+1. The `manual` assertions get machine checks, or are rewritten until they can have one. An
+   assertion that cannot be checked should say so in its own words rather than sit beside six that can.
+2. A blocking, offline check that does not need an API key — the shape to copy is
+   `check_tool_carriers.py`, which proves a *correspondence* (every write tool is named by a shipped
+   playbook) without running an agent. The analogue here: every tool the search doctrine names is
+   installed by `bootstrap.sh`, and every tool `bootstrap.sh` installs for navigation is named by the
+   doctrine. That is decidable from the two files.
+3. opencode or Pi grows a non-blocking advisory return, and the adapter — four lines, the rule
+   already lives in one place — closes the host gap.
+
+### How to prove it
+
+```bash
+python scripts/run_evals.py --validate                      # blocking: the file is well-formed
+python scripts/run_evals.py --execute --skill static-first-analysis   # needs a key; grades behaviour
+python -m unittest tests.test_run_evals                     # the two new predicates discriminate
+```
+
+The middle line is the one that currently proves the doctrine, and the one CI cannot be made to
+depend on.
+
+### Traps
+
+- **Do not add a pin kind for a search.** The doctrine is right that a grep hit is a location and
+  not a finding; giving it a ledger record would grant it exactly the standing the doctrine spends
+  its opening paragraph denying it.
+- **Do not close this by counting the 20 unit tests on `search-nudge.py`.** Those prove the hook's
+  rules fire and stay silent where they should. They say nothing about whether an agent that read
+  the doctrine searches differently, which is the claim.
+- **Do not widen the nudge to make it observable.** Its value is the first firing and its silence
+  everywhere else; a chattier hook would be easier to detect and worse at its job.
+
+---
+
 ## Do not re-litigate
 
 Settled with evidence; re-opening these costs a session and lands where it started.
