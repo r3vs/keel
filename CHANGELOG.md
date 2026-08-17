@@ -33,6 +33,46 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.10.0] — 2026-08-17
+
+### Added
+- **The ledger audited as a memory — the first gate in this package pointed at its own store.**
+  `src/runtime/memaudit.py` + `mcp:memory_audit` (tool 70). Every other carrier here points at the
+  user's code; the one artifact everything is derived from had none. The failure modes are not
+  invented: they are the eight on the `MODEL — MEMORY` edge of the interaction-centric taxonomy
+  (arXiv:2607.28802), and six are decided from the file — a pin closed at a closing rung with no
+  `evidence` ref (nothing can ever invalidate the claim), a policy scope wider than the case that
+  produced it, a rule recorded without its reason and the cascade of that weakness into every
+  decision it defaulted, transcript signatures pasted into a durable field, one statement written
+  twice, and two standing policies selecting one pin with no precedence recorded.
+- **The two modes it cannot decide are reported as undecidable, not as clean.** Missed Write and
+  Missed Read are claims about a session, not about a file; approximating them would mean ranking
+  absence, which this package refuses everywhere else. A green audit that skipped a quarter of its
+  taxonomy is the `coverage.py` failure one layer up.
+
+### Changed
+- `policy_selects` is now a module-level function in `ledger.py`, read by `policy_preview` and by
+  the auditor alike. It acquired a second reader, and a scope predicate written twice is two scope
+  predicates.
+
+### Fixed
+- **`scripts/install.sh`'s override guard failed open on Windows, and then performed the override.**
+  It decided with `case "/$skills_dir/" in */.claude/*)`, a glob needing forward slashes, so a
+  native `…\.claude\skills` never matched — and the run went on to link 19 skills into that target,
+  observed rather than reasoned. It now normalizes separators **for the decision only**, leaving
+  `$skills_dir` as given; over-refusing costs one `--claude-personal`, under-refusing has no door.
+  `tests/test_name_collision.py` hands the shell a POSIX path (which is the only spelling the script
+  is written against) and runs the refusal over **both** spellings, so the regression leg exists on
+  the platform that had it. This is the repo's own signature class with the sides swapped: green in
+  CI on ubuntu and macOS, red only on the maintainer's machine.
+
+### Notes
+- `docs/open-gaps.md` §34 registers the finding this came out of, measured rather than recalled:
+  the cross-layer field-shape diff both flagships call *"the core"* is 16% of the runtime, and the
+  package holds carriers on **one** interaction edge. Three remain open there, with the evidence
+  and the traps: the name-keyed correspondence engine, `project_type` → a capability vector, and
+  the process edge.
+
 ## [0.9.0] — 2026-08-17
 
 ### Added
