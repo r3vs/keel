@@ -4137,7 +4137,7 @@ depend on.
 - **Do not add a pin kind for a search.** The doctrine is right that a grep hit is a location and
   not a finding; giving it a ledger record would grant it exactly the standing the doctrine spends
   its opening paragraph denying it.
-- **Do not close this by counting the 20 unit tests on `search-nudge.py`.** Those prove the hook's
+- **Do not close this by counting the 29 unit tests on `search-nudge.py`.** Those prove the hook's
   rules fire and stay silent where they should. They say nothing about whether an agent that read
   the doctrine searches differently, which is the claim.
 - **Do not widen the nudge to make it observable.** Its value is the first firing and its silence

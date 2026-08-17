@@ -63,15 +63,25 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
   `--body`/`-m`, an `echo`. Claude Code and Codex, both verified at the consumer rather than from
   this repo's host table: Codex's `PreToolUse` fires on commands matched as `Bash`, and a hook's
   `systemMessage` is surfaced as a warning. opencode and Pi get no adapter — both are
-  block-or-nothing, and blocking a shell search is the one thing this hook must not do. 20 tests,
+  block-or-nothing, and blocking a shell search is the one thing this hook must not do. 29 tests,
   most of them on the silent paths.
+  It scans **statements, not the command string** — split on the shell separators outside quotes,
+  each judged on its own. The whole-command spelling produced four wrong readings from one wrong
+  model: `cd src\ngrep -rn TODO .` was silent (no newline in `(?:^|[|&;])`), an `echo` prefix
+  covered whatever followed it, and a pipe filter *anywhere* excused a real tree sweep
+  *elsewhere*. And its quoted-string regex is an unrolled loop, because the backreferenced spelling
+  backtracks exponentially on an unterminated `-m "` — measured doubling every ~1.6 backslashes, so
+  ~34 of them stall the Bash call the hook exists to annotate.
 - **The first machine-checked eval for a doctrine that writes nothing.** A search produces no pin,
   and the harness resolves assertions against artifacts — but `Run` already keeps each tool call's
   **input**, the same fact `file_untouched` uses. So `shell_absent()` / `searched_with()` grade the
   Bash command string, and `static-first-analysis/evals/evals.json` lands three cases with six
   machine-checked assertions (the corpus goes 29 → 35 checks). Both predicates carry a test that
   accepts the positive and rejects the negative — the rule `rule-authoring.md` states for an
-  ast-grep rule, applied to the checks that grade it.
+  ast-grep rule, applied to the checks that grade it. `shell_absent` compiles `MULTILINE`, and that
+  flag is the whole assertion: it grades *absence*, so a `^`-anchored pattern that stops at the
+  first line marks a violating multi-line run PASS. A check that cannot fail is worse than no
+  check, because it is counted as one.
 - **`fd` in `bootstrap.sh`**, with the name clash checked rather than assumed: Debian and Ubuntu
   ship the binary as `fdfind`, so `have fd` is false on a machine that has the tool.
 

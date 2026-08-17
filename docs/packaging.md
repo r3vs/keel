@@ -616,11 +616,13 @@ first-hand and cost nothing to keep:
   *ask*, never deny. On Codex that rung is currently unavailable, so that path degrades to whatever
   the fallback is rather than prompting. Pre-existing and out of this change's scope; flagged here
   rather than left for the next reader to rediscover.
-- The events list published there is **eleven**, not the ten this repo's table in `CLAUDE.md` states
-  (`SessionStart`, `SessionEnd`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `PreCompact`,
-  `PostCompact`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `Stop`). A count restated from
-  a doc that has since moved is exactly the drift class the gates cover for numbers this repo
-  computes — this one is not computed, so it is corrected by reading, here.
+- The events list published there is **eleven** (`SessionStart`, `SessionEnd`, `PreToolUse`,
+  `PostToolUse`, `PermissionRequest`, `PreCompact`, `PostCompact`, `UserPromptSubmit`,
+  `SubagentStart`, `SubagentStop`, `Stop`), where `CLAUDE.md`'s host table said ten — corrected
+  there in the same change, so the two now agree. A count restated from a doc that has since moved
+  is exactly the drift class the gates cover for numbers this repo *computes*; this one is not
+  computed from anything, which is why it took a reading to find and why both copies had to move
+  together.
 
 Both tables are **parsed, never grepped** — "GitHub" appears in the knowledge-sources prose twice as
 ordinary English (DeepWiki indexes *public GitHub repos*; *GitHub Advisory* is a registry), and a

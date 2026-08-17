@@ -12,6 +12,17 @@ files, and blind to structure, none of which is worth stopping work over. Denyin
 false in the cases that matter most: a pipe filter, a probe against a scratch file, several searches
 deliberately batched into one call. So the gate here is a sentence, and the reader decides.
 
+A command is a list of statements, not a string
+-----------------------------------------------
+This first shipped matching regexes against the whole command, and every one of its false readings
+came from that single decision. `(?:^|[|&;])` has no newline in it, so `cd src\ngrep -rn TODO .` —
+the ordinary shape of a multi-line agent command — was silent. `echo`ing before a search made the
+whole command look like prose. A pipe filter *anywhere* muted a real tree sweep *elsewhere*
+(`grep -rn x . ; ps aux | grep py`). Each has an obvious local patch, and patching them one at a
+time would have kept the bug class alive, because the model was wrong: the shell separators are
+where meaning changes, so the scan splits on them first and judges each statement on its own. The
+split respects quotes and backslash escapes, because a separator inside `'…'` separates nothing.
+
 Once per rule per session
 -------------------------
 The value is entirely in the first firing: it is read, and it either changes the next command or
@@ -36,31 +47,41 @@ import tempfile
 
 # A quoted heredoc body is data being written to a file, not a command being run.
 HEREDOC = re.compile(r"<<-?\s*(['\"])(\w+)\1.*?^\2$", re.DOTALL | re.MULTILINE)
+# A shell string, written as an **unrolled loop** — `\\.` and `[^\\']` cannot both match the same
+# character, so a failed match backs out in linear time. The obvious spelling, `(?:\\.|(?!\1).)*\1`
+# with a backreference, is ambiguous on any backslash and was measured at 0.011 s for 20 trailing
+# backslashes doubling to 0.075 s at 24 — ~34 exceeds the hook's timeout and stalls the Bash call
+# it was supposed to annotate. A quote group cannot appear in a character class, so the two quote
+# characters get one branch each rather than one backreferenced branch.
+QUOTED = r"""(?:'(?:\\.|[^\\'])*'|"(?:\\.|[^\\"])*")"""
 # Prose passed as an option value is text *about* commands — a commit message, a PR body, an issue
 # comment. `--body-file` names a path instead, so it is deliberately not in this list.
 PROSE_OPT = re.compile(
     r"(?:--(?:body|message|title|description|notes|comment)(?!-file)|(?<!\w)-[mF](?!\w))"
-    r"[= ]\s*(['\"])(?:\\.|(?!\1).)*\1",
+    r"[= ]\s*" + QUOTED,
     re.DOTALL,
 )
-# Echoing text that happens to mention a command is not running it.
+# Echoing text that happens to mention a command is not running it. Judged per statement: in
+# `echo "searching…" && grep -r secret .` only the first statement is an echo.
 ECHO = re.compile(r"^\s*(echo|printf)\b")
-# `gh pr list | grep open` filters another command's output. `rg` does not replace that, and the
-# tree is not involved.
-PIPED = re.compile(r"\|\s*(?:[A-Za-z0-9_.=/-]+\s+)*grep\b")
+
+# Statement separators. `(`/`)` are here so a subshell's contents are read as their own statements;
+# `\n` is here because it is the one that was missing.
+SEPARATORS = ";\n|&()"
 
 # --- the three rules ---------------------------------------------------------------------------
 # Ordered; a single command may earn more than one. `id` is what the session dedup remembers, so
-# renaming one re-arms it for everybody — which is correct, it is a different sentence.
+# renaming one re-arms it for everybody — which is correct, it is a different sentence. Patterns
+# anchor at `^` because they are applied to one statement, never to the whole command.
 RULES = (
     (
         "find",
-        re.compile(r"(?:^|[|&;])\s*find\s"),
+        re.compile(r"^\s*find\s"),
         "`find` — prefer the Glob tool, or `fd`: .gitignore-aware and parallel by default.",
     ),
     (
         "grep-r",
-        re.compile(r"(?:^|[|&;])\s*grep\s+-[A-Za-z]*[rR]"),
+        re.compile(r"^\s*grep\s+-[A-Za-z]*[rR]"),
         "recursive `grep` over the tree — prefer the Grep tool or `rg` (skips .gitignore'd and "
         "generated files); for a question with syntax in it, `ast-grep --lang X -p '…'`.",
     ),
@@ -71,6 +92,11 @@ RULES = (
     ),
 )
 
+#: Rules whose tool, downstream of a pipe, is filtering another command's output rather than
+#: sweeping the tree. `rg` does not replace that use, so it earns no nudge — but only for the
+#: statement that is actually the pipe's target.
+PIPE_FILTERABLE = frozenset({"grep-r", "grep"})
+
 
 def executable_text(command: str) -> str:
     """The command with its data parts removed, so only what actually runs is scanned."""
@@ -78,21 +104,62 @@ def executable_text(command: str) -> str:
     return PROSE_OPT.sub(" ", text)
 
 
+def statements(text: str) -> list:
+    """`(piped, statement)` for each shell statement, split on separators OUTSIDE quotes.
+
+    `piped` is True only for the statement immediately downstream of a single `|`; `||` is a
+    logical or and starts a fresh pipeline, and so does every other separator. A backslash escapes
+    the next character, which is what keeps a `\\`-newline line continuation one statement.
+    """
+    out, buf, quote, piped = [], [], None, False
+    i, size = 0, len(text)
+    while i < size:
+        char = text[i]
+        if quote:
+            buf.append(char)
+            if char == "\\" and quote == '"' and i + 1 < size:
+                buf.append(text[i + 1])
+                i += 2
+                continue
+            if char == quote:
+                quote = None
+            i += 1
+        elif char in "'\"":
+            quote = char
+            buf.append(char)
+            i += 1
+        elif char == "\\" and i + 1 < size:
+            buf.append(char)
+            buf.append(text[i + 1])
+            i += 2
+        elif char in SEPARATORS:
+            doubled = char in "|&" and text[i:i + 2] == char * 2
+            out.append((piped, "".join(buf)))
+            buf = []
+            piped = char == "|" and not doubled
+            i += 2 if doubled else 1
+        else:
+            buf.append(char)
+            i += 1
+    out.append((piped, "".join(buf)))
+    return out
+
+
 def detect(command: str) -> list:
     """Ordered `(id, message)` for one command string. `grep -r` and plain `grep` never both fire."""
-    text = executable_text(command)
-    if not text.strip() or ECHO.match(text.strip()):
-        return []
-    hits, saw_grep = [], False
-    for rule_id, pattern, message in RULES:
-        if rule_id.startswith("grep"):
-            # A pipe filter is out of scope entirely, and the specific rule wins over the generic.
-            if saw_grep or PIPED.search(text):
+    fired = set()
+    for piped, statement in statements(executable_text(command)):
+        statement = statement.strip()
+        if not statement or ECHO.match(statement):
+            continue
+        for rule_id, pattern, _ in RULES:
+            if piped and rule_id in PIPE_FILTERABLE:
                 continue
-        if pattern.search(text):
-            hits.append((rule_id, message))
-            saw_grep = saw_grep or rule_id.startswith("grep")
-    return hits
+            if pattern.search(statement):
+                fired.add(rule_id)
+    if "grep-r" in fired:
+        fired.discard("grep")  # the specific rule wins over the generic
+    return [(rule_id, message) for rule_id, _, message in RULES if rule_id in fired]
 
 
 # --- once per rule per session -----------------------------------------------------------------

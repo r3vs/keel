@@ -380,8 +380,13 @@ def shell_absent(pattern: str) -> object:
     """No `Bash` call whose COMMAND matches `pattern`. The search doctrine's assertions are about
     what an agent reached for, and the tool name cannot carry that: every shell search is `Bash`,
     so `tool_absent("^Bash$")` would fail any run that used a shell at all. Same move as
-    `file_untouched` — read the input, because the forbidden thing is the command, not the tool."""
-    rx = re.compile(pattern)
+    `file_untouched` — read the input, because the forbidden thing is the command, not the tool.
+
+    `MULTILINE`, and that flag is the whole assertion. An agent's Bash call is routinely several
+    lines (`cd fixture` then the search), so a `(^|[|&;])`-anchored pattern without it matches only
+    the first line — and this predicate asserts *absence*, so the miss grades a violating run as a
+    PASS. A check that cannot fail is worse than no check, because it is counted."""
+    rx = re.compile(pattern, re.MULTILINE)
 
     @_check(f"no Bash command matching /{pattern}/")
     def run_check(run: Run) -> tuple[bool, str]:

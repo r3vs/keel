@@ -159,6 +159,17 @@ class TestThePredicatesReadArtifacts(unittest.TestCase):
         piped = make_run(self.tmp, tools=[("Bash", {"command": "gh pr list | grep open"})])
         self.assertTrue(run_evals.shell_absent(recursive)(piped)[0])
 
+    def test_shell_absent_sees_past_the_first_line(self):
+        """A multi-line Bash call is the ordinary shape, and this predicate asserts ABSENCE — so a
+        pattern anchored at `^` without `MULTILINE` misses the violation and grades the run a PASS.
+        A check that cannot fail is worse than no check, because it is counted as a pass."""
+        for pattern, command in (
+            (r"(^|[|&;])\s*grep\s+-[A-Za-z]*[rR]", "cd fixture\ngrep -rn 'authorize' ."),
+            (r"(^|[|&;])\s*find\s", "cd fixture\nfind . -name '*.py'"),
+        ):
+            guilty = make_run(self.tmp, tools=[("Bash", {"command": command})])
+            self.assertFalse(run_evals.shell_absent(pattern)(guilty)[0], command)
+
     def test_searched_with_accepts_the_native_tool_and_the_shell_spelling(self):
         """Grep-the-tool and `rg`-in-a-shell are the same answer; an assertion naming one would
         grade the host's tool surface instead of the agent's choice."""

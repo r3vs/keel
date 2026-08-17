@@ -107,6 +107,64 @@ class TestItStaysQuiet(NudgeHarness):
         self.assertIsNone(self.run_hook(command=None))
 
 
+class TestACommandIsAListOfStatements(NudgeHarness):
+    """The bug class the whole-command regexes had, and the four readings it produced.
+
+    Every one of these was silent while the scan matched against the command as one string, and
+    every one has an obvious local patch that would have left the class alive. They are kept
+    together because that is what they are: one wrong model, four symptoms.
+    """
+
+    def test_a_newline_separates_statements(self):
+        # The ordinary shape of an agent's Bash call, and the one `(?:^|[|&;])` could never see.
+        self.assertWarns("cd src\ngrep -rn TODO .", "`rg`")
+
+    def test_a_newline_separates_statements_for_find_too(self):
+        self.assertWarns("cd src\nfind . -name '*.py'", "`fd`")
+
+    def test_an_echo_prefix_does_not_cover_what_follows_it(self):
+        # `echo` disqualifies the statement it heads, not the command it starts.
+        self.assertWarns('echo "searching…" && grep -r secret .', "`rg`")
+
+    def test_a_pipe_filter_elsewhere_does_not_excuse_a_real_sweep(self):
+        message = self.assertWarns("grep -rn 'x' . ; ps aux | grep py", "`rg`")
+        self.assertIn("recursive", message)
+
+    def test_the_pipe_exemption_still_holds_where_it_belongs(self):
+        # The narrowing must not cost the exemption its real cases: `piped` is a property of the
+        # statement downstream of the pipe, not of the command containing one.
+        self.assertSilent("rg foo src/ | grep bar", "the grep filters rg's output")
+        self.assertSilent("echo hi | grep -r x .", "downstream of a pipe, whatever it looks like")
+
+    def test_a_line_continuation_is_not_a_separator(self):
+        self.assertWarns("grep -rn \\\n  foo .", "`rg`")
+
+    def test_a_subshell_is_read_as_its_own_statements(self):
+        self.assertWarns("(cd src && grep -rn z .)", "`rg`")
+
+    def test_a_separator_inside_quotes_separates_nothing(self):
+        self.assertSilent("rg -n 'grep -r x' .", "the pattern is an argument, not a statement")
+
+
+class TestItCannotStallTheCommandItAnnotates(unittest.TestCase):
+    """A `PreToolUse` hook runs before the tool, so its worst failure is not being wrong — it is
+    being slow. The quoted-string regex used to backtrack exponentially on an unterminated option
+    value, which is a plausible thing for an agent to write and a 5-second stall to pay for it."""
+
+    def test_an_unterminated_prose_option_returns_immediately(self):
+        import importlib.util
+        import time
+
+        spec = importlib.util.spec_from_file_location("keel_search_nudge", HOOK)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        command = 'git commit -m "' + "\\" * 40 + "x"
+        started = time.perf_counter()
+        module.detect(command)
+        # The old pattern doubled every ~1.6 backslashes off 0.011 s at 20; 40 is heat-death.
+        self.assertLess(time.perf_counter() - started, 1.0)
+
+
 class TestOncePerRulePerSession(NudgeHarness):
     def test_the_same_rule_speaks_once(self):
         self.assertWarns("grep -r TODO .", "`rg`")
