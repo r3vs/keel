@@ -136,7 +136,7 @@ durable memory without it.
 
 ## The tool surface is a budget, and it is the host's to spend
 
-**The assumption this package has been relying on silently, now written down: 69 MCP tools is
+**The assumption this package has been relying on silently, now written down: 73 MCP tools is
 affordable only because the host defers them.** Nothing in `src/mcp/server.py` decides that, nothing
 gates it, and it is false on at least one host we ship to. Naming it is the point of this section —
 it is a load-bearing bet on somebody else's product behaviour, which is the class of fact this repo
@@ -147,10 +147,10 @@ handshake, and size the `tools/list` result:
 
 | | |
 |---|---|
-| tools advertised | **69** |
-| whole `tools/list` result | ~101 k characters of JSON — **≈25 k tokens** at ~4 chars/token |
-| median tool object | ~1,410 characters (the JSON: name + description + `inputSchema` + annotations) |
-| longest single description | 1,405 characters |
+| tools advertised | **73** |
+| whole `tools/list` result | ~111 k characters of JSON — **≈28 k tokens** at ~4 chars/token |
+| median tool object | ~1,448 characters (the JSON: name + description + `inputSchema` + annotations) |
+| longest single description | 1,452 characters |
 | server `instructions` | 335 characters |
 
 Method, because a number in prose with no way to re-derive it is the thing
@@ -164,7 +164,7 @@ admitting *"these four have no gate"*, which is a published method with nobody e
 measurement that was true on one afternoon, propping up every argument the section makes.
 `scripts/check_packaging_wire.py` completes that handshake in CI, sizes what arrives, and fails when
 any figure here drifts by more than a **declared 5%** from the wire. The tolerance is on the
-*argument* the number carries (*"roughly a fifth of a 128 k window"*, *"about 640 of headroom"*),
+*argument* the number carries (*"roughly a fifth of a 128 k window"*, *"about 600 of headroom"*),
 never on the number, and it is why this is a second gate rather than four more rows in
 `check_stated_facts.py`: that one compares for exact equality because its facts are **counts**, and
 loosening it to a tolerance to admit `~98 k` would weaken every count it holds. The two split on
@@ -178,14 +178,14 @@ docstring is not the payload**: FastMCP splits a tool's docstring, sending the p
 as `description` and moving each `Args:` entry into the matching property's `description` inside
 `inputSchema` — checked on the wire against `ledger_summary`, whose `ledger: Path to ledger.json.`
 arrives inside the schema and not in the description. So counting docstrings sees about half the
-truth: ~54 k characters of docstring against ~98 k on the wire. And **the schema is most of the
-cost**: median description 410 characters inside a median tool object of ~1,410.
+truth: ~60 k characters of docstring against ~111 k on the wire. And **the schema is most of the
+cost**: median description 434 characters inside a median tool object of ~1,448.
 
 **Per host, and only the first row is a verified mechanism:**
 
-| Host | Are the 69 loaded up front? | Verification |
+| Host | Are the 73 loaded up front? | Verification |
 |---|---|---|
-| **Claude Code** | **No, deferred by default** | VERIFIED in its docs: *"Tool search is enabled by default: MCP tools are deferred and discovered on demand"* — only tool **names** and the server `instructions` load at session start. Off in named cases: `ENABLE_TOOL_SEARCH=false`; a non-first-party `ANTHROPIC_BASE_URL`; `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; Microsoft Foundry on Azure (rejected server-side, unoverridable); Google Cloud Agent Platform models older than the 4.5 generation. `auto` is a middle setting: *"tools load upfront if they fit within 10% of the context window, deferred otherwise"* — at ≈25 k tokens we fit that only on a large window. |
+| **Claude Code** | **No, deferred by default** | VERIFIED in its docs: *"Tool search is enabled by default: MCP tools are deferred and discovered on demand"* — only tool **names** and the server `instructions` load at session start. Off in named cases: `ENABLE_TOOL_SEARCH=false`; a non-first-party `ANTHROPIC_BASE_URL`; `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; Microsoft Foundry on Azure (rejected server-side, unoverridable); Google Cloud Agent Platform models older than the 4.5 generation. `auto` is a middle setting: *"tools load upfront if they fit within 10% of the context window, deferred otherwise"* — at ≈28 k tokens we fit that only on a large window. |
 | **Codex** | **UNVERIFIED** | Its MCP documentation is silent on tool deferral, count limits and context budgeting, and the Rust source was not read at the consuming function. Absence of a documented mechanism is not absence of one. Plan for the full surface — that is the conservative direction. |
 | **opencode** | **Yes, on the docs' own account** | *"Once added, MCP tools are automatically available to the LLM alongside built-in tools"*, and it names the consequence itself: *"When you use an MCP server, it adds to the context. This can quickly add up if you have a lot of tools."* Docs-level, not source-level — call it verified-by-documentation. The available mitigation is the user's, not ours: opencode filters tools per agent by glob. |
 | **Pi** | **No — one tool, ours** | VERIFIED in our own adapter: `src/adapters/pi/extensions/mcp-bridge.ts` registers a **single** proxy tool (`alignment`) synchronously and connects lazily, so Pi's context carries one description regardless of how many the server serves. The bridge is a deferral mechanism nobody planned; it is the reason the tool count has never been felt there. |
@@ -200,13 +200,13 @@ deliberate edit.
 **One host-specific limit we sit under, and it is closer than it looks.** Claude Code *"truncates
 tool descriptions and server instructions at 2KB each"*, and truncation is silent: the agent picks
 a tool by its description, so a clipped one degrades selection with nothing reporting it. Our
-longest description is 1,405 characters — about 640 of headroom, which one thorough docstring would
+longest description is 1,452 characters — about 582 of headroom, which one thorough docstring would
 consume. Anything approaching 2,048 has to be shortened at the docstring, not accepted, and
 `check_packaging_wire.py` now refuses one that is not.
 
 **The unit is the soft spot, and this is the second place in this package where it is.** *2KB* is
 **bytes**; every figure in this section is **characters**; and this repo's prose is full of em
-dashes, which cost three bytes each. The same description measures 1,405 characters and **1,413
+dashes, which cost three bytes each. The same description measures 1,452 characters and **1,466
 bytes**, so a check written against `len(s)` would report headroom the host does not honour. The
 gate measures `len(s.encode("utf-8"))` for the ceiling and characters for the prose, because those
 are the units each claim is actually made in. `docs/open-gaps.md` §31 residual 1 records the twin of

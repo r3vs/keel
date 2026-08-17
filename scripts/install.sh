@@ -58,7 +58,19 @@ codex_dir="${CODEX_DIR:-$HOME/.codex}"
 #
 # The default is refusal, not a warning that scrolls past: a `-p` or a typo'd path lands here, and
 # an unattended run has nobody to read the warning. `--claude-personal` is the way to mean it.
-case "/$skills_dir/" in
+#
+# The decision is made on a separator-normalized COPY, and the normalization is the guard's alone —
+# `$skills_dir` itself is left exactly as it was given. This is not tidiness: Git Bash accepts a
+# native `C:\Users\me\.claude\skills` everywhere else in this script (`place` links into it happily,
+# observed), so a guard that only recognizes `/.claude/` fails OPEN on the one platform where the
+# native spelling is what a person has in their hand — it waves through the override and then
+# performs it. Over-refusing costs a POSIX directory literally named with backslashes one
+# `--claude-personal`; under-refusing has no door at all.
+#
+# Written with a quoted variable rather than `${skills_dir//\\//}`, which reads as the obvious form
+# and silently does nothing on bash 5.2 (verified: `a\b\c` comes back unchanged).
+backslash='\'
+case "/${skills_dir//"$backslash"//}/" in
   */.claude/*) claude_level=1 ;;
   *)           claude_level=0 ;;
 esac

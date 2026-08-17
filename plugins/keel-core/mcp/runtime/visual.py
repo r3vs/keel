@@ -45,6 +45,7 @@ what is added is the half it does not have, which is a check.
 """
 from __future__ import annotations
 
+import re
 import shutil
 import struct
 import subprocess
@@ -484,6 +485,139 @@ def verify_palette(path, claimed, tolerance: Optional[float] = None,
             "tolerance_delta_e": tol, "coverage_floor": floor,
             "claims": results, "absent": [r["claimed"] for r in absent],
             "refuted": bool(absent)}
+
+
+def _parse_viewport(value) -> Optional[tuple]:
+    """`"390x844"` → `(390, 844)`. Anything else → `None`, i.e. declared but unusable."""
+    if not value:
+        return None
+    m = re.fullmatch(r"\s*(\d+)\s*[xX×]\s*(\d+)\s*", str(value))
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def _parse_capture(value) -> Optional[tuple]:
+    """`"390x844@3"` / `"390x844@2.625"` / `"1440x900"` → `((w, h), scale)`; `None` if unparsable."""
+    if not value:
+        return None
+    raw, _, scale = str(value).partition("@")
+    vp = _parse_viewport(raw)
+    if vp is None:
+        return None
+    try:
+        factor = float(scale) if scale else 1.0
+    except ValueError:
+        return None
+    return (vp, factor) if factor > 0 else None
+
+
+def render_agreement(image, viewport: str = "", scan: Optional[dict] = None,
+                     url: str = "", captured: str = "") -> dict:
+    """Do the two halves of a design pass describe the SAME render? WRITES NO FILE.
+
+    A design pass has two renderers and nothing has ever tied them together: the detector renders a
+    URL itself to compute contrast and token membership, while the picture a taste critique is read
+    off is captured separately (Playwright, a screenshot). Two renders of "the same" page at two
+    viewports are two different designs, and a judgment made on the second while the facts came from
+    the first is unfalsifiable in the most ordinary way — nobody can tell which page it was about.
+
+    Two questions, and only the second is arithmetic:
+
+    - **Did the facts come from a render at all?** `design.scan()` reports what it was pointed at.
+      A `kind: "source"` scan read JSX; the tells a taste lens looks for are compositional and are
+      not in JSX, so facts from source do not cover a picture — that is a mismatch, not a detail.
+    - **Is the picture the same geometry?** Two paths, and which one ran is reported:
+      *declared* — pass `captured` (`"390x844@2.625"`, what the browser was actually driven at) and
+      the check is exact: its viewport against the scanned one, and its scale confirmed *against the
+      pixels*, so a declaration the image refutes is caught rather than believed. *Inferred* — with
+      nothing declared, only the ratios this will guess apply: **1x, 2x, 3x**. A fractional device
+      scale factor (Pixel's 2.625, a 125% Windows display) is real and is exactly why the declared
+      path exists; an inference that stretched to fit any ratio would agree with everything.
+      A taller image at a matching width is a full-page capture — normal, reported, not flagged.
+
+    What cannot be computed is said so: the **URL** is compared as two declared strings, because a
+    PNG carries no address. It is reported under `declared`, never counted as agreement.
+
+    Returns `agree` / `mismatch` (with the list) / `unchecked` (with the reason) — never a bare
+    boolean, and never `agree` for something it could not look at."""
+    target = (scan or {}).get("target") or {}
+    urls = list(target.get("urls") or ([url] if url else []))
+    kind = target.get("kind") or ("render" if urls else "")
+    vp_declared = viewport or target.get("viewport") or ""
+    facts = image_facts(image)
+    if facts.get("status") != "read":
+        return {"status": "unchecked", "reason": facts.get("reason"), "image": facts}
+    picture = {"width": facts["width"], "height": facts["height"], "source": facts["source"]}
+
+    if not kind:
+        return {"status": "unchecked", "picture": picture,
+                "reason": "no scan report and no url — there is nothing to reconcile the picture "
+                          "with. Run design_scan over the running URL and pass its result."}
+    if kind == "source":
+        return {"status": "mismatch", "picture": picture,
+                "mismatches": [{"field": "kind", "facts": "source", "picture": "render",
+                                "note": "the deterministic half read source files; a taste pass "
+                                        "reads a render, and no fact from JSX covers what a "
+                                        "browser laid out"}],
+                "checked": ["kind"], "declared": {}}
+    vp = _parse_viewport(vp_declared)
+    if vp is None:
+        return {"status": "unchecked", "picture": picture,
+                "reason": f"the deterministic half declared no usable viewport ({vp_declared!r}), "
+                          f"so the picture's geometry cannot be tied to it — re-run design_scan "
+                          f"with an explicit `viewport`"}
+
+    mismatches = []
+    declared_capture = _parse_capture(captured)
+    scale_source = "declared" if declared_capture else "inferred"
+    if declared_capture:
+        (cap_w, cap_h), dpr = declared_capture
+        if (cap_w, cap_h) != vp:
+            mismatches.append({"field": "viewport", "facts": list(vp), "picture": [cap_w, cap_h],
+                               "note": "the browser was driven at a different viewport than the "
+                                       "one the facts were computed at"})
+        if round(cap_w * dpr) != facts["width"]:
+            mismatches.append({"field": "scale", "facts": round(cap_w * dpr),
+                               "picture": facts["width"],
+                               "note": f"the picture does not match its own declared capture "
+                                       f"({captured}) — the declaration is refuted by the pixels"})
+            dpr = None
+        else:
+            vp = (cap_w, cap_h)
+    else:
+        # Only the ratios a bare inference may claim. A fractional device scale factor is real
+        # (Pixel 2.625, a 125% display) and must be DECLARED via `captured`: widening the guess to
+        # any ratio would make the check agree with a desktop capture judged against mobile facts.
+        dpr = next((d for d in (1, 2, 3) if facts["width"] == vp[0] * d), None)
+    capture = None
+    if dpr is None and not declared_capture:
+        mismatches.append({"field": "width", "facts": vp[0], "picture": facts["width"],
+                           "note": "no 1x/2x/3x ratio maps the scanned viewport width onto the "
+                                   "image width — either a different render, or a fractional "
+                                   "device scale factor that has to be declared via `captured`"})
+    if dpr is not None:
+        expected = round(vp[1] * dpr)
+        if facts["height"] < expected:
+            mismatches.append({"field": "height", "facts": expected, "picture": facts["height"],
+                               "note": "the picture is shorter than the viewport the facts were "
+                                       "computed at — a crop, not the render"})
+        capture = "viewport" if facts["height"] == expected else "full_page"
+
+    if urls and url:
+        match = "same" if url in urls else "differs"
+        if match == "differs":
+            mismatches.append({"field": "url", "facts": urls, "picture": url,
+                               "note": "the two halves name different addresses (declared, not "
+                                       "measured — a PNG carries no URL)"})
+    else:
+        match = "undeclared"
+
+    return {"status": "mismatch" if mismatches else "agree",
+            "device_pixel_ratio": dpr, "scale_source": scale_source, "capture": capture,
+            "picture": picture, "viewport": {"declared": vp_declared, "css_px": list(vp)},
+            "checked": ["kind"] + (["viewport", "scale"] if declared_capture else ["width"])
+                       + ["height"],
+            "declared": {"url_match": match, "scan_urls": urls, "picture_url": url or None},
+            "mismatches": mismatches}
 
 
 def check_contrast(pairs) -> list:

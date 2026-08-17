@@ -1,6 +1,6 @@
 <!-- GENERATED FILE - do not edit. Source: src/core/decisions-ledger-spec.md at the repo root; regenerate with: python scripts/build.py -->
 
-# Decisions Ledger — Spec v0.31
+# Decisions Ledger — Spec v0.32
 
 The ledger is the **single source of truth** that the skill's three surfaces (map/wiki, interview, brainstorm) read and write. None of the three holds state of its own: they all project a view over the ledger. This is what stops three agents talking about the same problem from diverging — i.e. the exact failure mode the skill cures in codebases.
 
@@ -1537,3 +1537,87 @@ Nor is a patch sized like a ticket. One patch may become three pins or none, and
 ### The general shape
 
 A register for things you cannot yet say is only honest if it has an **exit** and a **ceiling**. This one has two exits, both of which delete, and a ceiling that is reported rather than enforced. Every earlier round of this document turned on a carrier with no reader; this one is the inverse risk — a carrier with no way out, which is how a doctrine becomes a backlog.
+
+---
+
+## v0.32 — Applied, and to what
+
+A dispatch gate proves a step is **reachable**. Nothing proved a step was **taken**.
+
+For a `type: deterministic` module the difference was already covered: a report is on disk or it is
+not, and `coverage.py` turns the absence into an `incompleteness` pin rather than a silent zero. A
+`type: judgment` module has an **agent** for an engine, so it leaves no artifact — and its silence
+was indistinguishable from a clean result. `design-taste` finding nothing and `design-taste` never
+running produced the identical file.
+
+The tempting fix is a flag: `applied: true`. That is a **self-report**, and this schema deleted one
+of those already (`self_assessment`, v0.6) for the same reason — an agent that skipped the work
+writes the flag just as happily, and nothing can contradict it.
+
+### `AnalysisRun` — the scope, never the verdict
+
+New optional collection `analysis_runs` — qualified deliberately: `runs` is already SARIF's own
+top-level key and the generator registry's run counter, and one word carrying three meanings in one
+runtime is a collision the guarded-read gate cannot resolve either. One append-only record per application of a catalog module:
+
+```jsonc
+{
+  "id": "run_0007",
+  "module": "design-taste",              // the catalog id — what the coverage reader joins on
+  "skill": "codebase-rescue",            // whose catalog: two of them carry this id, opposite directions
+  "scope": {
+    "derived_from": "mcp:render_agreement",       // what produced the target set
+    "targets": ["http://localhost:3000"]          // the concrete things read — REQUIRED, non-empty
+  },
+  "at_commit": "abc1234",                // the state they were read at
+  "findings": ["pin_0031"],              // pins produced; MAY BE EMPTY, and that is the point
+  "ran_at": "2026-08-17T20:52:59+00:00"
+}
+```
+
+**What is absent is the design, again.** There is nowhere to record an outcome, a verdict, or a
+"clean". The record answers *what was looked at*, and the difference between a boast and a carrier
+is whether something else can contradict it: *"I applied the taste lens"* cannot be, while *"I
+applied it over these targets, at this commit, from this call"* is refuted the moment somebody
+re-runs it and reads a different set.
+
+Hence the four refusals in `record_run`: no `module` (a claim about nothing), empty `scope.targets`
+(*"I looked at it"*), no `scope.derived_from` (a scope nobody can re-derive is a sentence), no
+`at_commit` (a record that cannot go stale can never be wrong, and a claim that can never be wrong
+is not evidence). A `findings` id that names no pin in this ledger is refused too — a run may not
+claim a finding the file does not hold.
+
+### The empty run is the whole point
+
+Recording only the runs that found something reproduces the original failure one layer up. The
+register earns its keep on the run that returns nothing, because that is the case where the file
+otherwise says exactly as much as no run at all.
+
+### What makes it bite: `module_coverage`
+
+The record alone is inert. The join is: the modules a skill's catalog **dispatches** (narrowed to
+the phases in scope) against the runs recorded **at this commit**. A dispatched module with no run is
+reported as a gap carrying a ready `incompleteness` pin, `kind_detail: module-unrun` — *unchecked*,
+never *clean*, in the same words and for the same reason as its `coverage-gap` sibling.
+
+The catalog is not in the ledger and must not be: which modules exist is the skill's fact, which ran
+is the ledger's, and merging them into one file would give the register the power to also define what
+was expected of it. So the join lives in `coverage.py`, reading a catalog the build vendors beside
+the runtime.
+
+### What this does NOT prove, stated so nobody claims it later
+
+That the module ran **well**. A judgment is not made checkable by recording its scope — only
+*attributable* and *re-runnable*. Quality of judgment stays the reviewer's job, and no field here
+should ever be added to carry it.
+
+Nor does it force the call. An agent can still do nothing and record nothing; what changed is that
+silence is no longer free — it surfaces as a pin at the next coverage read, instead of looking
+exactly like a clean sweep.
+
+### Pin→module attribution was considered and rejected
+
+A `produced_by` field on the pin would make "which module produced this finding" computable from the
+pin side. It is redundant: the run already lists its `findings`, so the join exists, and a second
+carrier for one fact is the divergence this package exists to find. If a future reader needs the
+reverse index, derive it — do not store it twice.

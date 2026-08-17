@@ -47,7 +47,7 @@ package exists to find, sitting in its own front door.
 - **`src/runtime/` + `src/mcp/`** — the deterministic spine and its MCP adapter. `build.py` vendors
   the runtime into each skill that runs it (the portable floor) *and* the MCP server serves it as
   typed tools — which is what makes the capability **discoverable** rather than merely available.
-  The adapter now serves **four** surfaces, not one: 69 typed tools, three read-only ledger
+  The adapter now serves **four** surfaces, not one: 71 typed tools, three read-only ledger
   **resource** templates (`ledger://summary/{path*}`, `ledger://pins/{path*}`,
   `ledger://pin/{pin_id}/{path*}` — the `{path*}` wildcard is load-bearing, since a bare `{path}`
   compiles to `[^/]+` and matches no absolute path), three **prompts** Claude Code surfaces as
@@ -121,7 +121,7 @@ Each skill is **design-complete with the runtime largely implemented**; its `TOD
 checklist. Greenfield's step-0 verdict is recorded (STRONG → full four-layer generation is
 Plan A); rescue's VibraFlow verdict was **re-run on a fresh graph** (2026-07-14 — WEAK cross-layer
 correspondence, so standalone extraction is Plan A). The runtime lives under `src/runtime/`
-(core stdlib-only, exercised by `tests/` on every PR): `ledger.py` (implements the spec, currently v0.31), `shapes.py` (field-shape engine +
+(core stdlib-only, exercised by `tests/` on every PR): `ledger.py` (implements the spec, currently v0.32), `shapes.py` (field-shape engine +
 drift-check, 8 stacks), `treesitter_extract.py` (the **primary** extraction backend — a real grammar per language, so
 real-world TS/GraphQL/SQL parse with no per-repo patches; declarative per-grammar data, degrades to
 the stdlib parsers when absent), `generate.py` (contract generators,
@@ -155,13 +155,13 @@ python scripts/build.py                # src/ -> plugins/. The ONE generation st
 python scripts/build.py --check        # the drift gate: plugins/ still equals what src/ generates
 python scripts/validate_manifests.py   # plugin.json + marketplace.json + .mcp.json, blocking (--strict is advisory)
 python -m ruff check .                 # the Python floor; ruff.toml declares the debt and the next tier
-python scripts/check_consistency.py    # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
+python scripts/check_consistency.py    # drift-linter — modules ↔ references ↔ SKILL, and dispatch: a playbook nothing runs fails
 python scripts/check_description_budget.py  # the listing budget Keel spends in the host; two flagship line caps
 python scripts/verify_pointers.py      # every *.md cross-reference resolves; exits 1 on dangling
 python scripts/check_hypotheses.py     # every tuned number in the runtime is declared (AST, not grep)
 python scripts/check_schema_fields.py  # every field the ledger spec declares is READ by something that ships
 python scripts/check_stated_facts.py   # every number this repo restates in prose equals what computes it
-python scripts/check_tool_carriers.py  # every WRITE tool the server exposes is named by a shipped playbook
+python scripts/check_tool_carriers.py  # every tool the server exposes is named by a shipped playbook (read included)
 python scripts/check_packaging_wire.py # the tool surface docs/packaging.md measures, re-measured on the wire
 python scripts/verify_commands.py      # every agent-facing COMMAND resolves after install; exits 1 on drift
 python scripts/run_evals.py --validate # each skill's evals.json is well-formed (structure, not behaviour)
@@ -253,7 +253,7 @@ are all unified under this one principle — which is why there is deliberately 
 - **The decisions ledger is the single source of truth.** Three surfaces — the visual map/wiki,
   the interview, and the brainstorm — hold *no state of their own*; they all read/write one
   `ledger.json`. This is deliberate: it is the exact anti-divergence property the skills enforce on
-  the codebases they touch. Schema authority: `src/core/decisions-ledger-spec.md` (shared, v0.31);
+  the codebases they touch. Schema authority: `src/core/decisions-ledger-spec.md` (shared, v0.32);
   English pointer summary: `src/core/ledger.md`.
 - **A `Pin` is a discriminated union on `kind`** (`contract_mismatch | internal_contradiction |
   ambiguity | incompleteness | design_concern | defect | open_decision | acceptance_criterion |
@@ -398,7 +398,7 @@ property for permission rules at all. Selective `Bash(...)` rules live only in t
 read-only roles (they need it for static analysis), so blunt denial is not available either. That is
 what the ledger gate closes at runtime. Full details: `docs/packaging.md` — including its section
 *"The tool surface is a budget, and it is the host's to spend"*, which names a previously-silent
-assumption: 69 tools are affordable only because hosts **defer** them (verified default on Claude
+assumption: 71 tools are affordable only because hosts **defer** them (verified default on Claude
 Code; one proxy tool on Pi; loaded up front on opencode per its own docs; **UNVERIFIED** on Codex,
 so the doc plans for the conservative case). That budget and the skill-listing budget above are the
 same lesson at two layers — a surface this package does not own, spent by a number nobody measured.
@@ -471,13 +471,22 @@ is not this one.
   `build.py --check` verifies every vendored copy still equals its `src/` source, and
   `verify_pointers.py` checks every cross-reference resolves. When you add or rename a module, update
   its `modules.json` **and** its playbook **and** any `SKILL.md` pointer together.
+- **A playbook that nothing dispatches is an error, not a warning.** The same gate now asks whether
+  each `references/*.md` is *reached*, and only two idioms count: a `### Phase N` section (or a
+  playbook it names) reads `modules.json`, which dispatches that phase's modules; or SKILL.md — or a
+  playbook SKILL.md names — points at it directly. **A sibling reference naming it, or a row in
+  `## Read this when`, does not**: the first is a cross-reference, the second is a lookup keyed by a
+  condition, and `design-taste-lens.md` had both while nothing ever ran it. Depth stops one hop past
+  SKILL.md deliberately — deciding whether a leaf's pointer is a handoff or a see-also means reading
+  prose for meaning, so the rule asks *who* points instead. `tests/test_dispatch_gate.py` runs the
+  gate against a built tree rather than reading its source.
 - **Path convention:** `references/x.md` is skill-root-relative (rescue's root is
   `src/skills/codebase-rescue/`), and this **includes the vendored `references/core/x.md` copies** —
   which exist only after `build.py` runs, and are checked against `src/core/` by rule until then.
 - **Sources of truth:** each skill's `modules.json` is authoritative for its module catalog;
   `src/core/*.md` is the single authoring source for the shared doctrine — **edit it there, never in
   a `plugins/**/references/core/` copy**, then run `scripts/build.py`. Within that,
-  `src/core/decisions-ledger-spec.md` (v0.31) is authoritative for the ledger schema. Do not let a
+  `src/core/decisions-ledger-spec.md` (v0.32) is authoritative for the ledger schema. Do not let a
   `SKILL.md`, a reference summary, or a vendored copy drift from them.
 - **`src/core/decisions-ledger-spec.md` is the authoritative schema** (English, like the rest of the
   repo); `src/core/ledger.md` is the short English pointer summary to it.

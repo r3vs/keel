@@ -78,7 +78,7 @@ OUT = ROOT / "plugins"
 # (2026-08-13): the root `.claude-plugin/marketplace.json` is `marketplace()`'s output, not an
 # authored file, so it moves with this constant and must be rebuilt after a bump — a `--check`
 # failure naming it is the bump, not a regression.
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 AUTHOR = {"name": "r3vs"}
 HOMEPAGE = "https://github.com/r3vs/keel"
 KEYWORDS = ["skills", "vibe-coding", "ai-generated-code", "codebase", "rescue", "greenfield",
@@ -616,6 +616,14 @@ def plugin_payload(name: str, spec: dict) -> dict:
         # opens them. Consumer: `interview._CATALOG_CANDIDATES[0]`.
         out["mcp/runtime/assets/decision-catalog.json"] = read(
             SKILLS / "greenfield-forge" / "assets" / "decision-catalog.json")
+        # Same reasoning, one register later (v0.32): `coverage.module_gaps` joins the ledger's run
+        # records against the modules a skill DISPATCHES, and the catalog that declares them ships
+        # in a different plugin. Without the bytes here the join has no left-hand side, and an
+        # un-run module reads exactly like a module with nothing to say.
+        # Consumer: `coverage._CATALOG_DIR`.
+        for catalog in ("codebase-rescue", "greenfield-forge"):
+            out[f"mcp/runtime/assets/modules/{catalog}.json"] = read(
+                SKILLS / catalog / "modules.json")
         # Claude Code reads this at the plugin root; Codex's manifest points at it. Two hosts, one
         # file, zero user action.
         out[".mcp.json"] = mcp_json()

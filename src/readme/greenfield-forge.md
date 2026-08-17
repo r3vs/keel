@@ -105,9 +105,17 @@ Drift becomes impossible by construction, and the same shape-diff is installed a
 no future hand-edit can quietly break alignment. This is rescue's contract-reconciliation, run
 forward.
 
-Where a UI is rendered, the **design contract** rides the same rails: elect a **W3C DTCG** token set
-(captured or imported, never invented), project it into CSS / Tailwind / `DESIGN.md`, and guard it
-in CI. Design drift becomes a build failure rather than a matter of taste.
+Where a UI is rendered, the **design contract** rides the same rails: elect a **W3C DTCG** token set,
+project it into CSS / Tailwind / `DESIGN.md`, and guard it in CI. Design drift becomes a build
+failure rather than a matter of taste.
+
+The token set is never invented out of adjectives — it is **captured** from a direction you approved,
+**imported** from a brand, or **proposed and then seen**: with no brand and no direction yet, the
+agent builds two or three deliberately different directions, each a token set with a thesis and the
+slop tells it refuses, each fact-checked against **its own render** before you are asked anything —
+and you elect one. Later, at Phase 5, the same catalog is turned on the UI that got built, because a
+UI generated from one contract is aligned by construction and can still look like every other
+generated UI.
 
 **2. Sequence the backlog.** Emit `BuildItem`s from decided pins, ordered by `depends_on`. The waves
 fall out of the DAG — contract & data model → paved road → core slices → secondary features →
@@ -165,14 +173,14 @@ baseline a `codebase-rescue` can diff against years later.
 
 ---
 
-## The 16 modules
+## The 17 modules
 
 | Phase | Modules |
 |---|---|
 | **1 — Frame** | `decision-frame` *(judgment)* · `acceptance-framing` *(judgment)* · `threat-model` *(judgment)* · `to-be-map` |
 | **2 — Interview** | `interview-generator` *(judgment)* |
 | **3 — Contract** | `contract-propagation` (one contract → every layer) · `design-propagation` (DTCG → CSS/Tailwind/DESIGN.md) · `roadmap-sequencer` (the DAG → waves) · `paved-road` (scaffold from the elected decisions) · `architecture-fitness` (boundaries as CI constraints) · `agent-instructions` (the elected ledger projected into `AGENTS.md`, the one file every host loads unprompted) |
-| **4–5 — Build** | `build-loop` *(judgment)* · `validate` *(judgment)* |
+| **4–5 — Build** | `build-loop` *(judgment)* · `validate` *(judgment)* · `design-taste` *(judgment)* (the UI you just generated, read as taste against the "generated, not designed" catalog — over the **render**, after the computable design half has blocked what it can) |
 | **6–7 — Ship** | `release` · `operate` · `evolve` *(judgment)* |
 
 Everything not marked *judgment* is **deterministic** — and that is a promise, not a label: each one

@@ -21,7 +21,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 | | Count | |
 |---|---|---|
-| MCP tools | **69** | the deterministic engine, typed and discoverable |
+| MCP tools | **73** | the deterministic engine, typed and discoverable |
 | MCP apps | **2** | `ui://keel/interview.html` · `ui://keel/map/{path*}` — read surfaces, never write |
 | Sub-agents | **6** | `researcher · brainstorm · executor · reviewer · challenger · measurer` |
 | Hooks | **2** | a session banner and the pre-edit ledger gate |
@@ -31,13 +31,13 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 
 ---
 
-## The 69 MCP tools
+## The 73 MCP tools
 
 Your agent *discovers* these — it never needs to be told a file path. Everything below is a parse,
 a graph traversal or a set difference. **No LLM is in the loop**, which is why a finding can be
 labelled `confidence: extracted` and skip the false-positive gate.
 
-### Ledger — the single source of truth (28)
+### Ledger — the single source of truth (30)
 
 The append-only decisions ledger. Every other surface (the map, the interview, the brainstorm)
 holds no state of its own; it projects this file.
@@ -72,6 +72,8 @@ holds no state of its own; it projects this file.
 | `ledger_add_fog` | record one, without inventing a question for it. The entry has nowhere to put a fork, which is the enforcement: if you can phrase it, it is a pin | ✎ |
 | `ledger_graduate_fog` | the human phrased it — it becomes a pin **and leaves the register**, so it lives in exactly one place. Phrasing the fork is framing the decision, so the words must be theirs | ✎ |
 | `ledger_clear_fog` | there was no fork here after all. Held to what `ledger_defer` is held to, because clearing stops the register asking | ✎ |
+| `ledger_record_run` | record that a catalog module was **applied**, over a scope somebody else can re-derive (targets, what derived them, the commit). Nowhere to say *clean*: it records what was looked at, and the empty run is the case it exists for | ✎ |
+| `memory_audit` | the ledger audited as a **memory**: a closing rung nothing can ever invalidate, a policy scope wider than the case behind it, a rule recorded without its reason, machine output pasted into a durable field, one statement written twice, two policies answering one pin. Names the two modes it cannot decide from the file rather than reporting them clean | |
 
 **None of these elect anything.** A `DecisionEvent` comes only from a human's committed interview
 answer. The write tools record; they do not decide.
@@ -99,12 +101,13 @@ Django · SQLAlchemy · GraphQL · TypeScript · Pydantic**. What comes back is 
 Generating the layers is how `greenfield-forge` makes drift structurally impossible instead of
 merely detectable.
 
-### Reference image (2)
+### Reference image (3)
 
 | Tool | Does |
 |---|---|
 | `image_palette` | a screenshot's geometry and real color histogram, with per-color coverage |
 | `palette_verify` | do the colors a model read off that image actually occur in it? (+ WCAG on the claimed pairs) |
+| `render_agreement` | do the picture being judged and the facts backing the judgment describe the **same render**? (device-pixel-ratio geometry vs the scanned viewport; the URL reported as declared, never as evidence) |
 
 A stdlib PNG decode — no model, no network — so these are the only claims about a reference image
 that are facts. They exist to refute the other half: a token a vision model *says* it saw, which
@@ -177,12 +180,13 @@ Swift and Scala.
 Staleness-gated means: if the graph was built at a different commit than `HEAD`, it says so instead
 of answering confidently from a stale index.
 
-### Findings, quality & spend (9)
+### Findings, quality & spend (10)
 
 | Tool | Does |
 |---|---|
 | `findings_gate` | normalize SARIF/OSV into one stream, then run the false-positive gate |
 | `coverage_gaps` | which expected analyses **did not run** for the stacks present |
+| `module_coverage` | the same question one level up: which **modules** a skill dispatches have no run recorded at this commit — each gap carrying the `module-unrun` pin to write. A judgment module leaves no report on disk, so without this its silence reads as a clean sweep |
 | `design_scan` | frontend AI-slop tells, design quality, a11y, drift from the design contract |
 | `tokens_diff` | a CSS layer's `--variables` vs the DTCG contract |
 | `docs_claims` | every backticked reference is a **claim** — audit docs that exist, or gate a draft before publishing (`mode`) |
@@ -344,7 +348,7 @@ needs a container and a key, so it stays opt-in.
 
 ## Shared doctrine
 
-`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.31), the interview
+`core/*.md` at the plugin root, read by the agents: the decisions-ledger spec (v0.32), the interview
 funnel, the brainstorm protocol, the field-shape engine, contract testing, the feedback loop, the
 static-analysis and knowledge-source doctrines, the assumption-surfacing rule, the agent roster, the
 model tiers, and the self-model.

@@ -112,6 +112,17 @@
       "reference": "references/phase-5-validate.md"
     },
     {
+      "id": "design-taste",
+      "phase": 5,
+      "kind": "core",
+      "type": "judgment",
+      "engine": "agent:critique-against-tell-catalog",
+      "tools": ["impeccable", "playwright"],
+      "produces": ["design_concern"],
+      "notes": "The forward run of rescue's lens, and the one check aimed at the risk greenfield CREATES rather than inherits: a UI generated from one contract is aligned by construction and can still be the statistical center of everything the model has seen. Deterministic half first and blocking (`design_scan` over the running URL at each elected `viewport`, `tokens_diff` against the DTCG carrier); the lens judges only what survives, and it reads the RENDER, because the tells are compositional and not one of them is visible in the source that produced them — with `render_agreement` tying the picture to the render those facts were computed on, since a critique of one render backed by facts from another is unfalsifiable in the most ordinary way. Emits `design_concern` pins that are OPTIONS: `confidence: inferred`, through fp-check, `to_be` null until the interview elects, `accepted` legitimate — never a merge gate, and never a `contract_mismatch` (that kind is design-propagation's token-membership fact). The lens's other half runs upstream in Phase 3, where design-propagation step 1 acquires the token contract: two or three deliberately different directions, each rendered and palette-checked against its own render, one elected by the human. Same limit as every judgment module: an agent engine is D2 and nothing computes whether it ran. Read the full playbook.",
+      "reference": "references/core/design-taste.md"
+    },
+    {
       "id": "acceptance-framing",
       "phase": 1,
       "kind": "core",

@@ -98,6 +98,13 @@ of them are depth findings wearing a local name — when the honest fix is where
 than how this function is written, raise it in the vocabulary that says so
 (`references/core/module-design.md`) and let it become a `design_concern` pin.
 
+**If the diff changes a rendered surface, review what it renders, not only what it reads like.** Run
+the deterministic design half first (`design_scan` over the running URL at the elected breakpoints —
+those hits are facts and they block), then apply the taste lens to the render:
+`references/core/design-taste.md`. It is the same `design_concern` door, and the same rule as every
+smell above — a taste finding is a labelled judgement and an option, never a defect. A UI diff
+reviewed only as source is reviewed for how it was written, which is the half nobody is shipping.
+
 **Bound the loop.** Three cycles maximum. If the same class of finding recurs past that, the
 disagreement is about the contract, not the code — escalate it to a pin and let the interview settle
 it. And watch for review theater: more than two rounds producing nothing actionable means you are

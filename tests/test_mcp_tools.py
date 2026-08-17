@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # `shape_corpus`, the derived corpus
 import tools  # noqa: E402
 from ledger import Ledger  # noqa: E402
+from ledger import LEDGER_COLLECTIONS  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -761,6 +762,10 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         "ledger_summary": {},
         "ledger_frontier": {},
         "ledger_fog": {},
+        # Takes nothing but the ledger, and is the one read-only tool whose SUBJECT is the file's own
+        # shape — so the broken-ledger corpus below is not an incidental exercise of it, it is the
+        # workload. A store-health check that dies on an unhealthy store answers the wrong question.
+        "memory_audit": {},
         "interview_next": {},
         "interview_seed_policies": {},
         "policy_preview": {"rule": "the DB wins on nullability",
@@ -776,6 +781,10 @@ class TestNoReadOnlyLedgerToolDiesOnAPinShape(unittest.TestCase):
         # answer `no_token` on all hundred malformed pins and prove nothing. `setUp` below removes
         # the token from the environment so the run can never leave the machine.
         "tracker_diff": {"repo": "keel-test/not-a-real-repo"},
+        # v0.32 — reads the run register and joins it against a skill's module catalog, so both
+        # arguments are declared: without `skill` it cannot find a left-hand side, and without a
+        # commit it would answer the weaker question (*was it ever applied to anything*).
+        "module_coverage": {"skill": "codebase-rescue", "at_commit": HEAD},
         "scope_check": {"pin_id": PIN, "changed": ["a.py"]},
         # `head` is declared even though it has a default: without it the tool shells out to git for
         # HEAD, so what it exercises would depend on the cwd the suite happens to run in.
@@ -1719,6 +1728,12 @@ class TestALedgerWideWriteDoorIsOnARosterToo(unittest.TestCase):
         "ledger_clear_fog": ("consumes", {
             "fog_id": FOG, "rationale": "trials were cut from v1 entirely",
             "human_answer": "drop it, no trials in v1"}),
+        # Writes to no pin and settles nothing — it appends the record that a module was applied,
+        # which is why it lands on this roster rather than the pin-scoped one.
+        "ledger_record_run": ("creates", {
+            "module": "design-taste", "skill": "codebase-rescue",
+            "derived_from": "mcp:render_agreement",
+            "targets": ["http://localhost:3000"], "at_commit": "abc1234"}),
     }
 
     @staticmethod
@@ -1764,8 +1779,11 @@ class TestALedgerWideWriteDoorIsOnARosterToo(unittest.TestCase):
     def _records(ledger):
         with open(ledger, encoding="utf-8") as fh:
             data = json.load(fh)
-        return {name: len(data.get(name) or [])
-                for name in ("pins", "decision_log", "policies", "fog")}
+        # DERIVED from the runtime's own collection list, not hand-kept — a snapshot that counts
+        # four collections while the file holds five cannot see a door that writes to the fifth, and
+        # would have reported `ledger_record_run` as recording nothing. Same lesson as the roster
+        # two classes up: the membership question belongs to the thing being tested.
+        return {name: len(data.get(name) or []) for name in LEDGER_COLLECTIONS}
 
     def _substituted(self, ledger, kwargs: dict) -> dict:
         """The declared call with its sentinels resolved against THIS fixture."""

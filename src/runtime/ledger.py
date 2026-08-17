@@ -111,7 +111,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
-SCHEMA_VERSION = "0.31"
+SCHEMA_VERSION = "0.32"
 
 # Every version this code can read. The spec has only ever grown by addition — a new `kind`, a new
 # event, a new state — so a ledger written by an older runtime is still valid input, and rejecting it
@@ -132,7 +132,7 @@ SCHEMA_VERSION = "0.31"
 # now, and this line makes the failure unreachable rather than merely tested.
 READABLE_VERSIONS = ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.11", "0.12", "0.13",
                      "0.14", "0.15", "0.16", "0.17", "0.18", "0.19", "0.20", "0.21", "0.22",
-                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", "0.29", "0.30",
+                     "0.23", "0.24", "0.25", "0.26", "0.27", "0.28", "0.29", "0.30", "0.31",
                      SCHEMA_VERSION)
 
 KINDS = {
@@ -971,7 +971,7 @@ def _check_event(event: dict) -> None:
 # The three lists a ledger is made of, named because the guarded read is about all three and so are
 # both shape rules. `summary` read each one as `self.data[…]` and died the same way on each; fixing
 # the one that was reported would have left the file's other two halves for the next reviewer.
-LEDGER_COLLECTIONS = ("pins", "decision_log", "policies", "fog")
+LEDGER_COLLECTIONS = ("pins", "decision_log", "policies", "fog", "analysis_runs")
 
 # Which of them an OLDER file is allowed not to have (v0.31). The distinction is real and not a
 # convenience: `pins`, `decision_log` and `policies` have been in every file since v0.3, so an
@@ -982,7 +982,7 @@ LEDGER_COLLECTIONS = ("pins", "decision_log", "policies", "fog")
 # freeze its `version` stamp forever, on a rule about a collection it could not have carried.
 #
 # Present-and-wrong is still reported, for all four. The exemption is about ABSENCE only.
-OPTIONAL_COLLECTIONS = ("fog",)
+OPTIONAL_COLLECTIONS = ("fog", "analysis_runs")
 
 
 # -- THE SHAPE TABLE: the one carrier the read path, the rules and the corpus all derive from -----
@@ -1106,6 +1106,28 @@ POLICY_SHAPES = {"id": "str", "rule": "str", "applies_to": "object"}
 FOG_SHAPES = {"id": "str", "area": "str", "sensed": "str", "noticed_at": "str",
               "provenance": "list[object]"}
 
+#: And for the ANALYSIS-RUN register (v0.32) — the record that a module was applied, and to what.
+#: The collection is `analysis_runs` rather than `runs`, and the qualifier is load-bearing: `runs` is
+#: already SARIF's own top-level key (`findings.py`, `coverage.py` both read it) and the generator
+#: registry's run counter, so a bare name here would put three unrelated meanings on one word in one
+#: runtime — and the gate that holds every collection read to the guarded door cannot tell them
+#: apart either.
+#:
+#: What is NOT in it is again the design. There is no `outcome`, no `clean`, no boolean saying the
+#: module was happy: a run records **what was looked at**, never a verdict about it. A field that
+#: said "clean" would be a self-report, and this package already deleted one of those
+#: (`self_assessment`, v0.6) for being a claim nobody could contradict.
+#:
+#: What IS in it is chosen so the claim can be **re-derived by someone else**: `scope.targets` are
+#: the concrete things read, `scope.derived_from` names the tool call that produced that set, and
+#: `at_commit` is the state they were read at. Those three are what separate "I applied the lens"
+#: — unfalsifiable — from "I applied it over these 14 files at abc1234", which a second run can
+#: contradict. `findings` closes the loop the other way: the pins this run produced, which may be
+#: **empty**, because an empty run is exactly the case the record exists for.
+RUN_SHAPES = {"id": "str", "module": "str", "skill": "str", "scope": "object",
+              "scope.derived_from": "str", "scope.targets": "list", "at_commit": "str",
+              "findings": "list", "ran_at": "str"}
+
 #: Where a path's rule is STRONGER than its shape, the stronger one is the rule — one name, one
 #: verdict, no second entry saying a weaker version of the same thing. Each is `(holds, message)`
 #: and each implies the declared shape, which
@@ -1138,6 +1160,23 @@ FOG_STRONGER = {
                        f"says WHERE the decision is coming, and a patch that names no area is "
                        f"indistinguishable from a note"),
 }
+RUN_STRONGER = {
+    "id": (lambda v: isinstance(v, str) and bool(v),
+           lambda v: "a run carries no `id`, so nothing can point at the record of what was "
+                     "looked at"),
+    "module": (lambda v: isinstance(v, str) and bool(v.strip()),
+               lambda v: f"module must be a non-empty string; got {v!r} — it is the catalog id "
+                         f"the coverage reader joins on, and a run naming no module is a claim "
+                         f"about nothing"),
+    "at_commit": (lambda v: isinstance(v, str) and bool(v.strip()),
+                  lambda v: f"at_commit must be a non-empty string; got {v!r} — a record with no "
+                            f"anchor cannot go stale, which means it can never be wrong, which "
+                            f"means it is not evidence"),
+    "scope.targets": (lambda v: isinstance(v, list) and bool(v),
+                      lambda v: f"scope.targets must be a non-empty list; got {v!r} — the targets "
+                                f"ARE the checkable half of this record, and a run over nothing "
+                                f"named is `I looked at it`, which nobody can contradict"),
+}
 POLICY_STRONGER = {
     "id": (lambda v: isinstance(v, str) and bool(v),
            lambda v: "a policy carries no `id`, so no cascaded decision can name the rule it "
@@ -1158,6 +1197,9 @@ PIN_GUARANTEED = ("id", "state", "severity", "depends_on", "question", "title", 
 POLICY_GUARANTEED = ("id", "rule", "applies_to")
 #: Every one of them, because a fog patch is four fields and every caller indexes all four.
 FOG_GUARANTEED = tuple(FOG_SHAPES)
+#: Same, one collection over: the coverage reader indexes module, at_commit, findings and scope on
+#: every entry, so a record missing one is a record it cannot join.
+RUN_GUARANTEED = ("id", "module", "skill", "scope", "at_commit", "findings", "ran_at")
 
 #: The declared paths a WRITE door may assume are on the pin, because `add_pin` composes every one
 #: of them on every pin it writes (v0.26).
@@ -1246,6 +1288,7 @@ PIN_RULES = _rules_from(PIN_SHAPES, PIN_STRONGER, "pin_", PIN_REQUIRED)
 #: down the projection every host loads. Same table, same derivation, one prefix apart.
 POLICY_RULES = _rules_from(POLICY_SHAPES, POLICY_STRONGER, "policy_")
 FOG_RULES = _rules_from(FOG_SHAPES, FOG_STRONGER, "fog_", tuple(FOG_SHAPES))
+RUN_RULES = _rules_from(RUN_SHAPES, RUN_STRONGER, "run_", tuple(RUN_SHAPES))
 
 
 def shape_note(rule: str) -> str:
@@ -1281,6 +1324,11 @@ def shape_notes() -> dict:
 def fog_violations(patch: dict) -> list:
     """Which `FOG_RULES` this patch breaks — the same shape as its two siblings, one table over."""
     return [name for name, holds, _message in FOG_RULES if not holds(patch)]
+
+
+def run_violations(record: dict) -> list:
+    """Which `RUN_RULES` this run record breaks. Same derivation, one table over."""
+    return [name for name, holds, _message in RUN_RULES if not holds(record)]
 
 
 def policy_violations(policy: dict) -> list:
@@ -1387,6 +1435,11 @@ def fog_read(patch: Any, fill: bool = True) -> dict:
     return _shape_guarded(patch, FOG_SHAPES, FOG_GUARANTEED, fill)
 
 
+def run_read(record: Any, fill: bool = True) -> dict:
+    """A run record as a reader may index it — the fourth sibling, off the same machinery."""
+    return _shape_guarded(record, RUN_SHAPES, RUN_GUARANTEED, fill)
+
+
 def severity_rank(severity: str) -> int:
     """Where a severity sorts — `SEVERITIES`' own order, and a value it does not carry sorts last.
 
@@ -1481,6 +1534,26 @@ def claim_state(read: dict, now: Optional[datetime] = None) -> str:
         return "stale"
     moment = now or datetime.now(timezone.utc)
     return "live" if (moment - stamped).total_seconds() < CLAIM_TTL_SECONDS else "stale"
+
+
+def policy_selects(applies_to: Any, pin: Any) -> bool:
+    """Whether a standing policy's scope selects a pin. Equality on every declared key, and nothing
+    else — the scope is a filter, never a matcher.
+
+    It is a module-level function rather than a line inside `policy_preview` because it now has a
+    **second** reader: `memaudit` asks the same question from outside the class, to find the pins two
+    policies both select. A scope predicate written twice is two scope predicates, and the second
+    one drifts — which is the whole thesis of this repository applied to nine lines of its own code.
+
+    The `null`-valued-key trap this used to fall into lives one layer up, at `policy_preview`, where
+    the key is validated against `PIN_FIELDS`: a key no pin carries reads as `None == None` here and
+    would select everything. That check belongs at the door that ACCEPTS a scope, not at the
+    predicate that applies one — `memaudit.overgeneralization` reports the same shape from the read
+    side, for files written before the door existed.
+    """
+    if not isinstance(applies_to, dict) or not isinstance(pin, dict):
+        return False
+    return all(pin.get(k) == v for k, v in applies_to.items())
 
 
 def read_collection(data: Any, name: str) -> list[dict]:
@@ -1613,6 +1686,12 @@ def nonconforming(data: dict) -> dict:
         named = fog_read(patch)["id"] or f"fog[{index}]"
         for rule in fog_violations(patch):
             out.setdefault(rule, []).append(named)
+    for index, record in enumerate(entries("analysis_runs")):
+        if not isinstance(record, dict):
+            continue                                    # already reported as `entry_shape`
+        named = run_read(record)["id"] or f"analysis_runs[{index}]"
+        for rule in run_violations(record):
+            out.setdefault(rule, []).append(named)
     for index, pin in enumerate(entries("pins")):
         if not isinstance(pin, dict):
             continue                                    # already reported as `entry_shape`
@@ -1740,7 +1819,7 @@ class Ledger:
                 self.data["version"] = SCHEMA_VERSION
         else:
             self.data = {"version": SCHEMA_VERSION, "pins": [], "decision_log": [],
-                         "policies": [], "fog": []}
+                         "policies": [], "fog": [], "analysis_runs": []}
             self.pre_rule = {}
 
     # -- persistence -------------------------------------------------------
@@ -2859,7 +2938,7 @@ class Ledger:
         excepted = frozenset(exceptions or [])
         out: dict = {bucket: [] for bucket in UNASKED_BUCKETS}
         for pin in self.readable_pins():
-            if not all(pin.get(k) == v for k, v in applies_to.items()):
+            if not policy_selects(applies_to, pin):
                 continue
             out[self.unasked_verdict(pin, default_outcome, excepted)].append(pin_read(pin)["id"])
         out["scope_note"] = self._absence_note(applies_to)
@@ -3783,6 +3862,96 @@ class Ledger:
         self.writable_collection("fog").append(patch)
         return patch
 
+    # -- v0.32: the run register — a module was APPLIED, and to what -----------------------------
+
+    def record_run(self, module: str, skill: str, derived_from: str, targets: list,
+                   at_commit: str, findings: Optional[list] = None) -> dict:
+        """Record that a catalog module was applied, over a scope somebody else can re-derive.
+
+        This is the answer to the one question the dispatch gate cannot reach: a gate proves a step
+        is **reachable**, and nothing observed that a `type: judgment` module was ever **run**. For
+        a deterministic module the carrier already exists — a report is there or it is not, and
+        `coverage.py` turns its absence into an `incompleteness` pin rather than a silent zero. For
+        a judgment module the engine is an agent, so there is no artifact, and the tempting fix is a
+        flag saying *applied: true*. That is a self-report: an agent that skipped the lens writes it
+        just as happily, and this package deleted `self_assessment` for exactly that.
+
+        So what is recorded is the **scope, never a verdict**. The difference between a boast and a
+        carrier is whether something else can contradict it: *"I applied the taste lens"* cannot be,
+        while *"I applied it over these targets, at this commit, from this tool call"* is refuted the
+        moment somebody re-runs it and reads a different set. That is why `targets` may not be
+        empty, why `derived_from` must name what produced them, and why `at_commit` is required — a
+        record with no anchor cannot go stale, which means it can never be wrong.
+
+        `findings` may be **empty, and that is the point**: an empty run is the case this register
+        exists for. A module that found nothing and a module that never ran are the same silence
+        without it, and ranking the difference by *guessing* is the inference this package refuses
+        everywhere else.
+
+        It elects nothing and closes nothing. What it does is make an absence computable: a
+        dispatched module with no run at this commit is `unchecked` — which reaches a human as an
+        ordinary `incompleteness` pin, not as a number in a report nobody opens.
+        """
+        _require(isinstance(module, str) and module.strip(),
+                 "a run names the catalog MODULE that was applied — it is what the coverage reader "
+                 "joins on, and a run naming no module is a claim about nothing")
+        _require(isinstance(skill, str) and skill.strip(),
+                 "name the skill whose catalog that module belongs to; two catalogs carry a "
+                 "`design-taste`, and they run in opposite directions")
+        _require(isinstance(derived_from, str) and derived_from.strip(),
+                 "say what produced the target set (`mcp:design_scan`, `mcp:render_agreement`, a "
+                 "named rule) — a scope nobody can re-derive is a sentence, not a record")
+        targets = list(targets or [])
+        _require(bool(targets) and all(isinstance(x, str) and x.strip() for x in targets),
+                 "targets are the checkable half of this record: the concrete files, URLs or nodes "
+                 "that were read. A run over nothing named is `I looked at it`, and nobody can "
+                 "contradict that")
+        _require(isinstance(at_commit, str) and at_commit.strip(),
+                 "anchor the run to the state it was made against. Without a commit the record "
+                 "cannot go stale, so it can never be wrong — and a claim that cannot be wrong is "
+                 "not evidence")
+        findings = list(findings or [])
+        known = {pin_read(p)["id"] for p in self.readable("pins")}
+        unknown = [f for f in findings if f not in known]
+        _require(not unknown,
+                 f"a run may only claim pins this ledger holds; unknown: {unknown}")
+        record = {
+            "id": self._next_id("run_", self.writable_collection("analysis_runs")),
+            "module": module,
+            "skill": skill,
+            "scope": {"derived_from": derived_from, "targets": targets},
+            "at_commit": at_commit,
+            "findings": findings,
+            "ran_at": _now(),
+        }
+        self.writable_collection("analysis_runs").append(record)
+        return record
+
+    def runs_view(self, at_commit: Optional[str] = None) -> dict:
+        """What has been applied, keyed by module — the join side of the coverage question.
+
+        `at_commit` narrows it to one state of the tree, which is the only reading that answers
+        *"was this module applied to what is here now?"*. Without it the view reports every run,
+        which answers a different and weaker question — *was it ever applied to anything*.
+        """
+        by_module: dict = {}
+        for raw in self.readable("analysis_runs"):
+            record = run_read(raw)
+            if at_commit and record["at_commit"] != at_commit:
+                continue
+            key = f"{record['skill']}:{record['module']}"
+            entry = by_module.setdefault(key, {"module": record["module"],
+                                               "skill": record["skill"], "runs": 0,
+                                               "findings": 0, "last_commit": None,
+                                               "last_run": None, "targets": 0})
+            entry["runs"] += 1
+            entry["findings"] += len(record["findings"] or [])
+            entry["targets"] += len((record["scope"] or {}).get("targets") or [])
+            entry["last_commit"] = record["at_commit"]
+            entry["last_run"] = record["ran_at"]
+        return {"count": sum(e["runs"] for e in by_module.values()),
+                "at_commit": at_commit, "modules": by_module}
+
     def fog(self, fog_id: str) -> dict:
         for patch in self.readable("fog"):
             if fog_read(patch)["id"] == fog_id:
@@ -4164,6 +4333,11 @@ class Ledger:
             # what makes that visible on the call an agent makes before acting.
             "fog": self.fog_view()["count"],
             "fog_oldest_days": self.fog_view()["oldest_days"],
+            # v0.32 — how many module applications this file records at all. The number that
+            # matters is not here and cannot be: whether the modules that were DISPATCHED are
+            # among them is a join against the skill's catalog, which this file does not hold, so
+            # it is computed by the coverage reader and arrives as pins like any other gap.
+            "analysis_runs": self.runs_view()["count"],
             "frontier": len(self.frontier()),
             "claimed": {c["pin_id"]: c["holder"] for c in self.claims()},
         }

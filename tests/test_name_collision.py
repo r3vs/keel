@@ -105,15 +105,23 @@ class TestCollidingSkillsTeachTheQualifiedName(unittest.TestCase):
             with self.subTest(skill=skill):
                 self.assertIn(skill, packaging)
 
-    def _install(self, target: Path, *flags: str, env: dict | None = None):
+    def _install(self, target: Path, *flags: str, spelling: str | None = None):
         """Run the real installer at `target`, with every host directory it writes to redirected
-        into the same throwaway tree. Nothing here may touch the developer's own `~`."""
+        into the same throwaway tree. Nothing here may touch the developer's own `~`.
+
+        `spelling` is the string handed to the shell, and it defaults to POSIX separators rather
+        than to `str(target)`: `install.sh` runs under Git Bash, and on Windows `str(Path)` renders
+        a spelling the script was never written against. Python keeps the `Path` for its own
+        filesystem assertions, so the two halves of each test agree on the directory while
+        disagreeing on how it is spelled — which is the whole point.
+        """
         home = target.parent
         environment = dict(os.environ,
                            HOME=str(home), OPENCODE_DIR=str(home / "opencode"),
-                           PI_DIR=str(home / "pi"), CODEX_DIR=str(home / "codex"), **(env or {}))
+                           PI_DIR=str(home / "pi"), CODEX_DIR=str(home / "codex"))
         return subprocess.run([shutil.which("bash") or "bash",
-                               str(ROOT / "scripts" / "install.sh"), str(target), *flags],
+                               str(ROOT / "scripts" / "install.sh"),
+                               target.as_posix() if spelling is None else spelling, *flags],
                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
                               env=environment)
 
@@ -132,17 +140,35 @@ class TestCollidingSkillsTeachTheQualifiedName(unittest.TestCase):
         `tests/test_app_javascript.py` quotes `test_map.py` about (*"would pass on a renderer that
         never runs"*). Two legs, because the guard is two facts: with no tty and no flag it refuses
         and places nothing, and the opt-in is a real door rather than a documented one.
+
+        **Now over both spellings of the same directory, and the defect that forced it was the
+        script's, not this test's.** This test used to hand the shell `str(Path(...))`, which on
+        Windows is `…\\home\\.claude\\skills`, and the guard's `case "/$skills_dir/" in */.claude/*)`
+        needs forward slashes — so `claude_level` stayed 0. That much is only a test passing an
+        input the script's contract never mentioned. What made it a defect in `install.sh` is what
+        happened *next*, observed rather than reasoned: the run went on to link 19 skills into that
+        `.claude` target. The guard failed OPEN and then performed the very override it exists to
+        refuse, on the one platform where the native spelling is the one a person has in their hand,
+        while CI stayed green on ubuntu and macOS — the maintainer's own machine holding the only
+        copy of the failure. So `install.sh` normalizes separators for the decision, and this test
+        runs both spellings: POSIX, which every host uses, and the platform-native one, which is
+        identical on POSIX and is the regression leg on Windows.
         """
         with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "home" / ".claude" / "skills"
-            r = self._install(target)
-            self.assertEqual(r.returncode, 3,
-                             f"install.sh did not refuse an override target — it exited "
-                             f"{r.returncode}.\n{r.stdout}\n{r.stderr}")
-            self.assertFalse(target.exists() and any(target.iterdir()),
-                             "install.sh refused and placed something anyway; 'nothing was placed' "
-                             "is the sentence it prints and the property that matters")
-            self.assertIn(".claude", r.stderr, "the refusal never says what it objected to")
+            for label in ("posix", "native"):
+                target = Path(tmp) / label / "home" / ".claude" / "skills"
+                spelling = str(target) if label == "native" else None
+                with self.subTest(spelling=label):
+                    r = self._install(target, spelling=spelling)
+                    self.assertEqual(r.returncode, 3,
+                                     f"install.sh did not refuse an override target spelled "
+                                     f"{label} — it exited {r.returncode}.\n{r.stdout}\n{r.stderr}")
+                    self.assertFalse(target.exists() and any(target.iterdir()),
+                                     "install.sh refused and placed something anyway; 'nothing was "
+                                     "placed' is the sentence it prints and the property that "
+                                     "matters")
+                    self.assertIn(".claude", r.stderr,
+                                  "the refusal never says what it objected to")
 
     def test_the_opt_in_is_a_door_and_not_only_a_documented_one(self):
         """`--claude-personal` must actually get through, or the guard is a wall with a sign on it.

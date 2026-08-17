@@ -36,14 +36,23 @@ A token set is an `enum` of allowed values, and membership is the check — the 
 
 ## Procedure
 
-### 1. Elect the DTCG token contract — captured or imported, never invented blind
+### 1. Elect the DTCG token contract — seen before it is elected, never invented blind
 The decision-catalog's **cluster 5b** (design system) is elected in the interview like any fork. A
-text-only agent cannot *invent* a tasteful palette or type pairing — so the tokens are **captured or
-imported**, never authored from a vibe:
+text-only agent cannot *invent* a tasteful palette or type pairing out of adjectives — so a token set
+becomes the contract only once a human has **looked at it rendered**:
 - **captured from an approved visual direction** — the human drives a visual tool (the opt-in ceiling
   below), *sees* and approves a direction, and its tokens become the DTCG contract;
 - **imported** — an existing brand, a Figma Variables export (DTCG-native), or a component library's
   tokens;
+- **proposed, then elected on the render** — where there is no brand and no direction yet, the
+  `brainstorm` role produces **two or three deliberately different** directions instead of one
+  default: each a DTCG token set, a one-line thesis, the slop tells it refuses by name, and a
+  **rendered artifact** (the `prototype` discipline) the human actually looks at. Each direction is
+  fact-checked against its **own render** before the fork is put — `palette_verify` for tokens that
+  occupy no pixels, `design_scan` for contrast — so what reaches the interview is three seen things,
+  not three adjectives. Procedure and the tell catalog: `references/core/design-taste.md`. This is
+  proposing, not inventing: the agent recommends one with a reason and **elects nothing**, the human
+  picks, and the prototypes are discarded once their token set is the contract;
 - and only a decided design system yields a contract: "no formal system in v1" → no DTCG, only the
   universal a11y/slop checks run (YAGNI). Ground token choices in current sources where useful
   (`references/core/knowledge-sources.md`), cite them, but the **interview decides** — the generator

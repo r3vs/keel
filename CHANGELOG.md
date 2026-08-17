@@ -33,6 +33,105 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.10.0] — 2026-08-17
+
+### Added
+- **The ledger audited as a memory — the first gate in this package pointed at its own store.**
+  `src/runtime/memaudit.py` + `mcp:memory_audit` (tool 70). Every other carrier here points at the
+  user's code; the one artifact everything is derived from had none. The failure modes are not
+  invented: they are the eight on the `MODEL — MEMORY` edge of the interaction-centric taxonomy
+  (arXiv:2607.28802), and six are decided from the file — a pin closed at a closing rung with no
+  `evidence` ref (nothing can ever invalidate the claim), a policy scope wider than the case that
+  produced it, a rule recorded without its reason and the cascade of that weakness into every
+  decision it defaulted, transcript signatures pasted into a durable field, one statement written
+  twice, and two standing policies selecting one pin with no precedence recorded.
+- **The two modes it cannot decide are reported as undecidable, not as clean.** Missed Write and
+  Missed Read are claims about a session, not about a file; approximating them would mean ranking
+  absence, which this package refuses everywhere else. A green audit that skipped a quarter of its
+  taxonomy is the `coverage.py` failure one layer up.
+- **The design-taste lens runs in both directions, because the presentation layer obeys
+  `gap = diff(to_be, as_is)` like every other layer.** It was authored inside *rescue's* distribution
+  unit, so the half of this package that **generates** UI had no design judgment at all: greenfield's
+  16 modules carried the whole deterministic contract (DTCG → CSS/Tailwind/`DESIGN.md`, `tokens_diff`)
+  and nothing that asked whether what came out reads as designed or as the statistical center of
+  everything the model has seen. Now one `src/core/design-taste.md`, vendored into the four skills
+  with a UI in either direction, with the **forward** run added: two or three *differentiated*
+  directions, each a DTCG token set with a thesis, the tells it refuses, and a rendered artifact —
+  the human elects on the render, never on the adjective (decision-catalog cluster 5b gained
+  `propose_directions`; greenfield gained a `design-taste` module at Phase 5).
+- **`mcp:render_agreement` — the picture being judged and the facts backing it, tied together.**
+  `design_scan` reported what it *found* and never what it *looked at*, so a critique of one page
+  backed by facts from another was unfalsifiable in the most ordinary way: nobody could tell. `scan()`
+  now returns a `target` block (`kind: render | source | mixed`, urls, paths, viewport) on **every**
+  return path including the `unchecked` ones. Facts from `kind: "source"` → `mismatch`, because no
+  fact read off JSX covers what a browser laid out. Geometry is **declared** (`"390x844@2.625"`, the
+  scale confirmed against the pixels, so asserting past the check does not work) or **inferred** at
+  1x/2x/3x only — fractional device ratios are real, and an inference elastic enough to fit any of
+  them would agree with a desktop capture judged against mobile facts. The URL is reported as
+  *declared*, never as agreement: a PNG carries no address.
+- **A run register — `analysis_runs`, ledger spec v0.32.** A `type: judgment` module (21 of the 58
+  shipped) has an agent for an engine and leaves nothing on disk, so `design-taste` finding no tell
+  and `design-taste` never running produced **byte-identical** ledgers. An `AnalysisRun` records a
+  **scope and never a verdict**: `mcp:ledger_record_run` refuses five ways (no targets, no
+  `at_commit`, no `derived_from`, no module, no skill) and its `findings` must name pins the ledger
+  already holds. A boolean `applied: true` would round-trip through any test and be worthless — an
+  agent that skipped the work writes it just as happily. The collection is optional, so a v0.31 file
+  is *older*, not nonconforming.
+- **`mcp:module_coverage` is the join that makes it bite.** It reads the module catalog — vendored
+  beside the runtime by the build, since a skill ships as another plugin — and turns every dispatched
+  module with no run at this commit into an `incompleteness` pin, `kind_detail: module-unrun`, worded
+  **unchecked** and never *clean*, at `confidence: extracted` because the absence of a record is a
+  fact about the file rather than an inference about the work.
+- **`screenshot-to-code` now elects which oracle governs, at step 0.** The reference image is the
+  specification (a difference is a defect, the taste lens must not overrule it) or a direction (*"like
+  this, but better"* — the pixel comparison stops being an oracle). Same picture, opposite jobs; it
+  was a constant in a test file and is now an `open_decision`, defaulting to `specification` as a
+  surfaced `agent_assumption` when the human is unreachable, because reproducing what someone handed
+  over is the recoverable error.
+
+### Changed
+- `policy_selects` is now a module-level function in `ledger.py`, read by `policy_preview` and by
+  the auditor alike. It acquired a second reader, and a scope predicate written twice is two scope
+  predicates.
+- **`check_consistency.py` grades dispatch, not mention, and it is an error rather than a warning.**
+  Two idioms count, both visible in structure: a `### Phase N` section (or a playbook it names) reads
+  `modules.json`, or SKILL.md (or a playbook it names) points at the file. A sibling reference naming
+  it and a row in `## Read this when` no longer do — `design-taste-lens.md` had both while nothing
+  ever ran it. `check_tool_carriers.py` dropped its write/read split for the same reason: on hosts
+  that **defer** tool schemas, a docstring reaches nobody until something already sent the agent
+  looking. Extending it cost zero exemptions and caught one real tool.
+- **The tool surface was re-measured on the wire** rather than restated: 73 tools, ~111 k characters
+  of JSON (≈28 k tokens), median description 434, longest 1,452 characters / **1,466 bytes** — 582
+  under Claude Code's silent 2 KB cut. `docs/packaging.md` carries the figures and
+  `check_packaging_wire.py` is what refuses them once they drift.
+
+### Fixed
+- **`scripts/install.sh`'s override guard failed open on Windows, and then performed the override.**
+  It decided with `case "/$skills_dir/" in */.claude/*)`, a glob needing forward slashes, so a
+  native `…\.claude\skills` never matched — and the run went on to link 19 skills into that target,
+  observed rather than reasoned. It now normalizes separators **for the decision only**, leaving
+  `$skills_dir` as given; over-refusing costs one `--claude-personal`, under-refusing has no door.
+  `tests/test_name_collision.py` hands the shell a POSIX path (which is the only spelling the script
+  is written against) and runs the refusal over **both** spellings, so the regression leg exists on
+  the platform that had it. This is the repo's own signature class with the sides swapped: green in
+  CI on ubuntu and macOS, red only on the maintainer's machine.
+
+### Notes
+- `docs/open-gaps.md` §35–§37 register the three scopes above with their residuals. §37 states its
+  two remaining as **limits rather than as work**: that a module ran *well* is not knowable — the
+  record is an agent's statement with re-derivable targets and a commit, so **contradictable**, which
+  is the strongest honest property a D2 engine has — and an agent can still record nothing, which is
+  no longer silence but a `module-unrun` pin. Rejected there and worth not rebuilding: `produced_by`
+  on pins (the run already lists its findings, and a second carrier for one edge is the divergence
+  this package grades other people's code for), and the short collection name `runs`, which collides
+  with SARIF's own key and the generator registry's counter at six sites.
+- `docs/open-gaps.md` §34 registers the finding the memory audit came out of, measured rather than
+  recalled:
+  the cross-layer field-shape diff both flagships call *"the core"* is 16% of the runtime, and the
+  package holds carriers on **one** interaction edge. Three remain open there, with the evidence
+  and the traps: the name-keyed correspondence engine, `project_type` → a capability vector, and
+  the process edge.
+
 ## [0.9.0] — 2026-08-17
 
 ### Added

@@ -13,11 +13,26 @@ thing exists; `verify_commands.py` asks whether a named path resolves after inst
 things that ARE named. This checks the inverse — whether a capability that changes state on disk was
 ever named at all — and it is the only direction in which silence is the bug.
 
-Scope: WRITE tools only, derived from each `@mcp.tool` decoration's own `readOnlyHint`. A read tool
-that only the tool index names is defensible: reading costs nothing, the agent can discover it, and a
-wrong read is visible in its own output. A write tool nobody names is a state transition the workflow
-never performs — the pin that never reaches `decided`, the catalog that is never expanded — and its
-absence is invisible precisely because nothing failed.
+Scope: **every** served tool. It was WRITE-only for most of this gate's life, on an argument that
+read this way: *a read tool that only the tool index names is defensible — reading costs nothing, the
+agent can discover it, and a wrong read is visible in its own output.* Two thirds of that is still
+true and it is the wrong axis. What the argument measures is the cost of a **wrong read**; what this
+gate is about is a **missing step**, and a step does not become cheap by being read-only.
+
+`ledger_fog` is the instance that settled it. Its own docstring carried the instruction — *"Read it
+at the start of an interview round"* — and no playbook did; the interview funnel named the three fog
+WRITE doors and `ledger_summary` beside them, so the workflow wrote to a register it never read.
+Discovery does not save that: an agent discovers a tool once it knows it needs one, and not knowing
+is the failure. Worse, on the hosts that **defer** tool schemas — Claude Code's verified default, and
+Pi behind its one proxy tool — a description is not in context at all until something already made
+the agent search for it, so an instruction living only in a docstring reaches nobody. (opencode loads
+the surface up front per its own docs, which is exactly why "some host would show it" is not an
+argument.) That deferral is what makes 70 tools affordable; it is also what makes a docstring a bad
+place to keep a step.
+
+So the question is the same for both halves — *is this capability named by prose that ships?* — and a
+tool that is genuinely discovery-only takes an `UNNAMED_OK` entry with the reason, which is the shape
+this repo uses everywhere else for a declared exception.
 
 Two carrier classes count, because the skills are read by an agent in two forms:
 
@@ -95,15 +110,17 @@ def _dict_value(node: ast.Dict, consts: dict) -> dict:
     return value
 
 
-def write_tools() -> list[str]:
-    """Tool names the server advertises whose own annotation says they are not read-only.
+def served_tools() -> dict:
+    """`{tool name: writes?}` for every tool the server advertises.
 
     Structural, from the decoration that ships — never a hand-kept second list, which would drift
-    from the server the first time somebody added a tool.
+    from the server the first time somebody added a tool. The write flag is no longer what decides
+    whether a tool is checked (see the module docstring); it is kept because the error message is
+    sharper when it can say which kind of capability went unnamed.
     """
     tree = ast.parse(SERVER.read_text(encoding="utf-8"))
     consts = _const_dicts(tree)
-    writes, total = [], 0
+    tools = {}
     for node in tree.body:
         if not isinstance(node, FUNC):
             continue
@@ -111,18 +128,17 @@ def write_tools() -> list[str]:
             if not (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)
                     and dec.func.attr == "tool"):
                 continue
-            total += 1
+            tools[node.name] = True
             for kw in dec.keywords:
                 if kw.arg == "annotations" and isinstance(kw.value, ast.Dict):
-                    if not _dict_value(kw.value, consts).get("readOnlyHint"):
-                        writes.append(node.name)
-    if total == 0:
+                    tools[node.name] = not _dict_value(kw.value, consts).get("readOnlyHint")
+    if not tools:
         raise SystemExit("ERROR no @mcp.tool decorations found in src/mcp/server.py — the decorator "
                          "shape changed and this gate just went vacuous")
-    if not writes:
+    if not any(tools.values()):
         raise SystemExit("ERROR no WRITE tool found — every tool reported readOnlyHint, which is "
                          "false of a server that writes the ledger. The annotation shape changed.")
-    return writes
+    return tools
 
 
 def shipped_md() -> list:
@@ -180,7 +196,7 @@ def engine_carriers() -> dict:
 
 
 def main() -> int:
-    tools = write_tools()
+    tools = served_tools()
     shipped = {p.relative_to(ROOT).as_posix() for p in shipped_md()}
     prose = prose_carriers()
     engines = engine_carriers()
@@ -200,22 +216,26 @@ def main() -> int:
             unnamed.append(tool)
 
     for tool in unnamed:
-        print(f"ERROR `{tool}` WRITES, and no shipped playbook names it. Name it where the act is "
+        act = ("WRITES, and no shipped playbook names it" if tools[tool] else
+               "is served, and no shipped playbook names it")
+        print(f"ERROR `{tool}` {act}. Name it where the act is "
               f"already described — the phase that performs it, or the module's `engine` — or add it "
-              f"to UNNAMED_OK with the reason. A write tool nobody names is a state transition the "
-              f"workflow never makes, and nothing fails to say so.")
+              f"to UNNAMED_OK with the reason. A capability nobody names is a step the workflow "
+              f"never takes, and nothing fails to say so.")
 
     stale = sorted(set(UNNAMED_OK) - set(tools))
     for tool in stale:
-        print(f"ERROR UNNAMED_OK exempts `{tool}`, which the server no longer exposes as a write "
-              f"tool. A stale exemption reads as governance while covering nothing.")
+        print(f"ERROR UNNAMED_OK exempts `{tool}`, which the server no longer exposes. A stale "
+              f"exemption reads as governance while covering nothing.")
 
     for rel in stale_catalogs:
         print(f"ERROR CATALOGS excludes `{rel}`, which the build does not ship. A stale exclusion "
               f"reads as governance while covering nothing.")
 
     bad = len(unnamed) + len(stale) + len(stale_catalogs)
-    print(f"\n{len(tools)} write tool(s) checked against {len(prose)} shipped prose files and "
+    writes = sum(1 for w in tools.values() if w)
+    print(f"\n{len(tools)} served tool(s) ({writes} write, {len(tools) - writes} read) checked "
+          f"against {len(prose)} shipped prose files and "
           f"{sum(len(v) for v in engines.values())} engine declaration(s) "
           f"({len(CATALOGS)} catalog file(s) excluded, {exempt_used} exemption(s) used) — "
           f"{bad} error(s)")

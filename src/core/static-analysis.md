@@ -67,6 +67,18 @@ mutation. Three high-value static signals are commonly under-used:
   graceful degradation looks like success. The general form lives in `core/trust-axes.md`, together
   with the corollary that matters here: an unrun check contributes no verification, so no claim
   inherits a rung it did not earn.
+- **The same rule one level up: a MODULE that did not run is unchecked too.** The tool half above
+  works because a report is on disk or it is not. A `type: judgment` module has an agent for an
+  engine and leaves no artifact, so its silence and a clean result were the same thing in the file —
+  and *guessing* which one from the absence of findings is the inference this package refuses
+  everywhere else. So a module records that it was applied: `mcp:ledger_record_run`, naming the
+  concrete `targets` it read, the tool call they were `derived_from`, and the `at_commit` they were
+  read at. **There is nowhere in that record to say "clean"**, deliberately — a flag like that is a
+  self-report, and what makes this evidence is that a second run can contradict it. Record the run
+  **especially when it found nothing**: the empty run is the case the register exists for.
+  `mcp:module_coverage` then joins the catalog against the register and turns a dispatched module
+  with no run at this commit into an `incompleteness` **`module-unrun`** pin — with the same
+  meaning as its sibling above, and the same refusal to round it to *clean*.
 
 ## Prefer the checkable formulation (a selection heuristic)
 

@@ -53,6 +53,15 @@ def interview_next(ledger: str) -> dict:
     return interview.funnel(_open_existing(ledger))
 
 
+def memory_audit(ledger: str) -> dict:
+    # Audits the store itself, so it reads the FILE rather than a `Ledger`'s view of it: the modes
+    # this answers are properties of what was written, and a guarded read that substitutes an empty
+    # value for a malformed one would hide the very field the finding is about. `memaudit.audit`
+    # does its own guarded read on top of the raw data, which is the same order `nonconforming` uses.
+    import memaudit
+    return memaudit.audit(_open_existing(ledger).data)
+
+
 # -- the ledger as a READ SURFACE (what the MCP resources project) --------------------------------
 # These have no `@mcp.tool` of their own and are not meant to: an agent that wants pins calls
 # `ledger_summary` / `interview_next` / `ledger_frontier`, each of which answers a question. What a
@@ -812,6 +821,25 @@ def ledger_add_fog(ledger: str, area: str, sensed: str, provenance: list,
     return out
 
 
+def ledger_record_run(ledger: str, module: str, skill: str, derived_from: str, targets: list,
+                      at_commit: str, findings: list | None = None) -> dict:
+    """Record that a catalog module was applied, over a scope somebody else can re-derive."""
+    led = _open_or_create(ledger)
+    record = led.record_run(module, skill, derived_from, targets, at_commit, findings)
+    out = {"run_id": record["id"], "module": record["module"], "skill": record["skill"],
+           "targets": len(record["scope"]["targets"]), "findings": len(record["findings"])}
+    _saved(ledger, led)
+    return out
+
+
+def module_coverage(ledger: str, skill: str, at_commit: str, phases: list | None = None) -> dict:
+    """Which dispatched modules have a run at this commit, and which have none."""
+    import coverage
+    led = _open_existing(ledger)
+    ran = led.runs_view(at_commit=at_commit)["modules"]
+    return coverage.module_report(skill, ran, at_commit, phases=phases)
+
+
 def ledger_graduate_fog(ledger: str, fog_id: str, question: dict, human_answer: str,
                         kind: str = "open_decision", title: str = "", severity: str = "medium",
                         confidence: str = "inferred") -> dict:
@@ -1371,6 +1399,13 @@ def palette_verify(image: str, claimed: list | None = None, contract: str = "",
     if contrast_pairs:
         out["contrast"] = visual.check_contrast(contrast_pairs)
     return out
+
+
+def render_agreement(image: str, viewport: str = "", scan: dict | None = None,
+                     url: str = "", captured: str = "") -> dict:
+    import visual
+    return visual.render_agreement(image, viewport=viewport, scan=scan, url=url,
+                                   captured=captured)
 
 
 # -- comprehension / understand-mode (the structural-graph family) ----------------------------

@@ -91,10 +91,14 @@ UI** and keeps it). This is the presentation-layer contract — the thing greenf
 `design-propagation` generates from and rescue's `design-alignment` diffs against. The machine
 contract is a **W3C DTCG** token set (the stable, multi-vendor standard); `DESIGN.md` and the CSS /
 Tailwind layers are *generated* from it, never hand-authored (an agent that only reads text cannot
-invent a tasteful palette — the tokens are **captured or imported**, not invented).
+invent a tasteful palette out of adjectives — a token set becomes the contract only once a human has
+**seen it rendered**).
 - **Options:** capture a **DTCG token set** from an approved visual direction (a visual tool, opt-in)
   · import tokens (an existing brand · a Figma Variables export, DTCG-native · a component library) ·
-  no formal system in v1 (only universal a11y/slop checks run).
+  have the agent **propose 2–3 rendered directions** and elect one (no brand yet: each is a DTCG set
+  + a thesis + the tells it refuses + a prototype you look at, palette fact-checked against its own
+  render — `references/core/design-taste.md`) · no formal system in v1 (only universal a11y/slop
+  checks run).
 - **Downstream:** the DTCG carrier → generated CSS / Tailwind / DESIGN.md, the CI drift-check
   (`tokens_diff` + `impeccable detect`), Wave 1; every UI slice's styling.
 - **Default policy:** "elect a minimal DTCG token set from day one, so design drift is a build failure

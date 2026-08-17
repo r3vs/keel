@@ -85,6 +85,10 @@ now?** — explicitly not *can you answer it now*. A sharp-but-unanswerable ques
 it, put it to the human, and let them defer it if they want. A question you cannot yet phrase is
 **fog**, and it has exactly one home:
 
+- `mcp:ledger_fog` — **read the register at the start of every interview round**, before asking
+  anything. It is the one door that shows the patches themselves; `ledger_summary` reports only how
+  many there are and how old the oldest is, which tells you the register is rotting and not which
+  patch is ready to graduate.
 - `mcp:ledger_add_fog` — the area, and what made you sense a decision is coming. There is nowhere
   to put a question, which is the point: if you can phrase one, this is not fog, it is a pin.
 - `mcp:ledger_graduate_fog` — it became phrasable. It becomes a pin **and leaves the register**, so

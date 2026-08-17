@@ -161,21 +161,25 @@ retry, not a global restart.
 
 ---
 
-## The 29 analysis modules
+## The 31 analysis modules
 
-Phase 1 runs a catalog, not an ad-hoc read. Each module declares its `type` — and `deterministic`
-is a **promise**: it names the engine that produces the finding.
+Phase 1 runs a catalog, not an ad-hoc read — and so does Phase 5, on the evidence side. Each module
+declares its `type` — and `deterministic` is a **promise**: it names the engine that produces the
+finding. A capability that is in no phase's catalog is a capability nothing runs, which is why the
+consistency linter now fails on a playbook that only a cross-reference points at.
 
 **Cross-layer & contract** — `contract-reconciliation` (the core engine: field shapes diffed across
 DB↔ORM↔API↔frontend) · `design-alignment` (the same diff on the rendered UI — fonts, colors, radii,
-a11y — against an elected `DESIGN.md`) · `docs-claims` (docs treated as claims; the dangling ones
-are flagged).
+a11y — against an elected `DESIGN.md`) · `design-taste` *(judgment)* (the same UI read as taste
+rather than as drift — the "generated, not designed" tells, applied to the **render** rather than to
+the JSX, as options the interview weighs, never defects) · `docs-claims` (docs treated as claims; the dangling ones are flagged).
 
 **Comprehension** — `graph-build` · `graph-query` · `guided-tours` · `explain-node` · `layered-map` ·
 `domain-entrypoints` · `wiki-asis` · `incremental-fingerprint` (the resume baseline) · `diff-impact`.
 
 **Correctness & security** — `security-sast` · `secrets` · `dependencies` · `type-check` ·
-`test-validity` · `logic-correctness` *(judgment)*.
+`test-validity` · `logic-correctness` *(judgment)* · `browser-verification` (Phase 5: a UI claim
+resolves on a committed browser spec re-run read-only, never on a screenshot someone looked at).
 
 **Health & maintainability** — `architecture-fitness` (elected boundaries as executable constraints)
 · `complexity` · `duplication` · `dead-code` · `hotspots-coupling` · `placeholder-stub` ·

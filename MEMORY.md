@@ -20,14 +20,14 @@ gate written for exactly its failure shape.
 
 ## Facts
 - This repo is a **package of agent skills** — the deliverable is prose a future agent executes,
-  plus a runtime spine (`src/runtime/`, core stdlib-only, **1278 tests green in CI**),
+  plus a runtime spine (`src/runtime/`, core stdlib-only, **1343 tests green in CI**),
   `scripts/run_evals.py`, and the ast-grep rule pack. **Step-0 verdicts, both now on trustworthy
   data**: greenfield STRONG (full generation is Plan A); rescue's VibraFlow **re-run on a fresh
   graph 2026-07-14** → **WEAK** cross-layer correspondence, so standalone extraction is Plan A and
   the carrier is the correspondence source of truth. The WEAK verdict is citable — the stale-graph
   challenge is closed.
 - **`src/core/decisions-ledger-spec.md` is the authoritative ledger schema** — English, and
-  **currently v0.31**; `src/core/ledger.md` is the short English pointer summary. The runtime
+  **currently v0.32**; `src/core/ledger.md` is the short English pointer summary. The runtime
   implementing it is `src/runtime/ledger.py`, and `ledger.SCHEMA_VERSION` is what every prose claim
   about the version is checked against. (Historical note: the spec was authored in Italian and translated to
   English on 2026-07-14. `docs/design/dynamic-workflows.md` was the last Italian file and was
@@ -89,7 +89,7 @@ gate written for exactly its failure shape.
   TDD's red step *is* an `acceptance_criterion` pin. Gate:
   `test_codex_manifest.py::test_no_source_leaves_this_repo`.
 - **Four MCP servers are declared, and cognee is not one of them.** The shipped `.mcp.json` carries
-  `keel` (our own, 69 typed MCP tools over `uv run --script`), `playwright` (rendered-DOM
+  `keel` (our own, 73 typed MCP tools over `uv run --script`), `playwright` (rendered-DOM
   extraction), `context7` and `deepwiki`. **`cognee` and `github` are named in the doctrine's table
   and deliberately left undeclared** — each needs external setup (a container plus `LLM_API_KEY`; a
   token), and a declared-but-unreachable server is a broken entry in every user's session.

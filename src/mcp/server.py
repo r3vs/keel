@@ -1243,6 +1243,61 @@ def ledger_add_fog(ledger: str, area: str, sensed: str, provenance: list,
     return tools.ledger_add_fog(ledger, area, sensed, provenance, cluster_hint)
 
 
+@mcp.tool(annotations={"title": "Ledger — Record that a Module Was Applied", **_RW_CREATE})
+def ledger_record_run(ledger: str, module: str, skill: str, derived_from: str, targets: list,
+                      at_commit: str, findings: list | None = None) -> dict:
+    """Record that a catalog module ran, over a scope somebody else can re-derive.
+
+    A dispatch gate proves a step is *reachable*; nothing observed that a `type: judgment` module was
+    ever *applied*. A deterministic module has a report on disk, so its absence is already a
+    coverage gap. A judgment module has an agent for an engine and leaves no artifact — so its
+    silence and a clean result were the same thing in the file.
+
+    What is recorded is the **scope, never a verdict**. There is nowhere here to say "clean": a flag
+    like that is a self-report, and an agent that skipped the work writes it just as happily. What
+    makes this evidence instead is that it can be **contradicted** — the targets are named, the tool
+    call that produced them is named, and the commit anchors it, so re-running is what settles it.
+
+    `findings` may be empty, and that is the case this exists for. Then `module_coverage` turns a
+    dispatched module with no run at this commit into an `incompleteness` pin: *unchecked*, never
+    *clean*.
+
+    Args:
+        ledger: Path to ledger.json.
+        module: The catalog module id that was applied (e.g. `design-taste`).
+        skill: The skill whose catalog declares it — two catalogs carry the same ids.
+        derived_from: What produced the target set (`mcp:design_scan`, `mcp:render_agreement`, a
+            named rule). A scope nobody can re-derive is a sentence, not a record.
+        targets: The concrete files, URLs or nodes read. Required, and may not be empty.
+        at_commit: The commit the targets were read at — without it the claim cannot go stale.
+        findings: Pin ids this run produced. May be empty; must exist in this ledger.
+    """
+    return tools.ledger_record_run(ledger, module, skill, derived_from, targets, at_commit,
+                                   findings)
+
+
+@mcp.tool(annotations={"title": "Module Coverage (dispatched vs actually applied)", **_RO})
+def module_coverage(ledger: str, skill: str, at_commit: str,
+                    phases: list | None = None) -> dict:
+    """Which of a skill's modules were applied at this commit — and which were not. WRITES NO FILE.
+
+    The join between the module catalog (what is dispatched) and the ledger's run register (what was
+    recorded). Every gap carries a ready `pin` payload for `ledger_add_pin`, composed here so the
+    wording stays deterministic: an un-run module is **unchecked, not clean**, and that distinction
+    is precisely the one that inverts when an agent writes the sentence from memory.
+
+    Narrow with `phases` to what was actually in scope — a mode that runs Phase 1 alone is not
+    missing Phase 5, and the ledger does not know which phases a session covered.
+
+    Args:
+        ledger: Path to ledger.json.
+        skill: `codebase-rescue` or `greenfield-forge` — whose catalog to expect.
+        at_commit: The commit to ask about. A run recorded against another state does not count.
+        phases: Optional phases in scope; omit to expect the whole catalog.
+    """
+    return tools.module_coverage(ledger, skill, at_commit, phases)
+
+
 @mcp.tool(annotations={"title": "Ledger — Graduate Fog into a Pin the Human Phrased", **_RW})
 def ledger_graduate_fog(ledger: str, fog_id: str, question: dict, human_answer: str,
                         kind: str = "open_decision", title: str = "", severity: str = "medium",
@@ -1663,6 +1718,26 @@ def coverage_gaps(langs: list[str], reports: list[str] | None = None) -> dict:
     return tools.coverage_gaps(langs, reports)
 
 
+@mcp.tool(annotations={"title": "Memory Audit (the ledger's own health)", **_RO})
+def memory_audit(ledger: str) -> dict:
+    """Audit the LEDGER ITSELF against the eight ways a durable memory fails.
+
+    Every other gate points at the user's code; this one points at the store everything else is
+    derived from. Six modes are decided from the file — a pin closed at an observed rung with no
+    evidence ref (nothing can ever invalidate it), a policy scope wider than the case that produced
+    it, a rule recorded without the reason for it, machine output pasted into a durable field, the
+    same statement written twice, two standing policies selecting one pin. Two modes are REPORTED AS
+    UNDECIDABLE rather than approximated: a fact never written and a memory never read leave no
+    trace in the file.
+
+    Findings decide nothing. Surface the ones that matter as pins and let the human elect.
+
+    Args:
+        ledger: Path to ledger.json.
+    """
+    return tools.memory_audit(ledger)
+
+
 @mcp.tool(annotations={"title": "Render Visual Map", **_RW})
 def render_map(ledger: str, out: str, live: bool = False) -> dict:
     """Render the ledger as the self-contained visual HTML map. WRITES A FILE.
@@ -1799,6 +1874,43 @@ def palette_verify(image: str, claimed: list | None = None, contract: str = "",
     """
     return tools.palette_verify(image, claimed=claimed, contract=contract, tolerance=tolerance,
                                 contrast_pairs=contrast_pairs, coverage_floor=coverage_floor)
+
+
+@mcp.tool(annotations={"title": "Render Agreement (do the facts and the picture describe one render?)",
+                       **_RO})
+def render_agreement(image: str, viewport: str = "", scan: dict | None = None,
+                     url: str = "", captured: str = "") -> dict:
+    """Tie a taste critique to the render its facts were computed on. WRITES NO FILE.
+
+    A design pass has two renderers: `design_scan` renders the URL itself to compute contrast and
+    token membership, while the picture the critique is read off is captured separately. Judging the
+    second while the facts came from the first — a different viewport, a different page, or JSX read
+    off disk — is a claim nobody can check, because nobody can tell which render it was about.
+
+    Two questions, only one of them arithmetic. **Did the facts come from a render at all?** A
+    `kind: "source"` scan read source files, and the tells a taste lens looks for are compositional —
+    not in the JSX. **Is it the same geometry?** Declare what the browser was driven at (`captured`)
+    and the check is exact — its viewport against the scanned one, its scale confirmed against the
+    pixels, so a declaration the image refutes is caught rather than believed. Declare nothing and
+    only 1x / 2x / 3x are inferred: a fractional device scale factor (Pixel's 2.625, a 125% display)
+    is real, and an inference that stretched to fit any ratio would agree with everything. A taller
+    image at a matching width is a full-page capture — reported, not flagged. The URL is compared as
+    two *declared* strings — a PNG carries no address — and never counted as agreement.
+
+    Returns `agree` / `mismatch` with the specific fields / `unchecked` with the reason. Never a
+    clean verdict on something it could not look at.
+
+    Args:
+        image: the screenshot the critique is being read off (PNG; other formats via a converter).
+        viewport: `"WxH"` in CSS pixels; omit when `scan` carries the one it ran at.
+        scan: the dict `design_scan` returned — its `target` block says what was looked at.
+        url: the address the picture was captured from, if you have it.
+        captured: what the browser was actually driven at — `"390x844@2.625"` (viewport@scale) or
+            `"1440x900"`. Pass it whenever the capture is not a plain 1x/2x/3x of the scanned
+            viewport; it is checked against the pixels, not taken on trust.
+    """
+    return tools.render_agreement(image, viewport=viewport, scan=scan, url=url,
+                                  captured=captured)
 
 
 @mcp.tool(annotations={"title": "Extract Design Tokens (as-is → candidate DTCG)", **_RO})
