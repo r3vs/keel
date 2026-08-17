@@ -12,6 +12,29 @@ the detector's hits skip fp-check (facts); the taste lens's observations go thro
 interview weighs). Never assert a taste judgment as a defect — that reintroduces the vibecoding failure
 mode inside the auditor.
 
+## When it runs, and what makes it run
+
+**`modules.json` → `design-taste`, phase 1, `type: judgment`, `engine: agent:critique-against-tell-catalog`.**
+Phase 1 runs the catalog (`references/phase-1-comprehension.md` step 3), so the lens is a step of the
+sweep, not an optional read. That entry is the point of this paragraph: for its first months this
+playbook was reachable only through a conditional *"read this when"* row, which is a description of a
+workflow rather than a workflow — the same gap the package grades other people's codebases for, sitting
+in the module that grades taste.
+
+It runs **in Phase 1** because a taste finding is input to the **interview**: it has to exist before
+Phase 2 for the human to elect anything about it. The `reviewer` and `challenger` apply the same lens
+again later (below) and that use needs no catalog entry — it is a dimension of a gate that already runs.
+
+**Scope is inherited, never chosen.** The lens reads the files the deterministic detector already
+governs — an elected `DESIGN.md`, or the UI files `design_scan` reported — so a repo with no
+presentation layer produces nothing rather than something. A lens that picks its own scope is a lens
+that finds what it went looking for.
+
+**The limit, stated rather than implied:** an agent engine is D2, and nothing computes whether a
+judgment lens actually ran. That is true of every `type: judgment` module in the catalog — which is
+exactly why the field never claims otherwise, and why the *findings* still pass fp-check like any
+other inference.
+
 ## What the lens looks for (the "generated, not designed" tells)
 
 Adapted, with attribution, from two public catalogs (we author the lens; we install neither skill):

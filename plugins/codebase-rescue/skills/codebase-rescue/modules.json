@@ -118,8 +118,23 @@
         "design_concern",
         "contract_mismatch"
       ],
-      "notes": "The presentation layer's contract, bound to the ledger. Shells the Impeccable detector (Paul Bakaus, Apache-2.0, no-LLM) over HTML/CSS/JSX/TSX/Vue/Svelte and URLs. Deterministic carrier decides the pin kind: a `design-system-*` hit (a font/color/radius/size outside the project's elected DESIGN.md) is a `contract_mismatch` — the frontend analog of the DB<->ORM<->API shape diff, emitted only when a DESIGN.md governs the files, so never fabricated; every universal a11y/slop tell (low-contrast, overused-font) is a `design_concern`. WCAG is a computed ratio and off-palette is set-membership, so hits are facts (confidence extracted) that skip fp-check; advisory rules are surfaced, floored low, and flagged non-blocking. URL targets render in a real browser (rendered checks). The taste half (Impeccable's LLM critique, its own skill) is NOT this detector — it is the reviewer/challenger lens, adapted with attribution. Degrades `unchecked`, never a clean bill, when impeccable is absent. Read the full playbook.",
+      "notes": "The presentation layer's contract, bound to the ledger. Shells the Impeccable detector (Paul Bakaus, Apache-2.0, no-LLM) over HTML/CSS/JSX/TSX/Vue/Svelte and URLs. Deterministic carrier decides the pin kind: a `design-system-*` hit (a font/color/radius/size outside the project's elected DESIGN.md) is a `contract_mismatch` — the frontend analog of the DB<->ORM<->API shape diff, emitted only when a DESIGN.md governs the files, so never fabricated; every universal a11y/slop tell (low-contrast, overused-font) is a `design_concern`. WCAG is a computed ratio and off-palette is set-membership, so hits are facts (confidence extracted) that skip fp-check; advisory rules are surfaced, floored low, and flagged non-blocking. URL targets render in a real browser (rendered checks). The taste half (Impeccable's LLM critique, its own skill) is NOT this detector — it is the `design-taste` module below, adapted with attribution. Degrades `unchecked`, never a clean bill, when impeccable is absent. Read the full playbook.",
       "reference": "references/module-design-alignment.md"
+    },
+    {
+      "id": "design-taste",
+      "phase": 1,
+      "kind": "core",
+      "type": "judgment",
+      "engine": "agent:critique-against-tell-catalog",
+      "tools": [
+        "graph"
+      ],
+      "produces": [
+        "design_concern"
+      ],
+      "notes": "The judgment half of the presentation layer — whether a UI reads as designed or as generated — and a catalog entry rather than a reference for one reason: a conditional `read this when` row is not a dispatch. The lens was authored, attributed and pointed at, and nothing ran it; Phase 1 runs the modules in this file, so this is where a lens becomes a step. A read-only role critiques the UI against the catalog of `generated, not designed` tells (Impeccable's rule catalog, Apache-2.0, plus Anthropic's frontend-design principles — adapted with attribution, neither skill installed) and emits `design_concern` pins that are OPTIONS, never defects: `confidence: inferred`, through fp-check, `to_be` null until the interview elects one, `accepted` a legitimate outcome. Never a `contract_mismatch` — that kind is `design-alignment`'s token-membership fact, and blurring the two is how a taste judgment starts getting believed like a computed one. Its scope is not the lens's to choose: it runs over the files the detector already governs (an elected DESIGN.md, or the UI files `design_scan` reported), so it never sweeps a repo with no presentation layer, and with no UI it produces nothing rather than something. The same lens is applied again downstream — the `reviewer` as its design dimension, the `challenger` to refute an elected design to_be as templated — and that use needs no catalog entry; this one exists because a taste finding is input to the interview, so it must exist before Phase 2. The honest limit, stated: an agent engine is D2 and nothing computes whether a judgment lens ran, which is true of every judgment module here and is why `type` never says otherwise. Read the full playbook.",
+      "reference": "references/design-taste-lens.md"
     },
     {
       "id": "docs-claims",
@@ -423,6 +438,23 @@
       "produces": "agent_instruction_carrier",
       "notes": "Projects the elected to-be into the repo's AGENTS.md (plus the CLAUDE.md bridge) once Phase 2 has elected and Phase 3 has sequenced. A rescued codebase keeps being worked on by agents, and no host loads ledger.json — without the carrier every Phase-4 executor restarts from the blank slate that produced the mess. Writes only inside its markers, so an existing AGENTS.md survives word for word; instructions_diff reports absent / stale / hand_edited.",
       "reference": "references/core/instruction-files.md"
+    },
+    {
+      "id": "browser-verification",
+      "phase": 5,
+      "kind": "correctness",
+      "type": "deterministic",
+      "engine": "external:playwright",
+      "tools": [
+        "playwright"
+      ],
+      "produces": [
+        "defect",
+        "design_concern",
+        "incompleteness"
+      ],
+      "notes": "The UI half of `resolved` means OBSERVED, and the first Phase-5 module — which is what makes this catalog reachable from the evidence gate at all. Its playbook called itself \"the Phase-5 oracle the measurer re-runs\" while Phase 5 named no browser anywhere, so the oracle was true in one document and absent from the gate that was supposed to run it. The deterministic carrier is a COMMITTED Playwright spec: the executor writes it (Track A, red before the fix), the measurer/reviewer/challenger re-run it read-only, so a UI verdict is reproducible and diffable like any test rather than a screenshot someone eyeballed once. The determinism split is enforced, not blurred: token-membership and the a11y subset on the live render are facts that gate merge, while a pixel diff is a deterministic mechanism over a NOISY signal (anti-aliasing, font hinting, GPU/OS rendering) and therefore routes to a human-reviewed pin, never auto-resolved. The Playwright MCP is declared by the install and is the AUTHORING surface (accessibility-tree snapshots, not pixels) — never the verdict, which rests only on the committed spec. Degrades like every other tool: no Playwright means the behavior is reported as an uncovered coverage gap (`incompleteness`), never a silent pass. Read the full playbook.",
+      "reference": "references/browser-verification.md"
     }
   ]
 }

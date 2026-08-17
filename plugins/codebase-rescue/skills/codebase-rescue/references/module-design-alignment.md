@@ -119,7 +119,9 @@ subcommand. We do **not** run it inside this deterministic module, and we do **n
 skill (self-contained). Where subjective design quality matters, it is a **reviewer / challenger
 lens** — a judgment pin that DOES pass fp-check, authored here and adapted **with attribution** from
 Impeccable's rule catalog and Anthropic's `frontend-design` principles, kept on the read-only side of
-the roster. Full playbook: `references/design-taste-lens.md`. Keeping fact (the detector) and taste
+the roster. It is its own Phase-1 module, `design-taste` (`type: judgment`), and it inherits *this*
+module's scope: it reads the files the detector governs and never picks its own.
+Full playbook: `references/design-taste-lens.md`. Keeping fact (the detector) and taste
 (the critique) on opposite sides of the fp-check line is the same fact-vs-taste split this package
 draws everywhere.
 

@@ -155,13 +155,13 @@ python scripts/build.py                # src/ -> plugins/. The ONE generation st
 python scripts/build.py --check        # the drift gate: plugins/ still equals what src/ generates
 python scripts/validate_manifests.py   # plugin.json + marketplace.json + .mcp.json, blocking (--strict is advisory)
 python -m ruff check .                 # the Python floor; ruff.toml declares the debt and the next tier
-python scripts/check_consistency.py    # drift-linter — modules ↔ references ↔ SKILL; roster names AND permissions
+python scripts/check_consistency.py    # drift-linter — modules ↔ references ↔ SKILL, and dispatch: a playbook nothing runs fails
 python scripts/check_description_budget.py  # the listing budget Keel spends in the host; two flagship line caps
 python scripts/verify_pointers.py      # every *.md cross-reference resolves; exits 1 on dangling
 python scripts/check_hypotheses.py     # every tuned number in the runtime is declared (AST, not grep)
 python scripts/check_schema_fields.py  # every field the ledger spec declares is READ by something that ships
 python scripts/check_stated_facts.py   # every number this repo restates in prose equals what computes it
-python scripts/check_tool_carriers.py  # every WRITE tool the server exposes is named by a shipped playbook
+python scripts/check_tool_carriers.py  # every tool the server exposes is named by a shipped playbook (read included)
 python scripts/check_packaging_wire.py # the tool surface docs/packaging.md measures, re-measured on the wire
 python scripts/verify_commands.py      # every agent-facing COMMAND resolves after install; exits 1 on drift
 python scripts/run_evals.py --validate # each skill's evals.json is well-formed (structure, not behaviour)
@@ -471,6 +471,15 @@ is not this one.
   `build.py --check` verifies every vendored copy still equals its `src/` source, and
   `verify_pointers.py` checks every cross-reference resolves. When you add or rename a module, update
   its `modules.json` **and** its playbook **and** any `SKILL.md` pointer together.
+- **A playbook that nothing dispatches is an error, not a warning.** The same gate now asks whether
+  each `references/*.md` is *reached*, and only two idioms count: a `### Phase N` section (or a
+  playbook it names) reads `modules.json`, which dispatches that phase's modules; or SKILL.md — or a
+  playbook SKILL.md names — points at it directly. **A sibling reference naming it, or a row in
+  `## Read this when`, does not**: the first is a cross-reference, the second is a lookup keyed by a
+  condition, and `design-taste-lens.md` had both while nothing ever ran it. Depth stops one hop past
+  SKILL.md deliberately — deciding whether a leaf's pointer is a handoff or a see-also means reading
+  prose for meaning, so the rule asks *who* points instead. `tests/test_dispatch_gate.py` runs the
+  gate against a built tree rather than reading its source.
 - **Path convention:** `references/x.md` is skill-root-relative (rescue's root is
   `src/skills/codebase-rescue/`), and this **includes the vendored `references/core/x.md` copies** —
   which exist only after `build.py` runs, and are checked against `src/core/` by rule until then.

@@ -5,8 +5,16 @@ is spent. A fix is not done because the build is green — prove the gap
 closed, with evidence specific to the pin kind. Read-only: the validator produces a verdict,
 never a change or a guess.
 
+The evidence engines are the **Phase-5 modules in `modules.json`**; the checks below are keyed by
+the pin kind they answer.
+
 ## Checks by pin kind
 
+- **UI behavior / rendered design** — re-run the **committed browser spec** the executor wrote,
+  read-only. The observation is the spec's result, never a screenshot someone looked at once.
+  Token-membership on the live render gates deterministically; a pixel diff is a human-reviewed pin,
+  never auto-resolved. No Playwright → the behavior is an uncovered coverage gap, never a pass.
+  `references/browser-verification.md`.
 - **contract_mismatch / internal_contradiction** — re-extract the shapes at every anchor,
   re-diff. Must now agree with the elected canonical `to_be`. Any residual disagreement → not
   resolved. Plus the generated **contract test** (`references/core/contract-testing.md`) passes at the

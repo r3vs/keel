@@ -4145,6 +4145,198 @@ depend on.
 
 ---
 
+## 34. Every carrier this package owns sits on one interaction edge — **PARTLY CLOSED 2026-08-17** (memory edge landed; three edges OPEN)
+
+### Verified
+
+Counted, not remembered: the runtime was 34 modules and 16,308 lines when this was counted (35 and 16,709 once `memaudit.py` landed below). `shapes.py` + `generate.py` +
+`treesitter_extract.py` — the cross-layer field-shape diff both flagships call *"the core"* — are
+2,612 of them, **16%**. `ledger.py` alone is 4,178, **26%**. The engine was never the layer differ;
+the layer differ is one carrier hanging off it, and it is the one the documentation foregrounds.
+
+That would be a naming complaint if the carriers were spread evenly. They are not. Read against the
+2026 literature, this package holds carriers on **one interaction edge** — model ↔ code artifact —
+and prose on every other:
+
+- **Artifact edge.** Mothukuri & Parizi, *The Patchwork Problem in LLM-Generated Code*
+  (arXiv:2607.08981, 2026-07-09) formalizes eight structural-failure categories as invariants over
+  repository graphs: symbol resolution, phantom internal API, dependency hallucination,
+  build/configuration incoherence, resource coherence, control-flow coherence, cross-file contracts,
+  security structural regression. Their measurement is the one that matters here: **65 of 67
+  findings (97%) evade type-checking, tests and SAST together**, and on 43 real AI-built repositories
+  the pipeline found 1,152 issues in 35 of them. `shapes.py` covers a slice of one category (CCV).
+  Five of the eight are name-keyed correspondence — a key declared in one place and used in another
+  — which this repo has the graph for and no engine over.
+- **Memory edge.** Raj et al., *Model or Harness?* (arXiv:2607.28802, 2026-07-30) assign 41 failure
+  modes to interaction edges; **eight sit on `MODEL — MEMORY`**. The ledger *is* that memory, and
+  before this section it had carriers for none of them.
+- **Process edge.** Zhao et al., *Failure as a Process* (arXiv:2607.09510, 2026-07-10), 1,794
+  annotated CLI trajectories over 63,000 steps: **57.9% of decisive errors are epistemic** — the
+  information was available and was ignored, forgotten or misread — with *false premise* the single
+  largest trigger at **30.7%**. The decisive error lands at median step 7 and becomes observable
+  about ten steps later. `assumptions.md` addresses exactly this class and fires only on assumptions
+  the agent NOTICES making.
+- **Human edge.** Tang et al. (arXiv:2605.29442, 2026-05-28), 20,574 real sessions, 16,118 validated
+  episodes: developer-constraint violation **38.33%**, misread intent **26.95%**, inaccurate
+  self-reporting **22.58%**. 90.50% cost effort and trust rather than damage, and **91.49% of visible
+  resolutions still needed the developer to push back**. Over Feb 2025 → Apr 2026 the implementation
+  symptoms decline while **constraint violation and inaccurate self-reporting grow in share** — which
+  is the ledger's own target getting bigger, not smaller.
+
+### Why it matters
+
+The package's thesis is that a claim is either computed from a carrier or elected by a human. That
+thesis is sound and it is under-spent: nine of the ~fifteen claim classes a coding agent actually
+makes have no carrier here, and the axis they are missing on is not *more layers*, it is *other
+edges*. A package that grades the user's schema drift with eight stacks of extraction while its own
+store can silently rot is spending its rigour where it already had some.
+
+### What landed (2026-08-17)
+
+`src/runtime/memaudit.py` + `mcp:memory_audit`, read-only, no schema change. Six of the eight memory
+modes decided from the file; the other two **declared undecidable and reported as such**, because a
+green audit that skipped a quarter of its taxonomy is the `coverage.py` failure one layer up:
+
+| Mode | Carrier |
+|---|---|
+| State Staleness | a pin closed at a closing rung whose `verification.evidence` carries no `ref` — the claim can never be invalidated by anything |
+| Overgeneralization | a policy scope selecting more pins than the case that produced it; empty scope reported as the universal default it is |
+| Rationale Erosion | `policy_weakness`, plus its cascade into every decision that inherited the weak policy's authority |
+| Pollution | literal transcript signatures (traceback header, stack frame, ANSI escape) and a declared size budget |
+| Redundancy | normalized equality of `title` / `rule`, reported once per group |
+| Memory Following Failure | two standing policies selecting one pin — ambiguous dispatch, with no precedence recorded |
+| Missed Write | **undecidable from the file**: the fact never written leaves no trace in the store |
+| Missed Read | **undecidable from the file**: a read that did not happen is visible at the tool layer |
+
+`policy_selects` moved to `ledger.py` in the same change, because the auditor became its second
+reader and a scope predicate written twice is two scope predicates.
+
+### What is still open
+
+1. **The name-keyed correspondence engine.** One optional per-grammar query in `graph_build.py`
+   (calls whose argument is a string literal, and whether the site also binds a body) yields the
+   key/declaration/use triple, and with it: IPC channels, Tauri commands, CLI subcommands, route
+   tables, event topics, DI tokens, feature flags, i18n keys, deep links, permission requests — and
+   the one with the highest real-world count, **environment variables read and declared nowhere**.
+   Eight platform-shaped defect classes, one mechanism, zero framework names.
+2. **`project_type` dies.** It is a free string defaulted to `"web-saas"`, validated by nobody, on
+   six MCP doors, with `prune_for` naming four exceptions. Anything unnamed — desktop, game,
+   firmware, extension, pipeline — silently receives the whole web questionnaire. Replace `prune_for:
+   [names]` with `requires: [capability predicates]` elicited in the Frame; each existing list is
+   exactly one negated predicate, so the migration is mechanical.
+3. **The process edge.** False premise at 30.7% is `agent_assumption` aimed at the assumption the
+   agent did not notice, and ProcCtrlBench (arXiv:2605.20251) gives the vocabulary that is missing —
+   *control preservation* over interpretability, interruptibility, correctability, reversibility and
+   authority handoff, scored on the trajectory rather than the outcome.
+4. **An artifact anchor on `verification`.** The staleness carrier above reports the ABSENCE of a
+   re-derivation handle; it cannot report a handle that has gone stale, because nothing records the
+   state the observation was made against (the class Yuan et al. name artifact-anchored verification
+   memory, arXiv:2608.04278). That needs a schema field and therefore an election.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_memaudit
+```
+
+### Traps
+
+- **Do not turn the undecidable two into approximations.** Ranking absence is the one inference this
+  package refuses everywhere else, and a Missed Write score would be exactly that.
+- **Do not let redundancy grow a semantic comparison.** Normalized equality is a carrier; "these two
+  pins mean the same thing" is a model's judgment wearing a finding's clothes.
+- **Do not close item 1 by adding a table of frameworks.** The moment the engine names Electron, the
+  package is back to enumerating kinds of software, which is what item 2 exists to end.
+- **Do not read the 16% as a verdict on `shapes.py`.** It is the most-verified engine here. The
+  finding is about where the OTHER carriers are, not about that one.
+
+---
+
+## 35. A capability can ship with an author, an attribution and no dispatch — **CLOSED 2026-08-17** (one residual, and it needs an election)
+
+### Verified
+
+The question was *"is anything else switched off like the taste lens?"* and it was answered by
+measurement, not by reading. Three carriers were counted across every shipped surface: MCP tools with
+no naming prose, references no module registers, runtime modules the server never reaches.
+
+- **`design-taste-lens.md`** — authored, attributed, pointed at twice, run by nobody. Its in-edges
+  were a sibling playbook (in the paragraph saying the taste half is **not** that module) and a row
+  in `## Read this when`. Now the `design-taste` module, phase 1.
+- **`browser-verification.md`** — the same shape with a louder claim: it calls itself *"the Phase-5
+  oracle the measurer re-runs"*, and **neither `phase-4-remediation.md` nor `phase-5-validate.md`
+  named a browser at all**. The only shipped prose that named it was another skill's SKILL.md, which
+  can point at it in words and cannot dispatch it. Now the `browser-verification` module, phase 5 —
+  and the first phase-5 entry, so `phase-5-validate.md` had to start reading the catalog for the
+  entry to mean anything.
+- **`ledger_fog`** — the register's one read door, named by no playbook. The instruction lived in the
+  tool's own docstring (*"Read it at the start of an interview round"*) while `interview-funnel.md`
+  named the three write doors and `ledger_summary` beside them: a register the workflow writes to and
+  never reads. One bullet, in the doc that owns the family.
+- **`memory_audit`** — §34's own new tool, unnamed by anything, found by the extended gate before it
+  was committed rather than after.
+
+**Nothing else.** All 34 runtime modules are reachable from the server, and every other reference is
+dispatched by one of the two idioms below.
+
+### Why it matters
+
+Every existing gate asked whether a **named** thing exists — `check_consistency` (does the reference
+resolve), `verify_commands` (does the path resolve after install), `check_stated_facts` (does the
+number match). `check_tool_carriers` asked the inverse for write tools and was the only one. What
+none of them asked is whether a capability is **reached**, and the old orphan check answered *yes* to
+a see-also, which is how a lens with an attribution section sat unread through months of green CI.
+
+### What landed
+
+**One rule, two consumers, both blocking.**
+
+`check_consistency.py` section 2 replaced the warn-only orphan check with a dispatch check. Two
+idioms count, and they are the two this package actually uses: **(A) the catalog** — a `### Phase N`
+section, or a playbook it names, reads `modules.json`, which dispatches modules declaring that phase;
+**(B) the flow** — SKILL.md, or a playbook SKILL.md names, points at it. Depth stops one hop past
+SKILL.md: an index and a phase playbook name things as steps, a leaf naming a leaf is a
+cross-reference, and telling those apart by wording would be a semantic read of prose. The check is
+**per-phase** deliberately — a module registered under a phase whose playbook never reads the catalog
+is exactly as unrun as before, with an entry now claiming otherwise.
+
+`check_tool_carriers.py` dropped the write/read split. The old argument (*"reading costs nothing, the
+agent can discover it"*) measures the cost of a wrong read; the gate is about a missing step. And on
+the hosts that **defer** tool schemas — Claude Code's verified default, Pi behind its proxy tool — a
+docstring is not in context until something already sent the agent looking, so an instruction that
+lives only there reaches nobody. Extending it cost **zero exemptions** and caught one real tool.
+
+`tests/test_dispatch_gate.py` runs the gate over a built throwaway tree — including the leg that
+proves a sibling mention plus a conditional row still fails, and the leg that proves a stranded
+phase-5 entry does not pass. Verified by mutation: disarming the check fails two legs.
+
+### What is still open
+
+**Dispatch is not execution, and the runtime half has no carrier.** The gate proves a step is
+reachable; nothing observes that a `type: judgment` module ran. `coverage.py` already answers this
+for *tools* — a deterministic module whose engine did not run becomes an `incompleteness` pin rather
+than a silent zero — and the same question over *modules* cannot be answered from findings, because
+absence of a finding is not absence of a run (§34's trap, one layer up). Closing it means an explicit
+"module applied" record, which is a schema field, which is an election. Do not infer it.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_dispatch_gate
+python scripts/check_consistency.py && python scripts/check_tool_carriers.py
+```
+
+### Traps
+
+- **Do not add a third dispatch idiom to make a file pass.** The two exist because both are visible
+  in structure. A third that needs prose read for meaning turns the gate into a heuristic.
+- **Do not widen depth past one hop.** Transitive reachability marks everything reached: measured on
+  this repo before the rule was written, it reported zero problems while two capabilities were dead.
+- **`UNDISPATCHED_OK` is not a queue.** An entry means *this playbook is deliberately reached by
+  nothing*, which is nearly always false; the honest fix is a module entry or a line in the phase.
+
+---
+
 ## Do not re-litigate
 
 Settled with evidence; re-opening these costs a session and lands where it started.
