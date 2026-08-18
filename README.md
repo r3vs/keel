@@ -361,7 +361,7 @@ capability discoverable rather than merely available**:
 
 | Surface | What ships | Why |
 |---|---|---|
-| **Tools** | 73, typed | the engine — a parse, a graph traversal, a set difference. No LLM in the loop |
+| **Tools** | 73 typed MCP tools | the engine — a parse, a graph traversal, a set difference. No LLM in the loop |
 | **Resources** | `ledger://summary/{path*}` · `ledger://pins/{path*}` · `ledger://pin/{id}/{path*}` | read the ledger without spending a tool call |
 | **Prompts** | `interview-kickoff` · `rescue-phase` · `forge-phase` | phase entries as slash commands — the one surface here a **person** drives directly. A bundled server's prompts are scoped by the host, so the exact string is the host's to spell, not ours to promise |
 | **Apps** | `ui://keel/interview.html` · `ui://keel/map/{path*}` | the interview and the live map as real UI. **Neither writes** — an app's `tools/call` is proxied on the same connection the model uses, so an app-elected outcome could only be claimed on the agent's word |

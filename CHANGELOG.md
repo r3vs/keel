@@ -64,9 +64,17 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
   handed, not from what it was told"*; it now reads every app.
   `test_the_declaration_survives_the_read_it_governs` is new and does the same for the CSP. Both were
   **run against the reinstated defect** and fail on it, at the map app and nowhere else. Both
-  quantify over a new `_app_uris()` helper that holds the readable form of every served `ui://` entry
-  and asserts that list against what the server serves, so a third app fails until somebody gives it
-  a readable URI rather than being silently skipped.
+  quantify over a new `_apps()` helper that holds the readable form of every served `ui://` entry
+  beside its listing entry and asserts that list against what the server serves, so a third app fails
+  until somebody gives it a readable URI rather than being silently skipped. The CSP gate compares
+  the read's whole `_meta.ui` against the listing's, so a field nobody wrote an assertion for is
+  covered too — `_meta.ui` and not `_meta`, because the listing carries a `fastmcp: {"tags": []}`
+  sibling the read does not, on both apps, and that is the SDK's bookkeeping rather than our claim.
+- The templated app's `ResourceResult` is now built by a `_ui_document` helper rather than at the
+  registration, so the next templated `ui://` app gets the shape without remembering it, and its MIME
+  type comes from the SDK's `resolve_ui_mime_type` — the same function that fills the LISTING —
+  instead of from `apps.UI_MIME_TYPE`, which would have been a second source for one value on one
+  resource, one field over from the divergence this release closes.
 - **The host matrix re-read 2026-08-18 and stamped**, because the recurring question deserves an
   answer that is not a memory: the MCP client matrix is unchanged at eleven clients; *Claude (web)*
   and *Claude Desktop* carry the Apps check and **Claude Code appears on no row**, and the Claude

@@ -4567,18 +4567,25 @@ exactly where the SDK behaves differently.
 ### What landed
 
 `map_app_resource` returns the `ResourceResult` itself (`convert_result` passes one through
-untouched), with `mime_type=apps.UI_MIME_TYPE` and `meta={"ui": app_config_to_meta_dict(_MAP_APP)}`
-built from the **same** `AppConfig` object the decorator receives, through the SDK's own converter —
-which is precisely what `FastMCP.resource` does with it, so there is one object and no second copy of
-the policy. The interview app deliberately still returns a bare `str`: that path is the SDK
+untouched), built by a `_ui_document` helper rather than at the registration so the next templated
+`ui://` app gets the shape without remembering it. Both of its values come from the SDK and neither
+is restated: the mime from `resolve_ui_mime_type`, **the same function that fills the listing**, and
+`meta["ui"]` from `app_config_to_meta_dict` over the **same** `AppConfig` object the decorator
+receives — which is precisely what `FastMCP.resource` does with it, so there is one source per value
+and no second copy of either. Writing `apps.UI_MIME_TYPE` there instead would have been the same
+divergence one field over: our constant on the read, the SDK's derivation on the listing. The interview app deliberately still returns a bare `str`: that path is the SDK
 derivation `test_each_app_carries_…` exists to guard, and hand-setting both would delete the guard.
 
 Two gates, and both were **run against the reinstated defect** before being kept:
 `test_each_app_carries_the_one_mime_type_the_extension_admits` now reads every app, and
 `test_the_declaration_survives_the_read_it_governs` is new. Both fail on the old code, at the map app
-and nowhere else. They quantify over `_app_uris()`, which holds the readable form of every served
-`ui://` entry and **asserts that list against what the server serves**, so a third app fails until
-somebody gives it a readable URI rather than being silently skipped.
+and nowhere else. They quantify over `_apps()`, which holds the readable form of every served
+`ui://` entry beside its listing entry and **asserts that list against what the server serves**, so
+a third app fails until somebody gives it a readable URI rather than being silently skipped. The CSP
+gate compares the read's whole `_meta.ui` against the listing's rather than the three fields somebody
+thought to name, so a key added to one surface and not the other is covered before it exists —
+`_meta.ui` and not `_meta`, because the listing carries a `fastmcp: {"tags": []}` sibling the read
+does not, on BOTH apps, and that is the SDK's own bookkeeping and not a claim this resource makes.
 
 ### What is still open — stated as limits
 

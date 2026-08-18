@@ -47,13 +47,16 @@ package exists to find, sitting in its own front door.
 - **`src/runtime/` + `src/mcp/`** — the deterministic spine and its MCP adapter. `build.py` vendors
   the runtime into each skill that runs it (the portable floor) *and* the MCP server serves it as
   typed tools — which is what makes the capability **discoverable** rather than merely available.
-  The adapter now serves **four** surfaces, not one: 71 typed tools, three read-only ledger
+  The adapter now serves **four** surfaces, not one: 73 typed MCP tools, three read-only ledger
   **resource** templates (`ledger://summary/{path*}`, `ledger://pins/{path*}`,
   `ledger://pin/{pin_id}/{path*}` — the `{path*}` wildcard is load-bearing, since a bare `{path}`
   compiles to `[^/]+` and matches no absolute path), three **prompts** Claude Code surfaces as
-  `/mcp__keel__*`, and **two `ui://` MCP Apps** (`ui://keel/interview.html`, the funnel as a read
-  surface linked from `interview_next`; `ui://keel/map/{path*}`, `map.py`'s page baked with the
-  ledger inline). The apps exist because the adapter had been *announcing* the apps extension with
+  `/mcp__plugin_keel-core_keel__*` — the scoped form, since a plugin-bundled server's surfaces
+  are namespaced by plugin and server key; the bare `/mcp__keel__*` is the spelling
+  `docs/measurements.md` records an eval run failing on, and `server.py` flags the composed
+  form as UNVERIFIED in a running host — and **two `ui://` MCP Apps** (`ui://keel/interview.html`,
+  the funnel as a read surface linked from `interview_next`; `ui://keel/map/{path*}`,
+  `map.py`'s page baked with the ledger inline). The apps exist because the adapter had been *announcing* the apps extension with
   nothing behind it — FastMCP splices `io.modelcontextprotocol/ui` into `capabilities.extensions`
   unconditionally, with no constructor flag to stop it — so serving them is what makes the claim
   true, and a test fails if the capability is ever declared with no `ui://` resource behind it.
@@ -398,7 +401,7 @@ property for permission rules at all. Selective `Bash(...)` rules live only in t
 read-only roles (they need it for static analysis), so blunt denial is not available either. That is
 what the ledger gate closes at runtime. Full details: `docs/packaging.md` — including its section
 *"The tool surface is a budget, and it is the host's to spend"*, which names a previously-silent
-assumption: 71 tools are affordable only because hosts **defer** them (verified default on Claude
+assumption: 73 MCP tools are affordable only because hosts **defer** them (verified default on Claude
 Code; one proxy tool on Pi; loaded up front on opencode per its own docs; **UNVERIFIED** on Codex,
 so the doc plans for the conservative case). That budget and the skill-listing budget above are the
 same lesson at two layers — a surface this package does not own, spent by a number nobody measured.

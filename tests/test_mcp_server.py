@@ -1335,8 +1335,13 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         self.assertEqual(len(contents), 1)
         return contents[0]
 
-    def _app_uris(self) -> list[str]:
-        """Every served `ui://` entry, as a URI that can actually be READ.
+    #: Computed once per class by `_apps`. The served listing cannot change inside one server
+    #: process and the seed costs a tempdir plus a write over the wire, so recomputing it per test
+    #: bought nothing and leaked a directory each time.
+    _APPS: list[dict] | None = None
+
+    def _apps(self) -> list[dict]:
+        """Every served `ui://` entry: its LISTING entry, and a URI that can actually be READ.
 
         A template needs a parameter, so its concrete form cannot be derived from the listing —
         which is precisely how the map app went a round with its listing checked and its read
@@ -1344,22 +1349,30 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         server actually serves: a third app **fails this** until somebody gives it a readable URI,
         instead of being silently skipped by every test below. Under-coverage that reads as coverage
         is the failure this whole class exists to end.
+
+        The listing entry travels with the readable URI because the tests below compare the two
+        surfaces against each other, and a comparison needs both sides in one hand.
         """
+        if type(self)._APPS is not None:
+            return type(self)._APPS
+        entries = {r["uri"]: r for r in self._resources() if r["uri"].startswith("ui://")}
+        entries.update({t["uriTemplate"]: t for t in self._templates()
+                        if t["uriTemplate"].startswith("ui://")})
         readable = {
             "ui://keel/interview.html": "ui://keel/interview.html",
             "ui://keel/map/{path*}": None,   # filled below; seeding a ledger costs a tempdir
         }
-        served = sorted([r["uri"] for r in self._resources() if r["uri"].startswith("ui://")]
-                        + [t["uriTemplate"] for t in self._templates()
-                           if t["uriTemplate"].startswith("ui://")])
-        self.assertEqual(served, sorted(readable),
+        self.assertEqual(sorted(entries), sorted(readable),
                          "an app is served that this helper cannot read, or vice versa. Add its "
                          "readable URI here — the mime, _meta and self-containment gates all "
                          "quantify over this list, so an app missing from it is an app nothing "
                          "checks on the one surface a host renders from")
-        readable["ui://keel/map/{path*}"] = (
-            f"ui://keel/map/{_seeded_ledger(self, tempfile.mkdtemp())[0]}")
-        return [readable[s] for s in served]
+        tmp = tempfile.mkdtemp()
+        self.addClassCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        readable["ui://keel/map/{path*}"] = f"ui://keel/map/{_seeded_ledger(self, tmp)[0]}"
+        type(self)._APPS = [{"served": served, "entry": entries[served], "read": readable[served]}
+                            for served in sorted(entries)]
+        return type(self)._APPS
 
     def test_the_capability_is_backed_by_something_it_can_point_at(self):
         """The gate. Announcing the extension with nothing behind it is the bug; this fails then."""
@@ -1396,9 +1409,9 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         # `ResourceTemplate.convert_result` overrides the base class's mime/meta forwarding. This
         # assertion covered the static app only, so a claim checked on one side of a pairing was
         # false on the other — the shape its sibling test below already carries a paragraph about.
-        for uri in self._app_uris():
-            with self.subTest(read=uri):
-                self.assertEqual(self._read(uri)["mimeType"], UI_MIME,
+        for app in self._apps():
+            with self.subTest(read=app["entry"]["name"]):
+                self.assertEqual(self._read(app["read"])["mimeType"], UI_MIME,
                                  "the mime type on the READ must match the one on the listing — a "
                                  "host decides how to render from what it is handed, not from what "
                                  "it was told")
@@ -1429,15 +1442,30 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         A declaration that does not reach the surface it governs is the same object as no
         declaration, which is the finding this entire class was opened for, one layer in.
         """
-        for uri in self._app_uris():
-            with self.subTest(read=uri):
-                meta = self._read(uri).get("_meta")
-                self.assertIsNotNone(meta, f"{uri} read carries no _meta, so its CSP reaches the "
-                                           f"host that renders it nowhere")
+        for app in self._apps():
+            with self.subTest(read=app["entry"]["name"]):
+                meta = self._read(app["read"]).get("_meta")
+                self.assertIsNotNone(meta, "the read carries no _meta, so its CSP reaches the host "
+                                           "that renders it nowhere")
                 ui = meta["ui"]
                 self.assertEqual(ui.get("csp", {}).get("connectDomains", []), [])
                 self.assertEqual(ui.get("csp", {}).get("resourceDomains", []), [])
                 self.assertNotIn("permissions", ui)
+                # ...and then the WHOLE declaration, not the three fields somebody thought to name.
+                # The map's two metas are built by two different code paths — FastMCP at
+                # registration, our own handler per read — so a field added to one and not the other
+                # is this same finding returning as a key nobody wrote an assertion for. This
+                # quantifies over the keys that do not exist yet; the three above do not.
+                #
+                # `_meta["ui"]` and not `_meta`, and the difference was measured rather than
+                # assumed: the listing carries a `fastmcp: {"tags": []}` sibling that the read does
+                # not, on BOTH apps. That is the SDK's own bookkeeping about a component, not a
+                # declaration this resource makes about itself, so holding the two surfaces to it
+                # would assert a property of fastmcp's listing code in a test about our CSP.
+                self.assertEqual(ui, (app["entry"].get("_meta") or {}).get("ui"),
+                                 "the app declaration on the READ must equal the one on the "
+                                 "listing — they describe one resource, so any field where they "
+                                 "differ is a claim that is false on one of the two surfaces")
 
     def test_neither_app_is_anything_but_a_whole_document_that_fetches_nothing(self):
         """Self-containment is the property the CSP above CLAIMS; this is the property itself.
@@ -1455,8 +1483,9 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         so it is not covered by the interview app's tests by construction — a `<link>` to a font
         added in `map.py` would have broken the CSP contract of a resource that lives in `server.py`.
         """
-        for uri in self._app_uris():
-            with self.subTest(app=uri.split("/")[2]):
+        for app in self._apps():
+            with self.subTest(app=app["entry"]["name"]):
+                uri = app["read"]
                 body = self._read(uri)["text"]
                 self.assertTrue(body.lstrip().lower().startswith("<!doctype html"))
                 self.assertIn("</html>", body)
