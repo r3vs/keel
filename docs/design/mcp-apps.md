@@ -90,15 +90,22 @@ asymmetry decides how each row is graded: a check mark is a positive claim someb
 is *absence of a claim*, which is weaker evidence than absence of support. Both are marked as such
 rather than collapsed into one column.
 
-**Re-read 2026-08-13.** The matrix lists eleven clients with MCP Apps support: Claude (web), Claude
-Desktop, VS Code GitHub Copilot, Microsoft 365 Copilot, Goose, Postman, MCPJam, ChatGPT, Cursor,
-Archestra.AI, PostHog Code.
+**Re-read 2026-08-13, and again 2026-08-18 — unchanged.** The matrix lists eleven clients with MCP
+Apps support: Claude (web), Claude Desktop, VS Code GitHub Copilot, Microsoft 365 Copilot, Goose,
+Postman, MCPJam, ChatGPT, Cursor, Archestra.AI, PostHog Code.
+
+**The question that keeps getting asked, answered in the matrix's own words: "doesn't Claude support
+MCP Apps?" Yes — and the Claude that does is not the one this plugin runs in.** *Claude (web)* and
+*Claude Desktop* both carry the check. **Claude Code** is a different product and appears nowhere in
+the table, on either re-read. Reading "Claude ✓" as covering Claude Code is the same substitution as
+reading a type for a parser, and it is worth naming because the row that would settle it is absent
+rather than negative.
 
 | Host | Renders MCP Apps? | Verification |
 |---|---|---|
 | **claude.ai (web)** | **yes** | VERIFIED — listed with a check in the [client matrix](https://modelcontextprotocol.io/extensions/client-matrix) and named in the [apps overview](https://modelcontextprotocol.io/extensions/apps/overview)'s "Client support" paragraph. |
 | **Claude Desktop** | **yes** | VERIFIED — same two sources. |
-| **Claude Code (CLI)** | **not listed** | UNVERIFIED-negative. Still absent from the matrix on 2026-08-13; the [Claude Code MCP docs](https://code.claude.com/docs/en/mcp) document resources (`@server:protocol://resource/path`) and prompts (`/mcp__server__prompt`) at length and say nothing about `ui://`, iframes or apps. Two independent silences, neither of them a denial. |
+| **Claude Code (CLI)** | **not listed** | UNVERIFIED-negative, re-checked 2026-08-18. Still absent from the matrix; the [Claude Code MCP docs](https://code.claude.com/docs/en/mcp), re-fetched the same day, document resources (`@server:protocol://resource/path`) and prompts at length and contain **zero** occurrences of `ui://`, "MCP Apps", `io.modelcontextprotocol/ui`, "interactive HTML" or "iframe". Two independent silences, neither of them a denial. **One positive observation to set against them, made on a running host rather than read:** `resources/list` in Claude Code returns our interview app with `mimeType: text/html;profile=mcp-app` and its full `_meta.ui` (CSP, `prefersBorder`) intact — so the app metadata survives the client, which is a precondition for rendering and not evidence of it. What is *not* observed is an iframe. |
 | **Codex** | **not listed** | UNVERIFIED-negative. Absent from the matrix; its MCP page is silent on apps, resources and prompts alike. |
 | **opencode** | **not listed** | UNVERIFIED-negative. Absent from the matrix; its MCP docs discuss only tools — "MCP tools are automatically available to the LLM alongside built-in tools" — with no mention of resources, prompts or UI. |
 | **Pi** | **no** | VERIFIED, and ours: Pi has no MCP client at all (`docs/packaging.md` records zero `\bmcp\b` matches across the published `dist/`), so the surface is `src/adapters/pi/extensions/mcp-bridge.ts`, which speaks `initialize` / `tools/list` / `tools/call` by hand. Rendering an app would be our code, not Pi's. |

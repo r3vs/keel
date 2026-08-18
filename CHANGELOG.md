@@ -41,6 +41,57 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.12.0] — 2026-08-18
+
+### Fixed
+- **The map app told `resources/list` one thing and `resources/read` another.** Measured on the
+  wire: `ui://keel/map/{path*}` listed as `text/html;profile=mcp-app` with its full `_meta.ui`, and
+  READ as **`text/plain` with `_meta: null`** — the MIME type and the Content-Security-Policy both
+  lost at the one moment a host uses either. The static interview app was correct throughout, which
+  is why nothing caught it. `fastmcp/resources/base.py::Resource.convert_result` forwards
+  `mime_type` and `meta` for a plain `str` return and its docstring names `ui://` and MCP Apps CSP
+  as the reason; `ResourceTemplate.convert_result` overrides it with a bare
+  `ResourceResult(raw_value)`, so `ResourceContent` applies its own `text/plain` default. Passing
+  `mime_type=` on the decorator does not reach that path — tested, not assumed. `map_app_resource`
+  now returns the `ResourceResult` itself, which `convert_result` passes through untouched, with
+  `meta["ui"]` built from the **same** `AppConfig` the decorator receives via the SDK's own
+  `app_config_to_meta_dict` — one object, no second copy of the policy.
+
+### Changed
+- **A declaration is now checked on the surface it governs, not only in the catalogue.**
+  `test_each_app_carries_the_one_mime_type_the_extension_admits` asserted the read for the interview
+  app alone while its own failure message reads *"a host decides how to render from what it is
+  handed, not from what it was told"*; it now reads every app.
+  `test_the_declaration_survives_the_read_it_governs` is new and does the same for the CSP. Both were
+  **run against the reinstated defect** and fail on it, at the map app and nowhere else. Both
+  quantify over a new `_apps()` helper that holds the readable form of every served `ui://` entry
+  beside its listing entry and asserts that list against what the server serves, so a third app fails
+  until somebody gives it a readable URI rather than being silently skipped. The CSP gate compares
+  the read's whole `_meta.ui` against the listing's, so a field nobody wrote an assertion for is
+  covered too — `_meta.ui` and not `_meta`, because the listing carries a `fastmcp: {"tags": []}`
+  sibling the read does not, on both apps, and that is the SDK's bookkeeping rather than our claim.
+- The templated app's `ResourceResult` is now built by a `_ui_document` helper rather than at the
+  registration, so the next templated `ui://` app gets the shape without remembering it, and its MIME
+  type comes from the SDK's `resolve_ui_mime_type` — the same function that fills the LISTING —
+  instead of from `apps.UI_MIME_TYPE`, which would have been a second source for one value on one
+  resource, one field over from the divergence this release closes.
+- **The host matrix re-read 2026-08-18 and stamped**, because the recurring question deserves an
+  answer that is not a memory: the MCP client matrix is unchanged at eleven clients; *Claude (web)*
+  and *Claude Desktop* carry the Apps check and **Claude Code appears on no row**, and the Claude
+  Code MCP docs re-fetched the same day contain zero occurrences of `ui://`, "MCP Apps",
+  `io.modelcontextprotocol/ui`, "interactive HTML" or "iframe". One positive observation is recorded
+  against those two silences: on a running Claude Code, `resources/list` returns the interview app
+  with its mime and full `_meta.ui` intact — a precondition for rendering, not evidence of it.
+- README: the prompts row no longer spells `/mcp__keel__…`. A plugin-bundled server's prompts are
+  host-scoped and the exact form is UNVERIFIED in `server.py`'s own comment, so the page named a
+  string the source flags as wrong-shaped.
+
+### Notes
+- `docs/open-gaps.md` §38 carries the measurement, the mechanism at the consuming function, and three
+  residuals stated as limits — including that the three `ledger://` templates are correct **by luck**
+  (they return dicts, and `ResourceContent` hardcodes `application/json` for a dict), and that no
+  host of ours renders an app yet, which is why the gates are worth more than the fix.
+
 ## [0.11.0] — 2026-08-18
 
 ### Changed

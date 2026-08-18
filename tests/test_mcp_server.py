@@ -1335,6 +1335,45 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         self.assertEqual(len(contents), 1)
         return contents[0]
 
+    #: Computed once per class by `_apps`. The served listing cannot change inside one server
+    #: process and the seed costs a tempdir plus a write over the wire, so recomputing it per test
+    #: bought nothing and leaked a directory each time.
+    _APPS: list[dict] | None = None
+
+    def _apps(self) -> list[dict]:
+        """Every served `ui://` entry: its LISTING entry, and a URI that can actually be READ.
+
+        A template needs a parameter, so its concrete form cannot be derived from the listing —
+        which is precisely how the map app went a round with its listing checked and its read
+        unchecked, and wrong. So the readable forms are written here and then held against what the
+        server actually serves: a third app **fails this** until somebody gives it a readable URI,
+        instead of being silently skipped by every test below. Under-coverage that reads as coverage
+        is the failure this whole class exists to end.
+
+        The listing entry travels with the readable URI because the tests below compare the two
+        surfaces against each other, and a comparison needs both sides in one hand.
+        """
+        if type(self)._APPS is not None:
+            return type(self)._APPS
+        entries = {r["uri"]: r for r in self._resources() if r["uri"].startswith("ui://")}
+        entries.update({t["uriTemplate"]: t for t in self._templates()
+                        if t["uriTemplate"].startswith("ui://")})
+        readable = {
+            "ui://keel/interview.html": "ui://keel/interview.html",
+            "ui://keel/map/{path*}": None,   # filled below; seeding a ledger costs a tempdir
+        }
+        self.assertEqual(sorted(entries), sorted(readable),
+                         "an app is served that this helper cannot read, or vice versa. Add its "
+                         "readable URI here — the mime, _meta and self-containment gates all "
+                         "quantify over this list, so an app missing from it is an app nothing "
+                         "checks on the one surface a host renders from")
+        tmp = tempfile.mkdtemp()
+        self.addClassCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        readable["ui://keel/map/{path*}"] = f"ui://keel/map/{_seeded_ledger(self, tmp)[0]}"
+        type(self)._APPS = [{"served": served, "entry": entries[served], "read": readable[served]}
+                            for served in sorted(entries)]
+        return type(self)._APPS
+
     def test_the_capability_is_backed_by_something_it_can_point_at(self):
         """The gate. Announcing the extension with nothing behind it is the bug; this fails then."""
         if UI_EXTENSION not in (self.capabilities.get("extensions") or {}):
@@ -1365,9 +1404,17 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
                       + [t for t in self._templates() if t["uriTemplate"].startswith("ui://")]):
             with self.subTest(app=entry["name"]):
                 self.assertEqual(entry["mimeType"], UI_MIME)
-        self.assertEqual(self._read("ui://keel/interview.html")["mimeType"], UI_MIME,
-                         "the mime type on the READ must match the one on the listing — a host "
-                         "decides how to render from what it is handed, not from what it was told")
+        # ...and on the READ, for EVERY app rather than for the one that happened to work.
+        # Observed 2026-08-18: the map app listed as UI_MIME and read as `text/plain`, because
+        # `ResourceTemplate.convert_result` overrides the base class's mime/meta forwarding. This
+        # assertion covered the static app only, so a claim checked on one side of a pairing was
+        # false on the other — the shape its sibling test below already carries a paragraph about.
+        for app in self._apps():
+            with self.subTest(read=app["entry"]["name"]):
+                self.assertEqual(self._read(app["read"])["mimeType"], UI_MIME,
+                                 "the mime type on the READ must match the one on the listing — a "
+                                 "host decides how to render from what it is handed, not from what "
+                                 "it was told")
 
     def test_neither_app_asks_the_host_for_anything(self):
         """The declarations that make an app safe to render, asserted as declarations.
@@ -1385,6 +1432,41 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
                 self.assertEqual(ui.get("csp", {}).get("resourceDomains", []), [])
                 self.assertNotIn("permissions", ui)
 
+    def test_the_declaration_survives_the_read_it_governs(self):
+        """The CSP above is checked on the LISTING; a host builds the iframe from the READ.
+
+        Same gap as the mime type one function up, and found in the same measurement: the map app
+        listed its `connectDomains: []` / `resourceDomains: []` and read back `_meta: null`, so a
+        host that trusts the read would sandbox the page with no declaration at all — which is
+        either a stricter policy than we asked for or a laxer one, and we would not know which.
+        A declaration that does not reach the surface it governs is the same object as no
+        declaration, which is the finding this entire class was opened for, one layer in.
+        """
+        for app in self._apps():
+            with self.subTest(read=app["entry"]["name"]):
+                meta = self._read(app["read"]).get("_meta")
+                self.assertIsNotNone(meta, "the read carries no _meta, so its CSP reaches the host "
+                                           "that renders it nowhere")
+                ui = meta["ui"]
+                self.assertEqual(ui.get("csp", {}).get("connectDomains", []), [])
+                self.assertEqual(ui.get("csp", {}).get("resourceDomains", []), [])
+                self.assertNotIn("permissions", ui)
+                # ...and then the WHOLE declaration, not the three fields somebody thought to name.
+                # The map's two metas are built by two different code paths — FastMCP at
+                # registration, our own handler per read — so a field added to one and not the other
+                # is this same finding returning as a key nobody wrote an assertion for. This
+                # quantifies over the keys that do not exist yet; the three above do not.
+                #
+                # `_meta["ui"]` and not `_meta`, and the difference was measured rather than
+                # assumed: the listing carries a `fastmcp: {"tags": []}` sibling that the read does
+                # not, on BOTH apps. That is the SDK's own bookkeeping about a component, not a
+                # declaration this resource makes about itself, so holding the two surfaces to it
+                # would assert a property of fastmcp's listing code in a test about our CSP.
+                self.assertEqual(ui, (app["entry"].get("_meta") or {}).get("ui"),
+                                 "the app declaration on the READ must equal the one on the "
+                                 "listing — they describe one resource, so any field where they "
+                                 "differ is a claim that is false on one of the two surfaces")
+
     def test_neither_app_is_anything_but_a_whole_document_that_fetches_nothing(self):
         """Self-containment is the property the CSP above CLAIMS; this is the property itself.
 
@@ -1401,8 +1483,9 @@ class TestTheAppsAreServedAndTheClaimIsTrue(_Session):
         so it is not covered by the interview app's tests by construction — a `<link>` to a font
         added in `map.py` would have broken the CSP contract of a resource that lives in `server.py`.
         """
-        for uri in ("ui://keel/interview.html", f"ui://keel/map/{_seeded_ledger(self, tempfile.mkdtemp())[0]}"):
-            with self.subTest(app=uri.split("/")[2]):
+        for app in self._apps():
+            with self.subTest(app=app["entry"]["name"]):
+                uri = app["read"]
                 body = self._read(uri)["text"]
                 self.assertTrue(body.lstrip().lower().startswith("<!doctype html"))
                 self.assertIn("</html>", body)

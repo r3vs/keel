@@ -93,9 +93,15 @@ INTERVIEW_URI = "ui://keel/interview.html"
 MAP_URI_TEMPLATE = "ui://keel/map/{path*}"
 
 #: The one MIME type the extension admits: *"MUST be 'text/html;profile=mcp-app' (other types
-#: reserved for future extensions)"*. Not passed to `@mcp.resource` — `fastmcp/utilities/mime.py::
-#: resolve_ui_mime_type` derives it from the `ui://` scheme, and the tests assert the value a host
-#: actually receives, so they guard the SDK's derivation rather than restate our own constant.
+#: reserved for future extensions)"*.
+#:
+#: **Nothing passes this to the wire, and that is the point.** `server.py` fills both apps' mime
+#: from `fastmcp/utilities/mime.py::resolve_ui_mime_type` — the static app implicitly, through the
+#: `@mcp.resource` decorator, and the templated one explicitly in `_ui_document`, because
+#: `ResourceTemplate.convert_result` drops what the decorator resolved. So the listing and the read
+#: derive one value from one SDK function, and the tests assert what a host RECEIVES against a third
+#: literal of their own. This constant is the spec quote, kept for the reader; a consumer of it
+#: would be a second copy of a value the SDK owns, which is the drift `_ui_document` exists to avoid.
 UI_MIME_TYPE = "text/html;profile=mcp-app"
 
 #: The apps spec revision these documents speak, sent as `ui/initialize`'s `protocolVersion`. It is
