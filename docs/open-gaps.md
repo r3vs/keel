@@ -4711,6 +4711,80 @@ python -m unittest tests.test_graph_build.TestTheSkipSetPrunesTheWalkAndNotTheRe
 
 ---
 
+## 40. The refusal named a door and not the name the host answers to — **CLOSED 2026-08-18**
+
+### Verified
+
+Observed in a real session on another project, and it is a two-door dead end:
+
+1. An agent runs `decide.py` to record an election. It refuses: no TTY. **Correct** — that guard is
+   the one precondition of the `elicited` rung, whose whole claim is that no agent held the value
+   (`src/mcp/decide.py::_guard`).
+2. The refusal points at `ledger_record_decision`, the relay at the weaker `transcribed` rung. The
+   **host** refuses that call — its own permission layer, not keel's.
+3. The rule that would open it lives in the user's `settings.json`, session-wide, and a plugin
+   cannot write one. That residual is already stated in `docs/packaging.md`, met from the Bash side.
+
+What was missing is smaller and worse than the residual: **nothing in the package could tell anyone
+the tool's name.** A bundled server is namespaced twice — `mcp__plugin_<plugin>_<server>__<tool>` —
+and everyone who has written it from memory so far has written the bare `mcp__<server>__<tool>`.
+`docs/measurements.md` records an eval run failing on exactly that substitution. `CLAUDE.md` carried
+the bare form for the prompts until 2026-08-18. The failure mode is the expensive one: a rule that
+matches nothing is indistinguishable from a setting that did not take, so the next move is to
+restart the host, which changes nothing, and the session burns a round.
+
+### What landed
+
+`tools.scoped_tool_name(tool)` composes the name from the two manifests that DECIDE it, both of
+which ship beside the vendored `tools.py`: `../.claude-plugin/plugin.json` for the plugin name, and
+`../.mcp.json` for the server key — found by looking for the declared server whose args run our own
+`server.py`, since four are declared and only one is ours. Same relative-to-`__file__` anchoring as
+`server.py::_plugin_version`, for the same reason: the cwd is the user's project.
+
+In the authoring tree neither manifest exists and it returns the **bare** tool name. That is the
+honest answer, not a degraded one — `src/mcp/` is not an install, and composing a plugin prefix
+where no plugin exists would be the fabricated provenance the whole package is pointed at.
+
+`decide.py`'s refusal now prints it, so the agent redirected from the human door to the relay door
+hands over a string it computed. `docs/packaging.md` gains the user-facing half.
+
+### What is still open — stated as limits
+
+1. **Keel still cannot grant the permission**, and should not be able to. This closes the naming
+   gap, not the residual: the rule is the user's to write, in their own settings, and an agent
+   asking for one is asking to widen its own reach — `decide.py` in a terminal remains the stronger
+   path, and on a pin that was already contested for having been recorded on an agent's word it is
+   the only honest one.
+2. **The composed name is unverified against a host's permission matcher.** It matches what a
+   running Claude Code serves in `tools/list` (observed), and the docs give that shape for tools;
+   whether a `settings.json` rule matches on the identical string is an inference from the same
+   docs, not an observation. The same UNVERIFIED note `server.py` carries for the prompt command.
+3. **Only Claude Code has this shape.** Codex, opencode and Pi namespace differently or not at all,
+   and `scoped_tool_name` composes the Claude Code form unconditionally. It is named in a refusal a
+   human reads, not fed to a matcher, so a wrong host makes it useless rather than wrong — but it is
+   a per-host fact stated without a per-host branch, which is how this repo gets things wrong.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_human_door.TestTheRelayDoorIsNamedAsTheHostServesIt
+```
+
+### Traps
+
+- **Do not write the scoped name anywhere.** It is composed for the reason every other computed
+  string here is: two files decide it, and a third copy drifts from both.
+- **Do not "fix" the TTY guard so an agent can relay through it.** The two doors write different
+  rungs on purpose. An agent that can answer `decide.py` makes `elicited` false and unfalsifiable in
+  the same move.
+- **Do not add a permission rule to a user's settings on your own initiative.** It is a rule whose
+  only beneficiary is the agent proposing it. Offer it; let them write it.
+- **Do not drive the guard with `subprocess.DEVNULL` on Windows.** `NUL` is a character device and
+  `isatty()` answers True for it, so the run sails past the guard and fails somewhere else entirely.
+  Use a pipe, as the sibling tests do.
+
+---
+
 Settled with evidence; re-opening these costs a session and lands where it started.
 
 - **No `ledger_decide`.** An agent may record an election, never make one. The tool refuses an

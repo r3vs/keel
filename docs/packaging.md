@@ -640,6 +640,38 @@ Claude Code restricts `Bash` fine — `Bash(rm *)`-style matchers exist, with `d
 precedence — but only in the user's own `settings.json`, session-wide, which a plugin cannot write.
 The ledger gate closes that residual at runtime.
 
+### The same residual, met from the other side: allowing a tool of ours
+
+A user who wants a keel tool to stop asking hits the identical wall, and one detail decides whether
+their rule works. **A bundled server's tools are namespaced twice.** The rule has to name
+
+```
+mcp__plugin_keel-core_keel__ledger_record_decision
+```
+
+— `mcp__plugin_<plugin>_<server>__<tool>`, where the plugin is `keel-core` and `keel` is the server
+key inside `plugins/keel-core/.mcp.json`. The bare `mcp__keel__…` matches **nothing**, and it fails
+in the expensive direction: a rule that matches nothing looks exactly like a setting that did not
+take, so the next move is to restart the host and try again. `docs/measurements.md` records an eval
+run failing on precisely that substitution — the harness looked for `mcp__keel__ledger_*` while the
+host had named the tool `mcp__plugin_keel-core_keel__ledger_surface_assumption`.
+
+Nothing here writes that string. `tools.scoped_tool_name` composes it from the two manifests beside
+the vendored server — `../.claude-plugin/plugin.json` for the plugin, `../.mcp.json` for the key it
+finds by looking for the entry that runs *our* `server.py` — and `decide.py`'s refusal prints the
+result, so an agent redirected from the human door to the relay door hands over a name it computed
+rather than one it remembered. In the authoring tree the manifests are absent and it answers the
+bare tool name: `src/mcp/` is not an install, and a prefix invented there would be the fabricated
+provenance this package exists to find. `tests/test_human_door.py::TestTheRelayDoorIsNamedAsTheHost
+ServesIt` holds the composition to its carriers and drives the refusal to check the string on it.
+
+**Where this bites in practice**, and it is not hypothetical: `decide.py` refuses without a TTY, by
+design — the `elicited` rung's whole claim is that no agent held the value. Its refusal points at
+`ledger_record_decision`, the honest relay at the `transcribed` rung. If the host then refuses *that*
+call, the agent is out of doors, and the only fix is a rule in the user's settings that keel cannot
+ship and, until now, could not even spell for them.
+
+
 ## External tool licenses
 
 This repo's code and prose are MIT (`LICENSE`). The deterministic toolchain it *invokes* keeps its
