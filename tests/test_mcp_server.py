@@ -1035,6 +1035,57 @@ class TestTheBackstopCannotBeBypassedAndTheProbeCannotBeDropped(unittest.TestCas
                           f"DECLARED capability alone again, and the era it cannot see is the one "
                           f"where the door is gone")
 
+    def test_no_async_tool_calls_the_runtime_on_the_event_loop(self):
+        """An `async def` tool that calls the runtime inline blocks the whole server, not itself.
+
+        FastMCP hands a **sync** tool function to a worker thread and `await`s an **async** one on
+        the event loop — `fastmcp/tools/function_tool.py`, the `elif self.run_in_thread` branch. Five
+        tools here are async because they elicit or report progress, and each called straight into
+        the stdlib-only runtime. For the whole of a `build_graph` over a real repo the loop was
+        therefore blocked: the progress notification the tool had just queued could not be written,
+        no other call could be answered, `ping` could not be answered, and `notifications/cancelled`
+        could not be read. One "walking …" line, then nothing — a hang, not a slow tool.
+
+        The rule is mechanical rather than a list of the heavy ones, because "heavy" is a judgement
+        somebody has to keep making: **inside an async tool, `tools.foo` may be NAMED and never
+        CALLED.** Naming it is what handing it to `_in_thread` looks like. A sync tool calling
+        `tools.foo(...)` directly is correct and out of scope here — the SDK already threads it.
+        """
+        offenders = []
+        for node in self.tree.body:
+            if not isinstance(node, ast.AsyncFunctionDef):
+                continue
+            if not any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                       and d.func.attr in ("tool", "resource", "prompt")
+                       for d in node.decorator_list):
+                continue
+            for call in ast.walk(node):
+                if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                        and isinstance(call.func.value, ast.Name)
+                        and call.func.value.id == "tools"):
+                    offenders.append(f"{node.name} -> tools.{call.func.attr}() "
+                                     f"at server.py:{call.lineno}")
+        self.assertEqual(offenders, [],
+                         "an async tool calls the runtime on the event loop, so every OTHER client "
+                         "request is blocked for its whole duration — including the progress it "
+                         "reports and the cancellation it would be stopped by. Hand it to "
+                         f"`_in_thread(tools.x, ...)`: {offenders}")
+
+    def test_the_offload_is_the_sdks_own_and_not_a_second_one(self):
+        """`_in_thread` must stay the SDK's threadpool, so sync and async tools share a limiter.
+
+        Spelling it `anyio.to_thread.run_sync` here would work and would be a second offload path
+        beside the one `function_tool.py` uses for every sync tool in this file — a different thread
+        limiter and a separate answer to contextvar propagation, for no gain. This is the same
+        one-source rule the apps' `_ui_document` follows one screen down.
+        """
+        body = self._function("_in_thread")
+        called = {n.func.id for n in ast.walk(body)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        self.assertIn("call_sync_fn_in_threadpool", called,
+                      "_in_thread no longer routes through FastMCP's own offload, so this server "
+                      "now has two threadpools with two configurations")
+
     def test_every_elicitation_in_this_server_goes_through_the_backstop(self):
         """`ctx.elicit` raising is not the same as a user declining, and only `_ask` draws that
         line. A second call site is a path where an unopened door hard-fails a tool again."""

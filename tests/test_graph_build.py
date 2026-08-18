@@ -12,6 +12,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
@@ -182,6 +183,75 @@ class TestTreeSitterJsTs(unittest.TestCase):
                          json.dumps(graph_build.build_graph(self.root, commit="ts1")))
         _clean, issues = graph_build.validate_repair(self.data)
         self.assertEqual(issues, [])
+
+
+class TestTheSkipSetPrunesTheWalkAndNotTheResult(unittest.TestCase):
+    """`_SKIP_DIRS` has to stop the DESCENT, and for a long time it only filtered the answer.
+
+    This is the one property in this file that the output cannot show. `root.rglob("*")` + a filter
+    and `os.walk` + in-place pruning return **byte-identical** lists — that equality is exactly what
+    let the old shape survive every test here while enumerating and `stat`ing every file under
+    `node_modules`, `.git` and `.venv` before discarding it. Measured on the Keel repo itself, which
+    has no `node_modules` at all: 33,835 paths seen to keep 225, 3.03s of a 4.93s build; pruned,
+    0.02s. On a real JS app, or on a cloud-synced drive where every `stat` crosses a reparse point,
+    that is the difference between a slow tool and the hang this class was written for.
+
+    So the assertion is on the traversal, observed: wrap the walker, record every directory it is
+    asked to descend into, and require that none of them is one we claim to skip. It also fails if
+    the walk stops being `os.walk` — a revert to `rglob` records nothing, and "nothing was skipped"
+    must never be reachable by "nothing was walked".
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        _write_repo(self.root)
+        # Three ignored trees, each holding a file whose extension the graph WOULD accept, so their
+        # absence from the result is a fact about the skip set and not about the extension map.
+        for junk in ("node_modules/pkg", ".git/hooks", ".venv/lib/site-packages/dep"):
+            d = self.root / junk
+            d.mkdir(parents=True)
+            (d / "index.py").write_text("def buried():\n    return 1\n", encoding="utf-8")
+
+    def test_no_ignored_directory_is_ever_descended_into(self):
+        seen = []
+        real = os.walk
+
+        def recording(top, *a, **k):
+            # Tuples are yielded through untouched — `_iter_source_files` prunes by mutating
+            # `dirnames` IN PLACE, so handing it a copy would silently disable the thing under test.
+            for entry in real(top, *a, **k):
+                seen.append(entry[0])
+                yield entry
+
+        with unittest.mock.patch.object(os, "walk", recording):
+            files = graph_build._iter_source_files(self.root)
+
+        self.assertTrue(seen, "the walk never called os.walk — if it went back to rglob(), this "
+                              "test proves nothing and every directory below is being enumerated")
+        descended = [d for d in seen
+                     if any(part in graph_build._SKIP_DIRS
+                            for part in pathlib.Path(d).relative_to(self.root).parts)]
+        self.assertEqual(descended, [],
+                         "the walk descended into a directory the skip set claims to skip, so the "
+                         "cost scales with everything under the root instead of with the source "
+                         f"kept: {descended}")
+        self.assertNotIn("node_modules/pkg/index.py", files)
+        self.assertIn("app.py", files)
+
+    def test_a_dangling_symlink_is_not_a_source_file(self):
+        """`os.walk` classifies with `scandir`, so a broken link lands in `filenames`.
+
+        `Path.is_file()` had excluded it for free; the guard that replaced it is one `stat` per file
+        KEPT rather than per path seen. Without it a dead link named `x.py` earns a file node that
+        nothing can ever read — a node in the graph for a file that is not there.
+        """
+        try:
+            os.symlink(self.root / "nowhere.py", self.root / "dead.py")
+        except (OSError, NotImplementedError) as exc:      # Windows without developer mode
+            self.skipTest(f"symlinks unavailable on this box: {exc}")
+        self.assertNotIn("dead.py", graph_build._iter_source_files(self.root))
 
 
 class TestLayerOf(unittest.TestCase):

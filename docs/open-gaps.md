@@ -4624,6 +4624,93 @@ python -m unittest tests.test_mcp_server.TestTheAppsAreServedAndTheClaimIsTrue
 
 ---
 
+## 39. The graph tool did not hang, it paid three costs at once — **CLOSED 2026-08-18** (5x faster, and answerable while it runs)
+
+### Verified
+
+Reported as "the MCP graph tool blocks for hours with no response". Three separate causes, each
+measured on this repo before and after, none of them tree-sitter's grammar fetch (that one was
+already closed by the negative cache in `treesitter_extract._language`).
+
+| | before | after |
+|---|---|---|
+| `_iter_source_files` on this repo | 33,835 paths enumerated to keep 225 — **3.03s** | **0.02s**, byte-identical list |
+| `_matches` over 53 non-Python files | **265 `Query` compilations, 0.90s of a 1.01s extraction** | one per `(grammar, source)` |
+| `build_graph` end to end | **4.93s** | **0.97s**, 4,164 nodes / 7,449 links unchanged |
+| the event loop during a walk | blocked for the whole call | free |
+
+**1. The skip set pruned the answer, not the walk.** `root.rglob("*")` descends into everything and
+returns every path; `_SKIP_DIRS` was applied to the result. So `node_modules`, `.git` and `.venv`
+were fully enumerated and `stat`ed before being thrown away. The ratio here is 97.4% discarded on a
+repo with no `node_modules` at all; a mid-size JS app carries 100k-400k entries under it, and on a
+cloud-synced drive every one of those `stat`s crosses a reparse point and may hydrate a placeholder.
+That is the shape of "hours".
+
+**2. The compiled query was the one thing not cached.** `_language` and `_parser` both cache — the
+first one negatively too, precisely so a failed grammar fetch is not retried per file. `_matches`
+compiled a fresh `Query` on every call, from module-constant sources, five per file.
+
+**3. The loop was blocked, which is why it read as dead rather than slow.** FastMCP hands a **sync**
+tool function to a worker thread and `await`s an **async** one on the event loop
+(`fastmcp/tools/function_tool.py`, the `elif self.run_in_thread` branch calling
+`call_sync_fn_in_threadpool`). Five tools here are async because they elicit or report progress, and
+each called straight into the runtime. For the duration: the progress notification the tool had just
+queued could not be written, no other request could be answered, `ping` could not be answered, and
+`notifications/cancelled` could not even be READ. One "walking …" line, then silence.
+
+### What landed
+
+`os.walk` with `dirnames[:]` pruned in place (`os.walk` and not `Path.walk`: the floor is 3.10 and
+`Path.walk` arrives in 3.12). The `isfile` guard survives deliberately — `os.walk` classifies with
+`scandir`, so a dangling symlink named `x.py` lands in `filenames` where `Path.is_file()` had
+excluded it, and it now costs one `stat` per file **kept** rather than per path **seen**.
+`fingerprint.py` and `domain.py` call the same walker, so they get it for free.
+
+`_QUERY_CACHE`, keyed `(grammar, source)`, beside `_LEGACY_QUERY_LOCK`. The lock guards the legacy
+`query.matches(root)` path and only it: a `Query` is immutable once compiled and the `QueryCursor`
+holds the traversal state, so threads may share the query and hold their own cursors — but the
+pre-cursor fallback keeps that state on the query itself, and the MCP adapter started running these
+walks in a thread pool the same day. The version branch also narrowed from `except Exception` to
+`except ImportError`, because only an import can tell us which tree-sitter this is; the old shape
+retried a failure *inside* `QueryCursor(...).matches()` on a method current tree-sitter has deleted,
+reporting a query error as `AttributeError: matches`.
+
+`_in_thread` — FastMCP's own `call_sync_fn_in_threadpool`, not `anyio.to_thread.run_sync` spelled
+out, so a sync tool and an async one share a limiter and one answer to contextvar propagation.
+
+### What is still open — stated as limits
+
+1. **The work is not abandonable.** `run_sync` without `abandon_on_cancel` joins the thread, so a
+   cancelled walk still runs to completion. What changed is that the cancellation is *received* and
+   the server stays answerable. Making it abandonable means a cancel-aware walk in the runtime, which
+   is a different design than "one call into the engine".
+2. **`_SKIP_DIRS` is still a fixed list and still not `.gitignore`.** That is deliberate — no
+   per-repo tuning — but a repo that vendors into a directory nobody thought of still pays.
+3. **The measurements are one machine, one repo.** 33,835 paths and 53 non-Python files is a small
+   sample with no `node_modules` in it; the projection to a real JS app is arithmetic, not an
+   observation. `scripts/measure_public.py` is where an honest second data point would come from.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_graph_build.TestTheSkipSetPrunesTheWalkAndNotTheResult tests.test_treesitter.TestAQueryIsCompiledOncePerGrammarNotOncePerFile
+```
+
+### Traps
+
+- **Do not assert the walk by its output.** `rglob`+filter and `os.walk`+prune return byte-identical
+  lists. That equality is why the old shape survived every test in `test_graph_build.py`; the gate
+  had to observe the traversal, and it fails if `os.walk` is not called at all.
+- **Do not drop the `isfile` guard as dead weight.** It is not the old `is_file()` moved; it is the
+  one line standing between a dangling symlink and a graph node for a file that is not there.
+- **Do not make an async tool call `tools.foo(...)` directly, however small it looks.** The rule is
+  mechanical because "heavy" is a judgement somebody has to keep making, and the fast ones write to
+  the ledger anyway.
+- **Do not spell the offload as `anyio.to_thread.run_sync`.** It works, and it is a second threadpool
+  beside the one every sync tool in the file already uses.
+
+---
+
 Settled with evidence; re-opening these costs a session and lands where it started.
 
 - **No `ledger_decide`.** An agent may record an election, never make one. The tool refuses an

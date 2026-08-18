@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import pathlib
 import subprocess
 from typing import Iterable, Optional
@@ -496,15 +497,38 @@ def _extract_treesitter(rel: str, src: str, ext: str, fileset: set) -> tuple[lis
 # ---------------------------------------------------------------------------
 
 def _iter_source_files(root: pathlib.Path) -> list[str]:
-    """Relative posix paths of source files under `root`, skipping the ignore set. Sorted."""
+    """Relative posix paths of source files under `root`, skipping the ignore set. Sorted.
+
+    **`_SKIP_DIRS` prunes the WALK, not the result** — and for a long time it did the opposite,
+    which is the whole cost of this function. `root.rglob("*")` descends into everything and hands
+    back every path; filtering afterwards means `node_modules`, `.git` and `.venv` are fully
+    enumerated and `stat`ed before being thrown away. Measured on THIS repo, which has no
+    `node_modules` at all: 33,835 paths enumerated, 32,952 of them (97.4%) discarded, to keep 225 —
+    3.03s of a 4.93s `build_graph`. Pruning `dirnames` in place instead: **0.02s, byte-identical
+    output**. The cost was scaling with everything under the root rather than with the source kept,
+    so a real JS app (100k-400k entries under `node_modules` alone) paid it in minutes, and a tree
+    on a cloud-synced drive — where every `stat` crosses a reparse point and may hydrate — paid it
+    in hours. That is what "the graph tool hangs" was.
+
+    `os.walk` and not `Path.walk`: this file's floor is 3.10 (`ruff.toml`, and the MCP server's PEP
+    723 header) and `Path.walk` arrives in 3.12.
+
+    The `isfile` guard survives the rewrite deliberately. `os.walk` classifies with `scandir`, so a
+    **dangling symlink** named `foo.py` lands in `filenames` where `Path.is_file()` had excluded it;
+    without the guard it would earn a file node that nothing can ever read. It now costs one `stat`
+    per file KEPT rather than one per path seen, which is the whole point.
+    """
     out: list[str] = []
-    for p in root.rglob("*"):
-        if not p.is_file():
-            continue
-        if any(part in _SKIP_DIRS for part in p.relative_to(root).parts[:-1]):
-            continue
-        if p.suffix.lower() in _LANG_BY_EXT:
-            out.append(_posix(str(p.relative_to(root))))
+    base = str(root)
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        rel_dir = dirpath[len(base):].lstrip(os.sep + (os.altsep or ""))
+        for name in filenames:
+            if os.path.splitext(name)[1].lower() not in _LANG_BY_EXT:
+                continue
+            if not os.path.isfile(os.path.join(dirpath, name)):
+                continue
+            out.append(_posix(os.path.join(rel_dir, name)))
     return sorted(out)
 
 
