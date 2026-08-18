@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "runtime"))
 
@@ -429,6 +430,55 @@ class TestCIExercisesTheShippedBackend(unittest.TestCase):
         self.assertTrue(tse.available("typescript"),
                         "the backend imports but its grammar never arrives — the exact failure "
                         "`available(lang)` was given an argument to expose")
+
+
+@skip_no_ts
+class TestAQueryIsCompiledOncePerGrammarNotOncePerFile(unittest.TestCase):
+    """The third cache in this module, and the one that was missing.
+
+    The grammar and the parser were both cached — including negatively, so an undownloadable grammar
+    fails once instead of once per file. The compiled `Query` was not, and the query sources are
+    module constants, so a repo walk recompiled the same handful of them for every file it read.
+    Measured on the Keel repo: 53 non-Python source files, **265 compilations costing 0.90s of a
+    1.01s extraction — 89% of it**. Five queries per file, each already compiled four files earlier.
+
+    Counted at the constructor rather than timed, because a timing assertion on a shared machine is
+    a flake generator: what the cache promises is a number of compilations, so that is what is read.
+    """
+
+    def test_the_same_query_is_compiled_once_however_often_it_is_run(self):
+        import tree_sitter
+
+        root = tse.parse("class A {\n  m() { return 1 }\n}\n", "typescript")
+        query = "(class_declaration name: (type_identifier) @name)"
+
+        tse._QUERY_CACHE.clear()
+        real, calls = tree_sitter.Query, []
+
+        def counting(lang, q):
+            calls.append(q)
+            return real(lang, q)
+
+        with unittest.mock.patch.object(tree_sitter, "Query", counting):
+            runs = [tse._matches("typescript", query, root) for _ in range(5)]
+
+        self.assertEqual(len(calls), 1,
+                         f"the query was compiled {len(calls)} times for 5 runs — the cache is "
+                         f"gone, and a walk pays that once per FILE")
+        self.assertTrue(runs[0], "the cached query stopped matching, which a cache must not do")
+        self.assertEqual([len(r) for r in runs], [len(runs[0])] * 5,
+                         "a reused query returned a different number of matches on a later run, so "
+                         "it is carrying state between calls and the cursor is not holding it")
+
+    def test_two_grammars_do_not_share_one_cache_entry(self):
+        """The key is `(grammar, source)`. Keyed on the source alone, a query text valid in two
+        grammars would be compiled against whichever language got there first — a wrong parse that
+        surfaces as an empty file rather than as an error."""
+        tse._QUERY_CACHE.clear()
+        shared = "(comment) @c"
+        tse._matches("typescript", shared, tse.parse("// hi\n", "typescript"))
+        tse._matches("go", shared, tse.parse("// hi\npackage m\n", "go"))
+        self.assertEqual(sorted(k[0] for k in tse._QUERY_CACHE), ["go", "typescript"])
 
 
 class TestASkipIsAClaimAboutOneInterpreter(unittest.TestCase):
