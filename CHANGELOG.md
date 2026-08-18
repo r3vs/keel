@@ -43,6 +43,51 @@ would mean rewriting the record to keep a linter quiet. Present-tense claims liv
 
 ## [0.12.0] — 2026-08-18
 
+### Performance
+- **`build_graph` was not slow, it was two costs multiplied and then hidden behind a blocked event
+  loop.** Measured end to end on this repo: **4.93s -> 0.97s**, byte-identical graph (4,164 nodes /
+  7,449 links).
+  - *The skip set filtered the result instead of pruning the walk.* `_iter_source_files` used
+    `root.rglob("*")` and applied `_SKIP_DIRS` afterwards, so `node_modules`, `.git` and `.venv` were
+    fully enumerated and `stat`ed before being discarded. On this repo — which has **no**
+    `node_modules` — that was 33,835 paths seen to keep 225, **3.03s of the 4.93s**. Pruning
+    `dirnames` in place: **0.02s**, same list. On a real JS app the discarded set is 100k-400k
+    entries, and on a cloud-synced drive each one crosses a reparse point; that is where the hours
+    came from. `fingerprint.py` and `domain.py` call the same walker and get the same fix.
+  - *The compiled tree-sitter query was the one thing in that file not cached.* The grammar and the
+    parser were, negatively as well as positively; the query sources are module constants and were
+    recompiled once per file. Measured: 53 non-Python files, **265 compilations costing 0.90s of a
+    1.01s extraction — 89%**. Now keyed `(grammar, source)`, with a lock on the legacy
+    `query.matches` path only, since that one keeps its traversal state on the query.
+
+### Fixed
+- **Five async tools ran the runtime on the event loop, so a long call looked like a dead server.**
+  FastMCP hands a *sync* tool to a worker thread and awaits an *async* one on the loop
+  (`fastmcp/tools/function_tool.py`, the `elif self.run_in_thread` branch). `build_graph`,
+  `understand_codebase`, `contract_diff`, `ledger_record_decision` and `ledger_record_policy` are
+  async — they elicit, or they report progress — and called straight into the stdlib runtime. For the
+  whole of a walk the loop was blocked: the progress notification the tool had just queued could not
+  be written, no other call could be answered, `ping` could not be answered, and
+  `notifications/cancelled` could not be read. The agent saw one "walking …" line and then nothing.
+  All five now go through `_in_thread`, which is FastMCP's own `call_sync_fn_in_threadpool` so sync
+  and async tools share one limiter. This does **not** make the work abandonable — `run_sync` joins
+  the thread — it makes the server answerable while it runs.
+
+### Changed
+- Four new gates, each **run against its own reinstated defect** and failing only on it.
+  `test_no_ignored_directory_is_ever_descended_into` asserts the **traversal** rather than the
+  result, because the two shapes return byte-identical lists — which is exactly why the old one
+  survived every existing test; it also fails if the walk stops calling `os.walk`, so "nothing was
+  skipped" can never be reached by "nothing was walked".
+  `test_no_async_tool_calls_the_runtime_on_the_event_loop` holds a mechanical rule instead of a list
+  of the heavy tools: inside an async tool, `tools.foo` may be **named and never called**.
+  Plus the query-cache count and its `(grammar, source)` key.
+- Two existing AST gates learned the new hop, because the offload put the callee in an ARGUMENT:
+  `test_mcp_output_contracts.prove` follows `_in_thread`'s first argument (and `await`), and
+  `test_invariants._calls` counts a name handed to `_in_thread` as a call edge — without which five
+  write doors read as unreachable, which the gate correctly reported about its model and wrongly
+  about the product.
+
 ### Fixed
 - **The map app told `resources/list` one thing and `resources/read` another.** Measured on the
   wire: `ui://keel/map/{path*}` listed as `text/html;profile=mcp-app` with its full `_meta.ui`, and
