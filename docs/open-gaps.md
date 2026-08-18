@@ -4531,6 +4531,92 @@ python scripts/check_schema_fields.py && python scripts/check_tool_carriers.py
   own `runs` key and with the generator registry's run counter at 6 sites, and the schema-index test
   caught it. A collection name is a global in this repo whether or not it looks like one.
 
+## 38. The app told the listing one thing and the read another — **CLOSED 2026-08-18** (no schema change; two gates, both run against the defect)
+
+### Verified
+
+Measured on the wire against this repo's own server, not read off a file:
+
+| | listing | read |
+|---|---|---|
+| `ui://keel/interview.html` (static) | `text/html;profile=mcp-app` · `_meta.ui` present | `text/html;profile=mcp-app` · `_meta.ui` present |
+| `ui://keel/map/{path*}` (template) | `text/html;profile=mcp-app` · `_meta.ui` present | **`text/plain`** · **`_meta: null`** |
+
+The read is the surface a host renders from. So the map app announced itself as an MCP App in the
+catalogue and handed over a plain-text document with no Content-Security-Policy when actually
+fetched — the mime and the sandbox declaration both lost at the one moment either is used.
+
+**The mechanism, found at the consumer.** `fastmcp/resources/base.py::Resource.convert_result`
+forwards `mime_type=self.mime_type` and `meta=self.meta` when a handler returns a plain `str`, and
+its docstring names `ui://` and MCP Apps CSP as the reason it does. `ResourceTemplate.convert_result`
+**overrides that method with a bare `ResourceResult(raw_value)`**, so `ResourceContent.__init__`
+applies its own `mime_type or "text/plain"` and no meta at all. A templated `ui://` resource
+returning a string therefore loses both. Passing `mime_type=` on the decorator does **not** reach it
+— that value is what the listing already reports correctly — and this was tested rather than
+assumed: with the explicit mime the read still came back `text/plain`.
+
+**Why the suite did not catch it.** `test_each_app_carries_the_one_mime_type_the_extension_admits`
+asserted the mime on the listing for *both* apps and on the read for **the interview app only**,
+while its own failure message reads *"a host decides how to render from what it is handed, not from
+what it was told"*. `test_neither_app_asks_the_host_for_anything` checked the CSP on the listing and
+nowhere else. That is the shape the sibling bytes test already carries a paragraph about — *"for a
+round only the interview app's were read, so the map app carried the identical claim with nothing
+checking it"* — surviving one function up, and the uncovered half was the templated one, which is
+exactly where the SDK behaves differently.
+
+### What landed
+
+`map_app_resource` returns the `ResourceResult` itself (`convert_result` passes one through
+untouched), with `mime_type=apps.UI_MIME_TYPE` and `meta={"ui": app_config_to_meta_dict(_MAP_APP)}`
+built from the **same** `AppConfig` object the decorator receives, through the SDK's own converter —
+which is precisely what `FastMCP.resource` does with it, so there is one object and no second copy of
+the policy. The interview app deliberately still returns a bare `str`: that path is the SDK
+derivation `test_each_app_carries_…` exists to guard, and hand-setting both would delete the guard.
+
+Two gates, and both were **run against the reinstated defect** before being kept:
+`test_each_app_carries_the_one_mime_type_the_extension_admits` now reads every app, and
+`test_the_declaration_survives_the_read_it_governs` is new. Both fail on the old code, at the map app
+and nowhere else. They quantify over `_app_uris()`, which holds the readable form of every served
+`ui://` entry and **asserts that list against what the server serves**, so a third app fails until
+somebody gives it a readable URI rather than being silently skipped.
+
+### What is still open — stated as limits
+
+1. **The three `ledger://` templates are correct by luck.** They return dicts, and `ResourceContent`
+   hardcodes `application/json` for a dict, which happens to equal what they declare. The day one
+   returns a pre-serialized string it becomes `text/plain` in silence, and no gate here would see it
+   — the read-mime assertions above quantify over `ui://` only, because that is the scheme whose
+   mime is load-bearing for rendering.
+2. **Nothing was reported upstream.** The override looks like an oversight rather than a decision —
+   the base method's docstring argues for the behaviour the subclass removes — but this register is
+   not a bug tracker for a dependency, and the fix does not depend on the answer.
+3. **Still no host of ours renders an app.** Re-checked 2026-08-18: the client matrix is unchanged at
+   eleven clients and Claude Code is absent from it, so this closure makes a claim true on a surface
+   nobody here can yet see. That is the same reason the apps were served at all — the capability was
+   already announced — and it is why the gates are worth more than the fix.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_mcp_server.TestTheAppsAreServedAndTheClaimIsTrue
+```
+
+### Traps
+
+- **Do not "fix" the interview app the same way.** Its bare `str` return is the only thing exercising
+  `resolve_ui_mime_type`; make both explicit and the suite stops guarding the SDK and starts
+  restating a constant of ours back to itself.
+- **Do not check a declaration on the listing alone, ever again.** The listing is a catalogue; the
+  read is what the host acts on. Two of the properties these apps declare were checked only in the
+  catalogue, and the one that differed differed silently.
+- **Do not derive `meta["ui"]` by hand.** `app_config_to_meta_dict` is the SDK's own converter and is
+  what the decorator calls; writing the dict out would be a second copy of the CSP.
+- **Do not read "Claude supports MCP Apps" as covering Claude Code.** The matrix checks *Claude (web)*
+  and *Claude Desktop*; Claude Code is a different product and is on no row. Substituting one for the
+  other is the type-for-parser move that shipped the Codex `./` bug.
+
+---
+
 Settled with evidence; re-opening these costs a session and lands where it started.
 
 - **No `ledger_decide`.** An agent may record an election, never make one. The tool refuses an

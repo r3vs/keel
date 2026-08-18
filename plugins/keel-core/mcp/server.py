@@ -90,7 +90,8 @@ import sys
 from pathlib import Path
 
 from fastmcp import FastMCP
-from fastmcp.apps import AppConfig, ResourceCSP
+from fastmcp.apps import AppConfig, ResourceCSP, app_config_to_meta_dict
+from fastmcp.resources import ResourceContent, ResourceResult
 from fastmcp.server.context import Context
 from fastmcp.server.elicitation import AcceptedElicitation
 
@@ -2299,9 +2300,28 @@ def ledger_pin_resource(pin_id: str, path: str) -> dict:
 # word. `visibility: ["app"]` does not close it either: observed on the wire, a tool declaring it
 # is still served in full by `tools/list`, so it is a hint, not an enforcement.
 #
-# `mime_type` is deliberately not passed: `fastmcp/utilities/mime.py::resolve_ui_mime_type` derives
-# `text/html;profile=mcp-app` from the `ui://` scheme, and the tests assert the value a host
-# RECEIVES — so they guard the SDK's derivation instead of restating a constant of ours beside it.
+# `mime_type` is deliberately not passed on the STATIC app: `fastmcp/utilities/mime.py::
+# resolve_ui_mime_type` derives `text/html;profile=mcp-app` from the `ui://` scheme, and the tests
+# assert the value a host RECEIVES — so they guard the SDK's derivation instead of restating a
+# constant of ours beside it. That guard is worth keeping and is why the interview app still returns
+# a bare `str`.
+#
+# **The templated app cannot use that path, and the reason is a bug one class down.** Observed on
+# the wire 2026-08-18: `ui://keel/map/{path*}` listed as `text/html;profile=mcp-app` and READ as
+# `text/plain`, with `_meta` null — the mime and the CSP both gone at the only moment a host decides
+# how to render. `Resource.convert_result` forwards `mime_type=self.mime_type` and `meta=self.meta`
+# for a plain `str` return, and its docstring names `ui://` and MCP Apps CSP as the reason;
+# `ResourceTemplate.convert_result` OVERRIDES it with a bare `ResourceResult(raw_value)`, so
+# `ResourceContent.__init__` applies its own `mime_type or "text/plain"`. Passing `mime_type=` on the
+# decorator does not reach it either — that value is what the LISTING already reports correctly.
+# So this one returns the `ResourceResult` itself, which `convert_result` passes through untouched,
+# and it builds `meta["ui"]` from the SAME `AppConfig` the decorator gets, through the SDK's own
+# `app_config_to_meta_dict` — which is exactly what `FastMCP.resource` does with it, so there is one
+# object here and no second copy of the CSP.
+#
+# The three `ledger://` templates are unaffected **by luck, not by design**: they return dicts, and
+# `ResourceContent` hardcodes `application/json` for a dict, which happens to equal what they
+# declare. The day one of them returns a pre-serialized string it becomes `text/plain` in silence.
 #
 # The CSP is an explicit pair of empty lists rather than an omission. Both documents are entirely
 # self-contained — no CDN, no font, no image, no fetch — which is why hand-writing them was worth
@@ -2313,9 +2333,15 @@ def ledger_pin_resource(pin_id: str, path: str) -> dict:
 # interview app's were read, so the map app carried the identical claim with nothing checking it —
 # a `<link>` added in `map.py` would have broken a contract declared here.
 # `test_neither_app_is_anything_but_a_whole_document_that_fetches_nothing` now walks every `ui://`
-# resource this server serves, so a third app inherits the gate along with the declaration.
+# resource this server serves, so a third app inherits the gate along with the declaration — and as
+# of 2026-08-18 the mime and the `_meta` are checked on the READ of every app too, which is the half
+# that had been checked for one of the two and was wrong for the other.
 
 _APP_CSP = ResourceCSP(connect_domains=[], resource_domains=[])
+
+#: Named rather than inlined, because the map app's read builds its own `meta["ui"]` from it. One
+#: object, two consumers, no second copy of the policy.
+_MAP_APP = AppConfig(csp=_APP_CSP)
 
 
 @mcp.resource(apps.INTERVIEW_URI, name="keel-interview-app",
@@ -2332,9 +2358,11 @@ def interview_app_resource() -> str:
               description="The decisions map for the ledger at the URI's path, rendered as an "
                           "interactive page with the data already inline: "
                           "ui://keel/map//abs/path/to/ledger.json. A snapshot as of the read.",
-              app=AppConfig(csp=_APP_CSP))
-def map_app_resource(path: str) -> str:
-    return tools.map_app_html(path)
+              app=_MAP_APP)
+def map_app_resource(path: str) -> ResourceResult:
+    return ResourceResult([ResourceContent(tools.map_app_html(path),
+                                           mime_type=apps.UI_MIME_TYPE,
+                                           meta={"ui": app_config_to_meta_dict(_MAP_APP)})])
 
 
 # -- PROMPTS: the phase entries, as commands a human can type -------------------------------------

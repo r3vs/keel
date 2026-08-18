@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-1343%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-1344%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -363,7 +363,7 @@ capability discoverable rather than merely available**:
 |---|---|---|
 | **Tools** | 73, typed | the engine — a parse, a graph traversal, a set difference. No LLM in the loop |
 | **Resources** | `ledger://summary/{path*}` · `ledger://pins/{path*}` · `ledger://pin/{id}/{path*}` | read the ledger without spending a tool call |
-| **Prompts** | `/mcp__keel__interview-kickoff` · `rescue-phase` · `forge-phase` | the host surfaces the workflow as slash commands |
+| **Prompts** | `interview-kickoff` · `rescue-phase` · `forge-phase` | phase entries as slash commands — the one surface here a **person** drives directly. A bundled server's prompts are scoped by the host, so the exact string is the host's to spell, not ours to promise |
 | **Apps** | `ui://keel/interview.html` · `ui://keel/map/{path*}` | the interview and the live map as real UI. **Neither writes** — an app's `tools/call` is proxied on the same connection the model uses, so an app-elected outcome could only be claimed on the agent's word |
 
 <details>
@@ -559,7 +559,7 @@ baseline the rescue diffs against years later. That's the same file, not two pro
 
 Design-complete across 2 methodology skills + 17 composable ones, with the runtime **largely
 implemented**: 35 modules, ~17.1k lines of Python (stdlib-only core, tree-sitter as an optional
-backend that degrades to the stdlib parsers when absent), 73 MCP tools, **1343 tests green in CI**
+backend that degrades to the stdlib parsers when absent), 73 MCP tools, **1344 tests green in CI**
 across Python 3.10–3.14 on Linux and macOS, 4 hosts.
 
 **Verified:** the shape engine pulled 113 tables / 1,290 fields out of a real production Drizzle
