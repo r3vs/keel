@@ -442,7 +442,15 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
     @staticmethod
     def _calls(node: ast.AST) -> set:
         """The names this function calls, by the final component: `x.decide()` and `decide()` both
-        count as `decide`. Nested defs are excluded — they are their own callers."""
+        count as `decide`. Nested defs are excluded — they are their own callers.
+
+        A name handed to `_in_thread` counts too, and has to: the server's async tools do not call
+        the runtime, they pass it to an offload helper that runs it in a worker thread, so the call
+        graph acquired a hop where the callee is an ARGUMENT. Without this, five write doors went
+        unreachable overnight and this gate said so — correctly about its own model, wrongly about
+        the product. Named rather than generalized to "any argument that looks callable": that would
+        be the heuristic these invariants exist to refuse, and it would let a genuinely dead mutator
+        pass on an accidental name match."""
         out, inner = set(), {c for n in ast.iter_child_nodes(node)
                              for c in ast.walk(n)
                              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
@@ -454,6 +462,12 @@ class TestEveryPathToDecideIsGated(unittest.TestCase):
                 out.add(func.attr)
             elif isinstance(func, ast.Name):
                 out.add(func.id)
+                if func.id == "_in_thread" and child.args:
+                    delegate = child.args[0]
+                    if isinstance(delegate, ast.Attribute):
+                        out.add(delegate.attr)
+                    elif isinstance(delegate, ast.Name):
+                        out.add(delegate.id)
         return out
 
     def _callers_of(self, name: str) -> set:

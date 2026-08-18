@@ -94,6 +94,7 @@ from fastmcp.apps import (AppConfig, ResourceCSP, app_config_to_meta_dict,
                           resolve_ui_mime_type)
 from fastmcp.resources import ResourceContent, ResourceResult
 from fastmcp.server.context import Context
+from fastmcp.utilities.async_utils import call_sync_fn_in_threadpool
 from fastmcp.server.elicitation import AcceptedElicitation
 
 import apps
@@ -392,6 +393,32 @@ def _warm_grammars_async() -> None:
         pass  # warming is best-effort; the backend still works, fetching each grammar lazily
 
 
+async def _in_thread(fn, *args, **kwargs):
+    """Run a synchronous runtime call OFF the event loop, and return what it returned.
+
+    **The bug this closes was a hang with no output.** A tool declared `async def` is awaited on the
+    event loop directly, while a `def` one is handed to a worker thread —
+    `fastmcp/tools/function_tool.py`, the `elif self.run_in_thread` branch, `call_sync_fn_in_thread
+    pool`. Five tools here are async (they elicit, or they report progress) and called straight into
+    the stdlib-only runtime, so for the whole of a `build_graph` over a real repo the loop was
+    blocked: the progress notification the tool had just queued could not be written, no other tool
+    call could be answered, `ping` could not be answered, and a `notifications/cancelled` could not
+    even be READ, let alone acted on. The agent saw one "walking …" line and then nothing at all,
+    for as long as the walk took. That is why it read as a dead server rather than a slow one.
+
+    It is the SDK's own offload and not `anyio.to_thread.run_sync` spelled out here, so a sync tool
+    and an async one take one code path: same thread limiter, same contextvar propagation.
+
+    **What this does not buy, stated because the opposite is the natural assumption:** the work does
+    not become abandonable. `run_sync` without `abandon_on_cancel` joins the thread, so a cancelled
+    walk still runs to the end — what changes is that the server stays answerable while it does, and
+    the client's cancellation is received and acknowledged instead of sitting unread in a pipe. The
+    walk itself got 5x faster in the same round (`graph_build._iter_source_files`), which is the half
+    that actually shortens it.
+    """
+    return await call_sync_fn_in_threadpool(fn, *args, **kwargs)
+
+
 async def _step(ctx, done: float, total: float, message: str) -> None:
     """Say where a long call has got to — progress for the bar, a log line for the transcript.
 
@@ -606,7 +633,7 @@ async def ledger_record_decision(
         human_answer: The user's answer, verbatim. Required when relaying — and a declared elicitation capability does not mean you are not.
         accept_as_is: Leave a design_concern as it is (state `accepted`).
     """
-    prompt = tools.decision_prompt(ledger, pin_id)
+    prompt = await _in_thread(tools.decision_prompt, ledger, pin_id)
     evidence = "transcribed"
 
     if ctx is not None and _client_can_elicit(ctx):
@@ -654,9 +681,9 @@ async def ledger_record_decision(
             accept_as_is = picked is None      # the leave-as-is row, and nothing else, maps to None
             option_id = "" if accept_as_is else picked
 
-    return tools.record_decision(ledger, pin_id, option_id, rationale, flip_criteria,
-                                 human_answer=human_answer, evidence=evidence,
-                                 accept_as_is=accept_as_is)
+    return await _in_thread(tools.record_decision, ledger, pin_id, option_id, rationale,
+                            flip_criteria, human_answer=human_answer, evidence=evidence,
+                            accept_as_is=accept_as_is)
 
 
 @mcp.tool(annotations={"title": "Interview — Expand the Decision Catalog", **_RW_CREATE})
@@ -798,8 +825,8 @@ async def ledger_record_policy(
         human_answer: The user's answer, verbatim. Required when relaying.
         project_type: Prunes catalog offers the same way interview_expand did.
     """
-    prompt = tools.policy_prompt(ledger, offer_id, rule, applies_to, default_outcome,
-                                 exceptions, project_type)
+    prompt = await _in_thread(tools.policy_prompt, ledger, offer_id, rule, applies_to,
+                              default_outcome, exceptions, project_type)
     evidence = "transcribed"
 
     if ctx is not None and _client_can_elicit(ctx):
@@ -859,9 +886,9 @@ async def ledger_record_policy(
                 )
             evidence = "elicited"
 
-    return tools.record_policy(ledger, offer_id, rule, applies_to, default_outcome, exceptions,
-                               human_answer=human_answer, evidence=evidence,
-                               project_type=project_type)
+    return await _in_thread(tools.record_policy, ledger, offer_id, rule, applies_to,
+                            default_outcome, exceptions, human_answer=human_answer,
+                            evidence=evidence, project_type=project_type)
 
 
 @mcp.tool(annotations={"title": "Ledger — Add Remediation / Build Item", **_RW_CREATE})
@@ -1569,7 +1596,8 @@ async def contract_diff(
                                        ("django", django), ("graphql", graphql)) if path]
     await _step(ctx, 0, 2, f"extracting {len(named)} layer(s) ({', '.join(named) or 'none'}) — "
                            f"backend {backend!r} fetches a grammar per language on first use")
-    result = tools.contract_diff(
+    result = await _in_thread(
+        tools.contract_diff,
         contract, backend=backend, ddl=ddl, sqlalchemy=sqlalchemy, pydantic=pydantic,
         typescript=typescript, drizzle=drizzle, prisma=prisma, django=django, graphql=graphql,
     )
@@ -1950,9 +1978,11 @@ async def build_graph(root: str, out: str, commit: str = "", ctx: Context = None
     # callback the engine does not offer — so what is reported is the boundary, not fake
     # granularity. Two steps that are true beat ten that are invented: this is the tool most likely
     # to run for minutes on a real repo, and "started, on <root>" is what distinguishes a slow build
-    # from a dead server.
+    # from a dead server. That distinction only became REACHABLE with `_in_thread`: this line used
+    # to be followed by a synchronous call that blocked the loop the notification travels on, so
+    # "started" was also the last thing the client heard until the walk finished.
     await _step(ctx, 0, 2, f"walking {root} — one pass per file, then edge validation")
-    result = tools.build_graph(root, out, commit)
+    result = await _in_thread(tools.build_graph, root, out, commit)
     await _step(ctx, 2, 2, f"{result.get('nodes')} nodes, {result.get('edges')} edges → {out}")
     return result
 
@@ -1968,7 +1998,7 @@ async def understand_codebase(root: str, out: str, commit: str = "", ctx: Contex
         commit: Optional commit to stamp.
     """
     await _step(ctx, 0, 2, f"building the understand bundle for {root} — graph, overview, tour, map")
-    result = tools.understand_codebase(root, out, commit)
+    result = await _in_thread(tools.understand_codebase, root, out, commit)
     await _step(ctx, 2, 2, f"wrote {len(result.get('written') or {})} artifact(s) → {out}")
     return result
 

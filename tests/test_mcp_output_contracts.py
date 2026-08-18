@@ -104,13 +104,22 @@ class Universe:
         return next(iter(anns))
 
 
+#: The server's one offload helper. `_in_thread(tools.x, ...)` returns exactly what `tools.x(...)`
+#: returns — it exists so an async tool does not run the stdlib runtime on the event loop — so the
+#: delegate this gate must follow is its first ARGUMENT rather than its callee. Named here rather
+#: than pattern-matched, because guessing which arguments are called is the heuristic this file
+#: refuses to become; `test_mcp_server.py` fails if the helper is renamed or reimplemented.
+_OFFLOAD = "_in_thread"
+
+
 def prove(fn, module_tree, universe):
     """Every type this function can return, or Unprovable.
 
     Deliberately small: it understands dict literals, a delegated call, a conditional between the
-    two, and a local whose type is pinned by an assignment or by a `x[...] = ...` (which only a
-    mapping survives). Anything else must be made explicit at the call site rather than guessed
-    here — this file may not become the heuristic it exists to prevent.
+    two, an `await` of either, a delegation through `_OFFLOAD`, and a local whose type is pinned by
+    an assignment or by a `x[...] = ...` (which only a mapping survives). Anything else must be made
+    explicit at the call site rather than guessed here — this file may not become the heuristic it
+    exists to prevent.
     """
     aliases = _aliases(fn, module_tree)
     subscripted = {t.value.id for n in ast.walk(fn) if isinstance(n, (ast.Assign, ast.AugAssign))
@@ -127,6 +136,8 @@ def prove(fn, module_tree, universe):
     def of(node, seen=()):
         if isinstance(node, ast.Dict):
             return {"dict"}
+        if isinstance(node, ast.Await):
+            return of(node.value, seen)      # awaiting changes when, not what
         if isinstance(node, ast.IfExp):
             return of(node.body, seen) | of(node.orelse, seen)
         if isinstance(node, ast.Name):
@@ -139,6 +150,11 @@ def prove(fn, module_tree, universe):
             f = node.func
             if isinstance(f, ast.Name) and f.id == "dict":
                 return {"dict"}
+            if isinstance(f, ast.Name) and f.id == _OFFLOAD and node.args:
+                # The delegate is the first argument. Resolve it as the call it will become in the
+                # worker thread, so the type is proven through the indirection rather than around it.
+                return of(ast.copy_location(
+                    ast.Call(func=node.args[0], args=[], keywords=[]), node), seen)
             if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in aliases:
                 return {universe.function(f"{aliases[f.value.id]}.{f.attr}")}
             if isinstance(f, ast.Attribute):
