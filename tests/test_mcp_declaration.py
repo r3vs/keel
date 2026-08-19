@@ -105,6 +105,21 @@ class TestTheProductShipsWhatItOrders(unittest.TestCase):
         for s in sorted(opt_in() & set(declared())):
             self.fail(f"{s} needs external setup; declaring it fails to connect for everyone")
 
+    def test_every_declared_server_carries_its_per_host_delivery_note(self):
+        # A declared server is a promise the user's host has to keep, and the hosts differ in what
+        # they can keep. `alphaxiv` made that concrete: it is reachable from the install alone, but
+        # only after an in-host OAuth sign-in that Claude Code drives from `/mcp`, opencode drives
+        # itself, and Codex drives ONLY with `experimental_use_rmcp_client` switched on — a switch
+        # no manifest of ours can flip. That asymmetry is invisible in `.mcp.json`, which is why it
+        # has to be written down where the per-host mechanisms live. Name-checked against the
+        # doctrine's own table rather than a list here, so the next server inherits the rule.
+        packaging = (ROOT / "docs" / "packaging.md").read_text(encoding="utf-8")
+        for name in sorted(mandated()):
+            with self.subTest(server=name):
+                self.assertIn(name, packaging,
+                              f"{name} is declared to every user but docs/packaging.md never says "
+                              "what each host does with it")
+
     def test_every_plugin_reaches_the_declaration(self):
         # MCP servers are session-global — but only if the plugin declaring them is installed.
         # `dependencies` is the only thing that guarantees it; there is no cross-plugin file access

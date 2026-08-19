@@ -27,7 +27,7 @@ virtualenv to manage, and no CLI — MCP is the only runtime channel.
 | Hooks | **3** | a session banner, the pre-edit ledger gate, and the warn-only search nudge |
 | Skills | **3** | `using-the-ledger`, `which-skill`, `run-workflow` |
 | Shared doctrine | **16 docs** | the ledger spec, the interview funnel, the shape engine, … |
-| MCP servers declared | **4** | `keel` · `context7` · `deepwiki` · `playwright` |
+| MCP servers declared | **5** | `keel` · `context7` · `deepwiki` · `alphaxiv` · `playwright` |
 
 ---
 
@@ -339,6 +339,7 @@ manifest points at the same file; opencode gets the same table from a `config()`
 | `keel` | stdio (`uv run --script`) | every tool above |
 | `context7` | http | **current** library docs — beats the model's training cutoff |
 | `deepwiki` | http | how a real repo actually solved it |
+| `alphaxiv` | http | the paper behind the technique — the only one needing a sign-in (`/mcp`) |
 | `playwright` | stdio (`npx`) | rendered-DOM extraction for the design/frontend layer |
 
 `cognee` (durable graph memory) is named in the doctrine but deliberately **left undeclared** — it
