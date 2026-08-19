@@ -41,6 +41,36 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.14.0] — 2026-08-19
+
+### Fixed
+- **The scoped tool name skipped the host's own normalisation rule.** *"any character outside
+  `A-Z`, `a-z`, `0-9`, `_`, and `-` is replaced with `_`"* — stated by the published MCP page and
+  again by the Agent SDK's type declaration in this repo's `node_modules`. `scoped_tool_name`
+  interpolated the two segments raw. Harmless today (`keel-core` and `keel` are already clean) and
+  wrong the day a plugin is renamed with a dot in it: it would compose a string the host never
+  serves and fail by matching **nothing**. `_host_segment` applies the rule; the gate asserts both
+  that it works and that it changes nothing today.
+- **`decide.py`'s refusal said what not to do and nothing about how to do it.** `server.py` already
+  prints `uv run --script <door> <args>` when a *tool* refuses. The door's own guard — reached when
+  somebody already started the file, with some python, through a pipe — printed no such line, and
+  an agent that had just executed it went on to invent `.venv-win\Scripts\python.exe` and retype a
+  version-stamped plugin-cache path. It now echoes the invocation with `sys.executable` and the
+  caller's own `argv`, quoted with `subprocess.list2cmdline` on Windows and `shlex.join` elsewhere.
+  The gate runs the line rather than reading it.
+
+### Changed
+- **`docs/open-gaps.md` §40 residual 2 is closed, at the consumer.** That a `settings.json` rule
+  matches the same string the host serves was an inference from two doc facts; the MCP page states
+  it in one sentence, and names the failure mode: a matcher on the bare server key *"never fires for
+  a plugin-bundled server"*. The full form is what **four** matchers compare against — permission
+  rules, a skill's `allowed-tools`, a subagent's `tools`, and hook matchers. Our own hook matchers
+  were audited against that and name only built-in tools.
+- §40 also records a **refuted** idea, so it is not rebuilt: gating on the `transcribed` rung.
+  `challenger.py` already declines the class and its reason still holds — every write door refuses
+  an unquoted relay, so what remains is a verbatim quote of the human, and a gate would fire on
+  every honest one.
+
 ## [0.13.0] — 2026-08-18
 
 ### Fixed
