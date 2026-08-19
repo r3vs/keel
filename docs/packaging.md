@@ -111,8 +111,36 @@ from the others:
   `import.meta.url` instead. On Claude Code it does expand inside `.mcp.json` — officially, in a
   stdio server's `command`, `args` and `env`, which is exactly how we use it.
 
-**What ships**: `context7` (live library/framework docs) and `deepwiki` (public-repo exemplars) —
-the two servers `core/knowledge-sources.md` requires.
+**What ships**: `context7` (live library/framework docs), `deepwiki` (public-repo exemplars) and
+`alphaxiv` (academic literature) — the three servers `core/knowledge-sources.md` requires.
+
+**`alphaxiv` is the first declared server that needs a sign-in, and that is a smaller claim than it
+sounds.** It authenticates with OAuth 2.1 (or a `Authorization: Bearer` key for non-interactive use),
+so the honest question was whether it belongs beside `cognee` in the opt-in list. It does not, and
+the discriminator is *where the setup lives*: cognee cannot connect at all until the user has
+started a container and obtained a key — work the host cannot ask for and does not know about —
+while every host that receives our table runs the sign-in itself, in-session, and reports the server
+as needing authentication rather than as broken. Verified per host, at the mechanism and not from
+memory:
+
+- **Claude Code** — OAuth 2.0 for `http` servers, driven from `/mcp` or `claude mcp login <name>`;
+  a 401 on a signed-in server refreshes and retries once before flagging it. In non-interactive runs
+  (`claude -p`, the Agent SDK) there is no panel, so from v2.1.196 it tells the model *the server's
+  tools are unavailable until you authorize it* — which is the doctrine's "degrade visibly", handed
+  to us by the host.
+- **Codex** — OAuth 2.0 + PKCE via `codex mcp login`, but **only with the rmcp client enabled**
+  (`[features] experimental_use_rmcp_client = true`); older builds pick up stdio servers alone. So
+  on Codex this server is a **declared entry that a user may have to switch on**, and the manifest
+  has no way to set that flag for them. Named, not silently assumed.
+- **opencode** — handles OAuth for remote servers itself (401 → dynamic client registration per
+  RFC 7591 → stored tokens), with `headers` as the static-key alternative. Our generated entry sets
+  neither, which is the case its default path covers.
+- **Pi** — unchanged, and unaffected: it has no native MCP at all, so it reaches none of these.
+
+The cost is real and worth stating plainly: a user who never signs in sees one server listed as
+unauthenticated forever. We take that over the alternative, which is a doctrine that orders the agent
+to ground a technique in the literature and ships no way to reach it — the exact bug the whole
+"delivery is the install" section exists to close.
 
 **What is named but deliberately NOT declared**: `cognee` and `github`. Each needs external setup —
 a container plus an `LLM_API_KEY`, a token — and a declared-but-unreachable server is a broken entry
@@ -664,6 +692,16 @@ rather than one it remembered. In the authoring tree the manifests are absent an
 bare tool name: `src/mcp/` is not an install, and a prefix invented there would be the fabricated
 provenance this package exists to find. `tests/test_human_door.py::TestTheRelayDoorIsNamedAsTheHost
 ServesIt` holds the composition to its carriers and drives the refusal to check the string on it.
+
+This is documented at the consumer, not inferred: the MCP page says the full name is what a
+permission rule, a skill's `allowed-tools`, a subagent's `tools` field **and** a hook matcher all
+compare against, and that a matcher on the bare server key *"never fires for a plugin-bundled
+server"*. Two consequences worth stating separately. First, an allow rule may glob **after** the
+literal prefix — `mcp__plugin_keel-core_keel__*` allows every keel tool, while an unanchored
+`mcp__*` in an allow list is *"skipped with a warning"* and approves nothing. Second, the name is
+normalised: *"any character outside `A-Z`, `a-z`, `0-9`, `_`, and `-` is replaced with `_`"*, which
+`tools._host_segment` implements rather than assumes — our own segments are clean today, and the
+rule is the host's, not ours to be lucky about.
 
 **Where this bites in practice**, and it is not hypothetical: `decide.py` refuses without a TTY, by
 design — the `elicited` rung's whole claim is that no agent held the value. Its refusal points at
