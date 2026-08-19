@@ -27,6 +27,23 @@ for _candidate in (_HERE / "runtime", _HERE.parent / "runtime"):
         break
 
 
+def _host_segment(name: str) -> str:
+    """One segment of a served tool name, normalised the way the HOST normalises it.
+
+    *"any character outside `A-Z`, `a-z`, `0-9`, `_`, and `-` is replaced with `_`"* — the published
+    rule for a plugin-bundled server's callable name. Two carriers say it, which is why it is
+    implemented rather than trusted: the doc, and the Agent SDK's own type declaration sitting in
+    this repo's `node_modules` (*"server names are normalized: non-[a-zA-Z0-9_-] becomes _"*).
+
+    Today both of our segments are already clean (`keel-core`, `keel`), so this substitutes nothing
+    and a test proves that. It is here for the case that made every other bug in this class: a name
+    that changes later — a plugin renamed with a dot in it, a server key with a slash — composing to
+    a string the host never serves, and failing by matching NOTHING, which reads as a setting that
+    did not take rather than as a typo.
+    """
+    return "".join(c if (c.isascii() and (c.isalnum() or c in "_-")) else "_" for c in name)
+
+
 def scoped_tool_name(tool: str) -> str:
     """`ledger_record_decision` -> the name the HOST serves it under, composed from the manifests.
 
@@ -46,6 +63,13 @@ def scoped_tool_name(tool: str) -> str:
     than a composed guess: `src/mcp/` is not an install, and a plugin prefix invented here would be
     the fabricated-provenance failure this whole package exists to find. Never raises — a refusal
     message that cannot be built is worse than one that is a little shorter.
+
+    **The consumer is now named, not inferred** (2026-08-19). The published MCP page states the same
+    full name is what a *permission rule*, a skill's `allowed-tools`, a subagent's `tools` and a hook
+    matcher must all carry, and that *"a hook matcher written against the bare server key … never
+    fires for a plugin-bundled server"*. So this string is not merely what the host serves; it is
+    what four separate matchers are documented to compare against. The segments go through
+    `_host_segment` for the same reason.
     """
     here = Path(__file__).resolve().parent
     try:
@@ -58,7 +82,7 @@ def scoped_tool_name(tool: str) -> str:
                       if "server.py" in " ".join(v.get("args") or []))
     except Exception:
         return tool
-    return f"mcp__plugin_{plugin}_{server}__{tool}"
+    return f"mcp__plugin_{_host_segment(plugin)}_{_host_segment(server)}__{tool}"
 
 def _open_existing(path: str):
     """Load a ledger that must already exist.
