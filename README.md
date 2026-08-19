@@ -5,7 +5,7 @@
 ### Your AI-built app doesn't have a bug problem. It has an **agreement** problem.
 
 [![CI](https://github.com/r3vs/keel/actions/workflows/ci.yml/badge.svg)](https://github.com/r3vs/keel/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-1358%20passing-brightgreen)](.github/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-1359%20passing-brightgreen)](.github/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![hosts](https://img.shields.io/badge/runs%20on-Claude%20Code%20·%20Codex%20·%20opencode%20·%20Pi-black)](docs/packaging.md)
 
@@ -559,7 +559,7 @@ baseline the rescue diffs against years later. That's the same file, not two pro
 
 Design-complete across 2 methodology skills + 17 composable ones, with the runtime **largely
 implemented**: 35 modules, ~17.1k lines of Python (stdlib-only core, tree-sitter as an optional
-backend that degrades to the stdlib parsers when absent), 73 MCP tools, **1358 tests green in CI**
+backend that degrades to the stdlib parsers when absent), 73 MCP tools, **1359 tests green in CI**
 across Python 3.10–3.14 on Linux and macOS, 4 hosts.
 
 **Verified:** the shape engine pulled 113 tables / 1,290 fields out of a real production Drizzle
@@ -609,7 +609,7 @@ drift against itself. What belongs here is the part the commands don't show.
 
 **MCP is part of the install on every host that can take it** — you never hand-copy a server block.
 Claude Code and Codex read the plugin's own `.mcp.json`; opencode gets the same servers from a
-`config()` hook; Pi has no native MCP and bridges through an extension. Five servers ship: `keel`,
+`config()` hook; Pi has no native MCP and bridges through an extension. 5 servers ship: `keel`,
 `context7` (current library docs), `deepwiki` (how real repos solved it), `alphaxiv` (the paper
 behind the technique — one-time OAuth sign-in), `playwright` (rendered-DOM extraction). Per-host detail: [`docs/packaging.md`](docs/packaging.md).
 

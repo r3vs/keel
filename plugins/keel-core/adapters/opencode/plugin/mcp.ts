@@ -25,6 +25,10 @@ const REMOTE = {
   "deepwiki": {
     "type": "remote",
     "url": "https://mcp.deepwiki.com/mcp"
+  },
+  "alphaxiv": {
+    "type": "remote",
+    "url": "https://api.alphaxiv.org/mcp/v1"
   }
 }
 

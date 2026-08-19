@@ -41,6 +41,36 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.15.0] — 2026-08-19
+
+### Added
+- **`alphaxiv` is declared — the academic literature becomes a reachable rung, not an aspiration.**
+  `core/knowledge-sources.md` gains rung 4 (`https://api.alphaxiv.org/mcp/v1`, arXiv's 2.5M papers,
+  a paper's own PDF answered against a question), and the build propagated it to `.mcp.json`, the
+  opencode `config()` hook and all twelve vendored copies. The scope argument that nearly kept it
+  out — *"Keel is about codebase alignment"* — was wrong: alignment is the mechanism, and the
+  package covers coding at 360°.
+- **The declared/opt-in line is stated as a rule instead of a list.** It is **where the setup
+  lives**: a declared server connects from the install alone and asks for whatever else it needs
+  *inside the host* (a sign-in, a Playwright binary); an opt-in server needs what the host cannot
+  ask for (a container, a key from elsewhere). `alphaxiv` is the first declared server that
+  authenticates — OAuth 2.1, driven by the host: Claude Code from `/mcp` (and telling the model
+  "unavailable until you authorize" in `-p` runs), opencode by itself via RFC 7591, Codex **only**
+  with `experimental_use_rmcp_client` — a flag no manifest of ours can set, so it is named in
+  `docs/packaging.md` rather than assumed away. Pi has no native MCP and is unaffected.
+
+### Fixed
+- **A doc claimed a server the carrier never sent, and every gate stayed green.** Between 0.14.0 and
+  here, `README.md` and `docs/packaging.md` described `alphaxiv` while `knowledge-sources.md` did
+  not declare it — the package asserting a capability it did not deliver, which is this repo's
+  signature bug arriving through a **concurrent session's commit** rather than through an edit.
+  `build.py --check` could not see it (it compares generated output against its own source, and a
+  hand-written doc is neither). `check_stated_facts.py` now computes the server count from
+  `mcp_json()` and holds README's *"N servers ship"* and keel-core's table cell to it, and
+  `test_mcp_declaration.py` requires every declared server to carry its per-host delivery note in
+  `docs/packaging.md` — the asymmetry between hosts is invisible in `.mcp.json`, so it has to be
+  written where the mechanisms are.
+
 ## [0.14.0] — 2026-08-19
 
 ### Fixed

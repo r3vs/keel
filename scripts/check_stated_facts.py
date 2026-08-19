@@ -156,6 +156,28 @@ def served_tools() -> int:
     return total
 
 
+def declared_servers() -> int:
+    """How many MCP servers the built `.mcp.json` declares — asked of the generator, not counted by
+    hand off the doctrine table, because two of them (`keel`, `playwright`) are capability servers
+    the table deliberately does not name.
+
+    Added 2026-08-19, at the instance that proved the need. `alphaxiv` was added to the doctrine and
+    to the two docs that describe the delivery in one working tree, and a *concurrent* session's
+    commit swept up the two docs and left the carrier behind. `main` then said "Five servers ship"
+    over a `.mcp.json` holding four — the package claiming a capability it did not deliver, which is
+    the exact bug class this repo exists to find, arriving through the merge rather than the edit.
+    Every other gate stayed green: `--check` compares generated output to its own source, and the
+    doc was neither.
+    """
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import build
+    total = len(json.loads(build.mcp_json())["mcpServers"])
+    if total < 2:
+        raise SystemExit("ERROR the generator declares almost nothing — its shape changed and this "
+                         "gate just went vacuous")
+    return total
+
+
 def spec_version() -> str:
     import ledger
     return ledger.SCHEMA_VERSION
@@ -263,6 +285,15 @@ FACTS = (
             re.compile(r"\b(\d+)\s+(?:typed\s+)?MCP tools\b"),  # README.md, keel-core.md prose
             re.compile(r"^\|\s*MCP tools\s*\|\s*\*\*(\d+)\*\*", re.M),   # keel-core.md's table cell
             re.compile(r"[Aa]ll (\d+) tools"),                  # README.md's <details> summary
+        ),
+    },
+    {
+        "label": "the number of MCP servers the built plugin declares",
+        "carrier": declared_servers,
+        "render": str,
+        "patterns": (
+            re.compile(r"\b(\d+) servers? ship\b"),                       # README.md's install prose
+            re.compile(r"^\|\s*MCP servers declared\s*\|\s*\*\*(\d+)\*\*", re.M),  # keel-core.md's table cell
         ),
     },
     {

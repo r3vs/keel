@@ -14,7 +14,8 @@ cheapest sufficient source, and go outward only when the local signal can't answ
 1 local signal (the code, the graph, static tools)      — cheapest, always first
 2 authoritative docs (Context7)                          — a specific library/framework/API
 3 repo-grounded (DeepWiki)                               — exemplar architectures + public deps
-4 neural / general web (Exa, web search)                 — open-ended SOTA / novel problems
+4 academic literature (alphaXiv)                         — the algorithm, the method, the proof
+5 neural / general web (Exa, web search)                 — open-ended SOTA / novel problems
 ```
 
 **Rung 1 is the code, not prose about the code.** A doc an agent wrote is a *derived* artifact: it may
@@ -34,6 +35,7 @@ disagree, the code wins and the disagreement becomes a pin.
 | **Context7** | live, version-accurate library / framework / API docs | greenfield contract & build (generate against the *real* current API), rescue remediation & the dependencies module (migration/upgrade paths) — directly kills the hallucinated/stale-API failure mode |
 | **DeepWiki** (public GitHub repos) | how a well-architected repo solves *this*, and how a third-party dependency actually behaves | the **brainstorm** (grounded exemplars, not vibes) and greenfield's decision-catalog / interview. **Not** for the private target codebase — DeepWiki indexes public repos only |
 | **Registry / advisory** (npm · PyPI · crates · OSV · GitHub Advisory) | dependency health, latest versions, deprecations, CVE detail | rescue dependencies module, greenfield stack choice + Phase-6 release |
+| **alphaXiv** (arXiv, 2.5M papers) | the *published* answer to a hard technical question — algorithms, data structures, distributed-systems results, ML methods, security constructions — and whether a design is already known to fail | the **brainstorm** on a genuinely hard fork, and any pin whose `to_be` rests on a technique rather than a taste. A paper is a citation, not a decision: it grounds a proposal exactly as DeepWiki does |
 | **Exa / web search** | open research on state of the art, novel problems with no obvious source | the brainstorm, last resort after the above |
 
 ## The MCP servers this doctrine requires — **the build reads this table**
@@ -50,10 +52,23 @@ word-match would "find" a server nobody declared. Correspondence comes from a de
 
 - `context7` → **http** `https://mcp.context7.com/mcp` — live library / framework / API docs.
 - `deepwiki` → **http** `https://mcp.deepwiki.com/mcp` — public-repo exemplars.
+- `alphaxiv` → **http** `https://api.alphaxiv.org/mcp/v1` — academic literature, and a paper's own PDF
+  answered against a question (`discover_papers`, `get_paper_content`, `answer_pdf_queries`). It is the
+  one declared server that **needs a sign-in**: OAuth 2.1 on first use, in the host (`/mcp` or
+  `claude mcp login alphaxiv`). Until you sign in, its tools are unavailable and rung 4
+  falls through to rung 5 — visibly, which is the whole difference from an opt-in server. Its coverage is
+  arXiv's (CS, math, physics, stat, q-bio, q-fin, EESS); biomedical questions are not in it, and
+  claiming otherwise from an empty result is exactly the failure the freshness rule exists to stop.
 - `cognee` → **opt-in** — graph memory. Runs its own LLM extraction, so it needs a Docker container
   on `:8000` plus an `LLM_API_KEY`. Declaring it by default would hand every user a server that
   fails to connect; the ledger and `MEMORY.md` cover durable memory without it.
 - `github` → **opt-in** — the official server needs a token, and nothing above requires it.
+
+The line between the two lists is **where the setup lives**, not whether there is any: a declared
+server connects from the install alone, and anything it still wants (a browser sign-in, a Playwright
+binary) is asked for *inside the host*, at the moment of use, in words the user can act on. An opt-in
+server needs something the host cannot ask for — a container, a key pasted from elsewhere — so
+declaring it would hand every user a dead entry.
 
 ## The discipline (non-negotiable)
 
