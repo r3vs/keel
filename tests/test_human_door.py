@@ -11,7 +11,9 @@ file byte-for-byte afterwards. A guard that is only described is a guard that is
 """
 import ast
 import hashlib
+import json
 import os
+import pathlib
 import subprocess
 import sys
 import tempfile
@@ -237,6 +239,78 @@ class TestTheDoorShipsWithTheServer(unittest.TestCase):
             self.assertEqual(_read(door), source)
             checked += 1
         self.assertTrue(checked, "no built plugin ships the MCP server — the sweep proved nothing")
+
+
+class TestTheRelayDoorIsNamedAsTheHostServesIt(unittest.TestCase):
+    """The guard sends an agent to `ledger_record_decision`, which the HOST may refuse in turn.
+
+    That second refusal is not keel's and keel cannot fix it: a selective permission rule lives in
+    the user's own settings, session-wide, and a plugin cannot ship one (`docs/packaging.md`). What
+    keel can do is stop everybody guessing the name, because a bundled server is namespaced twice —
+    `mcp__plugin_<plugin>_<server>__<tool>` — and the bare `mcp__<server>__<tool>` matches nothing.
+    `docs/measurements.md` records an eval run failing on exactly that substitution, and the failure
+    mode is the expensive one: a rule that matches nothing looks like a setting that did not take.
+
+    So the name is COMPOSED from the two manifests that decide it, and this holds the composition to
+    them rather than to a string written here.
+    """
+
+    def _built(self):
+        root = pathlib.Path(ROOT) / "plugins" / "keel-core"
+        if not (root / "mcp" / "tools.py").is_file():
+            self.skipTest("plugins/ not built — run scripts/build.py")
+        return root
+
+    def test_the_name_is_composed_from_the_manifests_beside_it(self):
+        root = self._built()
+        plugin = json.loads((root / ".claude-plugin" / "plugin.json")
+                            .read_text(encoding="utf-8"))["name"]
+        servers = json.loads((root / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]
+        ours = [k for k, v in servers.items() if "server.py" in " ".join(v.get("args") or [])]
+        self.assertEqual(len(ours), 1, f"exactly one declared server may run our server.py: {ours}")
+
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, sys.argv[1]); import tools;"
+             "print(tools.scoped_tool_name('ledger_record_decision'))",
+             str(root / "mcp")],
+            capture_output=True, text=True, encoding="utf-8", timeout=120)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(),
+                         f"mcp__plugin_{plugin}_{ours[0]}__ledger_record_decision",
+                         "the composed name drifted from the manifests it is composed from — which "
+                         "is the only way this can be wrong, since nothing writes it")
+
+    def test_the_source_tree_says_the_bare_name_rather_than_guessing_a_prefix(self):
+        """`src/mcp/` is not an install. A plugin prefix invented where no manifest exists would be
+        the fabricated provenance this package is built to find, so the honest answer is shorter."""
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, sys.argv[1]); import tools;"
+             "print(tools.scoped_tool_name('ledger_record_decision'))",
+             str(pathlib.Path(ROOT) / "src" / "mcp")],
+            capture_output=True, text=True, encoding="utf-8", timeout=120)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "ledger_record_decision")
+
+    def test_the_refusal_hands_over_that_name_and_not_the_bare_one(self):
+        """Driven, not read: the guard is where an agent meets this, so the string is checked on the
+        stderr of a real refusal rather than in the source that composes it."""
+        root = self._built()
+        # A PIPE, not DEVNULL. On Windows `NUL` is a character device and `isatty()` answers True
+        # for it, so a DEVNULL stdin walks straight past the guard and fails on the ledger instead —
+        # the same shape the module docstring already records for msys `< /dev/null`. The sibling
+        # tests above drive it with `input=`, and this one does the same for the same reason.
+        out = subprocess.run(
+            [sys.executable, str(root / "mcp" / "decide.py"), "pin", "nope.json", "pin_0001"],
+            input="", capture_output=True, text=True, encoding="utf-8", timeout=120)
+        said = out.stdout + out.stderr
+        self.assertIn("refusing: stdin is not a terminal", said)
+        plugin = json.loads((root / ".claude-plugin" / "plugin.json")
+                            .read_text(encoding="utf-8"))["name"]
+        self.assertIn(f"mcp__plugin_{plugin}_", said,
+                      "the refusal sends an agent to a tool without saying what the host calls it, "
+                      "which is the hop everybody has got wrong so far")
 
 
 class TestTheDoorWritesWhatTheHumanTyped(unittest.TestCase):

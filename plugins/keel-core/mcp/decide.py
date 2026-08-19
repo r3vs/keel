@@ -87,16 +87,30 @@ _DECLINE = "do not set it — keep asking pin by pin"
 
 
 def _guard() -> None:
-    """The one precondition of the `elicited` rung, checked before anything is read or shown."""
+    """The one precondition of the `elicited` rung, checked before anything is read or shown.
+
+    The refusal names the relay door **as the host serves it**, which is not a nicety. An agent
+    reading this is one hop from `ledger_record_decision` being refused again — by the host's
+    permission layer this time, which a plugin cannot ship a rule for (`docs/packaging.md`) — and the
+    rule that would open it has to carry the plugin-scoped name. Everyone who has written that name
+    from memory so far has written the bare form, which matches nothing and reads as "the setting did
+    not take". `tools.scoped_tool_name` composes it from the manifests instead of stating it.
+    """
     if sys.stdin.isatty():
         return
+    relay = tools.scoped_tool_name("ledger_record_decision")
     sys.exit(
         "refusing: stdin is not a terminal.\n"
         "This door writes the `elicited` rung, whose whole claim is that no agent held the value.\n"
         "Answering it through a pipe would make that claim false while keeping it unfalsifiable.\n"
         "Run it yourself in a terminal — or, if you are relaying an answer a human already gave,\n"
         "use `ledger_record_decision` / `ledger_record_policy` and quote them verbatim in\n"
-        "`human_answer`. That is the `transcribed` rung, and it is the honest one for a relay."
+        "`human_answer`. That is the `transcribed` rung, and it is the honest one for a relay.\n"
+        "\n"
+        "If your host refuses that call rather than keel refusing it, the tool to allow is named\n"
+        f"    {relay}\n"
+        "and the rule lives in YOUR settings, session-wide — a plugin cannot ship one. The bare\n"
+        "`mcp__keel__…` form matches nothing: a bundled server is namespaced by plugin AND key.\n"
     )
 
 

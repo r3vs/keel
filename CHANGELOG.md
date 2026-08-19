@@ -41,6 +41,30 @@ that is what the history says, not a transcription error.
 would mean rewriting the record to keep a linter quiet. Present-tense claims live in
 `README.md` / `CLAUDE.md` / `MEMORY.md`, all of which the gate does scan.
 
+## [0.13.0] — 2026-08-18
+
+### Fixed
+- **The human door's refusal named a tool without saying what the host calls it.** `decide.py`
+  refuses without a TTY — by design, since the `elicited` rung claims no agent held the value — and
+  points at `ledger_record_decision` as the honest relay. Observed in a real session: the host then
+  refused *that* call from its own permission layer, and the rule that would open it must carry the
+  **plugin-scoped** name `mcp__plugin_keel-core_keel__ledger_record_decision`. The bare `mcp__keel__…`
+  matches nothing and fails in the expensive direction — indistinguishable from a setting that did
+  not take, so the next move is a pointless restart. `docs/measurements.md` already recorded an eval
+  failing on that exact substitution.
+- `tools.scoped_tool_name` composes the name from the two manifests that decide it — the plugin
+  manifest and `.mcp.json`, both shipping beside the vendored `tools.py`, with the server key found
+  by looking for the entry that runs our own `server.py` rather than by taking the first of four.
+  Nothing writes the string. In the authoring tree, where neither manifest exists, it answers the
+  bare tool name: `src/mcp/` is not an install, and a prefix invented there would be the fabricated
+  provenance this package is pointed at.
+
+### Changed
+- `docs/packaging.md` gains the user-facing half — the same residual met from the other side, where
+  a user wants to *allow* one of our tools rather than deny one of theirs.
+- `docs/open-gaps.md` §40 carries the two-door dead end and three residuals, including the one that
+  matters most: keel still cannot grant the permission, and should not be able to.
+
 ## [0.12.0] — 2026-08-18
 
 ### Performance

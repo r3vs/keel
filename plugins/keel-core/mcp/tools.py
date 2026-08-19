@@ -27,6 +27,39 @@ for _candidate in (_HERE / "runtime", _HERE.parent / "runtime"):
         break
 
 
+def scoped_tool_name(tool: str) -> str:
+    """`ledger_record_decision` -> the name the HOST serves it under, composed from the manifests.
+
+    **The bug this closes is a string two sessions have now guessed wrong.** A server bundled in a
+    plugin is namespaced twice: its tools arrive as `mcp__plugin_<plugin>_<server>__<tool>` and the
+    server registers as `plugin:<plugin>:<server>`. The bare `mcp__<server>__<tool>` names nothing —
+    `docs/measurements.md` records an eval run FAILING on exactly that substitution, and it happens
+    again wherever a permission rule, a hook matcher or a refusal message writes the short form. It
+    fails by matching nothing, which reads as "the setting did not take" rather than as a typo.
+
+    So it is computed, never written. The two files that DECIDE the name ship beside this one — the
+    build vendors `tools.py` to `plugins/<plugin>/mcp/`, so `../.claude-plugin/plugin.json` gives
+    the plugin and `../.mcp.json` gives the server key, the same relative-to-`__file__` anchoring
+    `server.py::_plugin_version` uses and for the same reason (the cwd is the user's project).
+
+    In the authoring tree neither file is there, and the honest answer is the bare tool name rather
+    than a composed guess: `src/mcp/` is not an install, and a plugin prefix invented here would be
+    the fabricated-provenance failure this whole package exists to find. Never raises — a refusal
+    message that cannot be built is worse than one that is a little shorter.
+    """
+    here = Path(__file__).resolve().parent
+    try:
+        plugin = json.loads((here.parent / ".claude-plugin" / "plugin.json")
+                            .read_text(encoding="utf-8"))["name"]
+        servers = json.loads((here.parent / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]
+        # The key whose command points back at this very directory — not "the first one", and not a
+        # name written here. Four servers are declared and only one of them is ours.
+        server = next(k for k, v in servers.items()
+                      if "server.py" in " ".join(v.get("args") or []))
+    except Exception:
+        return tool
+    return f"mcp__plugin_{plugin}_{server}__{tool}"
+
 def _open_existing(path: str):
     """Load a ledger that must already exist.
 
