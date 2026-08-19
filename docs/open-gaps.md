@@ -4748,6 +4748,68 @@ where no plugin exists would be the fabricated provenance the whole package is p
 `decide.py`'s refusal now prints it, so the agent redirected from the human door to the relay door
 hands over a string it computed. `docs/packaging.md` gains the user-facing half.
 
+### Verified at the consumer — 2026-08-19, and it went further than the claim
+
+The first cut of this section listed *"the composed name is unverified against a host's permission
+matcher"* as a residual: the shape was observed in `tools/list`, and that a `settings.json` rule
+matched the identical string was an inference from two separate doc facts. It is not an inference.
+The published MCP page states it in one sentence, about the consumer:
+
+> Use this full name when referencing the tool in permission rules, a skill's `allowed-tools` list,
+> a subagent's `tools` field, or a hook matcher.
+
+and, decisively, names the failure mode we predicted: *"A hook matcher written against the bare
+server key, such as `mcp__database-tools__.*`, never fires for a plugin-bundled server."* So the
+full form is what **four** matchers compare against, not one — and the bare form fails silently in
+all four. Our own hook matchers were audited against that: `src/hooks/hooks.json` names only
+built-in tools (`Edit|Write|NotebookEdit|MultiEdit`, `Bash`), so nothing here was relying on a
+matcher that never fires.
+
+**And the verification found a defect the inference had hidden.** The same page states the
+normalisation rule — *"any character outside `A-Z`, `a-z`, `0-9`, `_`, and `-` is replaced with
+`_`"* — and the Agent SDK's own type declaration in this repo's `node_modules` says it again
+(*"server names are normalized: non-[a-zA-Z0-9_-] becomes _"*). `scoped_tool_name` interpolated the
+two segments raw. Today that is harmless, because `keel-core` and `keel` are already clean; the day
+a plugin is renamed with a dot in it, it composes a string the host never serves and fails by
+matching **nothing** — the expensive direction, again. `_host_segment` now applies the rule.
+
+Two carriers, and the second is the stronger one: a `.d.ts` in our own tree is machine-readable and
+version-pinned, where a doc page is prose that can be re-worded. This is the shape to reach for next
+time — *find the type declaration the host ships*, not just the page it publishes.
+
+One thing this still is **not**: an observation of a permission rule matching at runtime. It is the
+document that owns the rule, stating the rule about its own consumer. Stronger than composing two
+facts; weaker than a run. A run would need a scratch project, a rule, one call, and the CLI version
+recorded — and the CLI is not installed on the machine this was verified from (desktop app; no
+`@anthropic-ai/claude-code` under any npm root, no extractable bundle under `AppData`). That search
+is written down so the next session does not repeat it.
+
+### The other half of the same dead end: the door said what not to do
+
+`server.py` already prints `uv run --script <door> <args>` when a **tool** refuses — `_human_door()`
+resolves the path from the running process, so nothing is written ahead of time. The other entry had
+no such line. `decide.py`'s own guard fires when somebody already started the file, with some python,
+through a pipe — and it said only *don't*. Observed: an agent that had **just executed this file**
+went on to invent `.venv-win\Scripts\python.exe` and retype a version-stamped plugin-cache path.
+
+The guard now echoes the invocation back with `sys.executable` — the one interpreter known to work,
+since it is the one running — and the caller's own `argv`. Quoted with `subprocess.list2cmdline` on
+Windows and `shlex.join` elsewhere: the default Windows plugin cache sits under a profile directory
+with a space in it, which is exactly where a POSIX-quoted line breaks. The gate does not read the
+string, it **runs** it and asserts it lands back on the same guard.
+
+### Considered and refuted: making the weak rung cost something
+
+The obvious third move was to gate on the rung — a release resting on `transcribed` elections
+should pay for it. `challenger.py` already declines that class, and the reason still holds: every
+write door **refuses** a `transcribed` decision with no `human_answer`, so "an agent's unsupported
+word" is empty by construction, and what remains is an agent's *verbatim quote* of the human. A
+gate on that would fire on every honest relay — it is the intended weaker-but-valid rung, not a
+defect. The rung is surfaced where a human weighs it (`ledger_summary`'s `by_evidence`, the map's
+decision card, the `AGENTS.md` line reading *"N relayed by an agent"*) and deliberately gates
+nothing. Recorded here so the next session does not rebuild it: the idea is not new, and the
+argument against it is older than the idea.
+
 ### What is still open — stated as limits
 
 1. **Keel still cannot grant the permission**, and should not be able to. This closes the naming
@@ -4755,10 +4817,12 @@ hands over a string it computed. `docs/packaging.md` gains the user-facing half.
    asking for one is asking to widen its own reach — `decide.py` in a terminal remains the stronger
    path, and on a pin that was already contested for having been recorded on an agent's word it is
    the only honest one.
-2. **The composed name is unverified against a host's permission matcher.** It matches what a
-   running Claude Code serves in `tools/list` (observed), and the docs give that shape for tools;
-   whether a `settings.json` rule matches on the identical string is an inference from the same
-   docs, not an observation. The same UNVERIFIED note `server.py` carries for the prompt command.
+2. **The sanitisation branch is unexercised by anything that ships.** `_host_segment` implements
+   the host's normalisation rule, and both of our real segments (`keel-core`, `keel`) are already
+   clean — so the substitution is proven by a unit test and by no real name, ever. That is why the
+   gate asserts *both* halves: the rule is implemented, AND implementing it changed nothing today.
+   A test that only checked the substitution would be guarding a branch no shipped input reaches;
+   one that only checked today's name would pass on an implementation that never normalises.
 3. **Only Claude Code has this shape.** Codex, opencode and Pi namespace differently or not at all,
    and `scoped_tool_name` composes the Claude Code form unconditionally. It is named in a refusal a
    human reads, not fed to a matcher, so a wrong host makes it useless rather than wrong — but it is
@@ -4767,7 +4831,7 @@ hands over a string it computed. `docs/packaging.md` gains the user-facing half.
 ### Prove it
 
 ```bash
-python -m unittest tests.test_human_door.TestTheRelayDoorIsNamedAsTheHostServesIt
+python -m unittest tests.test_human_door.TestTheRelayDoorIsNamedAsTheHostServesIt tests.test_human_door.TestTheRefusalHandsOverARunnableLine
 ```
 
 ### Traps
@@ -4779,6 +4843,9 @@ python -m unittest tests.test_human_door.TestTheRelayDoorIsNamedAsTheHostServesI
   the same move.
 - **Do not add a permission rule to a user's settings on your own initiative.** It is a rule whose
   only beneficiary is the agent proposing it. Offer it; let them write it.
+- **Do not assert the pasted line by reading it.** Reinstating a hardcoded interpreter left
+  `test_the_line_names_this_interpreter_and_this_door` GREEN — `python.exe` is the basename of both
+  the invented path and the real one. Only the round-trip caught it.
 - **Do not drive the guard with `subprocess.DEVNULL` on Windows.** `NUL` is a character device and
   `isatty()` answers True for it, so the run sails past the guard and fails somewhere else entirely.
   Use a pipe, as the sibling tests do.

@@ -313,6 +313,98 @@ class TestTheRelayDoorIsNamedAsTheHostServesIt(unittest.TestCase):
                       "which is the hop everybody has got wrong so far")
 
 
+    def test_the_segments_are_normalised_the_way_the_host_normalises_them(self):
+        """*"any character outside `A-Z`, `a-z`, `0-9`, `_`, and `-` is replaced with `_`"* — the
+        published rule, said twice: the MCP page, and the Agent SDK's own `.d.ts` in this repo's
+        `node_modules` (*"server names are normalized: non-[a-zA-Z0-9_-] becomes _"*).
+
+        Both halves are asserted on purpose. Our real segments are already clean, so a test that
+        only checked the substitution would be checking a branch no shipped input reaches — and one
+        that only checked today's name would pass on an implementation that does not normalise at
+        all. The pair says: the rule is implemented, AND implementing it changed nothing today.
+        """
+        mod = self._tools_module()
+        self.assertEqual(mod._host_segment("keel-core"), "keel-core")
+        self.assertEqual(mod._host_segment("keel"), "keel")
+        for dirty, clean in (("my.plugin", "my_plugin"), ("a/b", "a_b"), ("x y", "x_y"),
+                             ("caffè", "caff_"), ("v1.2.3", "v1_2_3")):
+            self.assertEqual(mod._host_segment(dirty), clean)
+
+    def test_the_composition_actually_passes_the_segments_through_it(self):
+        """Mechanical, because behaviour cannot see this: `keel-core` and `keel` normalise to
+        themselves, so a composition that skipped `_host_segment` entirely would return the same
+        string on every input this package ships. The only way to hold the rule is to read the call.
+        """
+        import ast
+        src = _read(pathlib.Path(ROOT) / "src" / "mcp" / "tools.py")
+        fn = next(n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "scoped_tool_name")
+        joined = [n for n in ast.walk(fn) if isinstance(n, ast.JoinedStr)]
+        self.assertTrue(joined, "scoped_tool_name no longer composes an f-string")
+        wrapped = {n.func.id for j in joined for n in ast.walk(j)
+                   if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        self.assertIn("_host_segment", wrapped,
+                      "the two segments read off disk must go through the host's own normalisation "
+                      "rule; a name that grows a dot later would compose to a string the host never "
+                      "serves, and fail by matching NOTHING")
+
+    def _tools_module(self):
+        import importlib.util
+        path = pathlib.Path(ROOT) / "src" / "mcp" / "tools.py"
+        spec = importlib.util.spec_from_file_location("_keel_tools_under_test", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+
+class TestTheRefusalHandsOverARunnableLine(unittest.TestCase):
+    r"""`server.py` prints `uv run --script <door> …` when a TOOL refuses. This is the other entry:
+    somebody already started the door itself, with some python, through a pipe.
+
+    Observed in a real session — an agent that had *just executed this file* went on to invent
+    `.venv-win\Scripts\python.exe` and retype a version-stamped plugin-cache path, because the
+    refusal said what not to do and nothing about how to do it. `sys.executable` is the one
+    interpreter known to work, and `argv` is the caller's own target.
+    """
+
+    def _refuse(self, *args):
+        """Driven through a real pipe. NOT `subprocess.DEVNULL`: on Windows that opens `NUL`, a
+        character device, and `isatty()` answers True for it — the guard never fires and the run
+        fails somewhere else entirely, which is a green test asserting nothing."""
+        out = subprocess.run(
+            [sys.executable, str(pathlib.Path(ROOT) / "src" / "mcp" / "decide.py"), *args],
+            input="", capture_output=True, text=True, encoding="utf-8", timeout=120)
+        said = out.stdout + out.stderr
+        self.assertIn("refusing: stdin is not a terminal", said, said)
+        return said
+
+    def _pasted_line(self, said):
+        marker = "To run this door yourself, in your own terminal, paste:"
+        self.assertIn(marker, said, "the refusal offers no way to do the thing it refused")
+        return said.split(marker, 1)[1].strip().splitlines()[0].strip()
+
+    def test_the_line_names_this_interpreter_and_this_door(self):
+        line = self._pasted_line(self._refuse("pin", "nope.json", "pin_0001"))
+        for token in (pathlib.Path(sys.executable).name, "decide.py", "pin_0001", "nope.json"):
+            self.assertIn(token, line, f"{token!r} missing from {line!r}")
+
+    def test_the_line_runs_and_lands_back_on_the_same_guard(self):
+        """The round-trip is the point. Asserting the string *looks* right would pass on a line
+        whose quoting is broken, which is the failure mode that matters: the default Windows plugin
+        cache lives under a profile directory with a space in it.
+        """
+        line = self._pasted_line(self._refuse("pin", "nope.json", "pin_0001"))
+        again = subprocess.run(line, shell=True, input="", capture_output=True,
+                               text=True, encoding="utf-8", timeout=120)
+        self.assertIn("refusing: stdin is not a terminal", again.stdout + again.stderr,
+                      f"the composed line did not reach the door it names: {line!r}")
+
+    def test_with_no_arguments_it_offers_the_shape_rather_than_a_broken_line(self):
+        line = self._pasted_line(self._refuse())
+        self.assertIn("<pin_id>", line)
+        self.assertIn("decide.py", line)
+
+
 class TestTheDoorWritesWhatTheHumanTyped(unittest.TestCase):
     """The happy path, in-process — the half a TTY guard makes unreachable from a test runner.
 

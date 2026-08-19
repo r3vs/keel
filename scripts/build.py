@@ -78,7 +78,7 @@ OUT = ROOT / "plugins"
 # (2026-08-13): the root `.claude-plugin/marketplace.json` is `marketplace()`'s output, not an
 # authored file, so it moves with this constant and must be rebuilt after a bump — a `--check`
 # failure naming it is the bump, not a regression.
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 AUTHOR = {"name": "r3vs"}
 HOMEPAGE = "https://github.com/r3vs/keel"
 KEYWORDS = ["skills", "vibe-coding", "ai-generated-code", "codebase", "rescue", "greenfield",

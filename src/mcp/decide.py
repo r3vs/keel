@@ -66,6 +66,9 @@ Usage (both forms print what they will write and ask before writing):
     <this file> pin    <path/to/ledger.json> <pin_id>
     <this file> policy <path/to/ledger.json> <offer_id> [--project-type web-saas]
 """
+import os
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -86,19 +89,36 @@ _ACCEPT = "set this policy — decide the whole cluster this way"
 _DECLINE = "do not set it — keep asking pin by pin"
 
 
-def _guard() -> None:
-    """The one precondition of the `elicited` rung, checked before anything is read or shown.
+def _guard(argv: list) -> None:
+    r"""The one precondition of the `elicited` rung, checked before anything is read or shown.
 
-    The refusal names the relay door **as the host serves it**, which is not a nicety. An agent
-    reading this is one hop from `ledger_record_decision` being refused again — by the host's
-    permission layer this time, which a plugin cannot ship a rule for (`docs/packaging.md`) — and the
-    rule that would open it has to carry the plugin-scoped name. Everyone who has written that name
-    from memory so far has written the bare form, which matches nothing and reads as "the setting did
-    not take". `tools.scoped_tool_name` composes it from the manifests instead of stating it.
+    It hands over **two computed strings**, and a real session had to reconstruct both by hand.
+
+    The relay door is named as the host serves it. An agent reading this is one hop from
+    `ledger_record_decision` being refused again — by the host's permission layer this time, which a
+    plugin cannot ship a rule for (`docs/packaging.md`) — and the rule that would open it has to
+    carry the plugin-scoped name. Everyone who has written that name from memory so far has written
+    the bare form, which matches nothing and reads as "the setting did not take".
+
+    And the command a human should run is echoed back with the interpreter that is running RIGHT
+    NOW. `server.py` already prints `uv run --script <path> …` when a *tool* refuses; this is the
+    other entry, where somebody already started this file with some python through a pipe. Observed:
+    an agent that had just executed this file went on to invent `.venv-win\Scripts\python.exe` and
+    retype a version-stamped plugin-cache path, because the refusal said what NOT to do and nothing
+    about how to do it. `sys.executable` is the one interpreter known to work here, and `argv` is
+    the caller's own target, so neither is guessed. This does not breach the no-runnable-paths rule
+    for the same reason `_human_door` does not: nothing is written ahead of time, the running
+    process reports where it was started from.
     """
     if sys.stdin.isatty():
         return
     relay = tools.scoped_tool_name("ledger_record_decision")
+    # Quoted for the shell the human actually has. `list2cmdline` is the Windows rule Python's own
+    # `subprocess` uses, and it is not optional here: the default Windows install path for a plugin
+    # cache sits under a profile directory with a space in it, which is exactly where a POSIX-quoted
+    # line breaks.
+    parts = [sys.executable, str(Path(__file__).resolve()), *(argv or ["pin", "<ledger.json>", "<pin_id>"])]
+    line = subprocess.list2cmdline(parts) if os.name == "nt" else shlex.join(parts)
     sys.exit(
         "refusing: stdin is not a terminal.\n"
         "This door writes the `elicited` rung, whose whole claim is that no agent held the value.\n"
@@ -111,6 +131,9 @@ def _guard() -> None:
         f"    {relay}\n"
         "and the rule lives in YOUR settings, session-wide — a plugin cannot ship one. The bare\n"
         "`mcp__keel__…` form matches nothing: a bundled server is namespaced by plugin AND key.\n"
+        "\n"
+        "To run this door yourself, in your own terminal, paste:\n"
+        f"    {line}\n"
     )
 
 
@@ -227,7 +250,7 @@ def set_policy(ledger: str, offer_id: str, project_type: str) -> int:
 
 
 def main(argv: list) -> int:
-    _guard()
+    _guard(argv)
     if len(argv) >= 3 and argv[0] == "pin":
         return decide_pin(argv[1], argv[2])
     if len(argv) >= 3 and argv[0] == "policy":
