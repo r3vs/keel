@@ -307,7 +307,8 @@ its consumer. **No host's `initialize` was captured on the wire**, so this is me
 
 | Host | declares `elicitation` in `initialize` | what it renders for our enum |
 |---|---|---|
-| **Claude Code** 2.1.221 | **yes**, unconditional | radio list; out-of-menu answer impossible |
+| **Claude Code** 2.1.221, **as a REPL** | **yes**, unconditional | radio list; out-of-menu answer impossible |
+| **Claude Code** 2.1.234, **under `--input-format stream-json`** | **yes**, the same unconditional declaration | **nothing.** The request is forwarded to the controlling SDK client, which answers `decline` when it registered no `onElicitation` — see the row's own paragraph below |
 | **Codex** (`openai/codex`) | **yes**, unconditional | single-select picker; same |
 | **opencode** (`anomalyco/opencode`) | **no** — the line is commented out | nothing: no handler is registered |
 | **Pi**, through our own bridge | **no** — the bridge sends `capabilities: {}` | not rendered |
@@ -357,10 +358,39 @@ tool's return value.
   the REPL swaps in the interactive handler hits a placeholder that answers `{action:"cancel"}`, and
   a user-configured hook can answer *for* the human ("Elicitation resolved by hook") with no prompt
   ever shown — so on this host `elicited` means "the agent did not hold the value", not "a human
-  was looked in the eye". **UNVERIFIED, do not promote:** whether the interactive handler is
-  registered at all in non-interactive/`stream-json` runs (only the REPL call site was found, and
-  its absence was not ruled out); and whether an elicitation from inside a subagent reaches that
-  queue. The declaration is unconditional either way, so `_client_can_elicit` still returns True.
+  was looked in the eye". **Whether an elicitation from inside a subagent reaches that queue is
+  still UNVERIFIED.** The declaration is unconditional either way, so `_client_can_elicit` still
+  returns True.
+- **Claude Code driven over `stream-json` — declares it, and draws nothing.** This was the first
+  row's other `UNVERIFIED` (*"whether the interactive handler is registered at all in
+  non-interactive/`stream-json` runs"*) and a field run answered it, in the negative, on 2026-08-19:
+  23 elections on a 34-pin ledger, every `ledger_record_decision` coming back
+  `DeclinedElicitation` with **no prompt ever shown to the human sitting in the conversation**.
+  Read at the consumer afterwards, one hop per artifact:
+  1. The Claude Desktop app spawns the CLI as
+     `…\Claude\claude-code\2.1.234\claude.exe --output-format stream-json --input-format stream-json …`
+     (walked from the live process tree, so this is the launch, not a docs claim).
+  2. In that mode the elicitation does **not** reach the Ink queue `registerElicitationHandler`
+     feeds. `handleElicitation` forwards it to the controlling client as a control request,
+     `{subtype: "elicitation", mcp_server_name, message, requested_schema, …}`, and answers
+     `{action:"cancel"}` only if that send throws.
+  3. The controlling client is the desktop app, which bundles the Agent SDK (`0.3.234`). Its
+     `processControlRequest` reads: `if (this.onElicitation) { … } return {action: "decline"}`.
+     `onElicitation` occurs five times in the bundle and **all five are inside the vendored SDK**
+     (field declaration, the `hasCallbacks` predicate, the constructor assignment, this use site,
+     and the options destructure). No call site supplies one.
+  So the `decline` is manufactured by a client with no elicitation UI, and it is indistinguishable
+  at the server from a human refusing: `ElicitResult` carries `action` + `content` and nothing else,
+  and FastMCP's `Context.elicit` maps `decline` onto a payload-free `DeclinedElicitation()`, so even
+  the inherited `_meta` would not survive. **There is no signal to route on**, which is why `_ask`
+  is unchanged and `Declined` stays a hard refusal — see `docs/open-gaps.md` §41 for the full chain
+  and for what keel does instead (the `session` form of the human door).
+  Worth recording because it is the SDK's own counter-example: the branch immediately below,
+  `request_user_dialog`, handles the same missing-handler case by staying silent —
+  *"No onUserDialog handler … — staying silent so a capable client (or the worker's park deadline)
+  settles it"* — and returns a `suppressControlResponse` sentinel instead of inventing a refusal.
+  Two adjacent branches, one lossless and one lossy. **Method: read in the shipped bundles**, never
+  captured on the wire, so cite it as read.
 - **Codex — declares it, and renders a picker.** `codex-rs/codex-mcp/src/rmcp_client.rs::
   mcp_initialize_request_params` does `capabilities.elicitation = Some(client_elicitation_capability)`
   with no branch, and it is the only construction site feeding `RmcpClient::initialize`. The wire
