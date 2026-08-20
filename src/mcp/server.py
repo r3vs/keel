@@ -658,7 +658,11 @@ async def ledger_record_decision(
                 f"this tool: the relay rung below is unreachable, and dropping to it would make you "
                 f"the author of an outcome the user may have just refused. Ask them to run the "
                 f"human door themselves — you cannot run it, and it will refuse a pipe:\n"
-                f"  uv run --script {_human_door()} pin {ledger} {pin_id}"
+                f"  uv run --script {_human_door()} pin {ledger} {pin_id}\n"
+                f"If that is this host rather than this pin, hand over the second line instead: it "
+                f"walks every open question in ONE sitting, in the interview's own order, so a "
+                f"ledger's worth of elections costs one command rather than one per pin.\n"
+                f"  uv run --script {_human_door()} session {ledger}"
             )
         else:
             human_answer = str(result.data)
@@ -861,8 +865,8 @@ async def ledger_record_policy(
             _relay_instead(
                 shut, writes="policy",
                 door=(f"policy {ledger} {offer_id}" if offer_id else
-                      f"pin {ledger} <pin_id>   (one pin at a time: that door takes a CATALOG "
-                      f"offer_id, and this rule is one you composed)"),
+                      f"session {ledger}   (pin by pin: that door takes a CATALOG offer_id, and "
+                      f"this rule is one you composed)"),
                 needs={"human_answer": (human_answer, "the user's answer, verbatim")})
         elif not isinstance(result, AcceptedElicitation):
             raise ValueError(
@@ -871,10 +875,11 @@ async def ledger_record_policy(
                 f"one.\nIf this client declines EVERY elicitation, ask the user to run the human "
                 f"door themselves:\n" + (
                     f"  uv run --script {_human_door()} policy {ledger} {offer_id}" if offer_id else
-                    f"  uv run --script {_human_door()} pin {ledger} <pin_id>\n"
-                    f"…one pin at a time: that door takes a CATALOG offer_id, and this rule is one "
-                    f"you composed. A rule an agent wrote, elected on a rung that claims no agent "
-                    f"carried it, is exactly the laundering the rung exists to prevent.")
+                    f"  uv run --script {_human_door()} session {ledger}\n"
+                    f"…that walks the pins one by one, because the human door takes a CATALOG "
+                    f"offer_id and this rule is one you composed. A rule an agent wrote, elected on "
+                    f"a rung that claims no agent carried it, is exactly the laundering the rung "
+                    f"exists to prevent.")
             )
         else:
             human_answer = str(result.data)

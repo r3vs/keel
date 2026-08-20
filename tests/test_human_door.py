@@ -459,5 +459,213 @@ class TestTheDoorWritesWhatTheHumanTyped(unittest.TestCase):
         self.assertEqual(event["human_answer"], "neither reading is right")
 
 
+class TestTheSittingIsAWalkAndNotASecondDoor(unittest.TestCase):
+    """`session` walks the funnel. Everything that makes it safe is that it does nothing else.
+
+    The rung is checked one class up, by equality over the whole tree: `run_session` appearing in
+    `ENTITLED` would fail there. What is checked here is the other half — that the walk reaches the
+    ledger only through `decide_pin`, so the guarantee it inherits is the one that was already
+    tested rather than a new one nobody exercised.
+    """
+
+    def setUp(self):
+        self.tree = ast.parse(_read(DOOR))
+        self.fn = next(n for n in ast.walk(self.tree)
+                       if isinstance(n, ast.FunctionDef) and n.name == "run_session")
+
+    def test_the_walk_writes_only_through_the_door(self):
+        writes = [n for n in ast.walk(self.fn)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                  and n.func.attr in ("record_decision", "record_policy", "save", "decide")]
+        self.assertFalse(writes,
+                         "a sitting that wrote directly would be a third electing path, and it "
+                         "would be one nothing in this file's guard story covers")
+        calls = [n for n in ast.walk(self.fn) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == "decide_pin"]
+        self.assertTrue(calls, "the walk must elect through the door it wraps")
+
+    def test_the_walk_takes_no_answer_from_its_caller(self):
+        self.assertEqual([a.arg for a in self.fn.args.args], ["ledger"],
+                         "a session takes a ledger and nothing an answer could ride in on")
+
+    def test_the_order_is_the_interviews_and_is_re_derived(self):
+        """Not `interview_view` copied, not a sort written here: the funnel, called inside the loop.
+
+        A list captured before the first write would ask questions a cascade had already settled,
+        which is the stateless-twin shape this package refuses — here it would be a twin of the
+        interview's own ordering, sitting on the human's time.
+        """
+        loop = next(n for n in ast.walk(self.fn) if isinstance(n, ast.While))
+        inside = [n for n in ast.walk(loop) if isinstance(n, ast.Call)
+                  and isinstance(n.func, ast.Attribute) and n.func.attr == "interview_next"]
+        self.assertTrue(inside, "the funnel must be re-read inside the loop, not before it")
+
+
+class TestASittingPutsEachQuestionOnce(unittest.TestCase):
+    """Behavioural, in-process — the same half the TTY guard hides from a runner."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(SRC, "mcp"))
+        import decide
+        self.decide = decide
+        self.tmp = tempfile.mkdtemp()
+        led = Ledger(os.path.join(self.tmp, "ledger.json"))
+        for sev, title in (("blocker", "is orders in v1 scope?"),
+                           ("high", "which auth model?"),
+                           ("low", "which date format?")):
+            led.add_pin(kind="ambiguity", title=title, severity=sev, confidence="inferred",
+                        provenance=[{"source": "static", "detail": "two layers disagree"}],
+                        question={"prompt": f"{title} — which reading holds?",
+                                  "allow_freeform": True,
+                                  "options": [{"id": "a", "label": "the first"},
+                                              {"id": "b", "label": "the second"}]})
+        led.save()
+        self.ledger = led.path
+        self.asked = []
+
+    def _typed(self, *answers):
+        """The person at the keyboard, who eventually walks away: the iterator raises `EOFError`
+        when it runs dry, which is Ctrl-D and not a crash — a test that ran out of answers into a
+        `StopIteration` would be asserting on a traceback."""
+        it = iter(answers)
+        import builtins
+        original = builtins.input
+
+        def fake(label=""):
+            self.asked.append(label)
+            try:
+                return next(it)
+            except StopIteration:
+                raise EOFError
+        builtins.input = fake
+        self.addCleanup(setattr, builtins, "input", original)
+
+    def _pin_answer(self, row):
+        return [row, "because the routes already assume it", "if the v1 cut list changes", "y"]
+
+    def test_a_sitting_decides_every_open_pin_in_one_run(self):
+        self._typed(*self._pin_answer("1"), *self._pin_answer("1"),
+                    "y", *self._pin_answer("1"))
+        self.assertEqual(self.decide.run_session(self.ledger), 0)
+        led = Ledger(self.ledger)
+        for pid in ("pin_0001", "pin_0002", "pin_0003"):
+            self.assertEqual(led.pin(pid)["state"], "decided", f"{pid} was left behind")
+        self.assertEqual([e["evidence"] for e in led.data["decision_log"]], ["elicited"] * 3,
+                         "a walk around the door inherits the door's rung and states no other")
+
+    def test_it_asks_in_the_interviews_order_worst_first(self):
+        self._typed(*self._pin_answer("1"), *self._pin_answer("1"),
+                    "y", *self._pin_answer("1"))
+        self.decide.run_session(self.ledger)
+        self.assertEqual([e["pin_id"] for e in Ledger(self.ledger).data["decision_log"]],
+                         ["pin_0001", "pin_0002", "pin_0003"],
+                         "equal fan-out leaves severity to order the questions; the blocker is not "
+                         "the one a tiring human reaches last")
+
+    def test_a_skipped_pin_is_not_asked_again_in_the_same_sitting(self):
+        """The termination rule. Without it a pin nobody answers is the loop's fixed point, and the
+        door would sit there asking it until the human closed the terminal."""
+        skip_row = "4"                    # two options, freeform, then skip — the last row
+        self._typed(skip_row, *self._pin_answer("1"), "y", *self._pin_answer("1"))
+        self.assertEqual(self.decide.run_session(self.ledger), 0)
+        led = Ledger(self.ledger)
+        self.assertEqual(led.pin("pin_0001")["state"], "needs_input", "skip must write nothing")
+        self.assertEqual(led.pin("pin_0002")["state"], "decided")
+        self.assertEqual(led.pin("pin_0003")["state"], "decided")
+
+    def test_walking_away_keeps_what_was_already_written(self):
+        """Ctrl-D halfway is not a rollback: every door here commits per pin, and the closing line
+        has to say what stands rather than the single-pin form's "nothing was written"."""
+        self._typed(*self._pin_answer("1"))
+        self.assertEqual(self.decide.run_session(self.ledger), 0)
+        led = Ledger(self.ledger)
+        self.assertEqual(led.pin("pin_0001")["state"], "decided")
+        self.assertEqual(led.pin("pin_0002")["state"], "needs_input")
+
+    def test_main_routes_the_session_form_past_the_guard(self):
+        """The one path neither sibling covers, and it is this repo's signature gap.
+
+        The subprocess tests reach `main` and are refused by `_guard` BEFORE any argv is parsed, so
+        a `session` branch that was never wired would leave them green; the tests above call
+        `run_session` directly and never touch the routing. So this drives `main` with the guard's
+        precondition satisfied — a stdin that says it is a terminal, which is the true statement
+        for the person this form is written for.
+        """
+        import unittest.mock
+
+        class _AtAKeyboard:
+            def isatty(self):
+                return True
+        self.addCleanup(setattr, self.decide.sys, "stdin", self.decide.sys.stdin)
+        self.decide.sys.stdin = _AtAKeyboard()
+        self._typed(*self._pin_answer("1"), *self._pin_answer("1"), "n")
+        self.assertEqual(self.decide.main(["session", self.ledger]), 0)
+        self.assertEqual(Ledger(self.ledger).pin("pin_0001")["state"], "decided",
+                         "`session` reached no walk: main parsed it as an unknown form")
+
+    def test_the_bulk_tail_is_offered_and_declining_it_writes_nothing(self):
+        """The tail is the half a policy would settle. It must be OFFERED — a sitting that walked it
+        silently would put questions the funnel had already judged not worth putting — and declining
+        must leave it exactly as it was."""
+        self._typed(*self._pin_answer("1"), *self._pin_answer("1"), "n")
+        self.assertEqual(self.decide.run_session(self.ledger), 0)
+        led = Ledger(self.ledger)
+        self.assertEqual(led.pin("pin_0001")["state"], "decided")
+        self.assertEqual(led.pin("pin_0002")["state"], "decided")
+        self.assertEqual(led.pin("pin_0003")["state"], "needs_input",
+                         "the tail was declined; nothing in it may move")
+        self.assertTrue(any("Walk them too" in label for label in self.asked),
+                        "a tail that is walked or skipped without being named is this file "
+                        "deciding for the human which questions are worth their time")
+
+    def test_an_unelectable_pin_does_not_end_the_sitting(self):
+        led = Ledger(self.ledger)
+        led.data["pins"][0]["question"] = {"prompt": "no options, no freeform", "options": []}
+        led.save()
+        self._typed(*self._pin_answer("1"), "y", *self._pin_answer("1"))
+        self.assertEqual(self.decide.run_session(self.ledger), 0)
+        led = Ledger(self.ledger)
+        self.assertEqual(led.pin("pin_0001")["state"], "needs_input")
+        self.assertEqual(led.pin("pin_0002")["state"], "decided")
+        self.assertEqual(led.pin("pin_0003")["state"], "decided")
+
+
+class TestTheGuardCoversEveryForm(unittest.TestCase):
+    """The TTY precondition is checked once, in `main`, for every form. A session that skipped it
+    would be the pipe-answerable door this file exists to make impossible, at 23x the size."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        led = Ledger(os.path.join(self.tmp, "ledger.json"))
+        led.add_pin(kind="ambiguity", title="is orders in v1 scope?", severity="blocker",
+                    confidence="inferred",
+                    provenance=[{"source": "static", "detail": "routes reference a missing model"}],
+                    question={"prompt": "Which reading holds?", "allow_freeform": True,
+                              "options": [{"id": "in_scope", "label": "ships in v1"},
+                                          {"id": "future", "label": "a later feature"}]})
+        led.save()
+        self.ledger = led.path
+
+    def test_a_pipe_carrying_a_whole_sittings_answers_is_refused(self):
+        out = subprocess.run([sys.executable, DOOR, "session", self.ledger],
+                             input="1\nbecause\nif the cut list changes\ny\n" * 3,
+                             capture_output=True, text=True, encoding="utf-8", timeout=120)
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("not a terminal", out.stdout + out.stderr)
+        self.assertEqual(Ledger(self.ledger).pin("pin_0001")["state"], "needs_input")
+
+    def test_the_usage_line_offers_every_form_the_door_accepts(self):
+        """The shape printed on a bad invocation is a slice of the docstring, so adding a form
+        without widening the slice silently hides it — the kind of drift a comment cannot catch."""
+        import re
+        doc = _read(DOOR).split('"""')[1]
+        offered = {m for m in re.findall(r"<this file> (\w+)", doc)}
+        tail = "\n".join(doc.strip().splitlines()[-4:])
+        self.assertEqual(offered, {"pin", "policy", "session"})
+        for form in offered:
+            self.assertIn(f"<this file> {form}", tail,
+                          f"`{form}` is a form this door accepts and the printed usage omits it")
+
+
 if __name__ == "__main__":
     unittest.main()
