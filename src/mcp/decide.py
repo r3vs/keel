@@ -62,9 +62,36 @@ what killed the CLI. So no playbook names this file. The server, whose own locat
 resolved, prints the absolute path in the refusal the agent will show — see `_human_door` in
 `server.py`. The agent relays a path it did not compute and cannot execute.
 
-Usage (both forms print what they will write and ask before writing):
-    <this file> pin    <path/to/ledger.json> <pin_id>
-    <this file> policy <path/to/ledger.json> <offer_id> [--project-type web-saas]
+Why there is a `session` form, and why it changes nothing about the rung
+-----------------------------------------------------------------------
+Measured on a real forge run (2026-08-19, Claude Code desktop, 34 pins): every one of the 23
+elections the human made cost a separate invocation of this file, because on that host
+`ledger_record_decision` reaches no rung at all — the client answers `decline` to an elicitation it
+never drew, so the strong rung refuses correctly and the relay below it is unreachable by design.
+The door worked; running it 23 times is what did not. The agent ended up authoring a loop script and
+a paste sheet to make it bearable, which is scaffolding nobody reviews sitting on the one path whose
+whole claim is that no agent is on it.
+
+So the walk is here, and it is *only* a walk: `run_session` calls `decide_pin` per pin and holds no
+answer of its own. The rung is stated in exactly the two places it was before, by the two functions
+that ask. What a session must not become is a second interview — so the order is not invented here,
+it is `interview_next`'s, re-derived after every write rather than fixed at the start, because an
+election cascades and a list captured up front would ask questions the ledger had already settled.
+
+One rule keeps that loop finite and honest: a sitting puts each question **at most once**. A pin a
+decision reopens belongs to the next sitting, not to this one — otherwise a pin that stays on the
+funnel after being answered would be asked forever, and the fix for that would have to be this file
+forming its own opinion about which questions are still real.
+
+(An ergonomic fact worth writing down rather than rediscovering: `input()` takes a pasted newline as
+Enter, so one multi-line paste answers a whole pin in a real terminal. That is a keyboard action —
+stdin is still a TTY and the guard below is untouched — and it is the difference between typing four
+fields per pin and pasting once.)
+
+Usage (every form prints what it will write and asks before writing):
+    <this file> pin     <path/to/ledger.json> <pin_id>
+    <this file> policy  <path/to/ledger.json> <offer_id> [--project-type web-saas]
+    <this file> session <path/to/ledger.json>
 """
 import os
 import shlex
@@ -84,6 +111,7 @@ from ledger import FREEFORM_OUTCOME  # noqa: E402  — `tools` put the runtime o
 #: `server.py::_ACCEPT_AS_IS_ROW` maps to `None` rather than to a word.
 _FREEFORM = object()
 _AS_IS = object()
+_SKIP = object()
 
 _ACCEPT = "set this policy — decide the whole cluster this way"
 _DECLINE = "do not set it — keep asking pin by pin"
@@ -174,11 +202,20 @@ def decide_pin(ledger: str, pin_id: str) -> int:
     if prompt["can_accept_as_is"]:
         rows.append(("accept_as_is — leave it as it is", _AS_IS))
     if not rows:
-        sys.exit(f"{pin_id} offers no option and no freeform answer; there is nothing to elect.")
+        # `raise`, not `sys.exit`: `main` turns this into the same exit code and message it always
+        # did, and a session can carry on to the next pin instead of the whole sitting dying on one
+        # malformed fork. An exit is a decision about the process, and this function does not own it.
+        raise ValueError(f"{pin_id} offers no option and no freeform answer; there is nothing to elect.")
+    # Last, and after the emptiness check above, because `skip` is not an answer: a pin whose only
+    # row was `skip` would be a fork with no fork in it, and the check has to see that.
+    rows.append(("skip — not now; this pin stays open", _SKIP))
     for i, (row, _) in enumerate(rows, 1):
         print(f"  {i}. {row}")
 
     picked = _pick(rows)
+    if picked is _SKIP:
+        print(f"{pin_id} left open; nothing written.")
+        return 1
     accept_as_is = picked is _AS_IS
     if picked is _FREEFORM:
         option_id = FREEFORM_OUTCOME
@@ -249,14 +286,86 @@ def set_policy(ledger: str, offer_id: str, project_type: str) -> int:
     return 0
 
 
+def run_session(ledger: str) -> int:
+    """Walk the open interview in one sitting. Holds no answer, states no rung, writes nothing itself.
+
+    Every election here goes through `decide_pin`, which is why this function does not appear in
+    `test_human_door.py`'s entitled set and must never: it is a loop around the door, not a second
+    door. The guard ran once in `main` and covers the whole sitting — the person who started this
+    process is the person at every prompt in it.
+
+    The order is `interview_next`'s and is re-derived on each pass, so a decision that cascades over
+    a cluster, or a policy that settles ten pins, removes those questions from the rest of the
+    sitting instead of the human being asked what the ledger already knows. `seen` is what keeps
+    that finite: a pin is put once per sitting whatever it does afterwards. A pin still on the funnel
+    after being answered (a reopen, a `correctness_unknown`) is a real question for the NEXT sitting,
+    and deciding otherwise would mean this file judging which questions are still live — the
+    interview's job, not the walk's.
+
+    An unelectable pin (no options, no freeform) does not end the sitting: it is reported and passed,
+    because one malformed fork must not cost the human the other twenty-two answers.
+
+    **Both halves of the funnel, and the second one is asked for rather than assumed.** The funnel
+    splits into the questions worth putting and a `proposed_default` tail a policy would settle
+    without asking — and a sitting that walked only the first half would leave that tail reachable
+    by nothing at all: `policy` takes a catalog offer, so a tail pin no offer covers would sit open
+    for good while the closing line said "complete". So the tail is offered as one question, once,
+    with its size named. Declining it is the correct answer whenever a policy is the better tool;
+    what is not correct is this file deciding that on the human's behalf in either direction.
+    """
+    decided, seen, interrupted = 0, set(), False
+    try:
+        for bucket in ("asked", "proposed_default"):
+            if bucket == "proposed_default":
+                tail = tools.interview_next(ledger)["tail_count"]
+                if not tail:
+                    break
+                print(f"\n{'=' * 72}")
+                print(f"{tail} pin(s) the funnel would settle in bulk with a proposed default.\n"
+                      f"`policy` decides them as one rule; this walks them one at a time.")
+                if input("\nWalk them too? [y/N] ").strip().lower() not in ("y", "yes"):
+                    print("left where they are — they stay open until a policy or a later sitting.")
+                    break
+            while True:
+                queue = [e["pin_id"] for e in tools.interview_next(ledger)[bucket]
+                         if e["pin_id"] not in seen]
+                if not queue:
+                    break
+                pin_id = queue[0]
+                seen.add(pin_id)
+                print(f"\n{'=' * 72}")
+                print(f"{len(queue)} question(s) still to put · {decided} decided in this sitting")
+                try:
+                    decided += 1 if decide_pin(ledger, pin_id) == 0 else 0
+                except (ValueError, KeyError) as exc:
+                    print(f"\npassing over {pin_id}: {exc}")
+    except (KeyboardInterrupt, EOFError):
+        interrupted = True                       # every write already committed; say so truthfully
+
+    # The closing count is READ BACK from the ledger rather than tallied here. What this sitting did
+    # is `decided`; what is left is a fact about the file, and a cascade means the two do not add up.
+    left = tools.interview_next(ledger)
+    print(f"\n{'=' * 72}")
+    print("interrupted." if interrupted else "sitting complete.")
+    print(f"  decided here   {decided}")
+    print(f"  still asked    {left['asked_count']}"
+          + (f"  (of which {len(seen) - decided} you left open just now)" if seen else ""))
+    if left["tail_count"]:
+        print(f"  skimmable      {left['tail_count']} pin(s) a policy would settle without asking "
+              f"— `policy` is the other form of this door")
+    return 0 if decided else 1
+
+
 def main(argv: list) -> int:
     _guard(argv)
+    if len(argv) >= 2 and argv[0] == "session":
+        return run_session(argv[1])
     if len(argv) >= 3 and argv[0] == "pin":
         return decide_pin(argv[1], argv[2])
     if len(argv) >= 3 and argv[0] == "policy":
         pt = argv[argv.index("--project-type") + 1] if "--project-type" in argv else "web-saas"
         return set_policy(argv[1], argv[2], pt)
-    print("\n".join(__doc__.strip().splitlines()[-3:]))
+    print("\n".join(__doc__.strip().splitlines()[-4:]))
     return 2
 
 

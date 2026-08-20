@@ -4850,6 +4850,117 @@ python -m unittest tests.test_human_door.TestTheRelayDoorIsNamedAsTheHostServesI
   `isatty()` answers True for it, so the run sails past the guard and fails somewhere else entirely.
   Use a pipe, as the sibling tests do.
 
+## 41. A host answered "the user declined" for a user it never asked — **CLOSED 2026-08-20** (no rung moved; the walk did)
+
+### Verified
+
+A real forge run on another project (2026-08-19/20, keel-core `0.15.0-efe05db5d1d0`, Claude Code in
+the desktop app, Windows 11): a 34-pin ledger, 23 of them elected by the human in one sitting, and
+**every one of the 23 recorded through `decide.py`, one invocation per pin**, because
+`ledger_record_decision` could reach no rung at all on that host.
+
+Two refusals, in this order, and only the second is keel's:
+
+1. The host's own auto-mode classifier denied the tool call before it arrived. `_guard` already
+   anticipates this and prints the plugin-scoped name (§40) — that text was correct and is what
+   identified the layer. Worth naming because it closes a circle: `hooks/ledger-gate.py::_is_exempt`
+   allows `.md` / `.txt` / `.rst`, so the agent cannot write the `settings.json` that would allow
+   the tool that decides the pins that would open the gate. A human paste breaks it; nothing else
+   in the package does.
+2. keel refused, correctly, with `the user did not answer (DeclinedElicitation)`.
+
+**No prompt was ever drawn.** The human was in the conversation the whole time and answered ~25
+questions through the agent's own question tool in the same minutes. Read at the consumer
+afterwards, one hop per artifact, and the chain is complete:
+
+1. The desktop app spawns the CLI as `claude.exe --output-format stream-json --input-format
+   stream-json …` (walked from the live process tree).
+2. Under `stream-json` the elicitation never reaches the Ink queue that `registerElicitationHandler`
+   feeds. `handleElicitation` forwards it to the controlling client as a control request,
+   `{subtype: "elicitation", …}`.
+3. That client is the desktop app, bundling the Agent SDK `0.3.234`, whose `processControlRequest`
+   ends the elicitation branch with `return {action: "decline"}` when `onElicitation` is unset —
+   and the five occurrences of `onElicitation` in the bundle are all inside the vendored SDK. No
+   call site supplies one.
+
+So `decline` here means *nobody was asked*, and it arrives in the one shape `_ask` is built to treat
+as *somebody refused*. The SDK's own next branch does the opposite for the same situation —
+`request_user_dialog` logs *"staying silent so a capable client … settles it"* and returns a
+suppression sentinel rather than inventing an answer. Two adjacent branches, one lossless, one lossy.
+
+**The question that had to be answered before anything could be built: is there a signal?** No.
+`ElicitResult` carries `action` + `content` and nothing else; FastMCP maps `decline` onto a
+payload-free `DeclinedElicitation()`, so even the inherited `_meta` would not survive. `clientInfo`
+is the same string in both modes. Timing would be a heuristic, which this repo does not author. So
+**`_ask` is unchanged and `Declined` stays a hard refusal** — degrading on it would still invert a
+conforming host's human "no", and there is no way to tell the two apart from inside the server.
+
+What the run actually cost, and this is the part that was fixable: 23 invocations × 4 typed fields,
+on a machine where the human had already given every answer in chat, plus an agent-authored loop
+script and paste sheet to make it bearable — scaffolding nobody reviews, sitting on the one path
+whose whole claim is that no agent is on it.
+
+### What landed
+
+**`decide.py session <ledger>`** — the same door, walked. `run_session` calls `decide_pin` per pin
+and holds no answer of its own, so the entitled set is unchanged, the two writes are still two, and
+the TTY guard runs once in `main` and covers the sitting. Four properties, each with a test:
+
+- **The order is `interview_next`'s, re-derived inside the loop**, never a list captured up front —
+  an election cascades, and a stale list asks what the ledger already settled. A sort written here
+  would be a stateless twin of the interview's own ordering.
+- **Each question is put at most once per sitting.** A pin a decision reopens belongs to the next
+  sitting; deciding otherwise would mean this file judging which questions are still live.
+- **Both halves of the funnel.** The `proposed_default` tail is offered as one question with its
+  size named — walking it silently would put questions the funnel judged not worth putting, and
+  skipping it silently would leave those pins reachable by nothing, since `policy` takes a catalog
+  offer and a tail pin no offer covers has no other door.
+- **A `skip` row, and one malformed fork does not end the sitting.** `decide_pin` raises instead of
+  `sys.exit`-ing on a pin with no options and no freeform, so the walk reports it and carries on.
+
+The server's refusal now hands over the sitting as well as the pin, on the branch where the host
+declines everything — which is exactly the branch this section is about — and the policy refusal's
+old `pin <ledger> <pin_id>` placeholder, which nobody could run, is now `session <ledger>`, which
+they can.
+
+`docs/packaging.md` gains the second Claude Code row and closes the first of that row's two
+`UNVERIFIED`s in the negative.
+
+### What is still open — stated as limits, not as work
+
+- **On this host the strong rung is unreachable, and that is correct.** Every decision made through
+  the session door is `elicited` because the human typed it; every decision an agent relays there is
+  still `transcribed`. Nothing was widened.
+- **The upstream defect is not ours to fix.** A report is written up in
+  `docs/upstream/claude-code-elicitation-decline.md`; filing it is a human's call.
+- **Whether an elicitation from inside a subagent reaches the REPL queue is still UNVERIFIED** —
+  the other half of the original `packaging.md` residual, untouched by this run.
+- **A local HTML door (§4.2 of the field report) is designed and not built.** It would be a third
+  carrier of `elicited` — same construction as the TTY door, since the human runs the process and
+  the value never transits the model's connection — and it would need the treatment spec v0.29 gave
+  the second carrier: named in the spec, quantified over its callers by a test. Not started.
+
+### Prove it
+
+```bash
+python -m unittest tests.test_human_door
+```
+
+### Traps
+
+- **Do not degrade on `Declined`.** It is tempting precisely here, where the decline is provably
+  fake — and the server cannot tell this decline from a real one. Degrading converts a conforming
+  host's human "no" into an agent's write.
+- **Do not let the session hold an answer.** A `--yes`, a defaults file, or a pin list with outcomes
+  in it turns the walk into the pipe-answerable door the guard exists to prevent, at 23× the size.
+- **Do not re-derive the funnel order in the walk.** The one thing a second ordering buys is a
+  second opinion about which question matters, on the surface where the human spends their attention.
+- **Do not read a skipped pin as answered.** `skip` writes nothing and the pin stays `needs_input`;
+  a session that recorded "the human passed on it" would be inventing the one state the ledger has
+  no room for.
+
+---
+
 ---
 
 Settled with evidence; re-opening these costs a session and lands where it started.
